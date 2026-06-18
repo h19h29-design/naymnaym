@@ -62,7 +62,8 @@ enum NutritionEstimator {
 
     static func makeParentSummary(records: [ChallengeRecord]) -> String {
         let skipped = records.filter { $0.action == .skipped }
-        let source = skipped.isEmpty ? records : skipped
+        let challenged = records.filter { $0.action == .oneBite }
+        let source = skipped.isEmpty ? challenged : skipped
         let frequentNutrients = source
             .flatMap(\.nutrients)
             .reduce(into: [String: Int]()) { $0[$1, default: 0] += 1 }
@@ -78,11 +79,14 @@ enum NutritionEstimator {
             .map(\.key)
 
         if source.isEmpty {
-            return "이번 주에는 아직 기록이 많지 않아요. 한 입 도전을 몇 번 해 보면 참고할 수 있는 요약이 생겨요."
+            return "이번 주에는 아직 안 먹는 반찬이나 한 입 도전 기록이 많지 않아요. 도전 기록이 쌓이면 참고할 수 있는 요약이 생겨요."
         }
 
         let menuText = menus.isEmpty ? "몇 가지 반찬" : menus.joined(separator: ", ")
         let nutrientText = frequentNutrients.isEmpty ? "여러 영양소" : frequentNutrients.joined(separator: "와 ")
+        if skipped.isEmpty {
+            return "이번 주에는 \(menuText)을 한 입 도전했어요.\n\(nutrientText)을 조금씩 경험해 보고 있어요.\n집에서는 같은 재료를 작은 양으로 반복해서 만나게 해 주면 도움이 될 수 있어요.\n영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다."
+        }
         return "이번 주에는 \(menuText)을 자주 안 먹었어요.\n\(nutrientText)을 놓칠 수 있어요.\n집에서는 김밥 속 채소, 계란말이 속 채소, 과일 간식처럼 부담 없는 방법이 도움이 될 수 있어요.\n영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다."
     }
 

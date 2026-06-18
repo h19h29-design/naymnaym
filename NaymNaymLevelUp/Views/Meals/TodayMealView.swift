@@ -4,6 +4,7 @@ struct TodayMealView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedItem: MealItem?
     @State private var challengeOutcome: ChallengeOutcome?
+    @State private var recordNotice: String?
 
     var body: some View {
         NavigationStack {
@@ -20,15 +21,24 @@ struct TodayMealView: View {
                         fallbackBanner(message)
                     }
 
+                    if let recordNotice {
+                        recordBanner(recordNotice)
+                    }
+
                     if let meal = appState.todayMeal {
                         nutritionSummary(meal)
 
                         ForEach(meal.menuItems) { item in
                             MealCard(item: item) {
+                                recordNotice = nil
                                 appState.recordSkipped(item, date: meal.date)
                                 selectedItem = item
                             } onChallenge: {
+                                recordNotice = nil
                                 challengeOutcome = appState.completeChallenge(for: item, date: meal.date)
+                            } onAlreadyEats: {
+                                appState.recordAlreadyEats(item, date: meal.date)
+                                recordNotice = "\(item.name)은 잘 먹는 메뉴로 기록했어요."
                             }
                         }
                     } else {
@@ -124,6 +134,20 @@ struct TodayMealView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
+    private func recordBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(AppColors.primaryGreen)
+            Text(message)
+                .font(AppTypography.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(12)
+        .background(AppColors.primaryGreen.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private var emptyState: some View {
         RoundedCard {
             VStack(alignment: .leading, spacing: 10) {
@@ -153,4 +177,3 @@ struct TodayMealView: View {
         }
     }
 }
-

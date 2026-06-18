@@ -18,7 +18,7 @@ struct SchoolSearchService {
     func searchSchools(keyword: String) async -> SchoolSearchResult {
         let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return SchoolSearchResult(schools: sampleProvider.sampleSchools, usedSample: true, message: "학교 이름을 입력하면 검색할 수 있어요.")
+            return SchoolSearchResult(schools: [], usedSample: false, message: "학교 이름을 입력하면 검색할 수 있어요.")
         }
 
         do {
@@ -39,11 +39,21 @@ struct SchoolSearchService {
             if !schools.isEmpty {
                 return SchoolSearchResult(schools: schools, usedSample: false, message: nil)
             }
-        } catch {
+        } catch NEISClientError.missingAPIKey {
             return sampleFallback(keyword: trimmed)
+        } catch {
+            return SchoolSearchResult(
+                schools: [],
+                usedSample: false,
+                message: "학교 검색에 실패했어요. 네트워크 상태를 확인하고 다시 검색해 주세요."
+            )
         }
 
-        return sampleFallback(keyword: trimmed)
+        return SchoolSearchResult(
+            schools: [],
+            usedSample: false,
+            message: "검색 결과가 없어요. 학교 이름을 조금 더 정확히 입력해 주세요."
+        )
     }
 
     private func sampleFallback(keyword: String) -> SchoolSearchResult {
@@ -54,7 +64,7 @@ struct SchoolSearchService {
         return SchoolSearchResult(
             schools: schools,
             usedSample: true,
-            message: "API 키가 없거나 검색에 실패해서 샘플 학교로 체험 중이에요."
+            message: "API 키가 없어서 샘플 학교로 체험 중이에요. 실제 급식 조회는 API 키 설정 후 사용할 수 있어요."
         )
     }
 }
@@ -76,4 +86,3 @@ private struct SchoolInfoRow: Decodable {
     var LCTN_SC_NM: String?
     var ORG_RDNMA: String?
 }
-

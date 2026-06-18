@@ -245,6 +245,7 @@ struct MealCard: View {
     var item: MealItem
     var onSkip: () -> Void
     var onChallenge: () -> Void
+    var onAlreadyEats: () -> Void
 
     var body: some View {
         RoundedCard {
@@ -278,9 +279,10 @@ struct MealCard: View {
                     }
                 }
 
-                HStack(spacing: 10) {
-                    SecondaryButton("안 먹을래요", systemImage: "xmark.circle", action: onSkip)
-                    PrimaryButton("한 입 도전!", systemImage: "checkmark.circle", action: onChallenge)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    SecondaryButton("안 먹어요", systemImage: "xmark.circle", action: onSkip)
+                    PrimaryButton("한입 도전", systemImage: "checkmark.seal.fill", action: onChallenge)
+                    SecondaryButton("잘 먹어요", systemImage: "hand.thumbsup", action: onAlreadyEats)
                 }
             }
         }
@@ -346,4 +348,3 @@ extension View {
         background(AppColors.creamBackground.ignoresSafeArea())
     }
 }
-

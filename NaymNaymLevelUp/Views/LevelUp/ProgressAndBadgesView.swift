@@ -59,7 +59,7 @@ struct ProgressAndBadgesView: View {
     private var recentRecords: some View {
         RoundedCard {
             VStack(alignment: .leading, spacing: 10) {
-                Text("최근 한 입 도전 기록")
+                Text("최근 급식 기록")
                     .font(AppTypography.headline)
                 if appState.records.isEmpty {
                     Text("아직 기록이 없어요. 오늘 급식에서 한 입 도전을 시작해 보세요.")
@@ -69,13 +69,13 @@ struct ProgressAndBadgesView: View {
                 } else {
                     ForEach(appState.records.prefix(6)) { record in
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: record.action == .oneBite ? "checkmark.seal.fill" : "minus.circle")
-                                .foregroundStyle(record.action == .oneBite ? AppColors.primaryGreen : AppColors.graySecondary)
+                            Image(systemName: record.action.iconName)
+                                .foregroundStyle(recordColor(for: record.action))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(record.menuName)
                                     .font(AppTypography.body.weight(.semibold))
                                     .fixedSize(horizontal: false, vertical: true)
-                                Text(record.action == .oneBite ? "+\(record.gainedExp) EXP · \(record.badgeName ?? "뱃지 없음")" : "오늘은 패스")
+                                Text(recordDetail(record))
                                     .font(AppTypography.caption)
                                     .foregroundStyle(AppColors.graySecondary)
                             }
@@ -87,5 +87,26 @@ struct ProgressAndBadgesView: View {
             }
         }
     }
-}
 
+    private func recordDetail(_ record: ChallengeRecord) -> String {
+        switch record.action {
+        case .oneBite:
+            return "+\(record.gainedExp) EXP · \(record.badgeName ?? "뱃지 없음")"
+        case .skipped:
+            return "안 먹는 메뉴로 기록"
+        case .alreadyEats:
+            return "잘 먹는 메뉴로 기록"
+        }
+    }
+
+    private func recordColor(for action: ChallengeRecord.Action) -> Color {
+        switch action {
+        case .oneBite:
+            return AppColors.primaryGreen
+        case .skipped:
+            return AppColors.orange
+        case .alreadyEats:
+            return AppColors.graySecondary
+        }
+    }
+}

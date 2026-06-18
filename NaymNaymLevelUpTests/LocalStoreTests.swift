@@ -44,5 +44,13 @@ final class LocalStoreTests: XCTestCase {
         store.clear()
         XCTAssertTrue(store.load().isEmpty)
     }
-}
 
+    func testChallengeStoreSavesAlreadyEatsRecord() {
+        let store = ChallengeStore(defaults: defaults)
+        let record = ChallengeRecord(date: "20260618", menuName: "현미밥", action: .alreadyEats, gainedExp: 0, badgeName: nil, nutrients: ["탄수화물"])
+
+        store.save([record])
+
+        XCTAssertEqual(store.load().first?.action, .alreadyEats)
+    }
+}

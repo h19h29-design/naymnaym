@@ -129,6 +129,19 @@ final class AppState: ObservableObject {
         challengeStore.save(records)
     }
 
+    func recordAlreadyEats(_ item: MealItem, date: String? = nil) {
+        let record = ChallengeRecord(
+            date: date ?? DateUtils.apiString(from: Date()),
+            menuName: item.name,
+            action: .alreadyEats,
+            gainedExp: 0,
+            badgeName: nil,
+            nutrients: item.nutrients
+        )
+        records.insert(record, at: 0)
+        challengeStore.save(records)
+    }
+
     func resetChallengeRecords() {
         records = []
         challengeStore.clear()
@@ -156,4 +169,3 @@ final class AppState: ObservableObject {
         mealMessage = nil
     }
 }
-
