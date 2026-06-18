@@ -60,6 +60,22 @@ Xcode에서 `NaymNaymLevelUp.xcodeproj` 열기
 iPhone 시뮬레이터 선택
 Build & Run
 
+## 홍보 웹페이지
+홍보용 반응형 웹페이지는 iOS 프로젝트와 분리된 `marketing-site` 폴더에 있습니다.
+
+```bash
+cd marketing-site
+npm install
+npm run dev
+```
+
+빌드는 다음 명령으로 확인합니다.
+
+```bash
+cd marketing-site
+npm run build
+```
+
 ## 주의사항
 영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다.
 알레르기 정보는 반드시 보호자와 학교 안내를 함께 확인해야 합니다.
