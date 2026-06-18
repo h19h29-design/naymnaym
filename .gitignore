@@ -1,0 +1,12 @@
+Config.xcconfig
+*.xcuserstate
+*.xcuserdata/
+DerivedData/
+build/
+.build/
+.swiftpm/
+*.ipa
+*.dSYM
+.DS_Store
+.xcodebuildmcp/
+

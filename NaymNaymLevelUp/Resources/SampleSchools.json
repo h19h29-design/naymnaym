@@ -1,0 +1,35 @@
+[
+  {
+    "name": "냠냠중학교",
+    "officeCode": "B10",
+    "schoolCode": "7010111",
+    "region": "서울",
+    "address": "서울시 마포구 샘플로 12",
+    "schoolType": "중학교"
+  },
+  {
+    "name": "레벨업중학교",
+    "officeCode": "J10",
+    "schoolCode": "7530421",
+    "region": "경기",
+    "address": "경기도 성남시 레벨업로 25",
+    "schoolType": "중학교"
+  },
+  {
+    "name": "행복고등학교",
+    "officeCode": "C10",
+    "schoolCode": "7240180",
+    "region": "부산",
+    "address": "부산시 해운대구 행복길 7",
+    "schoolType": "고등학교"
+  },
+  {
+    "name": "한입도전중학교",
+    "officeCode": "D10",
+    "schoolCode": "7340220",
+    "region": "대구",
+    "address": "대구시 수성구 도전로 18",
+    "schoolType": "중학교"
+  }
+]
+

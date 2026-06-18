@@ -1,0 +1,9 @@
+[
+  {
+    "date": "SAMPLE_DYNAMIC_MONTH",
+    "menuItems": ["현미밥", "미역국", "닭갈비", "콩나물무침", "배추김치"],
+    "calorie": "625 kcal",
+    "note": "실제 앱에서는 SampleDataProvider가 현재 월 기준 14일 이상 샘플 식단을 생성합니다."
+  }
+]
+
