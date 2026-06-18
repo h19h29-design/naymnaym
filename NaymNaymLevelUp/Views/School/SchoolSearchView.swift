@@ -10,7 +10,7 @@ struct SchoolSearchView: View {
     var onSelect: (School) -> Void
 
     @State private var keyword = ""
-    @State private var schools: [School] = SampleDataProvider().sampleSchools
+    @State private var schools: [School] = []
     @State private var message: String? = "학교 이름을 입력하면 검색할 수 있어요."
     @State private var isLoading = false
 
@@ -31,6 +31,9 @@ struct SchoolSearchView: View {
                             TextField("학교 이름", text: $keyword)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
+                                .onSubmit {
+                                    Task { await search() }
+                                }
                                 .padding(12)
                                 .background(Color.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -115,4 +118,3 @@ private struct SchoolResultCard: View {
         }
     }
 }
-

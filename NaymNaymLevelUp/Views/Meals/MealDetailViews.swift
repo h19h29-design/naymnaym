@@ -36,7 +36,7 @@ struct MealLossDetailView: View {
                         onChallenge()
                         dismiss()
                     }
-                    SecondaryButton("오늘은 패스", systemImage: "moon") {
+                    SecondaryButton("오늘은 안 먹어요", systemImage: "moon") {
                         dismiss()
                     }
                 }
@@ -94,4 +94,3 @@ struct LevelUpResultView: View {
         }
     }
 }
-

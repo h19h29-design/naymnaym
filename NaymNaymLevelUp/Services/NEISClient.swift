@@ -22,8 +22,12 @@ struct NEISClient {
         self.session = session
     }
 
+    var isConfigured: Bool {
+        !apiKey.isEmpty && apiKey != "YOUR_KEY_HERE" && apiKey != "$(NEIS_API_KEY)"
+    }
+
     func request(path: String, query: [String: String]) async throws -> Data {
-        guard !apiKey.isEmpty, apiKey != "YOUR_KEY_HERE", apiKey != "$(NEIS_API_KEY)" else {
+        guard isConfigured else {
             throw NEISClientError.missingAPIKey
         }
 
@@ -44,4 +48,3 @@ struct NEISClient {
         return data
     }
 }
-

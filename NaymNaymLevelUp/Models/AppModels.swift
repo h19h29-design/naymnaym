@@ -121,6 +121,23 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
     enum Action: String, Codable {
         case skipped
         case oneBite
+        case alreadyEats
+
+        var title: String {
+            switch self {
+            case .skipped: return "안 먹어요"
+            case .oneBite: return "한입 도전"
+            case .alreadyEats: return "잘 먹어요"
+            }
+        }
+
+        var iconName: String {
+            switch self {
+            case .skipped: return "xmark.circle"
+            case .oneBite: return "checkmark.seal.fill"
+            case .alreadyEats: return "hand.thumbsup.fill"
+            }
+        }
     }
 
     var id: UUID
@@ -283,4 +300,3 @@ struct GameStat: Hashable, Identifiable {
     var value: Int
     var icon: String
 }
-

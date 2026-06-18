@@ -7,20 +7,21 @@ struct SettingsView: View {
     @State private var showingAllergies = false
     @State private var showingPrivacy = false
     @State private var showingSources = false
-    @State private var pendingReset: ResetKind?
+    @State private var showingNicknameEditor = false
 
     var body: some View {
         NavigationStack {
             List {
                 Section("프로필") {
-                    TextField("별명", text: $nickname)
-                        .onSubmit {
-                            appState.updateNickname(nickname)
-                        }
                     Button {
-                        appState.updateNickname(nickname)
+                        nickname = appState.profile?.nickname ?? ""
+                        showingNicknameEditor = true
                     } label: {
-                        Label("별명 저장", systemImage: "square.and.arrow.down")
+                        profileRow(
+                            title: "별명",
+                            value: appState.profile?.nickname ?? "별명 없음",
+                            systemImage: "person.crop.circle"
+                        )
                     }
                     Button {
                         showingSchoolSearch = true
@@ -35,10 +36,12 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("기록 초기화") {
-                    resetButton("도전 기록 초기화", kind: .records)
-                    resetButton("프로필 초기화", kind: .profile)
-                    resetButton("전체 데이터 초기화", kind: .all)
+                Section("관리") {
+                    NavigationLink {
+                        DataManagementView()
+                    } label: {
+                        Label("데이터 관리", systemImage: "internaldrive")
+                    }
                 }
 
                 Section("안내") {
@@ -90,16 +93,109 @@ struct SettingsView: View {
             .sheet(isPresented: $showingSources) {
                 DataSourcesView()
             }
-            .alert(item: $pendingReset) { kind in
-                Alert(
-                    title: Text(kind.title),
-                    message: Text("되돌릴 수 없어요. 계속할까요?"),
-                    primaryButton: .destructive(Text("초기화")) {
-                        applyReset(kind)
-                    },
-                    secondaryButton: .cancel(Text("취소"))
-                )
+            .sheet(isPresented: $showingNicknameEditor) {
+                NicknameEditView(nickname: nickname) { newNickname in
+                    appState.updateNickname(newNickname)
+                    nickname = newNickname
+                    showingNicknameEditor = false
+                }
             }
+        }
+    }
+
+    private func profileRow(title: String, value: String, systemImage: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .foregroundStyle(AppColors.primaryGreen)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.graySecondary)
+                Text(value)
+                    .font(AppTypography.body.weight(.semibold))
+                    .foregroundStyle(AppColors.textDark)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Image(systemName: "pencil")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppColors.graySecondary)
+        }
+    }
+}
+
+private struct NicknameEditView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var nickname: String
+
+    var onSave: (String) -> Void
+
+    init(nickname: String, onSave: @escaping (String) -> Void) {
+        _nickname = State(initialValue: nickname)
+        self.onSave = onSave
+    }
+
+    private var trimmedNickname: String {
+        nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("별명") {
+                    TextField("예: 냠냠이", text: $nickname)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+            }
+            .navigationTitle("별명 수정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("취소") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("저장") {
+                        onSave(trimmedNickname)
+                        dismiss()
+                    }
+                    .disabled(trimmedNickname.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct DataManagementView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var pendingReset: ResetKind?
+
+    var body: some View {
+        List {
+            Section("삭제 전 확인") {
+                Text("삭제한 데이터는 되돌릴 수 없어요. 필요할 때만 아래 항목으로 들어와 삭제해 주세요.")
+                    .font(AppTypography.body)
+                    .foregroundStyle(AppColors.graySecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("데이터 삭제") {
+                resetButton("도전 기록 삭제", kind: .records)
+                resetButton("프로필 삭제", kind: .profile)
+                resetButton("전체 데이터 삭제", kind: .all)
+            }
+        }
+        .navigationTitle("데이터 관리")
+        .alert(item: $pendingReset) { kind in
+            Alert(
+                title: Text(kind.title),
+                message: Text("되돌릴 수 없어요. 계속할까요?"),
+                primaryButton: .destructive(Text("삭제")) {
+                    applyReset(kind)
+                },
+                secondaryButton: .cancel(Text("취소"))
+            )
         }
     }
 
@@ -132,9 +228,9 @@ private enum ResetKind: String, Identifiable {
 
     var title: String {
         switch self {
-        case .records: return "도전 기록 초기화"
-        case .profile: return "프로필 초기화"
-        case .all: return "전체 데이터 초기화"
+        case .records: return "도전 기록 삭제"
+        case .profile: return "프로필 삭제"
+        case .all: return "전체 데이터 삭제"
         }
     }
 }
@@ -223,4 +319,3 @@ private struct AppInfoView: View {
         .navigationTitle("앱 정보")
     }
 }
-
