@@ -121,6 +121,25 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(appState.records.first?.action, .skipped)
     }
 
+    @MainActor
+    func testCompleteChallengeAlsoLocksAllergyRiskOneBite() {
+        let appState = makeAppState()
+        appState.saveProfile(
+            nickname: "냠냠이",
+            school: School(name: "테스트초", officeCode: "B10", schoolCode: "123", region: "서울", address: "", schoolType: "초등학교"),
+            allergyCodes: [1]
+        )
+        let item = MealItem(name: "우유", allergyCodes: [1], nutrients: ["칼슘"], tags: [], sourceRawText: "우유(1)")
+
+        let outcome = appState.completeChallenge(for: item, date: "20260620", eatingStatus: .oneBite)
+
+        XCTAssertEqual(outcome.gainedExp, 8)
+        XCTAssertEqual(appState.progress.safetyExp, 8)
+        XCTAssertEqual(appState.progress.challengeExp, 0)
+        XCTAssertEqual(appState.records.first?.eatingStatus, .allergyAvoided)
+        XCTAssertEqual(appState.records.first?.action, .skipped)
+    }
+
     func testModeSpecificCharacterSkinsResolve() {
         XCTAssertEqual(CharacterSkin.skin(for: 3, mode: .middle).targetMode, .middle)
         XCTAssertEqual(CharacterSkin.skin(for: 4, mode: .high).name, "엑스퍼트")

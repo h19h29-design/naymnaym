@@ -273,19 +273,21 @@ final class AppState: ObservableObject {
         childLinkId: UUID? = nil
     ) -> ChallengeOutcome {
         let date = date ?? DateUtils.apiString(from: Date())
-        let status = eatingStatus ?? .oneBite
+        let requestedStatus = eatingStatus ?? .oneBite
+        let isRisk = isAllergyRisk(item)
+        let status = isRisk && requestedStatus == .oneBite ? EatingStatus.allergyAvoided : requestedStatus
         let grant = LevelUpXPPolicy.grant(
             for: item,
             status: status,
             date: date,
             existingRecords: records,
             existingMealRecords: mealRecords,
-            isAllergyRisk: isAllergyRisk(item)
+            isAllergyRisk: isRisk
         )
         return recordChallengeOnly(
             item,
             date: date,
-            action: .oneBite,
+            action: challengeAction(for: status),
             eatingStatus: status,
             difficultyReasons: difficultyReasons,
             photoIds: photoIds,
