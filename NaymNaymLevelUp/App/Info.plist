@@ -26,15 +26,17 @@
 	<string>public.app-category.education</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-		<key>NEIS_API_KEY</key>
-		<string>$(NEIS_API_KEY)</string>
-		<key>NSCameraUsageDescription</key>
-		<string>급식판 사진을 기록하려고 카메라를 사용합니다. 친구 얼굴, 이름표, 반/번호가 나오지 않게 촬영해 주세요.</string>
-		<key>NSPhotoLibraryUsageDescription</key>
-		<string>급식판 사진을 선택해 식사 기록에 연결하려고 사진 보관함을 사용합니다. 사진은 기본적으로 기기 내부에 저장됩니다.</string>
-		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>급식판 사진 기록을 기기에 저장하기 위해 사진 접근 권한이 필요할 수 있습니다.</string>
-		<key>UIApplicationSceneManifest</key>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NEIS_API_KEY</key>
+	<string>$(NEIS_API_KEY)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>급식판 사진을 기록하려고 카메라를 사용합니다. 친구 얼굴, 이름표, 반/번호가 나오지 않게 촬영해 주세요.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>급식판 사진을 선택해 식사 기록에 연결하려고 사진 보관함을 사용합니다. 사진은 기본적으로 기기 내부에 저장됩니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>급식판 사진 기록을 기기에 저장하기 위해 사진 접근 권한이 필요할 수 있습니다.</string>
+	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
