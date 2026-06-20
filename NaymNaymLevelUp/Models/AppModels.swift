@@ -159,6 +159,104 @@ enum EatingStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+struct XPBreakdown: Codable, Hashable {
+    var record: Int
+    var challenge: Int
+    var balance: Int
+    var safety: Int
+
+    init(record: Int = 0, challenge: Int = 0, balance: Int = 0, safety: Int = 0) {
+        self.record = max(0, record)
+        self.challenge = max(0, challenge)
+        self.balance = max(0, balance)
+        self.safety = max(0, safety)
+    }
+
+    static let zero = XPBreakdown()
+
+    var total: Int {
+        record + challenge + balance + safety
+    }
+
+    var isZero: Bool {
+        total == 0
+    }
+
+    var summaryText: String {
+        [
+            record > 0 ? "기록 +\(record)" : nil,
+            challenge > 0 ? "도전 +\(challenge)" : nil,
+            balance > 0 ? "균형 +\(balance)" : nil,
+            safety > 0 ? "안전 +\(safety)" : nil
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+
+    func adding(_ other: XPBreakdown) -> XPBreakdown {
+        XPBreakdown(
+            record: record + other.record,
+            challenge: challenge + other.challenge,
+            balance: balance + other.balance,
+            safety: safety + other.safety
+        )
+    }
+
+    func capped(to limit: Int) -> XPBreakdown {
+        guard limit > 0 else { return .zero }
+        guard total > limit else { return self }
+
+        let values = [record, challenge, balance, safety]
+        var cappedValues = values.map { $0 * limit / total }
+        var remaining = limit - cappedValues.reduce(0, +)
+        let remainders = values
+            .enumerated()
+            .map { (index: $0.offset, remainder: $0.element * limit % total) }
+            .sorted {
+                if $0.remainder == $1.remainder {
+                    return $0.index < $1.index
+                }
+                return $0.remainder > $1.remainder
+            }
+
+        var index = 0
+        while remaining > 0, !remainders.isEmpty {
+            cappedValues[remainders[index % remainders.count].index] += 1
+            remaining -= 1
+            index += 1
+        }
+
+        return XPBreakdown(
+            record: cappedValues[0],
+            challenge: cappedValues[1],
+            balance: cappedValues[2],
+            safety: cappedValues[3]
+        )
+    }
+}
+
+struct XPGrant: Codable, Hashable {
+    var base: XPBreakdown
+    var bonus: XPBreakdown
+    var notes: [String]
+
+    init(base: XPBreakdown = .zero, bonus: XPBreakdown = .zero, notes: [String] = []) {
+        self.base = base
+        self.bonus = bonus
+        self.notes = notes
+    }
+
+    static let zero = XPGrant()
+
+    var breakdown: XPBreakdown {
+        base.adding(bonus)
+    }
+
+    var total: Int {
+        breakdown.total
+    }
+}
+
 enum DifficultyReason: String, Codable, CaseIterable, Identifiable {
     case texture
     case smell
@@ -357,6 +455,13 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
     var difficultyReasons: [DifficultyReason]?
     var photoIds: [String]?
     var childLinkId: UUID?
+    var baseExp: Int
+    var bonusExp: Int
+    var recordExp: Int
+    var challengeExp: Int
+    var balanceExp: Int
+    var safetyExp: Int
+    var xpNotes: [String]
 
     init(
         id: UUID = UUID(),
@@ -370,8 +475,13 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         eatingStatus: EatingStatus? = nil,
         difficultyReasons: [DifficultyReason] = [],
         photoIds: [String] = [],
-        childLinkId: UUID? = nil
+        childLinkId: UUID? = nil,
+        xpBreakdown: XPBreakdown? = nil,
+        baseExp: Int? = nil,
+        bonusExp: Int? = nil,
+        xpNotes: [String] = []
     ) {
+        let inferredBreakdown = xpBreakdown ?? Self.legacyBreakdown(action: action, gainedExp: gainedExp)
         self.id = id
         self.date = date
         self.menuName = menuName
@@ -384,6 +494,86 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         self.difficultyReasons = difficultyReasons
         self.photoIds = photoIds
         self.childLinkId = childLinkId
+        self.baseExp = baseExp ?? gainedExp
+        self.bonusExp = bonusExp ?? 0
+        self.recordExp = inferredBreakdown.record
+        self.challengeExp = inferredBreakdown.challenge
+        self.balanceExp = inferredBreakdown.balance
+        self.safetyExp = inferredBreakdown.safety
+        self.xpNotes = xpNotes
+    }
+
+    var xpBreakdown: XPBreakdown {
+        XPBreakdown(record: recordExp, challenge: challengeExp, balance: balanceExp, safety: safetyExp)
+    }
+
+    private static func legacyBreakdown(action: Action, gainedExp: Int) -> XPBreakdown {
+        switch action {
+        case .oneBite:
+            return XPBreakdown(challenge: gainedExp)
+        case .alreadyEats:
+            return XPBreakdown(record: gainedExp)
+        case .skipped:
+            return XPBreakdown(record: gainedExp)
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case date
+        case menuName
+        case action
+        case gainedExp
+        case badgeName
+        case nutrients
+        case createdAt
+        case eatingStatus
+        case difficultyReasons
+        case photoIds
+        case childLinkId
+        case baseExp
+        case bonusExp
+        case recordExp
+        case challengeExp
+        case balanceExp
+        case safetyExp
+        case xpNotes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        date = try container.decode(String.self, forKey: .date)
+        menuName = try container.decode(String.self, forKey: .menuName)
+        action = try container.decode(Action.self, forKey: .action)
+        gainedExp = try container.decodeIfPresent(Int.self, forKey: .gainedExp) ?? 0
+        badgeName = try container.decodeIfPresent(String.self, forKey: .badgeName)
+        nutrients = try container.decodeIfPresent([String].self, forKey: .nutrients) ?? []
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        eatingStatus = try container.decodeIfPresent(EatingStatus.self, forKey: .eatingStatus)
+        difficultyReasons = try container.decodeIfPresent([DifficultyReason].self, forKey: .difficultyReasons) ?? []
+        photoIds = try container.decodeIfPresent([String].self, forKey: .photoIds) ?? []
+        childLinkId = try container.decodeIfPresent(UUID.self, forKey: .childLinkId)
+        baseExp = try container.decodeIfPresent(Int.self, forKey: .baseExp) ?? gainedExp
+        bonusExp = try container.decodeIfPresent(Int.self, forKey: .bonusExp) ?? 0
+
+        let decodedRecordExp = try container.decodeIfPresent(Int.self, forKey: .recordExp)
+        let decodedChallengeExp = try container.decodeIfPresent(Int.self, forKey: .challengeExp)
+        let decodedBalanceExp = try container.decodeIfPresent(Int.self, forKey: .balanceExp)
+        let decodedSafetyExp = try container.decodeIfPresent(Int.self, forKey: .safetyExp)
+        if decodedRecordExp == nil, decodedChallengeExp == nil, decodedBalanceExp == nil, decodedSafetyExp == nil {
+            let legacy = Self.legacyBreakdown(action: action, gainedExp: gainedExp)
+            recordExp = legacy.record
+            challengeExp = legacy.challenge
+            balanceExp = legacy.balance
+            safetyExp = legacy.safety
+        } else {
+            recordExp = decodedRecordExp ?? 0
+            challengeExp = decodedChallengeExp ?? 0
+            balanceExp = decodedBalanceExp ?? 0
+            safetyExp = decodedSafetyExp ?? 0
+        }
+        xpNotes = try container.decodeIfPresent([String].self, forKey: .xpNotes) ?? []
     }
 }
 
@@ -421,6 +611,180 @@ struct MealRecord: Codable, Hashable, Identifiable {
         self.parentShareEnabled = parentShareEnabled
         self.createdAt = createdAt
         self.childLinkId = childLinkId
+    }
+}
+
+enum LevelUpXPPolicy {
+    static let dailyBaseCap = 50
+    static let dailyChallengeBonusCap = 70
+    static let dailyTotalCap = 100
+
+    static func baseBreakdown(for status: EatingStatus) -> XPBreakdown {
+        switch status {
+        case .finished:
+            return XPBreakdown(record: 10)
+        case .half:
+            return XPBreakdown(record: 12)
+        case .oneBite:
+            return XPBreakdown(challenge: 18)
+        case .smelledOnly:
+            return XPBreakdown(challenge: 10)
+        case .difficultToday:
+            return XPBreakdown(record: 3)
+        case .allergyAvoided:
+            return XPBreakdown(safety: 8)
+        }
+    }
+
+    static func grant(
+        for item: MealItem,
+        status: EatingStatus,
+        date: String,
+        existingRecords: [ChallengeRecord],
+        existingMealRecords: [MealRecord],
+        isAllergyRisk: Bool
+    ) -> XPGrant {
+        let rawGrant = rawGrant(
+            for: item,
+            status: status,
+            date: date,
+            existingRecords: existingRecords,
+            existingMealRecords: existingMealRecords,
+            isAllergyRisk: isAllergyRisk
+        )
+        return applyDailyCaps(rawGrant, existingRecords: existingRecords, date: date)
+    }
+
+    static func applyDailyCaps(_ rawGrant: XPGrant, existingRecords: [ChallengeRecord], date: String) -> XPGrant {
+        let usage = dailyUsage(from: existingRecords, date: date)
+        let totalAvailable = max(0, dailyTotalCap - usage.total)
+        let baseAvailable = min(max(0, dailyBaseCap - usage.base), totalAvailable)
+        let cappedBase = rawGrant.base.capped(to: baseAvailable)
+        let bonusAvailable = min(max(0, dailyChallengeBonusCap - usage.bonus), max(0, totalAvailable - cappedBase.total))
+        let cappedBonus = rawGrant.bonus.capped(to: bonusAvailable)
+
+        var notes = rawGrant.notes
+        if cappedBase.total < rawGrant.base.total {
+            notes.append("하루 기본 XP 상한 적용")
+        }
+        if cappedBonus.total < rawGrant.bonus.total {
+            notes.append("하루 도전 보너스 상한 적용")
+        }
+        if cappedBase.total + cappedBonus.total < rawGrant.base.total + rawGrant.bonus.total {
+            notes.append("하루 전체 XP 상한 적용")
+        }
+
+        return XPGrant(base: cappedBase, bonus: cappedBonus, notes: notes)
+    }
+
+    private static func rawGrant(
+        for item: MealItem,
+        status: EatingStatus,
+        date: String,
+        existingRecords: [ChallengeRecord],
+        existingMealRecords: [MealRecord],
+        isAllergyRisk: Bool
+    ) -> XPGrant {
+        let baseStatusXP = baseBreakdown(for: status)
+        var base = baseStatusXP
+        var bonus = XPBreakdown.zero
+        var notes = ["\(status.title) 기본 XP +\(baseStatusXP.total)"]
+        let nutrients = nutrients(for: item)
+
+        if status != .allergyAvoided {
+            if isFirstRecord(on: date, existingMealRecords: existingMealRecords),
+               hasRecord(on: previousDateString(before: date), existingMealRecords: existingMealRecords) {
+                base = base.adding(XPBreakdown(record: 6))
+                notes.append("꾸준한 기록 +6")
+            }
+
+            let existingNutrients = Set(existingRecords.filter { $0.date == date }.flatMap(\.nutrients))
+            let newNutrients = nutrients.filter { !existingNutrients.contains($0) }
+            if !newNutrients.isEmpty {
+                base = base.adding(XPBreakdown(balance: 6))
+                notes.append("다양한 음식군 기록 +6")
+            }
+
+            let beforeGroupCount = existingNutrients.count
+            let afterGroupCount = existingNutrients.union(nutrients).count
+            if beforeGroupCount < 3, afterGroupCount >= 3 {
+                base = base.adding(XPBreakdown(balance: 10))
+                notes.append("균형 잡힌 식사 기록 +10")
+            }
+
+            if !item.allergyCodes.isEmpty {
+                base = base.adding(XPBreakdown(safety: 4))
+                notes.append("알레르기 정보 확인 +4")
+            }
+        }
+
+        if hasPreviouslyDifficultRecord(for: item.name, before: date, records: existingRecords),
+           let retryBonus = retryBonus(for: status) {
+            bonus = bonus.adding(XPBreakdown(challenge: retryBonus.amount))
+            notes.append("\(retryBonus.label) +\(retryBonus.amount)")
+        }
+
+        return XPGrant(base: base, bonus: bonus, notes: notes)
+    }
+
+    private static func retryBonus(for status: EatingStatus) -> (label: String, amount: Int)? {
+        switch status {
+        case .difficultToday:
+            return ("어려웠던 음식 다시 보기", 5)
+        case .smelledOnly:
+            return ("냄새만 맡기", 10)
+        case .oneBite:
+            return ("한 입 도전", 25)
+        case .half, .finished:
+            return ("반 정도 먹기", 35)
+        case .allergyAvoided:
+            return nil
+        }
+    }
+
+    private static func hasPreviouslyDifficultRecord(for menuName: String, before date: String, records: [ChallengeRecord]) -> Bool {
+        records.contains { record in
+            guard normalized(record.menuName) == normalized(menuName), record.date < date else { return false }
+            if let status = record.eatingStatus {
+                return status == .difficultToday || status == .smelledOnly
+            }
+            return record.action == .skipped
+        }
+    }
+
+    private static func dailyUsage(from records: [ChallengeRecord], date: String) -> (base: Int, bonus: Int, total: Int) {
+        let records = records.filter { $0.date == date }
+        let base = records.reduce(0) { $0 + $1.baseExp }
+        let bonus = records.reduce(0) { $0 + $1.bonusExp }
+        return (base, bonus, base + bonus)
+    }
+
+    private static func nutrients(for item: MealItem) -> [String] {
+        item.nutrients.isEmpty ? NutritionEstimator.estimateNutrients(for: item) : item.nutrients
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .lowercased()
+    }
+
+    private static func isFirstRecord(on date: String, existingMealRecords: [MealRecord]) -> Bool {
+        !existingMealRecords.contains { $0.date == date }
+    }
+
+    private static func hasRecord(on date: String?, existingMealRecords: [MealRecord]) -> Bool {
+        guard let date else { return false }
+        return existingMealRecords.contains { $0.date == date }
+    }
+
+    private static func previousDateString(before date: String) -> String? {
+        guard let dateValue = DateUtils.apiDateFormatter.date(from: date),
+              let previous = Calendar.current.date(byAdding: .day, value: -1, to: dateValue) else {
+            return nil
+        }
+        return DateUtils.apiString(from: previous)
     }
 }
 
@@ -533,14 +897,31 @@ struct PraiseCard: Codable, Hashable, Identifiable {
 
 struct PlayerProgress: Codable, Hashable {
     var level: Int
-    var exp: Int
+    var recordExp: Int
+    var challengeExp: Int
+    var balanceExp: Int
+    var safetyExp: Int
     var totalChallenges: Int
     var badges: [String]
     var currentSkinId: String
 
-    init(level: Int = 1, exp: Int = 0, totalChallenges: Int = 0, badges: [String] = [], currentSkinId: String = "skin-1") {
+    init(
+        level: Int = 1,
+        exp: Int = 0,
+        totalChallenges: Int = 0,
+        badges: [String] = [],
+        currentSkinId: String = "skin-1",
+        recordExp: Int? = nil,
+        challengeExp: Int? = nil,
+        balanceExp: Int? = nil,
+        safetyExp: Int? = nil
+    ) {
+        let hasBreakdown = recordExp != nil || challengeExp != nil || balanceExp != nil || safetyExp != nil
         self.level = level
-        self.exp = exp
+        self.recordExp = recordExp ?? 0
+        self.challengeExp = challengeExp ?? (hasBreakdown ? 0 : exp)
+        self.balanceExp = balanceExp ?? 0
+        self.safetyExp = safetyExp ?? 0
         self.totalChallenges = totalChallenges
         self.badges = badges
         self.currentSkinId = currentSkinId
@@ -556,6 +937,14 @@ struct PlayerProgress: Codable, Hashable {
         "영양 마스터",
         "레전드 냠냠러"
     ]
+
+    var exp: Int {
+        recordExp + challengeExp + balanceExp + safetyExp
+    }
+
+    var xpBreakdown: XPBreakdown {
+        XPBreakdown(record: recordExp, challenge: challengeExp, balance: balanceExp, safety: safetyExp)
+    }
 
     var title: String {
         Self.title(for: level)
@@ -580,18 +969,32 @@ struct PlayerProgress: Codable, Hashable {
             return "최고 레벨"
         }
         let next = Self.levelThresholds[level]
-        return "\(exp) / \(next) EXP"
+        return "\(exp) / \(next) XP"
     }
 
     mutating func applyChallenge(for item: MealItem) -> ChallengeOutcome {
+        let grant = XPGrant(base: LevelUpXPPolicy.baseBreakdown(for: .oneBite), notes: ["한 입 먹었어요 기본 XP +18"])
+        return applyGrant(grant, for: item, status: .oneBite)
+    }
+
+    mutating func applyGrant(_ grant: XPGrant, for item: MealItem, status: EatingStatus) -> ChallengeOutcome {
         let oldLevel = level
-        let gained = NutritionEstimator.expReward(for: item)
-        let badge = NutritionEstimator.recommendBadge(for: item)
-        exp += gained
-        totalChallenges += 1
-        if !badges.contains(badge) {
+        let gained = grant.total
+        let breakdown = grant.breakdown
+        let badge = NutritionEstimator.recommendBadge(for: item, status: status)
+
+        recordExp += breakdown.record
+        challengeExp += breakdown.challenge
+        balanceExp += breakdown.balance
+        safetyExp += breakdown.safety
+
+        if status == .oneBite {
+            totalChallenges += 1
+        }
+        if gained > 0, !badges.contains(badge) {
             badges.append(badge)
         }
+
         level = Self.level(forExp: exp)
         currentSkinId = CharacterSkin.skin(for: level).id
 
@@ -602,7 +1005,11 @@ struct PlayerProgress: Codable, Hashable {
             damage: 20 + gained / 2,
             oldLevel: oldLevel,
             newLevel: level,
-            skin: currentSkin
+            skin: currentSkin,
+            xpBreakdown: breakdown,
+            baseExp: grant.base.total,
+            bonusExp: grant.bonus.total,
+            xpNotes: grant.notes
         )
     }
 
@@ -616,6 +1023,50 @@ struct PlayerProgress: Codable, Hashable {
 
     static func title(for level: Int) -> String {
         levelTitles[max(0, min(level - 1, levelTitles.count - 1))]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case level
+        case exp
+        case recordExp
+        case challengeExp
+        case balanceExp
+        case safetyExp
+        case totalChallenges
+        case badges
+        case currentSkinId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        level = try container.decodeIfPresent(Int.self, forKey: .level) ?? 1
+        let legacyExp = try container.decodeIfPresent(Int.self, forKey: .exp) ?? 0
+        let decodedRecordExp = try container.decodeIfPresent(Int.self, forKey: .recordExp)
+        let decodedChallengeExp = try container.decodeIfPresent(Int.self, forKey: .challengeExp)
+        let decodedBalanceExp = try container.decodeIfPresent(Int.self, forKey: .balanceExp)
+        let decodedSafetyExp = try container.decodeIfPresent(Int.self, forKey: .safetyExp)
+        let hasBreakdown = decodedRecordExp != nil || decodedChallengeExp != nil || decodedBalanceExp != nil || decodedSafetyExp != nil
+        recordExp = decodedRecordExp ?? 0
+        challengeExp = decodedChallengeExp ?? (hasBreakdown ? 0 : legacyExp)
+        balanceExp = decodedBalanceExp ?? 0
+        safetyExp = decodedSafetyExp ?? 0
+        totalChallenges = try container.decodeIfPresent(Int.self, forKey: .totalChallenges) ?? 0
+        badges = try container.decodeIfPresent([String].self, forKey: .badges) ?? []
+        currentSkinId = try container.decodeIfPresent(String.self, forKey: .currentSkinId) ?? "skin-1"
+        level = Self.level(forExp: exp)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(level, forKey: .level)
+        try container.encode(exp, forKey: .exp)
+        try container.encode(recordExp, forKey: .recordExp)
+        try container.encode(challengeExp, forKey: .challengeExp)
+        try container.encode(balanceExp, forKey: .balanceExp)
+        try container.encode(safetyExp, forKey: .safetyExp)
+        try container.encode(totalChallenges, forKey: .totalChallenges)
+        try container.encode(badges, forKey: .badges)
+        try container.encode(currentSkinId, forKey: .currentSkinId)
     }
 }
 
@@ -690,6 +1141,10 @@ struct ChallengeOutcome: Hashable, Identifiable {
     var oldLevel: Int
     var newLevel: Int
     var skin: CharacterSkin
+    var xpBreakdown: XPBreakdown = .zero
+    var baseExp: Int = 0
+    var bonusExp: Int = 0
+    var xpNotes: [String] = []
 
     var didLevelUp: Bool {
         newLevel > oldLevel

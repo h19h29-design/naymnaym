@@ -32,6 +32,35 @@ final class NutritionEstimatorTests: XCTestCase {
         let summary = NutritionEstimator.makeParentSummary(records: [record])
 
         XCTAssertFalse(summary.contains("자주 안 먹었어요"))
-        XCTAssertTrue(summary.contains("한 입 도전 기록이 많지 않아요"))
+        XCTAssertTrue(summary.contains("변화 흐름"))
+    }
+
+    func testParentSummaryFocusesOnChangeInsteadOfScoreComparison() {
+        let difficult = ChallengeRecord(
+            date: "20260619",
+            menuName: "시금치나물",
+            action: .skipped,
+            gainedExp: 3,
+            badgeName: nil,
+            nutrients: ["식이섬유", "비타민"],
+            createdAt: Date(timeIntervalSince1970: 1),
+            eatingStatus: .difficultToday
+        )
+        let oneBite = ChallengeRecord(
+            date: "20260620",
+            menuName: "시금치나물",
+            action: .oneBite,
+            gainedExp: 43,
+            badgeName: "초록 용사",
+            nutrients: ["식이섬유", "비타민"],
+            createdAt: Date(timeIntervalSince1970: 2),
+            eatingStatus: .oneBite
+        )
+
+        let summary = NutritionEstimator.makeParentSummary(records: [oneBite, difficult])
+
+        XCTAssertTrue(summary.contains("어려워했지만"))
+        XCTAssertTrue(summary.contains("한 입 도전까지 성공"))
+        XCTAssertFalse(summary.contains("점수"))
     }
 }

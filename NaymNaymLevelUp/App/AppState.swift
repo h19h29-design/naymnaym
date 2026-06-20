@@ -202,11 +202,21 @@ final class AppState: ObservableObject {
         photoIds: [String] = [],
         shareWithParent: Bool = false
     ) -> ChallengeOutcome? {
+        let isRisk = isAllergyRisk(item)
+        let finalStatus = isRisk && status == .oneBite ? EatingStatus.allergyAvoided : status
         let childLinkId = shareWithParent ? childShareLink?.id : nil
+        let grant = LevelUpXPPolicy.grant(
+            for: item,
+            status: finalStatus,
+            date: date,
+            existingRecords: records,
+            existingMealRecords: mealRecords,
+            isAllergyRisk: isRisk
+        )
         let record = MealRecord(
             date: date,
             menuName: item.name,
-            eatingStatus: status,
+            eatingStatus: finalStatus,
             difficultyReasons: reasons,
             allergyCodes: item.allergyCodes,
             photoIds: photoIds,
@@ -222,24 +232,16 @@ final class AppState: ObservableObject {
             }
         }
 
-        switch status {
-        case .oneBite:
-            return completeChallenge(
-                for: item,
-                date: date,
-                eatingStatus: status,
-                difficultyReasons: reasons,
-                photoIds: photoIds,
-                childLinkId: childLinkId
-            )
-        case .allergyAvoided:
-            recordChallengeOnly(item, date: date, action: .skipped, eatingStatus: status, difficultyReasons: reasons, photoIds: photoIds, childLinkId: childLinkId)
-        case .difficultToday, .smelledOnly:
-            recordChallengeOnly(item, date: date, action: .skipped, eatingStatus: status, difficultyReasons: reasons, photoIds: photoIds, childLinkId: childLinkId)
-        case .finished, .half:
-            recordChallengeOnly(item, date: date, action: .alreadyEats, eatingStatus: status, difficultyReasons: reasons, photoIds: photoIds, childLinkId: childLinkId)
-        }
-        return nil
+        return recordChallengeOnly(
+            item,
+            date: date,
+            action: challengeAction(for: finalStatus),
+            eatingStatus: finalStatus,
+            difficultyReasons: reasons,
+            photoIds: photoIds,
+            childLinkId: childLinkId,
+            grant: grant
+        )
     }
 
     func saveMealPhotoData(_ data: Data, sharedWithParent: Bool = false) throws -> MealPhotoRecord {
@@ -270,35 +272,48 @@ final class AppState: ObservableObject {
         photoIds: [String] = [],
         childLinkId: UUID? = nil
     ) -> ChallengeOutcome {
-        var nextProgress = progress
-        let outcome = nextProgress.applyChallenge(for: item)
-        let record = ChallengeRecord(
-            date: date ?? DateUtils.apiString(from: Date()),
-            menuName: item.name,
+        let date = date ?? DateUtils.apiString(from: Date())
+        let status = eatingStatus ?? .oneBite
+        let grant = LevelUpXPPolicy.grant(
+            for: item,
+            status: status,
+            date: date,
+            existingRecords: records,
+            existingMealRecords: mealRecords,
+            isAllergyRisk: isAllergyRisk(item)
+        )
+        return recordChallengeOnly(
+            item,
+            date: date,
             action: .oneBite,
-            gainedExp: outcome.gainedExp,
-            badgeName: outcome.badgeName,
-            nutrients: item.nutrients,
-            eatingStatus: eatingStatus,
+            eatingStatus: status,
             difficultyReasons: difficultyReasons,
             photoIds: photoIds,
-            childLinkId: childLinkId
+            childLinkId: childLinkId,
+            grant: grant
+        ) ?? ChallengeOutcome(
+            menuName: item.name,
+            gainedExp: 0,
+            badgeName: NutritionEstimator.recommendBadge(for: item, status: status),
+            damage: 0,
+            oldLevel: progress.level,
+            newLevel: progress.level,
+            skin: progress.currentSkin
         )
-        progress = nextProgress
-        records.insert(record, at: 0)
-        progressStore.save(progress)
-        challengeStore.save(records)
-        return outcome
     }
 
-    func recordSkipped(_ item: MealItem, date: String? = nil) {
-        recordChallengeOnly(item, date: date ?? DateUtils.apiString(from: Date()), action: .skipped, eatingStatus: .difficultToday)
+    @discardableResult
+    func recordSkipped(_ item: MealItem, date: String? = nil) -> ChallengeOutcome? {
+        let date = date ?? DateUtils.apiString(from: Date())
+        return recordMealInteraction(item: item, date: date, status: isAllergyRisk(item) ? .allergyAvoided : .difficultToday)
     }
 
-    func recordAlreadyEats(_ item: MealItem, date: String? = nil) {
-        recordChallengeOnly(item, date: date ?? DateUtils.apiString(from: Date()), action: .alreadyEats, eatingStatus: .finished)
+    @discardableResult
+    func recordAlreadyEats(_ item: MealItem, date: String? = nil) -> ChallengeOutcome? {
+        recordMealInteraction(item: item, date: date ?? DateUtils.apiString(from: Date()), status: .finished)
     }
 
+    @discardableResult
     private func recordChallengeOnly(
         _ item: MealItem,
         date: String,
@@ -306,22 +321,44 @@ final class AppState: ObservableObject {
         eatingStatus: EatingStatus?,
         difficultyReasons: [DifficultyReason] = [],
         photoIds: [String] = [],
-        childLinkId: UUID? = nil
-    ) {
+        childLinkId: UUID? = nil,
+        grant: XPGrant
+    ) -> ChallengeOutcome? {
+        var nextProgress = progress
+        let status = eatingStatus ?? .difficultToday
+        let outcome = nextProgress.applyGrant(grant, for: item, status: status)
         let record = ChallengeRecord(
             date: date,
             menuName: item.name,
             action: action,
-            gainedExp: 0,
-            badgeName: nil,
-            nutrients: item.nutrients,
+            gainedExp: outcome.gainedExp,
+            badgeName: outcome.gainedExp > 0 ? outcome.badgeName : nil,
+            nutrients: item.nutrients.isEmpty ? NutritionEstimator.estimateNutrients(for: item) : item.nutrients,
             eatingStatus: eatingStatus,
             difficultyReasons: difficultyReasons,
             photoIds: photoIds,
-            childLinkId: childLinkId
+            childLinkId: childLinkId,
+            xpBreakdown: outcome.xpBreakdown,
+            baseExp: outcome.baseExp,
+            bonusExp: outcome.bonusExp,
+            xpNotes: outcome.xpNotes
         )
+        progress = nextProgress
         records.insert(record, at: 0)
+        progressStore.save(progress)
         challengeStore.save(records)
+        return outcome.gainedExp > 0 ? outcome : nil
+    }
+
+    private func challengeAction(for status: EatingStatus) -> ChallengeRecord.Action {
+        switch status {
+        case .oneBite:
+            return .oneBite
+        case .finished, .half:
+            return .alreadyEats
+        case .smelledOnly, .difficultToday, .allergyAvoided:
+            return .skipped
+        }
     }
 
     func resetChallengeRecords() {

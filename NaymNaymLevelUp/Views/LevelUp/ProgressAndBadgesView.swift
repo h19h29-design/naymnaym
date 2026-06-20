@@ -3,7 +3,7 @@ import SwiftUI
 struct ProgressAndBadgesView: View {
     @EnvironmentObject private var appState: AppState
 
-    private let allBadges = ["한입 도전자", "초록 용사", "단백질 파워", "칼슘 방패", "비타민 스타", "편식 몬스터 헌터"]
+    private let allBadges = ["한입 도전자", "초록 용사", "단백질 파워", "칼슘 방패", "비타민 스타", "균형 기록", "안전 확인"]
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
 
     var body: some View {
@@ -38,6 +38,12 @@ struct ProgressAndBadgesView: View {
                     .foregroundStyle(AppColors.graySecondary)
                 Text("총 한 입 도전 \(appState.progress.totalChallenges)회")
                     .font(AppTypography.body.weight(.semibold))
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    xpPill(title: "기록 XP", value: appState.progress.recordExp, color: AppColors.primaryGreen)
+                    xpPill(title: "도전 XP", value: appState.progress.challengeExp, color: AppColors.orange)
+                    xpPill(title: "균형 XP", value: appState.progress.balanceExp, color: Color.blue)
+                    xpPill(title: "안전 XP", value: appState.progress.safetyExp, color: Color.red)
+                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -114,14 +120,30 @@ struct ProgressAndBadgesView: View {
     }
 
     private func recordDetail(_ record: ChallengeRecord) -> String {
+        let xpText = record.xpBreakdown.summaryText.isEmpty ? "" : " · \(record.xpBreakdown.summaryText)"
         switch record.action {
         case .oneBite:
-            return "+\(record.gainedExp) EXP · \(record.badgeName ?? "뱃지 없음")"
+            return "+\(record.gainedExp) XP\(xpText) · \(record.badgeName ?? "뱃지 없음")"
         case .skipped:
-            return "안 먹는 메뉴로 기록"
+            return record.gainedExp > 0 ? "+\(record.gainedExp) XP\(xpText)" : "안 먹는 메뉴로 기록"
         case .alreadyEats:
-            return "잘 먹는 메뉴로 기록"
+            return record.gainedExp > 0 ? "+\(record.gainedExp) XP\(xpText)" : "잘 먹는 메뉴로 기록"
         }
+    }
+
+    private func xpPill(title: String, value: Int, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppColors.graySecondary)
+            Text("\(value)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppColors.textDark)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func recordColor(for action: ChallengeRecord.Action) -> Color {

@@ -44,7 +44,7 @@ struct TodayMealView: View {
                                 }
                                 challengeOutcome = appState.recordMealInteraction(item: item, date: meal.date, status: .oneBite)
                             } onAlreadyEats: {
-                                appState.recordAlreadyEats(item, date: meal.date)
+                                challengeOutcome = appState.recordAlreadyEats(item, date: meal.date)
                                 recordNotice = "\(item.name)은 잘 먹는 메뉴로 기록했어요."
                             } onRecord: {
                                 recordingItem = item
@@ -65,7 +65,7 @@ struct TodayMealView: View {
                 await appState.loadMeals()
             }
             .sheet(item: $selectedItem) { item in
-                MealLossDetailView(item: item) {
+                MealLossDetailView(item: item, isChallengeLocked: appState.isAllergyRisk(item)) {
                     selectedItem = nil
                     guard !appState.isAllergyRisk(item) else {
                         recordNotice = "선택한 알레르기와 관련된 메뉴예요. 한 입 도전보다 안전 확인이 먼저예요."
@@ -262,7 +262,7 @@ private struct MealRecordSheet: View {
         self.item = item
         self.date = date
         self.onComplete = onComplete
-        _status = State(initialValue: item.allergyCodes.isEmpty ? .oneBite : .difficultToday)
+        _status = State(initialValue: .oneBite)
     }
 
     var body: some View {
@@ -270,7 +270,7 @@ private struct MealRecordSheet: View {
             Form {
                 Section("먹은 정도") {
                     Picker("먹은 정도", selection: $status) {
-                        ForEach(EatingStatus.allCases) { option in
+                        ForEach(availableStatuses) { option in
                             Label(option.title, systemImage: option.systemImage)
                                 .tag(option)
                         }
@@ -286,9 +286,19 @@ private struct MealRecordSheet: View {
                     }
                 }
 
-                if !item.allergyCodes.isEmpty {
+                if appState.isAllergyRisk(item) {
                     Section("알레르기 주의") {
                         Text("선택한 알레르기와 관련된 메뉴예요. 보호자와 학교 안내를 꼭 확인해 주세요.")
+                        Text("안전하게 피한 기록은 안전 XP로 인정되고, 한 입 도전은 잠겨요.")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.graySecondary)
+                        Text("이 앱은 알레르기 안전을 보장하지 않으며, 학교 안내를 우선해야 합니다.")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.graySecondary)
+                    }
+                } else if !item.allergyCodes.isEmpty {
+                    Section("알레르기 정보") {
+                        Text("급식 원문에 알레르기 번호가 표시된 메뉴예요. 선택한 알레르기와 직접 겹치지는 않지만 학교 안내를 함께 확인해 주세요.")
                         Text("이 앱은 알레르기 안전을 보장하지 않으며, 학교 안내를 우선해야 합니다.")
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.graySecondary)
@@ -347,12 +357,24 @@ private struct MealRecordSheet: View {
             .onChange(of: selectedPhotoItem) { newItem in
                 Task { await importPhoto(newItem) }
             }
+            .onAppear {
+                if appState.isAllergyRisk(item), status == .oneBite {
+                    status = .allergyAvoided
+                }
+            }
             .sheet(isPresented: $showingCamera) {
                 CameraCaptureView { data in
                     savePhotoData(data)
                 }
             }
         }
+    }
+
+    private var availableStatuses: [EatingStatus] {
+        if appState.isAllergyRisk(item) {
+            return EatingStatus.allCases.filter { $0 != .oneBite }
+        }
+        return EatingStatus.allCases
     }
 
     private func reasonBinding(_ reason: DifficultyReason) -> Binding<Bool> {
@@ -391,7 +413,7 @@ private struct MealRecordSheet: View {
     }
 
     private func save() {
-        let finalStatus = !item.allergyCodes.isEmpty && status == .oneBite ? EatingStatus.allergyAvoided : status
+        let finalStatus = appState.isAllergyRisk(item) && status == .oneBite ? EatingStatus.allergyAvoided : status
         let outcome = appState.recordMealInteraction(
             item: item,
             date: date,
@@ -400,7 +422,8 @@ private struct MealRecordSheet: View {
             photoIds: localPhotos.map(\.id),
             shareWithParent: shareWithParent
         )
-        onComplete(outcome, "\(item.name)을 '\(finalStatus.title)'로 기록했어요.")
+        let xpText = outcome.map { " · +\($0.gainedExp) XP" } ?? ""
+        onComplete(outcome, "\(item.name)을 '\(finalStatus.title)'로 기록했어요\(xpText).")
         dismiss()
     }
 }

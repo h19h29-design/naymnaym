@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MealLossDetailView: View {
     var item: MealItem
+    var isChallengeLocked: Bool = false
     var onChallenge: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -32,7 +33,19 @@ struct MealLossDetailView: View {
                         }
                     }
 
-                    PrimaryButton("한 입 도전하기", systemImage: "checkmark.seal.fill") {
+                    if isChallengeLocked {
+                        RoundedCard {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "lock.shield.fill")
+                                    .foregroundStyle(Color.red)
+                                Text("알레르기/주의 메뉴는 한 입 도전보다 안전 확인이 먼저예요. 먹지 않아도 안전 XP로 기록돼요.")
+                                    .font(AppTypography.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+
+                    PrimaryButton("한 입 도전하기", systemImage: "checkmark.seal.fill", isDisabled: isChallengeLocked) {
                         onChallenge()
                         dismiss()
                     }
@@ -60,18 +73,36 @@ struct LevelUpResultView: View {
                     CharacterAvatar(skin: outcome.skin, size: 150)
                     RoundedCard {
                         VStack(spacing: 14) {
-                            Text("한 입 도전 성공!")
+                            Text(outcomeTitle)
                                 .font(.system(.title, design: .rounded).weight(.heavy))
                                 .foregroundStyle(AppColors.primaryGreen)
                                 .multilineTextAlignment(.center)
-                            Text("장 건강 경험치 +\(outcome.gainedExp)")
+                            Text("총 XP +\(outcome.gainedExp)")
                                 .font(AppTypography.headline)
-                            Text("편식 몬스터에게 \(outcome.damage) 데미지!")
-                                .font(AppTypography.headline)
-                                .foregroundStyle(AppColors.orange)
+                            if !outcome.xpBreakdown.summaryText.isEmpty {
+                                Text(outcome.xpBreakdown.summaryText)
+                                    .font(AppTypography.body.weight(.semibold))
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if outcome.bonusExp > 0 {
+                                Text("다시 시도 보너스 +\(outcome.bonusExp)")
+                                    .font(AppTypography.caption.weight(.bold))
+                                    .foregroundStyle(AppColors.orange)
+                            }
                             Text("\(outcome.badgeName) 뱃지 획득!")
                                 .font(AppTypography.body.weight(.semibold))
                                 .fixedSize(horizontal: false, vertical: true)
+                            if !outcome.xpNotes.isEmpty {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(outcome.xpNotes.prefix(3), id: \.self) { note in
+                                        Label(note, systemImage: "sparkle")
+                                            .font(AppTypography.caption)
+                                            .foregroundStyle(AppColors.graySecondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
                             if outcome.didLevelUp {
                                 Text("Lv.\(outcome.newLevel) \(PlayerProgress.title(for: outcome.newLevel))로 레벨업!")
                                     .font(AppTypography.headline)
@@ -92,5 +123,15 @@ struct LevelUpResultView: View {
             .navigationBarTitleDisplayMode(.inline)
             .pageBackground()
         }
+    }
+
+    private var outcomeTitle: String {
+        if outcome.xpBreakdown.safety > 0, outcome.xpBreakdown.challenge == 0 {
+            return "안전 기록 완료!"
+        }
+        if outcome.xpBreakdown.balance > 0, outcome.xpBreakdown.challenge == 0 {
+            return "균형 기록 완료!"
+        }
+        return "한 입 도전 성공!"
     }
 }

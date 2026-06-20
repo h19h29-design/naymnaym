@@ -61,36 +61,55 @@ enum NutritionEstimator {
     }
 
     static func makeParentSummary(records: [ChallengeRecord]) -> String {
-        let skipped = records.filter { $0.action == .skipped }
+        let sortedRecords = records.sorted { $0.createdAt < $1.createdAt }
+        let recordsByMenu = Dictionary(grouping: sortedRecords, by: \.menuName)
+        for (menuName, menuRecords) in recordsByMenu {
+            guard let firstDifficult = menuRecords.first(where: { isDifficult($0) }),
+                  let laterProgress = menuRecords.last(where: { $0.createdAt > firstDifficult.createdAt && isProgress($0) }) else {
+                continue
+            }
+            return changeSummary(menuName: menuName, latest: laterProgress)
+        }
+
+        if let safetyRecord = sortedRecords.last(where: { $0.eatingStatus == .allergyAvoided }) {
+            return "이번 주에는 \(safetyRecord.menuName)을 알레르기/주의 메뉴로 확인하고 안전하게 피했어요.\n먹지 않은 선택도 안전 기록으로 인정돼요.\n보호자와 학교 안내를 우선 확인해 주세요."
+        }
+
         let challenged = records.filter { $0.action == .oneBite }
-        let source = skipped.isEmpty ? challenged : skipped
-        let frequentNutrients = source
+        let frequentNutrients = challenged
             .flatMap(\.nutrients)
             .reduce(into: [String: Int]()) { $0[$1, default: 0] += 1 }
             .sorted { $0.value > $1.value }
             .prefix(3)
             .map(\.key)
 
-        let menus = source
+        let menus = challenged
             .map(\.menuName)
             .reduce(into: [String: Int]()) { $0[$1, default: 0] += 1 }
             .sorted { $0.value > $1.value }
             .prefix(3)
             .map(\.key)
 
-        if source.isEmpty {
-            return "이번 주에는 아직 안 먹는 반찬이나 한 입 도전 기록이 많지 않아요. 도전 기록이 쌓이면 참고할 수 있는 요약이 생겨요."
+        if challenged.isEmpty {
+            return "이번 주에는 아직 변화 흐름을 볼 만큼 기록이 많지 않아요. 먹은 정도와 어려웠던 이유가 쌓이면 아이의 작은 변화를 중심으로 요약해요."
         }
 
         let menuText = menus.isEmpty ? "몇 가지 반찬" : menus.joined(separator: ", ")
         let nutrientText = frequentNutrients.isEmpty ? "여러 영양소" : frequentNutrients.joined(separator: "와 ")
-        if skipped.isEmpty {
-            return "이번 주에는 \(menuText)을 한 입 도전했어요.\n\(nutrientText)을 조금씩 경험해 보고 있어요.\n집에서는 같은 재료를 작은 양으로 반복해서 만나게 해 주면 도움이 될 수 있어요.\n영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다."
-        }
-        return "이번 주에는 \(menuText)을 자주 안 먹었어요.\n\(nutrientText)을 놓칠 수 있어요.\n집에서는 김밥 속 채소, 계란말이 속 채소, 과일 간식처럼 부담 없는 방법이 도움이 될 수 있어요.\n영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다."
+        return "이번 주에는 \(menuText)을 한 입 도전했어요.\n\(nutrientText)을 조금씩 경험해 보는 변화가 있었어요.\n점수보다 어떤 음식에서 시도가 생겼는지 중심으로 봐 주세요.\n영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다."
     }
 
     static func recommendBadge(for item: MealItem) -> String {
+        recommendBadge(for: item, status: .oneBite)
+    }
+
+    static func recommendBadge(for item: MealItem, status: EatingStatus) -> String {
+        if status == .allergyAvoided {
+            return "안전 확인"
+        }
+        if status == .finished || status == .half {
+            return "균형 기록"
+        }
         let nutrients = estimateNutrients(for: item)
         if nutrients.contains("식이섬유") || nutrients.contains("비타민") { return "초록 용사" }
         if nutrients.contains("단백질") || nutrients.contains("철분") { return "단백질 파워" }
@@ -100,7 +119,36 @@ enum NutritionEstimator {
     }
 
     static func expReward(for item: MealItem) -> Int {
-        max(20, min(45, 18 + estimateNutrients(for: item).count * 8))
+        LevelUpXPPolicy.baseBreakdown(for: .oneBite).total
+    }
+
+    private static func isDifficult(_ record: ChallengeRecord) -> Bool {
+        if let status = record.eatingStatus {
+            return status == .difficultToday || status == .smelledOnly
+        }
+        return record.action == .skipped
+    }
+
+    private static func isProgress(_ record: ChallengeRecord) -> Bool {
+        guard let status = record.eatingStatus else {
+            return record.action == .oneBite
+        }
+        return status == .smelledOnly || status == .oneBite || status == .half || status == .finished
+    }
+
+    private static func changeSummary(menuName: String, latest: ChallengeRecord) -> String {
+        switch latest.eatingStatus {
+        case .smelledOnly:
+            return "이번 주에는 \(menuName)을 어려워했지만, 오늘은 냄새만 맡아보는 단계까지 해냈어요.\n작은 시도도 변화로 기록해 주세요."
+        case .oneBite:
+            return "이번 주에는 \(menuName)을 어려워했지만, 오늘은 한 입 도전까지 성공했어요.\n집에서는 같은 재료를 작은 양으로 반복해서 만나게 해 주면 도움이 될 수 있어요."
+        case .half:
+            return "이번 주에는 \(menuName)을 어려워했지만, 오늘은 반 정도 먹기까지 해냈어요.\n양보다 아이가 다시 시도했다는 변화에 집중해 주세요."
+        case .finished:
+            return "이번 주에는 \(menuName)을 어려워했지만, 오늘은 끝까지 먹어보는 변화가 있었어요.\n잘 먹은 날도 꾸준한 기록으로 인정해 주세요."
+        default:
+            return "이번 주에는 \(menuName)을 어려워했지만, 다시 살펴보는 기록이 생겼어요.\n점수보다 변화 흐름을 중심으로 봐 주세요."
+        }
     }
 
     private static func helpText(for nutrient: String) -> String {
