@@ -7,6 +7,7 @@
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유를 선언했다.
 - iOS Simulator Debug 빌드와 XCTest가 통과한다.
 - Release/generic iOS unsigned archive 컴파일이 통과한다.
+- 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
 ## App Store Connect에서 필요한 값
 - 앱 이름: 냠냠레벨업
