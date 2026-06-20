@@ -19,7 +19,14 @@ struct MonthlyMealCalendarView: View {
                             if let date = calendarCells[index] {
                                 let meal = meal(for: date)
                                 Button {
-                                    selectedMeal = meal ?? MealDay(date: DateUtils.apiString(from: date), menuItems: [], calorie: "정보 없음", nutrition: .sample, isSample: true, notice: nil)
+                                    selectedMeal = meal ?? MealDay(
+                                        date: DateUtils.apiString(from: date),
+                                        menuItems: [],
+                                        calorie: "정보 없음",
+                                        nutrition: .empty,
+                                        isSample: false,
+                                        notice: appState.mealStatus == .demo ? "체험 모드 데이터가 없는 날이에요." : "실제 급식 정보가 없는 날이에요."
+                                    )
                                 } label: {
                                     CalendarDayCell(date: date, meal: meal, isToday: DateUtils.isSameDay(date, Date()))
                                 }
@@ -132,4 +139,3 @@ private struct DailyMealSheet: View {
         }
     }
 }
-

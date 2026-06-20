@@ -42,9 +42,41 @@ struct NEISClient {
         components?.queryItems = items
 
         guard let url = components?.url else { throw NEISClientError.invalidURL }
+        NEISDebugLog.request(path: path, url: url)
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse else { throw NEISClientError.invalidResponse }
+        NEISDebugLog.response(path: path, statusCode: http.statusCode, byteCount: data.count)
         guard (200..<300).contains(http.statusCode) else { throw NEISClientError.serverStatus(http.statusCode) }
         return data
+    }
+}
+
+enum NEISDebugLog {
+    static func request(path: String, url: URL) {
+        #if DEBUG
+        print("[NEIS] GET \(path) \(redacted(url: url))")
+        #endif
+    }
+
+    static func response(path: String, statusCode: Int, byteCount: Int) {
+        #if DEBUG
+        print("[NEIS] RESPONSE \(path) status=\(statusCode) bytes=\(byteCount)")
+        #endif
+    }
+
+    static func info(_ message: String) {
+        #if DEBUG
+        print("[NEIS] \(message)")
+        #endif
+    }
+
+    private static func redacted(url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        components.queryItems = components.queryItems?.map { item in
+            item.name == "KEY" ? URLQueryItem(name: item.name, value: "<redacted>") : item
+        }
+        return components.url?.absoluteString ?? url.absoluteString
     }
 }

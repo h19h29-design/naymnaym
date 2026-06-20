@@ -220,32 +220,67 @@ struct CharacterAvatar: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: skin.primaryColorHex).opacity(0.22))
+                .fill(Color(hex: skin.primaryColorHex).opacity(skin.targetMode == .middle ? 0.35 : 0.22))
                 .frame(width: size, height: size)
+            if skin.targetMode == .middle {
+                Circle()
+                    .stroke(Color(hex: skin.primaryColorHex).opacity(0.8), lineWidth: 3)
+                    .frame(width: size * 0.84, height: size * 0.84)
+                    .shadow(color: Color(hex: skin.primaryColorHex).opacity(0.5), radius: 8)
+            }
             Circle()
-                .fill(Color(hex: "#B8E986"))
+                .fill(avatarFill)
                 .frame(width: size * 0.68, height: size * 0.68)
                 .overlay(Circle().stroke(Color(hex: skin.primaryColorHex), lineWidth: 3))
             VStack(spacing: 0) {
-                Text(skin.emoji)
+                Text(skin.emojiFallback)
                     .font(.system(size: max(22, size * 0.24)))
-                Text("•ᴗ•")
+                Text(faceText)
                     .font(.system(size: max(24, size * 0.22), weight: .bold, design: .rounded))
-                    .foregroundStyle(AppColors.textDark)
+                    .foregroundStyle(skin.targetMode == .middle ? Color.white : AppColors.textDark)
                 Capsule()
-                    .fill(Color(hex: "#FFF3B0"))
+                    .fill(Color(hex: skin.targetMode == .high ? "#DCE9FF" : "#FFF3B0"))
                     .frame(width: size * 0.34, height: size * 0.16)
+            }
+            if skin.rarity == "epic" || skin.rarity == "legend" {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(Color(hex: skin.primaryColorHex))
+                    .offset(x: size * 0.28, y: -size * 0.28)
             }
         }
         .accessibilityLabel("\(skin.name), \(skin.description)")
+    }
+
+    private var avatarFill: Color {
+        switch skin.targetMode {
+        case .middle:
+            return Color(hex: "#111735")
+        case .high:
+            return Color(hex: "#E9F1FF")
+        case .elementary, .parent:
+            return Color(hex: "#B8E986")
+        }
+    }
+
+    private var faceText: String {
+        switch skin.targetMode {
+        case .middle:
+            return "•_•"
+        case .high:
+            return "•‿•"
+        case .elementary, .parent:
+            return "•ᴗ•"
+        }
     }
 }
 
 struct MealCard: View {
     var item: MealItem
+    var isAllergyRisk: Bool = false
     var onSkip: () -> Void
     var onChallenge: () -> Void
     var onAlreadyEats: () -> Void
+    var onRecord: () -> Void = {}
 
     var body: some View {
         RoundedCard {
@@ -265,23 +300,37 @@ struct MealCard: View {
                     }
                     Spacer()
                     Image(systemName: iconName)
-                        .foregroundStyle(AppColors.primaryGreen)
+                        .foregroundStyle(isAllergyRisk ? Color.red : AppColors.primaryGreen)
                         .font(.title3)
+                }
+
+                if isAllergyRisk {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color.red)
+                        Text("선택한 알레르기와 관련된 메뉴예요. 한 입 도전보다 안전 확인이 먼저예요.")
+                            .font(AppTypography.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(Color.red.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
 
                 if !item.allergyCodes.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack {
                             ForEach(item.allergyCodes, id: \.self) { code in
-                                AllergyChip(code: code, isSelected: false)
+                                AllergyChip(code: code, isSelected: isAllergyRisk)
                             }
                         }
                     }
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    SecondaryButton("안 먹어요", systemImage: "xmark.circle", action: onSkip)
-                    PrimaryButton("한입 도전", systemImage: "checkmark.seal.fill", action: onChallenge)
+                    SecondaryButton("안내 보기", systemImage: "info.circle", action: onSkip)
+                    PrimaryButton("한입 도전", systemImage: "checkmark.seal.fill", isDisabled: isAllergyRisk, action: onChallenge)
+                    SecondaryButton("먹은 정도", systemImage: "list.bullet.clipboard", action: onRecord)
                     SecondaryButton("잘 먹어요", systemImage: "hand.thumbsup", action: onAlreadyEats)
                 }
             }

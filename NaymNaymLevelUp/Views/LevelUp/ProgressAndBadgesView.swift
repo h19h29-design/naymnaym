@@ -11,6 +11,7 @@ struct ProgressAndBadgesView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     progressCard
+                    modeSkinCard
                     badgeCard
                     recentRecords
                 }
@@ -25,7 +26,7 @@ struct ProgressAndBadgesView: View {
     private var progressCard: some View {
         RoundedCard {
             VStack(spacing: 14) {
-                CharacterAvatar(skin: appState.progress.currentSkin, size: 132)
+                CharacterAvatar(skin: appState.currentSkin, size: 132)
                 Text("Lv.\(appState.progress.level) \(appState.progress.title)")
                     .font(AppTypography.title)
                     .multilineTextAlignment(.center)
@@ -39,6 +40,30 @@ struct ProgressAndBadgesView: View {
                     .font(AppTypography.body.weight(.semibold))
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var modeSkinCard: some View {
+        RoundedCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("\(appState.currentMode.title) 테마 캐릭터")
+                    .font(AppTypography.headline)
+                HStack(spacing: 10) {
+                    ForEach(CharacterSkin.skins(for: appState.currentMode).prefix(4)) { skin in
+                        VStack(spacing: 6) {
+                            CharacterAvatar(skin: skin, size: 58)
+                            Text("Lv.\(skin.levelRequired)")
+                                .font(.caption2.weight(.bold))
+                            Text(skin.name)
+                                .font(.caption2)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.7)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
         }
     }
 

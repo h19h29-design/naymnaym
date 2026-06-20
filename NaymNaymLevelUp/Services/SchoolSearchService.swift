@@ -40,7 +40,11 @@ struct SchoolSearchService {
                 return SchoolSearchResult(schools: schools, usedSample: false, message: nil)
             }
         } catch NEISClientError.missingAPIKey {
-            return sampleFallback(keyword: trimmed)
+            return SchoolSearchResult(
+                schools: [],
+                usedSample: false,
+                message: "NEIS API 키가 설정되지 않아 실제 학교를 검색할 수 없어요. 체험 모드는 시작 화면에서 선택할 수 있어요."
+            )
         } catch {
             return SchoolSearchResult(
                 schools: [],
@@ -56,15 +60,16 @@ struct SchoolSearchService {
         )
     }
 
-    private func sampleFallback(keyword: String) -> SchoolSearchResult {
+    func demoSchools(keyword: String = "") -> SchoolSearchResult {
+        let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         let filtered = sampleProvider.sampleSchools.filter {
-            keyword.isEmpty || $0.name.localizedCaseInsensitiveContains(keyword) || $0.region.localizedCaseInsensitiveContains(keyword)
+            trimmed.isEmpty || $0.name.localizedCaseInsensitiveContains(trimmed) || $0.region.localizedCaseInsensitiveContains(trimmed)
         }
         let schools = filtered.isEmpty ? sampleProvider.sampleSchools : filtered
         return SchoolSearchResult(
             schools: schools,
             usedSample: true,
-            message: "API 키가 없어서 샘플 학교로 체험 중이에요. 실제 급식 조회는 API 키 설정 후 사용할 수 있어요."
+            message: "체험 모드 학교입니다. 실제 NEIS 학교 정보가 아닙니다."
         )
     }
 }

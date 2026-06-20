@@ -18,5 +18,17 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertTrue(progress.badges.contains("단백질 파워"))
         XCTAssertEqual(progress.currentSkinId, CharacterSkin.skin(for: progress.level).id)
     }
-}
 
+    func testModeSpecificCharacterSkinsResolve() {
+        XCTAssertEqual(CharacterSkin.skin(for: 3, mode: .middle).targetMode, .middle)
+        XCTAssertEqual(CharacterSkin.skin(for: 4, mode: .high).name, "엑스퍼트")
+        XCTAssertEqual(CharacterSkin.skin(for: 1, mode: .elementary).name, "냠냠 새싹")
+    }
+
+    func testEatingStatusAndMealDataStatePolicies() {
+        XCTAssertEqual(EatingStatus.allergyAvoided.title, "알레르기/주의로 먹지 않았어요")
+        XCTAssertTrue(MealDataState.demo.usesSample)
+        XCTAssertFalse(MealDataState.error.usesSample)
+        XCTAssertFalse(MealDataState.missingAPIKey.usesSample)
+    }
+}

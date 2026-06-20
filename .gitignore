@@ -5,8 +5,11 @@ DerivedData/
 build/
 .build/
 .swiftpm/
+node_modules/
+marketing-site/node_modules/
+marketing-site/tmp/
+marketing-site/dist/**/*.map
 *.ipa
 *.dSYM
 .DS_Store
 .xcodebuildmcp/
-
