@@ -5,7 +5,7 @@
 - NEIS API 키는 코드나 로그에 노출하지 않는다.
 - 실제 학교 선택 상태에서 샘플 급식 자동 fallback을 하지 않는다.
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유를 선언했다.
-- iOS Simulator Debug 빌드와 XCTest가 통과한다.
+- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 42개가 통과한다.
 - Release/generic iOS signed archive/export가 통과한다.
 - TestFlight build 1.0 (6) signed IPA가 생성됐다.
 - build 6 IPA에 `PrivacyInfo.xcprivacy`, `ITSAppUsesNonExemptEncryption = false`, TestFlight beta entitlement, CloudKit Production entitlement가 포함됐다.

@@ -39,8 +39,8 @@
 
 ## 최근 검증
 
-- XCTest: 35개 통과
-- Debug build/run simulator: 통과
+- XCTest: 42개 통과
+- Debug build/install/run simulator: 통과
 - Release/generic iOS signed archive/export: 통과
 - TestFlight signed IPA: `build/TestFlightExportBuild6Signed/NaymNaymLevelUp.ipa`
 - TestFlight build: `1.0 (6)`
@@ -51,7 +51,8 @@
 - build 6 IPA 내부 `PrivacyInfo.xcprivacy` 포함 확인
 - build 6 IPA 내부 `ITSAppUsesNonExemptEncryption = false` 확인
 - build 6 IPA 내부 `beta-reports-active = true`, CloudKit Production entitlement 확인
-- 시뮬레이터 스냅샷: 실제 학교 등촌고등학교 상태에서 2026-06-20 토요일 `급식 데이터 없음` 안내 표시
+- 최신 XCTest 결과: `build/DerivedData/Logs/Test/Test-NaymNaymLevelUp-2026.06.20_17-33-44-+0900.xcresult`
+- 시뮬레이터 스냅샷: 실제 학교 등촌고등학교 상태에서 2026-06-20 토요일 `급식 데이터 없음` 안내 표시, `build/verification/simulator-build6-20260620-173456.png`
 
 ## 남은 외부 작업
 
