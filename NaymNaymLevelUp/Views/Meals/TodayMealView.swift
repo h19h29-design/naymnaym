@@ -254,7 +254,8 @@ private struct MealRecordSheet: View {
     @State private var selectedReasons: Set<DifficultyReason> = []
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var localPhotos: [MealPhotoRecord] = []
-    @State private var shareWithParent = false
+    @State private var shareRecordWithParent = false
+    @State private var sharePhotoWithParent = false
     @State private var photoMessage: String?
     @State private var showingCamera = false
 
@@ -305,6 +306,14 @@ private struct MealRecordSheet: View {
                     }
                 }
 
+                Section("부모 공유") {
+                    Toggle("부모에게 이 기록 공유", isOn: $shareRecordWithParent)
+                        .disabled(!canShareWithParent)
+                    Text(canShareWithParent ? "먹은 정도와 한 입 도전 기록을 부모 모드에서 볼 수 있게 공유해요." : "설정 > 보호자 연결에서 초대 코드를 먼저 만들어야 공유할 수 있어요.")
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.graySecondary)
+                }
+
                 Section("급식판 사진") {
                     Text("급식판만 찍어주세요. 친구 얼굴, 이름표, 반/번호가 나오지 않게 조심해 주세요.")
                         .font(AppTypography.caption)
@@ -318,7 +327,11 @@ private struct MealRecordSheet: View {
                         Label("사진 찍기", systemImage: "camera")
                     }
                     .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
-                    Toggle("부모에게 이 사진 공유", isOn: $shareWithParent)
+                    Toggle("부모에게 이 사진 공유", isOn: $sharePhotoWithParent)
+                        .disabled(!canShareWithParent || !shareRecordWithParent)
+                    Text("사진 공유는 이 기록 공유가 켜진 경우에만 선택할 수 있어요.")
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.graySecondary)
                     if let photoMessage {
                         Text(photoMessage)
                             .font(AppTypography.caption)
@@ -361,6 +374,16 @@ private struct MealRecordSheet: View {
                 if appState.isAllergyRisk(item), status == .oneBite {
                     status = .allergyAvoided
                 }
+                if let permissions = appState.childShareLink?.permissions {
+                    shareRecordWithParent = permissions.shareEatingRecords || permissions.shareChallengeRecords
+                    sharePhotoWithParent = shareRecordWithParent && permissions.sharePhotos
+                }
+            }
+            .onChange(of: shareRecordWithParent) { isSharing in
+                if !isSharing {
+                    sharePhotoWithParent = false
+                    clearParentPhotoSharing()
+                }
             }
             .sheet(isPresented: $showingCamera) {
                 CameraCaptureView { data in
@@ -368,6 +391,10 @@ private struct MealRecordSheet: View {
                 }
             }
         }
+    }
+
+    private var canShareWithParent: Bool {
+        appState.childShareLink != nil
     }
 
     private var availableStatuses: [EatingStatus] {
@@ -404,23 +431,34 @@ private struct MealRecordSheet: View {
 
     private func savePhotoData(_ data: Data) {
         do {
-            let record = try appState.saveMealPhotoData(data, sharedWithParent: shareWithParent)
+            let shouldSharePhoto = canShareWithParent && shareRecordWithParent && sharePhotoWithParent
+            let record = try appState.saveMealPhotoData(data, sharedWithParent: shouldSharePhoto)
             localPhotos.insert(record, at: 0)
-            photoMessage = shareWithParent ? "사진을 저장했고 부모 공유가 켜져 있어요." : "사진을 내 기기에 저장했어요."
+            photoMessage = shouldSharePhoto ? "사진을 저장했고 부모 공유가 켜져 있어요." : "사진을 내 기기에 저장했어요."
         } catch {
             photoMessage = "사진 저장에 실패했어요."
         }
     }
 
+    private func clearParentPhotoSharing() {
+        localPhotos = localPhotos.map { photo in
+            appState.updateMealPhotoSharing(photo, sharedWithParent: false) ?? photo
+        }
+    }
+
     private func save() {
         let finalStatus = appState.isAllergyRisk(item) && status == .oneBite ? EatingStatus.allergyAvoided : status
+        let shouldShareRecord = canShareWithParent && shareRecordWithParent
+        if !shouldShareRecord {
+            clearParentPhotoSharing()
+        }
         let outcome = appState.recordMealInteraction(
             item: item,
             date: date,
             status: finalStatus,
             reasons: Array(selectedReasons).sorted { $0.rawValue < $1.rawValue },
             photoIds: localPhotos.map(\.id),
-            shareWithParent: shareWithParent
+            shareWithParent: shouldShareRecord
         )
         let xpText = outcome.map { " · +\($0.gainedExp) XP" } ?? ""
         onComplete(outcome, "\(item.name)을 '\(finalStatus.title)'로 기록했어요\(xpText).")

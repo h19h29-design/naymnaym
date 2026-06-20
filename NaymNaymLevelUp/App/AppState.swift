@@ -33,6 +33,7 @@ final class AppState: ObservableObject {
     private let mealService: MealService
     private let sampleProvider: SampleDataProvider
     private let parentLinkService: CloudKitParentLinkService
+    private let automaticallyPublishesParentSharedData: Bool
 
     init(
         profileStore: UserProfileStore = UserProfileStore(),
@@ -45,7 +46,8 @@ final class AppState: ObservableObject {
         localPhotoStore: LocalPhotoStore = LocalPhotoStore(),
         mealService: MealService = MealService(),
         sampleProvider: SampleDataProvider = SampleDataProvider(),
-        parentLinkService: CloudKitParentLinkService = CloudKitParentLinkService()
+        parentLinkService: CloudKitParentLinkService = CloudKitParentLinkService(),
+        automaticallyPublishesParentSharedData: Bool = true
     ) {
         self.profileStore = profileStore
         self.progressStore = progressStore
@@ -58,6 +60,7 @@ final class AppState: ObservableObject {
         self.mealService = mealService
         self.sampleProvider = sampleProvider
         self.parentLinkService = parentLinkService
+        self.automaticallyPublishesParentSharedData = automaticallyPublishesParentSharedData
         profile = profileStore.load()
         progress = progressStore.load()
         records = challengeStore.load()
@@ -252,7 +255,7 @@ final class AppState: ObservableObject {
         mealRecordStore.save(mealRecords)
 
         defer {
-            if shareWithParent {
+            if shareWithParent, automaticallyPublishesParentSharedData {
                 Task { await publishChildSharedData() }
             }
         }
@@ -287,6 +290,16 @@ final class AppState: ObservableObject {
         localPhotoStore.delete(record)
         mealPhotos.removeAll { $0.id == record.id }
         mealPhotoMetadataStore.save(mealPhotos)
+    }
+
+    func updateMealPhotoSharing(_ record: MealPhotoRecord, sharedWithParent: Bool) -> MealPhotoRecord? {
+        guard let index = mealPhotos.firstIndex(where: { $0.id == record.id }) else { return nil }
+        var updated = mealPhotos[index]
+        updated.isSharedWithParent = sharedWithParent
+        updated.childLinkId = sharedWithParent ? childShareLink?.id : nil
+        mealPhotos[index] = updated
+        mealPhotoMetadataStore.save(mealPhotos)
+        return updated
     }
 
     func completeChallenge(
@@ -531,7 +544,7 @@ final class AppState: ObservableObject {
         }
 
         let sharedMeals = mealRecords.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
-        let sharedChallenges = records.filter { $0.childLinkId == childShareLink.id }
+        let sharedChallenges = records.filter { $0.childLinkId == nil || $0.childLinkId == childShareLink.id }
         let sharedPhotos = mealPhotos.filter { $0.isSharedWithParent && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
 
         let cloudRecords =

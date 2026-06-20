@@ -93,7 +93,8 @@ final class LocalStoreTests: XCTestCase {
             mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
             parentProfileStore: ParentProfileStore(defaults: defaults),
             mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
-            sampleProvider: SampleDataProvider()
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
         )
 
         appState.saveParentProfile(nickname: " 보호자 ")
@@ -213,6 +214,71 @@ final class LocalStoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    @MainActor
+    func testMealInteractionAssignsChildLinkWhenParentSharingEnabled() {
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-AAAA-BBBB-CCCC"
+        )
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.childShareLink = child
+
+        _ = appState.recordMealInteraction(
+            item: MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["식이섬유"], tags: ["채소"], sourceRawText: "시금치나물"),
+            date: "20260618",
+            status: .oneBite,
+            shareWithParent: true
+        )
+
+        XCTAssertEqual(appState.mealRecords.first?.childLinkId, child.id)
+        XCTAssertEqual(appState.records.first?.childLinkId, child.id)
+        XCTAssertEqual(appState.mealRecords.first?.parentShareEnabled, true)
+    }
+
+    @MainActor
+    func testUpdateMealPhotoSharingClearsChildLinkWhenDisabled() throws {
+        let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-AAAA-BBBB-CCCC"
+        )
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            localPhotoStore: LocalPhotoStore(directoryURL: photoDirectory),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.childShareLink = child
+
+        let sharedPhoto = try appState.saveMealPhotoData(Data([0x01, 0x02]), sharedWithParent: true)
+        let privatePhoto = try XCTUnwrap(appState.updateMealPhotoSharing(sharedPhoto, sharedWithParent: false))
+
+        XCTAssertFalse(privatePhoto.isSharedWithParent)
+        XCTAssertNil(privatePhoto.childLinkId)
+        XCTAssertEqual(appState.mealPhotos.first?.isSharedWithParent, false)
+        try? FileManager.default.removeItem(at: photoDirectory)
+    }
+
     func testCloudKitInviteCodeDoesNotExposeNickname() {
         let service = CloudKitParentLinkService()
         let code = service.makeInviteCode(nickname: "지우", nonce: "fixed-nonce")
@@ -277,6 +343,31 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record?.recordType, CloudKitParentLinkService.sharedMealRecordType)
         XCTAssertEqual(record?["menuName"] as? String, "시금치나물")
         XCTAssertEqual(record?["eatingStatus"] as? String, EatingStatus.oneBite.rawValue)
+    }
+
+    func testCloudKitSharedChallengeRecordUsesCurrentChildForLocalRecord() {
+        let service = CloudKitParentLinkService()
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-ABCD-EFGH-IJKL"
+        )
+        let localRecord = ChallengeRecord(
+            date: "20260618",
+            menuName: "시금치나물",
+            action: .oneBite,
+            gainedExp: 18,
+            badgeName: "초록 용사",
+            nutrients: ["식이섬유"],
+            childLinkId: nil
+        )
+
+        let record = service.makeSharedChallengeRecord(localRecord, childLink: child)
+
+        XCTAssertEqual(record?.recordType, CloudKitParentLinkService.sharedChallengeRecordType)
+        XCTAssertEqual(record?["childLinkId"] as? String, child.id.uuidString)
+        XCTAssertEqual(record?["menuName"] as? String, "시금치나물")
     }
 
     func testCloudKitSharedMealRecordRespectsSharingPermissions() {
