@@ -4,23 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="냠냠레벨업 지원 안내" />
-    <meta name="theme-color" content="#7bc96f" />
+    <meta name="theme-color" content="#67b94f" />
     <title>냠냠레벨업 지원 안내</title>
-    <link rel="stylesheet" crossorigin href="/assets/index-Cx2BBYei.css" />
-    <style>
-      body { background: #fff9ec; color: #263126; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif; }
-      main { max-width: 860px; margin: 0 auto; padding: 48px 20px 72px; line-height: 1.7; }
-      h1 { font-size: 2rem; margin-bottom: 8px; }
-      h2 { margin-top: 34px; font-size: 1.2rem; }
-      .back { display: inline-flex; margin-bottom: 24px; color: #2f7d32; font-weight: 700; text-decoration: none; }
-      .panel { background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 14px; padding: 22px; box-shadow: 0 12px 30px rgba(0,0,0,.06); }
-      li { margin: 6px 0; }
-    </style>
+    <link rel="stylesheet" href="./assets/site.css" />
   </head>
   <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="주요 메뉴">
+        <a class="brand" href="./index.html" aria-label="냠냠레벨업 홈">
+          <img src="./assets/logo-reference.png" alt="냠냠레벨업" />
+        </a>
+        <div class="nav-links">
+          <a href="./privacy.html">개인정보 처리방침</a>
+          <a href="./support.html">지원 안내</a>
+        </div>
+      </nav>
+    </header>
+
     <main>
-      <a class="back" href="/">냠냠레벨업으로 돌아가기</a>
-      <div class="panel">
+      <a class="back-link" href="./index.html">냠냠레벨업으로 돌아가기</a>
+      <article class="panel">
         <h1>지원 안내</h1>
         <p>냠냠레벨업 사용 중 학교 검색, 급식 조회, 사진 기록, 부모 연결 문제가 있을 때 아래 항목을 먼저 확인해 주세요.</p>
 
@@ -36,6 +39,9 @@
         <h2>사진은 어디에 저장되나요?</h2>
         <p>급식판 사진은 기본적으로 기기 내부에 저장됩니다. 부모 공유를 켠 사진만 부모 모드 공유 대상입니다.</p>
 
+        <h2>부모 연결이 안 돼요</h2>
+        <p>아이 폰에서 보호자 연결 초대 코드를 먼저 생성하고, 부모 모드의 아이 추가 화면에 같은 코드를 입력해 주세요. iCloud 사용 가능 상태와 네트워크 연결도 확인해 주세요.</p>
+
         <h2>문의 전 확인</h2>
         <ul>
           <li>학교 이름을 정확히 입력했는지 확인</li>
@@ -44,7 +50,7 @@
           <li>사진 권한 설정 확인</li>
           <li>데이터 삭제 전 되돌릴 수 없다는 점 확인</li>
         </ul>
-      </div>
+      </article>
     </main>
   </body>
 </html>

@@ -5,15 +5,91 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="냠냠레벨업은 실제 NEIS 급식 정보를 바탕으로 아이의 안 먹는 반찬을 한 입 도전, 먹은 정도 기록, 부모 요약으로 연결하는 무료 iPhone 앱입니다."
+      content="냠냠레벨업은 실제 NEIS 급식 정보를 바탕으로 아이의 식습관 기록, 한 입 도전, 캐릭터 성장, 부모 리포트를 연결하는 무료 iPhone 앱입니다."
     />
-    <meta name="theme-color" content="#7bc96f" />
+    <meta name="theme-color" content="#67b94f" />
     <title>냠냠레벨업 | 실제 급식 기반 한 입 도전 앱</title>
-    <script type="module" crossorigin src="/assets/index-CtMC21Uy.js"></script>
-    <script defer src="/launch-copy.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Cx2BBYei.css">
+    <link rel="stylesheet" href="./assets/site.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <header class="site-header">
+      <nav class="nav" aria-label="주요 메뉴">
+        <a class="brand" href="./index.html" aria-label="냠냠레벨업 홈">
+          <img src="./assets/logo-reference.png" alt="냠냠레벨업" />
+        </a>
+        <div class="nav-links">
+          <a href="./privacy.html">개인정보 처리방침</a>
+          <a href="./support.html">지원 안내</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">무료 iPhone 급식 식습관 코칭 앱</p>
+          <h1>편식을 혼내지 않고, 한 입 도전으로 바꾸는 급식 코칭.</h1>
+          <p class="lead">
+            냠냠레벨업은 회원가입 없이 학교를 등록하고 실제 NEIS 급식 정보를 확인하는 앱입니다.
+            어려운 반찬은 먹은 정도와 이유를 기록하고, 작은 한 입 도전은 XP와 캐릭터 성장으로 이어집니다.
+          </p>
+          <div class="cta-row">
+            <a class="button primary" href="./privacy.html">개인정보 처리방침</a>
+            <a class="button" href="./support.html">지원 안내</a>
+          </div>
+        </div>
+        <div class="hero-visual" aria-label="냠냠레벨업 캐릭터">
+          <img src="./assets/mascot-thumb.png" alt="냠냠레벨업 캐릭터" />
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="features-title">
+        <h2 id="features-title">핵심 기능</h2>
+        <div class="grid">
+          <article class="card">
+            <strong>실제 학교 급식</strong>
+            <p>NEIS 학교기본정보와 급식식단정보를 사용해 오늘 급식과 월간 식단을 확인합니다.</p>
+          </article>
+          <article class="card">
+            <strong>샘플 자동 대체 없음</strong>
+            <p>API 키 없음, 학교 코드 오류, 급식 없는 날에는 샘플 대신 정확한 안내를 보여줍니다.</p>
+          </article>
+          <article class="card">
+            <strong>한 입 도전 성장</strong>
+            <p>안 먹기, 냄새만 맡기, 한 입 도전, 반 정도 먹기, 잘 먹은 기록을 XP로 연결합니다.</p>
+          </article>
+          <article class="card">
+            <strong>알레르기 주의</strong>
+            <p>선택한 알레르기와 관련된 메뉴는 한 입 도전보다 학교 안내와 보호자 확인을 먼저 안내합니다.</p>
+          </article>
+          <article class="card">
+            <strong>부모 다자녀 리포트</strong>
+            <p>부모 모드에서 여러 아이의 공유 기록, 한 입 도전, 알레르기 주의, 선택 공유 사진을 확인합니다.</p>
+          </article>
+          <article class="card">
+            <strong>광고와 인앱결제 없음</strong>
+            <p>무료 앱 기준으로 준비하며, 회원가입과 광고 추적 없이 사용할 수 있도록 설계했습니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="modes-title">
+        <h2 id="modes-title">모드별 경험</h2>
+        <div class="mode-strip">
+          <div class="mode elementary">초등학생<span>귀엽고 쉬운 한 입 도전</span></div>
+          <div class="mode middle">중학생<span>미션과 EXP 중심 게임형</span></div>
+          <div class="mode high">고등학생<span>차분한 자기관리형</span></div>
+          <div class="mode parent">부모<span>다자녀 리포트와 공유 확인</span></div>
+        </div>
+        <img class="lineup" src="./assets/level-lineup.png" alt="냠냠레벨업 캐릭터 성장 단계" />
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <strong>냠냠레벨업</strong><br />
+        NEIS 공공데이터 기반 무료 급식 식습관 코칭 앱. 영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다.
+      </div>
+    </footer>
   </body>
 </html>

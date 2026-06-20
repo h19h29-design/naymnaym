@@ -5,7 +5,7 @@
 - 부제: 한 입 도전 급식 코칭
 - 번들 ID: `com.h19h29.naymnaymlevelup`
 - 버전: 1.0
-- 빌드: 3
+- 빌드: 6
 - 가격: 무료
 - 기본 언어: 한국어
 - 권장 카테고리: 교육
@@ -49,10 +49,10 @@
 알레르기 안내는 안전을 보장하지 않고 학교 안내와 보호자 판단이 우선임을 앱 안에 명시했습니다. 사진 기능은 급식판 기록용이며 친구 얼굴, 이름표, 반/번호가 나오지 않도록 안내합니다. 사진은 기본적으로 기기 내부에 저장되고, 부모 공유를 켠 사진만 부모 모드 공유 대상입니다.
 
 ## 개인정보 처리방침 URL
-출시 사이트 배포 후 `/privacy.html` URL을 App Store Connect에 입력합니다.
+`marketing-site/dist/`를 정적 호스팅에 배포한 뒤 `https://<배포도메인>/privacy.html` URL을 App Store Connect에 입력합니다.
 
 ## 지원 URL
-출시 사이트 배포 후 `/support.html` URL을 App Store Connect에 입력합니다.
+`marketing-site/dist/`를 정적 호스팅에 배포한 뒤 `https://<배포도메인>/support.html` URL을 App Store Connect에 입력합니다.
 
 ## 스크린샷 세트
 - 첫 실행 인트로

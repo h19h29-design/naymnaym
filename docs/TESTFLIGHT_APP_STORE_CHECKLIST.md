@@ -18,8 +18,8 @@
 - 카테고리: 교육 또는 건강 및 피트니스 중 최종 선택
 - 가격: 무료
 - 연령 등급: 알레르기/건강 진단 표현 없음 기준으로 입력
-- 개인정보 처리방침 URL: 출시 사이트의 `/privacy.html`
-- 지원 URL: 출시 사이트의 `/support.html`
+- 개인정보 처리방침 URL: `marketing-site/dist/` 배포 도메인의 `/privacy.html`
+- 지원 URL: `marketing-site/dist/` 배포 도메인의 `/support.html`
 
 ## App Privacy 입력 초안
 - 회원가입 없음
@@ -79,6 +79,7 @@
   - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
   - 초대 코드 조회는 정확한 `inviteCode` 조건으로만 동작하는지 확인
 - 개인정보 처리방침/지원 URL 공개 상태 확인
+- 정적 출시 사이트 산출물 `marketing-site/dist/index.html`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html` 배포
 
 ## 공식 제출 참고
 - Apple App Store Connect 도움말에 따르면 iOS 앱의 개인정보 처리방침 URL은 필수 입력 항목이다.
