@@ -171,10 +171,30 @@ final class LocalStoreTests: XCTestCase {
                 parentShareEnabled: true
             )
         ]
+        appState.records = [
+            ChallengeRecord(
+                date: "20260618",
+                menuName: "비공유나물",
+                action: .oneBite,
+                gainedExp: 18,
+                badgeName: "초록 용사",
+                nutrients: ["식이섬유"],
+                childLinkId: UUID()
+            ),
+            ChallengeRecord(
+                date: "20260618",
+                menuName: "공유나물",
+                action: .oneBite,
+                gainedExp: 18,
+                badgeName: "초록 용사",
+                nutrients: ["식이섬유"]
+            )
+        ]
 
         let summary = appState.childSummaries[0]
 
         XCTAssertEqual(summary.weeklyRecords.map(\.menuName), ["공유나물"])
+        XCTAssertEqual(summary.weeklyChallengeRecords.map(\.menuName), ["공유나물"])
         XCTAssertEqual(summary.allergyWarningMenus, ["공유나물"])
         XCTAssertEqual(summary.recentPhotoIds, ["shared-photo"])
         try? FileManager.default.removeItem(at: photoDirectory)
@@ -335,10 +355,32 @@ final class LocalStoreTests: XCTestCase {
                 childLinkId: secondChildId
             )
         ]
+        appState.records = [
+            ChallengeRecord(
+                date: "20260618",
+                menuName: "첫째나물",
+                action: .oneBite,
+                gainedExp: 18,
+                badgeName: "초록 용사",
+                nutrients: ["식이섬유"],
+                childLinkId: firstChildId
+            ),
+            ChallengeRecord(
+                date: "20260618",
+                menuName: "둘째나물",
+                action: .skipped,
+                gainedExp: 3,
+                badgeName: nil,
+                nutrients: ["식이섬유"],
+                childLinkId: secondChildId
+            )
+        ]
 
         let summaries = appState.childSummaries
 
         XCTAssertEqual(summaries.first?.weeklyRecords.map(\.menuName), ["첫째나물"])
         XCTAssertEqual(summaries.last?.weeklyRecords.map(\.menuName), ["둘째나물"])
+        XCTAssertEqual(summaries.first?.weeklyChallengeRecords.map(\.menuName), ["첫째나물"])
+        XCTAssertEqual(summaries.last?.weeklyChallengeRecords.map(\.menuName), ["둘째나물"])
     }
 }

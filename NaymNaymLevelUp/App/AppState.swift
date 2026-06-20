@@ -590,6 +590,7 @@ final class AppState: ObservableObject {
 
     var childSummaries: [ChildSummary] {
         let usesLocalPreview = parentProfile.childLinks.isEmpty
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let links = usesLocalPreview ? [
             childShareLink ?? ChildLink(
                 childNickname: profile?.nickname ?? "냠냠이",
@@ -610,6 +611,8 @@ final class AppState: ObservableObject {
                     .map(\.id)
             )
             let challengeRecords = records.filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
+            let weeklyMealRecords = sharedMealRecords.filter { $0.createdAt >= weekAgo }
+            let weeklyChallengeRecords = challengeRecords.filter { $0.createdAt >= weekAgo }
 
             return ChildSummary(
                 id: link.id,
@@ -623,7 +626,8 @@ final class AppState: ObservableObject {
                     .filter { sharedPhotoIds.contains($0) }
                     .prefix(3)
                     .map { $0 },
-                weeklyRecords: Array(sharedMealRecords.prefix(12))
+                weeklyRecords: Array(weeklyMealRecords.prefix(12)),
+                weeklyChallengeRecords: Array(weeklyChallengeRecords.prefix(12))
             )
         }
     }

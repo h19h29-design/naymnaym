@@ -123,6 +123,16 @@ struct ParentSummaryView: View {
                                 .foregroundStyle(Color.red)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        Divider()
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("변화 요약")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppColors.textDark)
+                            Text(NutritionEstimator.makeParentSummary(records: child.weeklyChallengeRecords))
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.graySecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         sharedPhotoStrip(for: child)
                     }
                 }
@@ -149,6 +159,10 @@ struct ParentSummaryView: View {
     }
 
     private var recentRecords: [ChallengeRecord] {
+        let sharedChildRecords = appState.childSummaries.flatMap(\.weeklyChallengeRecords)
+        if !sharedChildRecords.isEmpty {
+            return sharedChildRecords
+        }
         let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         return appState.records.filter { $0.createdAt >= weekAgo }
     }

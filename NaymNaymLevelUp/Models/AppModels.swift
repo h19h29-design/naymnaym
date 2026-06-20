@@ -861,6 +861,7 @@ struct ChildSummary: Codable, Hashable, Identifiable {
     var allergyWarningMenus: [String]
     var recentPhotoIds: [String]
     var weeklyRecords: [MealRecord]
+    var weeklyChallengeRecords: [ChallengeRecord]
 }
 
 struct ParentProfile: Codable, Hashable, Identifiable {
