@@ -84,6 +84,34 @@ final class LocalStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testParentModeStartsWithoutSchoolAndSkipsMealFetch() async {
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider()
+        )
+
+        appState.saveParentProfile(nickname: " 보호자 ")
+        await appState.loadMeals()
+
+        XCTAssertTrue(appState.hasProfile)
+        XCTAssertEqual(appState.profile?.nickname, "보호자")
+        XCTAssertEqual(appState.profile?.effectiveMode, .parent)
+        XCTAssertEqual(appState.profile?.schoolCode, "")
+        XCTAssertEqual(appState.profile?.officeCode, "")
+        XCTAssertEqual(appState.profile?.themeId, UserMode.parent.defaultThemeId)
+        XCTAssertTrue(appState.monthlyMeals.isEmpty)
+        XCTAssertNil(appState.todayMeal)
+        XCTAssertEqual(appState.mealStatus, .noMeal)
+        XCTAssertEqual(appState.mealMessage, "부모 모드는 아이 초대 코드를 연결해 기록을 확인해요.")
+    }
+
+    @MainActor
     func testAppStateAddsInviteCodeChildLinkWithoutDuplicates() {
         let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let appState = AppState(

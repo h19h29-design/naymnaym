@@ -42,7 +42,11 @@ struct OnboardingFlowView: View {
             }
         case .profile:
             ProfileSetupView(nickname: $appState.draftNickname) {
-                step = .school
+                if appState.draftUserMode == .parent {
+                    appState.saveParentProfile(nickname: appState.draftNickname)
+                } else {
+                    step = .school
+                }
             }
         case .school:
             SchoolSearchView(mode: .onboarding) { school in

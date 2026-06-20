@@ -94,6 +94,23 @@ final class AppState: ObservableObject {
         profileStore.save(newProfile)
     }
 
+    func saveParentProfile(nickname: String) {
+        let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newProfile = UserProfile(
+            nickname: trimmed.isEmpty ? "보호자" : trimmed,
+            schoolName: "",
+            officeCode: "",
+            schoolCode: "",
+            regionName: "",
+            selectedAllergyCodes: [],
+            userMode: .parent,
+            themeId: UserMode.parent.defaultThemeId,
+            isDemoMode: false
+        )
+        profile = newProfile
+        profileStore.save(newProfile)
+    }
+
     var currentMode: UserMode {
         profile?.effectiveMode ?? draftUserMode
     }
@@ -167,6 +184,14 @@ final class AppState: ObservableObject {
 
     func loadMeals(for date: Date = Date()) async {
         guard let profile else { return }
+        if profile.effectiveMode == .parent {
+            todayMeal = nil
+            monthlyMeals = []
+            mealStatus = .noMeal
+            mealMessage = "부모 모드는 아이 초대 코드를 연결해 기록을 확인해요."
+            return
+        }
+
         isLoadingMeals = true
         defer { isLoadingMeals = false }
 

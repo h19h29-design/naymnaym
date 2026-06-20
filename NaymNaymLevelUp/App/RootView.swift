@@ -12,7 +12,9 @@ struct RootView: View {
     var body: some View {
         Group {
             if appState.hasProfile {
-                if shouldShowIntro {
+                if appState.currentMode == .parent {
+                    MainTabView()
+                } else if shouldShowIntro {
                     DailyIntroView {
                         lastIntroDate = todayKey
                         introDismissed = true

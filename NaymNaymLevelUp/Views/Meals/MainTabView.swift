@@ -1,33 +1,46 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject private var appState: AppState
+
     var body: some View {
         TabView {
-            TodayMealView()
-                .tabItem {
-                    Label("오늘급식", systemImage: "house.fill")
-                }
+            if appState.currentMode == .parent {
+                ParentSummaryView()
+                    .tabItem {
+                        Label("보호자", systemImage: "person.2.fill")
+                    }
 
-            MonthlyMealCalendarView()
-                .tabItem {
-                    Label("월간식단", systemImage: "calendar")
-                }
+                SettingsView()
+                    .tabItem {
+                        Label("설정", systemImage: "gearshape.fill")
+                    }
+            } else {
+                TodayMealView()
+                    .tabItem {
+                        Label("오늘급식", systemImage: "house.fill")
+                    }
 
-            ProgressAndBadgesView()
-                .tabItem {
-                    Label("레벨업", systemImage: "gamecontroller.fill")
-                }
+                MonthlyMealCalendarView()
+                    .tabItem {
+                        Label("월간식단", systemImage: "calendar")
+                    }
 
-            ParentSummaryView()
-                .tabItem {
-                    Label("보호자", systemImage: "person.2.fill")
-                }
+                ProgressAndBadgesView()
+                    .tabItem {
+                        Label("레벨업", systemImage: "gamecontroller.fill")
+                    }
 
-            SettingsView()
-                .tabItem {
-                    Label("설정", systemImage: "gearshape.fill")
-                }
+                ParentSummaryView()
+                    .tabItem {
+                        Label("보호자", systemImage: "person.2.fill")
+                    }
+
+                SettingsView()
+                    .tabItem {
+                        Label("설정", systemImage: "gearshape.fill")
+                    }
+            }
         }
     }
 }
-
