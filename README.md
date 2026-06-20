@@ -36,7 +36,11 @@
 - 부모 모드는 아이 추가 화면에서 초대 코드를 조회해 여러 아이를 연결하고, 아이별 공유 기록을 따로 보여줍니다.
 - 공유 대상은 먹은 정도, 한 입 도전 기록, 알레르기 주의, 사용자가 공유를 켠 사진으로 제한합니다.
 - 공유 기록은 `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record로 저장되며, 사진은 사용자가 부모 공유를 켠 경우에만 CKAsset으로 올라갑니다.
-- App Store 제출 전 iCloud capability, container, public database schema와 query index 구성이 필요합니다.
+- App Store 제출 전 iCloud capability, container, public database schema와 아래 queryable index 구성이 필요합니다. 최신순 정렬은 앱 내부에서 처리하므로 `createdAt` sortable index는 필요하지 않습니다.
+  - `ParentLink.inviteCode`
+  - `SharedMealRecord.childLinkId`
+  - `SharedChallengeRecord.childLinkId`
+  - `SharedMealPhoto.childLinkId`
 - 프로젝트에는 `NaymNaymLevelUp.entitlements`가 포함되어 있으며, Apple Developer 계정에서 `iCloud.com.h19h29.naymnaymlevelup` container를 생성/연결해야 합니다.
 
 ## 알레르기 및 안전

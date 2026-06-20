@@ -236,6 +236,18 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testCloudKitSetupOnlyRequiresQueryableIndexes() {
+        let service = CloudKitParentLinkService()
+        let checklist = service.setupChecklist.joined(separator: "\n")
+
+        XCTAssertTrue(checklist.contains("ParentLink.inviteCode"))
+        XCTAssertTrue(checklist.contains("SharedMealRecord.childLinkId"))
+        XCTAssertTrue(checklist.contains("SharedChallengeRecord.childLinkId"))
+        XCTAssertTrue(checklist.contains("SharedMealPhoto.childLinkId"))
+        XCTAssertTrue(checklist.contains("queryable index"))
+        XCTAssertTrue(checklist.contains("sortable index는 필요 없음"))
+    }
+
     func testCloudKitSharedMealRecordRequiresParentShare() {
         let service = CloudKitParentLinkService()
         let child = ChildLink(

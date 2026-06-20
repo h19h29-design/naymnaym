@@ -323,10 +323,10 @@ struct CloudKitParentLinkService {
         let normalizedCode = normalizeInviteCode(inviteCode)
         let predicate = NSPredicate(format: "inviteCode == %@", normalizedCode)
         let query = CKQuery(recordType: Self.parentLinkRecordType, predicate: predicate)
-        query.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        guard let record = try await perform(query).first,
-              let link = makeChildLink(from: record)
-        else {
+        let links = try await perform(query)
+            .compactMap { makeChildLink(from: $0) }
+            .sorted { $0.createdAt > $1.createdAt }
+        guard let link = links.first else {
             throw CloudKitParentLinkError.inviteCodeNotFound
         }
         return link
@@ -337,16 +337,19 @@ struct CloudKitParentLinkService {
         let predicate = NSPredicate(format: "childLinkId == %@", childLinkId)
 
         let mealQuery = CKQuery(recordType: Self.sharedMealRecordType, predicate: predicate)
-        mealQuery.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        let meals = try await perform(mealQuery).compactMap { makeMealRecord(from: $0, childLink: childLink) }
+        let meals = try await perform(mealQuery)
+            .compactMap { makeMealRecord(from: $0, childLink: childLink) }
+            .sorted { $0.createdAt > $1.createdAt }
 
         let challengeQuery = CKQuery(recordType: Self.sharedChallengeRecordType, predicate: predicate)
-        challengeQuery.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        let challenges = try await perform(challengeQuery).compactMap { makeChallengeRecord(from: $0, childLink: childLink) }
+        let challenges = try await perform(challengeQuery)
+            .compactMap { makeChallengeRecord(from: $0, childLink: childLink) }
+            .sorted { $0.createdAt > $1.createdAt }
 
         let photoQuery = CKQuery(recordType: Self.sharedMealPhotoRecordType, predicate: predicate)
-        photoQuery.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        let photos = try await perform(photoQuery).compactMap { makePhotoPayload(from: $0, childLink: childLink) }
+        let photos = try await perform(photoQuery)
+            .compactMap { makePhotoPayload(from: $0, childLink: childLink) }
+            .sorted { $0.record.createdAt > $1.record.createdAt }
 
         return CloudChildShareSnapshot(mealRecords: meals, challengeRecords: challenges, photoPayloads: photos)
     }
@@ -364,7 +367,8 @@ struct CloudKitParentLinkService {
         [
             "iCloud capability와 CloudKit container 연결",
             "초대 코드로 public CloudKit ParentLink record 생성",
-            "ParentLink.inviteCode, SharedMealRecord.childLinkId, SharedChallengeRecord.childLinkId, SharedMealPhoto.childLinkId query index 구성",
+            "ParentLink.inviteCode, SharedMealRecord.childLinkId, SharedChallengeRecord.childLinkId, SharedMealPhoto.childLinkId queryable index 구성",
+            "createdAt 최신순 정렬은 앱 내부에서 처리하므로 CloudKit sortable index는 필요 없음",
             "먹은 정도, 한 입 도전, 알레르기 주의, 선택 사진만 공유",
             "자유 채팅, 공개 피드, 학교 통계 record는 만들지 않음"
         ]

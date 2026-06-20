@@ -5,11 +5,11 @@
 - NEIS API 키는 코드나 로그에 노출하지 않는다.
 - 실제 학교 선택 상태에서 샘플 급식 자동 fallback을 하지 않는다.
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유와 선택 부모 공유용 수집 데이터 타입을 선언했다.
-- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 42개가 통과한다.
+- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 43개가 통과한다.
 - Release/generic iOS archive와 App Store Connect remote-signed export가 통과한다.
-- TestFlight build 1.0 (8) signed IPA가 생성됐다.
-- build 8 IPA에 `PrivacyInfo.xcprivacy`, 선택 부모 공유용 수집 데이터 타입, `ITSAppUsesNonExemptEncryption = false`, TestFlight beta entitlement, CloudKit Production entitlement가 포함됐다.
-- build 8 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
+- TestFlight build 1.0 (9) signed IPA가 생성됐다.
+- build 9 IPA에 `PrivacyInfo.xcprivacy`, 선택 부모 공유용 수집 데이터 타입, `ITSAppUsesNonExemptEncryption = false`, TestFlight beta entitlement, CloudKit Production entitlement가 포함됐다.
+- build 9 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
 ## App Store Connect에서 필요한 값
@@ -63,18 +63,19 @@
 - 설정 > 지원 안내 보기 확인
 
 ## 제출 전 남은 계정 작업
-- App Store Connect에서 build 8 처리 완료 확인
-- build 8을 내부 테스트 그룹에 연결
-- build 8을 외부 테스트 그룹 `패밀리`에 연결
-- 외부 테스트 그룹 공개 링크가 build 8을 가리키는지 확인
+- App Store Connect에서 build 9 처리 완료 확인
+- build 9를 내부 테스트 그룹에 연결
+- build 9를 외부 테스트 그룹 `패밀리`에 연결
+- 외부 테스트 그룹 공개 링크가 build 9를 가리키는지 확인
 - 외부 테스트 심사 제출
 - CloudKit Dashboard에서 public database schema 배포 확인
 - CloudKit Dashboard에서 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record type 확인
-- CloudKit Dashboard에서 query index 구성:
+- CloudKit Dashboard에서 queryable index 구성:
   - `ParentLink.inviteCode`
   - `SharedMealRecord.childLinkId`
   - `SharedChallengeRecord.childLinkId`
   - `SharedMealPhoto.childLinkId`
+- `createdAt` 최신순 정렬은 앱 내부에서 처리하므로 CloudKit sortable index는 필요 없음
 - CloudKit public database 권한 확인:
   - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
   - 초대 코드 조회는 정확한 `inviteCode` 조건으로만 동작하는지 확인
