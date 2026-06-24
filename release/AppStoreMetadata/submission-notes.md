@@ -27,5 +27,4 @@
 - CloudKit container `iCloud.com.h19h29.naymnaymlevelup` 운영 환경 schema 배포
 - public database record type과 queryable index 확인
 - 개인정보 처리방침/지원/데이터 안전 페이지 공개 URL 확정
-- TestFlight 외부 그룹과 공개 링크에 최신 빌드 연결
-
+- TestFlight 외부 그룹과 공개 링크에 build 12 연결

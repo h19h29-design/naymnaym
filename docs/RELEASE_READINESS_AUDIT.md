@@ -1,14 +1,14 @@
 # 1.0 출시 준비 감사
 
-작성일: 2026-06-20
+작성일: 2026-06-24
 
 ## 현재 결론
 
-코드, 테스트, 시뮬레이터, Release archive, App Store 제출 자료는 1.0 후보 상태까지 준비됐다. TestFlight용 signed build 1.0 (11) IPA는 생성 및 업로드까지 완료됐다. 외부 테스트 공개는 App Store Connect에서 build 11 처리 완료 확인, 외부 그룹 연결, 심사 제출이 남아 있다.
+코드, 테스트, 시뮬레이터, Release archive, App Store 제출 자료는 1.0 후보 상태까지 준비됐다. TestFlight용 signed build 1.0 (12) IPA는 생성 및 CLI 업로드까지 완료됐다. 외부 테스트 공개는 App Store Connect에서 build 12 처리 완료 확인, 내부/외부 그룹 연결, 외부 테스트 심사 제출이 남아 있다.
 
 ### 2026-06-24 build 12 갱신
 
-build 12 후보에서 XP 정책, SNS 공유 카드, App Store 메타데이터/Privacy 초안, 마케팅 사이트 데이터 안전 페이지를 갱신했다. XcodeBuildMCP 기준 iPhone 16, iPhone 17, iPhone SE 시뮬레이터 빌드/실행과 전체 테스트는 통과했다. Release archive는 프로젝트의 Development Team 미지정 오류를 확인해 `47SNWAZN3G`로 보정했으나, 이후 코드서명 단계에서 Apple Development 인증서/키체인 권한 대기 상태로 장시간 멈춰 자동화를 중단했다. 따라서 build 12 TestFlight 업로드는 아직 진행하지 않았다.
+build 12 후보에서 XP 정책, SNS 공유 카드, App Store 메타데이터/Privacy 초안, 마케팅 사이트 데이터 안전 페이지를 갱신했다. XcodeBuildMCP 기준 iPhone 16, iPhone 17, iPhone SE 시뮬레이터 빌드/실행과 전체 테스트는 통과했다. Release archive는 unsigned archive로 생성한 뒤 App Store Connect remote signing export를 통해 Cloud Managed Apple Distribution 인증서와 App Store 프로비저닝으로 서명했다. 이후 동일 archive에서 upload destination으로 CLI 업로드까지 성공했다.
 
 build 12 확인:
 
@@ -21,7 +21,9 @@ build 12 확인:
 - 인트로 검증: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/intro-animation-final.mov`
 - App Store 후보 스크린샷: `build/verification/appstore/*.jpg`
 - Share Sheet 확인: `build/verification/share-sheet-iphone16.jpg`
-- hard blocker: 코드서명 키체인/인증서 권한 확인 필요. 이 단계는 사용자 Mac에서 Apple 계정/키체인 승인 후 재시도해야 한다.
+- Release unsigned archive: `build/NaymNaymLevelUp-build12-unsigned.xcarchive`
+- App Store Connect remote-signed IPA: `build/TestFlightExportBuild12Signed/NaymNaymLevelUp.ipa`
+- TestFlight CLI upload: 성공, App Store Connect 처리 상태 확인 필요
 
 ## 요구사항별 증거
 
@@ -56,29 +58,26 @@ build 12 확인:
 
 ## 최근 검증
 
-- XCTest: 46개 통과
+- XCTest: 55개 통과
 - Debug build/install/run simulator: 통과
 - Release/generic iOS archive + App Store Connect remote-signed export: 통과
-- TestFlight signed IPA: `build/TestFlightExportBuild11Signed/NaymNaymLevelUp.ipa`
-- TestFlight build: `1.0 (11)`
+- TestFlight signed IPA: `build/TestFlightExportBuild12Signed/NaymNaymLevelUp.ipa`
+- TestFlight build: `1.0 (12)`
 - TestFlight upload: CLI 업로드 성공, App Store Connect 처리 상태 확인 필요
 - `git diff --check`: 통과
 - `App/Info.plist`, `PrivacyInfo.xcprivacy`, `NaymNaymLevelUp.entitlements`: `plutil -lint` 통과
-- build 11 IPA 내부 `Info.plist`: `plutil -lint` 통과
-- build 11 IPA 내부 `PrivacyInfo.xcprivacy`와 수집 데이터 타입 포함 확인
-- build 11 IPA 내부 `ITSAppUsesNonExemptEncryption = false` 확인
-- build 11 IPA 내부 `beta-reports-active = true`, CloudKit Production entitlement 확인
-- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-20T09-35-15-231Z_pid97415_9c2b9927.xcresult`
-- 시뮬레이터 스냅샷: build 11 Debug 실행 화면 캡처, `build/verification/simulator-build11-20260620-184020.jpg`
-- 2026-06-20 추가 갱신: 부모 모드에서 아이별 주간 한 입 도전 변화 요약을 표시하도록 보강했고, CloudKit 쿼리의 `createdAt` 서버 정렬 의존성을 제거했다. 이후 기록 공유/사진 공유 토글을 분리하고, 기록 공유 해제 시 사진 공유도 비공유로 정리하도록 보강한 build 11 signed IPA를 App Store Connect에 업로드 완료
+- build 12 export summary: buildNumber `12`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인
+- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T13-39-16-357Z_pid66299_7212f7fc.xcresult`
+- 시뮬레이터 스냅샷: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
+- 2026-06-24 추가 갱신: 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 12 signed IPA를 App Store Connect에 업로드 완료
 
 ## 남은 외부 작업
 
 아래 항목은 로컬 코드로 완료할 수 없고 Apple Developer/App Store Connect 계정에서 확인 또는 처리해야 한다.
 
-1. App Store Connect에서 build 11 처리 완료 여부 확인
-2. build 11을 내부/외부 테스트 그룹에 연결
-3. 외부 테스트 그룹 공개 링크에 build 11이 연결됐는지 확인
+1. App Store Connect에서 build 12 처리 완료 여부 확인
+2. build 12를 내부/외부 테스트 그룹에 연결
+3. 외부 테스트 그룹 공개 링크에 build 12가 연결됐는지 확인
 4. 외부 테스트 심사 제출
 5. App Privacy 답변에 선택 부모 공유 데이터 타입 반영
 6. CloudKit Dashboard public database schema 배포 상태 확인

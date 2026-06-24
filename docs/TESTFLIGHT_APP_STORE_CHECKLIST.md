@@ -5,12 +5,11 @@
 - NEIS API 키는 코드나 로그에 노출하지 않는다.
 - 실제 학교 선택 상태에서 샘플 급식 자동 fallback을 하지 않는다.
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유와 선택 부모 공유용 수집 데이터 타입을 선언했다.
-- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 46개가 통과한다.
+- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 55개가 통과한다.
 - Release/generic iOS archive와 App Store Connect remote-signed export가 통과한다.
-- TestFlight build 1.0 (11) signed IPA가 생성됐다.
-- build 11 IPA에 `PrivacyInfo.xcprivacy`, 선택 부모 공유용 수집 데이터 타입, `ITSAppUsesNonExemptEncryption = false`, TestFlight beta entitlement, CloudKit Production entitlement가 포함됐다.
-- build 11 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
-- 2026-06-24 이후 코드 변경분은 build 12 준비 대상으로 빌드 번호를 올렸다. build 12 archive와 업로드 여부는 최신 검증 보고서를 따른다.
+- TestFlight build 1.0 (12) signed IPA가 생성됐다.
+- build 12 export summary에서 TestFlight beta entitlement와 App Store 프로비저닝 서명을 확인했다.
+- build 12 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
 ## App Store Connect에서 필요한 값
@@ -66,10 +65,10 @@
 - 설정 > 지원 안내 보기 확인
 
 ## 제출 전 남은 계정 작업
-- App Store Connect에서 build 11 처리 완료 확인
-- build 11을 내부 테스트 그룹에 연결
-- build 11을 외부 테스트 그룹 `패밀리`에 연결
-- 외부 테스트 그룹 공개 링크가 build 11을 가리키는지 확인
+- App Store Connect에서 build 12 처리 완료 확인
+- build 12를 내부 테스트 그룹에 연결
+- build 12를 외부 테스트 그룹 `패밀리`에 연결
+- 외부 테스트 그룹 공개 링크가 build 12를 가리키는지 확인
 - 외부 테스트 심사 제출
 - CloudKit Dashboard에서 public database schema 배포 확인
 - CloudKit Dashboard에서 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record type 확인

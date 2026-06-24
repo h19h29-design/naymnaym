@@ -33,3 +33,4 @@
 - XP 보너스 수치를 1.0 요구사항에 맞춰 연속 기록 +5, 다양한 음식군 +5, 알레르기 안전 확인 +10으로 정리했다.
 - SNS 공유 카드에 오늘 기록 카드를 추가했다.
 - 변경분 업로드 준비를 위해 앱 빌드 번호를 12로 올렸다.
+- build 12를 unsigned archive로 생성하고 App Store Connect remote signing export 후 TestFlight CLI 업로드까지 완료했다.
