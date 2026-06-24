@@ -5,7 +5,7 @@
 - NEIS API 키는 코드나 로그에 노출하지 않는다.
 - 실제 학교 선택 상태에서 샘플 급식 자동 fallback을 하지 않는다.
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유와 선택 부모 공유용 수집 데이터 타입을 선언했다.
-- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 66개가 통과한다.
+- iPhone 17, iPhone 16, iPhone SE 시뮬레이터 Debug 빌드, 설치, 실행과 XCTest 66개가 통과한다.
 - CloudKit record type/field 계약, Privacy Manifest 수집 데이터 항목, 출시 인트로 필수 에셋 번들링, 전체 데이터 삭제/도전 기록 삭제 범위를 XCTest로 고정했다.
 - Release/generic iOS archive와 App Store Connect remote-signed export가 통과한다.
 - TestFlight build 1.0 (14) signed IPA가 생성됐다.
@@ -51,6 +51,7 @@
 - 앱 내 지원 안내: `07-support-guide.jpg`
 - 보조 6.3형 원본: `docs/app-store-screenshots/*.png`
 - 세부 설명: `docs/APP_STORE_SCREENSHOTS.md`
+- 인트로 실기기 크기 검증: `build/verification/intro-iphone17-final.jpg`, `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`
 
 ## TestFlight 내부 테스트
 - 실제 학교 검색 결과 확인

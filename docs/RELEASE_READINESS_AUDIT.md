@@ -1,6 +1,6 @@
 # 1.0 출시 준비 감사
 
-작성일: 2026-06-24
+작성일: 2026-06-25
 
 ## 현재 결론
 
@@ -8,15 +8,15 @@
 
 ### 2026-06-25 build 14 갱신
 
-build 14 후보에서 부모 공유 도전 기록을 선택 공유 항목으로만 제한하고, 전체 데이터 삭제 시 orphan 사진 파일까지 제거하도록 보강했다. XcodeBuildMCP 기준 iPhone 17 시뮬레이터 build/run과 전체 테스트는 통과했다. Release archive는 unsigned archive로 생성한 뒤 App Store Connect remote signing export를 통해 Cloud Managed Apple Distribution 인증서와 App Store 프로비저닝으로 서명했다. 이후 동일 archive에서 upload destination으로 CLI 업로드까지 성공했다.
+build 14 후보에서 부모 공유 도전 기록을 선택 공유 항목으로만 제한하고, 전체 데이터 삭제 시 orphan 사진 파일까지 제거하도록 보강했다. XcodeBuildMCP 기준 iPhone 17, iPhone 16, iPhone SE 시뮬레이터 build/run과 전체 테스트는 통과했다. Release archive는 unsigned archive로 생성한 뒤 App Store Connect remote signing export를 통해 Cloud Managed Apple Distribution 인증서와 App Store 프로비저닝으로 서명했다. 이후 동일 archive에서 upload destination으로 CLI 업로드까지 성공했다.
 
 build 14 확인:
 
 - XCTest: 66개 통과
-- iPhone 17 Debug build/install/run: 통과
+- iPhone 17, iPhone 16, iPhone SE Debug build/install/run: 통과
 - `git diff --check`: 통과
 - NEIS 실제 호출: `등촌고등학교` 검색 성공, `mealServiceDietInfo` 2026년 6월 중식 row 19개, `DDISH_NM/CAL_INFO/NTR_INFO` 필드 확인
-- 인트로 검증: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/intro-animation-final.mov`
+- 인트로 검증: `build/verification/intro-iphone17-final.jpg`, `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/intro-animation-final.mov`
 - App Store 후보 스크린샷: `build/verification/appstore/*.jpg`
 - Share Sheet 확인: `build/verification/share-sheet-iphone16.jpg`
 - Release unsigned archive: `build/NaymNaymLevelUp-build14-unsigned.xcarchive`
@@ -58,7 +58,7 @@ build 14 확인:
 ## 최근 검증
 
 - XCTest: 66개 통과
-- Debug build/install/run simulator: 통과
+- Debug build/install/run simulator: iPhone 17, iPhone 16, iPhone SE 통과
 - Release/generic iOS archive + App Store Connect remote-signed export: 통과
 - TestFlight signed IPA: `build/TestFlightExportBuild14Signed/NaymNaymLevelUp.ipa`
 - TestFlight build: `1.0 (14)`
@@ -71,8 +71,8 @@ build 14 확인:
 - GitHub Pages 출시 사이트: `privacy.html`, `support.html`, `data-safety.html` HTTPS 200 확인
 - 2026-06-24 추가 검증: 설정 화면 공개 URL 링크 추가 후 iOS Simulator build 통과, XCTest 55개 통과
 - 2026-06-25 추가 검증: CloudKit record type/field 계약, Privacy Manifest 수집 데이터 항목, 출시 인트로 필수 에셋 번들링, 전체 데이터 삭제/도전 기록 삭제 범위, 부모 공유 도전 기록 선택 공유 gate 고정 테스트 추가 후 XCTest 66개 통과
-- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T16-38-33-382Z_pid66299_4acd6fa2.xcresult`
-- 시뮬레이터 스냅샷: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
+- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T17-12-28-385Z_pid66299_a99022c8.xcresult`
+- 시뮬레이터 스냅샷: `build/verification/intro-iphone17-final.jpg`, `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
 - 2026-06-24 추가 갱신: 설정 화면 공개 URL 링크, 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 13 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 추가 갱신: 부모 공유 도전 기록 선택 공유 gate와 사진 삭제 보강을 반영한 build 14 signed IPA를 App Store Connect에 업로드 완료
 
