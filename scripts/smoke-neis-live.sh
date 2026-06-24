@@ -5,13 +5,13 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 python3 - <<'PY'
-import datetime as _dt
 import json
 import os
 import re
 import sys
 import urllib.parse
 import urllib.request
+import datetime as _dt
 
 
 def fail(message):
@@ -76,7 +76,7 @@ def last_day_of_month(year, month):
 
 api_key = read_api_key()
 school_name = os.environ.get("NEIS_SMOKE_SCHOOL_NAME", "등촌고등학교")
-meal_month = os.environ.get("NEIS_SMOKE_MEAL_MONTH", _dt.date.today().strftime("%Y%m"))
+meal_month = os.environ.get("NEIS_SMOKE_MEAL_MONTH", "202606")
 
 if not re.match(r"^\d{6}$", meal_month):
     fail("NEIS_SMOKE_MEAL_MONTH must be YYYYMM")
@@ -92,9 +92,9 @@ school_payload = fetch_json(
     },
 )
 school_rows = extract_rows(school_payload, "schoolInfo")
-selected = next((row for row in school_rows if row.get("SCHUL_NM") == school_name), school_rows[0] if school_rows else None)
+selected = next((row for row in school_rows if row.get("SCHUL_NM") == school_name), None)
 if not selected:
-    fail(f"schoolInfo returned no rows for {school_name}")
+    fail(f"schoolInfo returned no exact row for {school_name}")
 
 office_code = selected.get("ATPT_OFCDC_SC_CODE", "")
 school_code = selected.get("SD_SCHUL_CODE", "")

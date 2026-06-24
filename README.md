@@ -70,6 +70,10 @@ NEIS_API_KEY = 발급받은_키
 3. Build & Run을 실행합니다.
 
 ## 출시 전 체크
+- `scripts/verify-release-readiness.sh`로 plist, 버전/빌드, 아이콘, 스크린샷, 공개 URL 상태 확인
+- `scripts/smoke-neis-live.sh`로 실제 NEIS 학교 검색과 급식식단정보 응답 확인
+  - 기본 검증: 등촌고등학교, 2026년 6월 중식
+  - 다른 학교/월 검증: `NEIS_SMOKE_SCHOOL_NAME=학교명 NEIS_SMOKE_MEAL_MONTH=YYYYMM scripts/smoke-neis-live.sh`
 - 실제 학교 검색으로 officeCode, schoolCode 저장 확인
 - `mealServiceDietInfo` 호출 로그 확인
 - `DDISH_NM`, `CAL_INFO`, `NTR_INFO` 변환 확인
