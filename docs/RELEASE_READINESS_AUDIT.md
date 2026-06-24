@@ -12,7 +12,7 @@ build 13 후보에서 설정 화면의 공개 개인정보 처리방침, 지원 
 
 build 13 확인:
 
-- XCTest: 61개 통과
+- XCTest: 63개 통과
 - iPhone 17 Debug build/install/run: 통과
 - `git diff --check`: 통과
 - NEIS 실제 호출: `서울고등학교` 검색 성공, `mealServiceDietInfo` 2024년 6월 중식 row 18개, `DDISH_NM/CAL_INFO/NTR_INFO` 필드 확인
@@ -56,7 +56,7 @@ build 13 확인:
 
 ## 최근 검증
 
-- XCTest: 61개 통과
+- XCTest: 63개 통과
 - Debug build/install/run simulator: 통과
 - Release/generic iOS archive + App Store Connect remote-signed export: 통과
 - TestFlight signed IPA: `build/TestFlightExportBuild13Signed/NaymNaymLevelUp.ipa`
@@ -67,8 +67,8 @@ build 13 확인:
 - build 13 export summary: buildNumber `13`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인
 - GitHub Pages 출시 사이트: `privacy.html`, `support.html`, `data-safety.html` HTTPS 200 확인
 - 2026-06-24 추가 검증: 설정 화면 공개 URL 링크 추가 후 iOS Simulator build 통과, XCTest 55개 통과
-- 2026-06-25 추가 검증: CloudKit record type/field 계약과 Privacy Manifest 수집 데이터 항목 고정 테스트 추가 후 XCTest 61개 통과
-- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T15-11-32-810Z_pid66299_63c2feb3.xcresult`
+- 2026-06-25 추가 검증: CloudKit record type/field 계약, Privacy Manifest 수집 데이터 항목, 출시 인트로 필수 에셋 번들링 고정 테스트 추가 후 XCTest 63개 통과
+- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T15-20-36-751Z_pid66299_831d8491.xcresult`
 - 시뮬레이터 스냅샷: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
 - 2026-06-24 추가 갱신: 설정 화면 공개 URL 링크, 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 13 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 추가 갱신은 테스트/문서 보강만 포함하므로 build 13 바이너리 재업로드는 필요 없음

@@ -1,5 +1,6 @@
 import XCTest
 import CloudKit
+import UIKit
 @testable import NaymNaymLevelUp
 
 final class LocalStoreTests: XCTestCase {
@@ -688,6 +689,44 @@ final class LocalStoreTests: XCTestCase {
         }
     }
 
+    func testIntroRequiredAssetsAreBundledForRelease() throws {
+        for asset in requiredIntroAssets {
+            let image = UIImage(named: asset.name)
+            XCTAssertNotNil(image, "\(asset.name) must be bundled so the release intro never shows an asset placeholder")
+            if let image {
+                XCTAssertGreaterThanOrEqual(image.size.width * image.scale, asset.minimumPixelWidth, "\(asset.name) width is below release minimum")
+                XCTAssertGreaterThanOrEqual(image.size.height * image.scale, asset.minimumPixelHeight, "\(asset.name) height is below release minimum")
+            }
+        }
+    }
+
+    func testIntroRequiredAssetsExistInSourceCatalog() throws {
+        let catalogURL = sourceRootURL()
+            .appendingPathComponent("NaymNaymLevelUp")
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("Assets.xcassets")
+
+        for asset in requiredIntroAssets {
+            let imageSetURL = catalogURL.appendingPathComponent("\(asset.name).imageset")
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: imageSetURL.path),
+                "\(asset.name).imageset must stay in the asset catalog"
+            )
+            let contentsURL = imageSetURL.appendingPathComponent("Contents.json")
+            let contentsData = try Data(contentsOf: contentsURL)
+            let contents = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: contentsData) as? [String: Any]
+            )
+            let images = try XCTUnwrap(contents["images"] as? [[String: Any]])
+            let filename = try XCTUnwrap(images.compactMap { $0["filename"] as? String }.first)
+            let imageURL = imageSetURL.appendingPathComponent(filename)
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: imageURL.path),
+                "\(asset.name) Contents.json must reference an existing image file"
+            )
+        }
+    }
+
     @MainActor
     func testChildSummariesSeparateRecordsByChildLinkId() {
         let firstChildId = UUID()
@@ -753,6 +792,26 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(summaries.last?.weeklyChallengeRecords.map(\.menuName), ["둘째나물"])
     }
 
+    private struct RequiredIntroAsset {
+        var name: String
+        var minimumPixelWidth: CGFloat
+        var minimumPixelHeight: CGFloat
+    }
+
+    private var requiredIntroAssets: [RequiredIntroAsset] {
+        [
+            RequiredIntroAsset(name: "logo_naym_levelup", minimumPixelWidth: 320, minimumPixelHeight: 72),
+            RequiredIntroAsset(name: "mascot_onboarding", minimumPixelWidth: 240, minimumPixelHeight: 240),
+            RequiredIntroAsset(name: "mascot_wave_1", minimumPixelWidth: 240, minimumPixelHeight: 240),
+            RequiredIntroAsset(name: "mascot_wave_2", minimumPixelWidth: 240, minimumPixelHeight: 240),
+            RequiredIntroAsset(name: "mascot_jump", minimumPixelWidth: 240, minimumPixelHeight: 240),
+            RequiredIntroAsset(name: "bg_soft_mint", minimumPixelWidth: 40, minimumPixelHeight: 80),
+            RequiredIntroAsset(name: "icon_one_bite", minimumPixelWidth: 256, minimumPixelHeight: 256),
+            RequiredIntroAsset(name: "icon_growth_report", minimumPixelWidth: 256, minimumPixelHeight: 256),
+            RequiredIntroAsset(name: "icon_reward", minimumPixelWidth: 256, minimumPixelHeight: 256)
+        ]
+    }
+
     private func assertRecordKeys(
         _ record: CKRecord,
         _ expectedKeys: Set<String>,
@@ -785,5 +844,11 @@ final class LocalStoreTests: XCTestCase {
         let data = try Data(contentsOf: sourceURL)
         let propertyList = try PropertyListSerialization.propertyList(from: data, format: nil)
         return try XCTUnwrap(propertyList as? [String: Any])
+    }
+
+    private func sourceRootURL() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }
