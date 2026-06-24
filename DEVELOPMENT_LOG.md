@@ -41,5 +41,6 @@
 - CloudKit record type/field 계약과 Privacy Manifest 수집 데이터 항목을 XCTest로 고정했다.
 - 출시 인트로에서 사용하는 로고, 마스코트, 배경, 기능 아이콘 에셋이 앱 번들에 포함되는지 XCTest로 고정했다.
 - plist lint, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, App Store 아이콘/스크린샷 규격, 공개 URL 상태를 확인하는 출시 검증 스크립트를 추가했다.
+- 로컬 API 키를 출력하지 않고 NEIS 학교 검색과 급식식단정보 실제 응답을 확인하는 smoke 스크립트를 추가했다.
 - 제출 전 대기 메모를 build 13 업로드 완료 상태와 남은 App Store Connect/CloudKit 작업 기준으로 갱신했다.
 - 추가 변경은 테스트/문서 보강이므로 build 13 바이너리 재업로드는 하지 않는다.
