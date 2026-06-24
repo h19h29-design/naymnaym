@@ -23,10 +23,11 @@ build 14 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud
 
 1. 로컬 Mac에서 signing keychain/certificate 접근 팝업이 뜨면 허용한다.
 2. `scripts/release-testflight-build.sh 15`를 실행해 signed archive/export와 IPA entitlement 검증을 완료한다.
-3. exported IPA의 signed entitlements에 아래 두 값이 실제 포함됐는지 확인한다.
+3. 스크립트가 `codesign keychain access preflight timed out`으로 실패하면 keychain/certificate 접근을 허용한 뒤 같은 명령을 다시 실행한다.
+4. exported IPA의 signed entitlements에 아래 두 값이 실제 포함됐는지 확인한다.
    - `com.apple.developer.icloud-container-identifiers: iCloud.com.h19h29.naymnaymlevelup`
    - `com.apple.developer.icloud-services: CloudKit`
-4. 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15`를 실행해 TestFlight에 업로드한다.
+5. 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15`를 실행해 TestFlight에 업로드한다.
 
 ## TestFlight 공개 순서
 

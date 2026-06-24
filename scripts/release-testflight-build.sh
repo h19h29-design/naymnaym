@@ -11,6 +11,8 @@ TEAM_ID="47SNWAZN3G"
 EXPECTED_BUNDLE_ID="com.h19h29.naymnaymlevelup"
 EXPECTED_VERSION="1.0"
 EXPECTED_ICLOUD_CONTAINER="iCloud.com.h19h29.naymnaymlevelup"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-FEDEF97987FC83EC65955EB899B96DBF7BBF2EA8}"
+SIGNING_PREFLIGHT_TIMEOUT_SECONDS="${SIGNING_PREFLIGHT_TIMEOUT_SECONDS:-20}"
 
 usage() {
   cat <<'EOF'
@@ -26,6 +28,8 @@ Before running:
   - Start from a clean git worktree.
   - Keep Config.xcconfig untracked.
   - If macOS asks for signing keychain/certificate access, allow it.
+  - If signing preflight fails, unlock the keychain or allow codesign access,
+    then rerun the same command.
   - Do not continue to upload unless scripts/inspect-ipa-entitlements.sh passes.
 EOF
 }
@@ -132,6 +136,39 @@ inspect_archive_app() {
   require_value "$signed_service" "CloudKit" "archive signed app CloudKit service entitlement"
 }
 
+preflight_signing_access() {
+  tmp_dir="$(mktemp -d)"
+  test_binary="$tmp_dir/true-test"
+  cp /usr/bin/true "$test_binary"
+
+  /usr/bin/codesign --dryrun --force --sign "$SIGNING_IDENTITY" "$test_binary" >"$tmp_dir/codesign.out" 2>"$tmp_dir/codesign.err" &
+  pid=$!
+  elapsed=0
+
+  while [ "$elapsed" -lt "$SIGNING_PREFLIGHT_TIMEOUT_SECONDS" ]; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      if wait "$pid"; then
+        rm -rf "$tmp_dir"
+        pass "codesign keychain access preflight passed"
+        return
+      fi
+
+      status=$?
+      cat "$tmp_dir/codesign.err" >&2 || true
+      rm -rf "$tmp_dir"
+      fail "codesign keychain access preflight failed with exit $status"
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  cat "$tmp_dir/codesign.err" >&2 || true
+  rm -rf "$tmp_dir"
+  fail "codesign keychain access preflight timed out after ${SIGNING_PREFLIGHT_TIMEOUT_SECONDS}s; allow signing keychain/certificate access and rerun"
+}
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   usage
   exit 0
@@ -175,6 +212,7 @@ write_export_options "export" "$EXPORT_OPTIONS"
 write_export_options "upload" "$UPLOAD_OPTIONS"
 
 printf 'If macOS prompts for signing keychain/certificate access, allow it.\n'
+preflight_signing_access
 
 run_and_log "$ARCHIVE_LOG" \
   xcodebuild \
