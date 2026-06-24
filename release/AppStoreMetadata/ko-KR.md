@@ -14,6 +14,8 @@
 - 빌드: 14
 - 저작권: © 2026 h19h29-design. All rights reserved.
 
+주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. App Store Connect에서 최종 선택할 빌드는 CloudKit entitlement 검증을 통과한 build 15 이상이어야 합니다.
+
 ## 키워드
 
 급식, 학교급식, 식단, 한입도전, 편식, 식습관, 영양교육, 알레르기, 초등학생, 중학생, 고등학생, 부모

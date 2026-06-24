@@ -8,6 +8,7 @@
 - Privacy 초안 작성: 완료
 - Release archive 생성: 완료
 - TestFlight build 1.0 (14) CLI 업로드: 완료
+- build 14 signed IPA 검사: iCloud/CloudKit entitlement 없음, 외부 테스트/출시 후보 제외
 - 출시 검증 스크립트 실행: `scripts/verify-release-readiness.sh`
 
 ## Hard Blocker
@@ -25,10 +26,15 @@
 
 ## 현재 운영 확인 필요 항목
 
-- App Store Connect에서 build 14 처리 완료 상태 확인
-- build 14를 내부 테스트 그룹에 연결
-- build 14를 외부 테스트 그룹 `패밀리`에 연결
-- 외부 테스트 공개 링크가 build 14를 가리키는지 확인
+- Apple Developer에서 App ID `com.h19h29.naymnaymlevelup`의 iCloud/CloudKit capability와 container 연결 확인
+- App Store provisioning/remote signing export가 iCloud/CloudKit entitlement를 포함하도록 재생성
+- 로컬 signing keychain/certificate 접근 허용
+- build 15 이상 archive/export/upload
+- exported IPA signed entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
+- App Store Connect에서 build 15 이상 처리 완료 상태 확인
+- build 15 이상을 내부 테스트 그룹에 연결
+- build 15 이상을 외부 테스트 그룹 `패밀리`에 연결
+- 외부 테스트 공개 링크가 build 15 이상을 가리키는지 확인
 - 외부 테스트 심사 제출
 - CloudKit container `iCloud.com.h19h29.naymnaymlevelup` 운영 환경 schema 배포
 - public database record type과 queryable index 확인

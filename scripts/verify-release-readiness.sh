@@ -70,6 +70,16 @@ require_plist_value() {
   pass "$file $key is $expected"
 }
 
+require_signed_entitlement() {
+  file="$1"
+  key="$2"
+  expected="$3"
+  description="$4"
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file" 2>/dev/null || true)"
+  [ "$value" = "$expected" ] || fail "$description is '${value:-missing}', expected '$expected'"
+  pass "$description is $expected"
+}
+
 require_nonempty_plist_value() {
   file="$1"
   key="$2"
@@ -136,6 +146,14 @@ check_uploaded_ipa() {
   require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "1.0"
   require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "14"
   require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
+
+  entitlements_file="$tmp_dir/signed-entitlements.plist"
+  codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null || fail "$ipa signed entitlements could not be read"
+  [ -s "$entitlements_file" ] || fail "$ipa signed entitlements are empty"
+  require_signed_entitlement "$entitlements_file" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup" "$ipa signed iCloud container entitlement"
+  require_signed_entitlement "$entitlements_file" "com.apple.developer.icloud-services:0" "CloudKit" "$ipa signed CloudKit service entitlement"
+
+  rm -rf "$tmp_dir"
   pass "$ipa contains build 1.0 (14)"
 }
 

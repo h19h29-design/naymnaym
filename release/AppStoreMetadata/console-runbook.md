@@ -1,29 +1,45 @@
 # App Store Connect / CloudKit 콘솔 런북
 
-이 문서는 build 14 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다.
+이 문서는 build 14 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다.
 
 ## 현재 배포 후보
 
 - 앱 이름: 냠냠레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.0`
-- 최신 빌드: `14`
+- 최신 업로드 빌드: `14`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
 - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
-- TestFlight 업로드 상태: CLI 업로드 성공, App Store Connect 처리 완료 확인 필요
+- TestFlight 업로드 상태: build 14 CLI 업로드 성공. 단, 실제 IPA signed entitlements에 iCloud/CloudKit이 없어 build 15 이상 재서명/재업로드 전까지 release hold.
+
+## 현재 release hold
+
+build 14 IPA를 직접 풀어 `codesign -d --entitlements :-`로 확인한 결과, signed app에는 `application-identifier`, `beta-reports-active`, team identifier, `get-task-allow`만 있고 iCloud/CloudKit entitlement가 없다.
+
+진행 전 계정 소유자가 먼저 확인해야 할 항목:
+
+1. Apple Developer에서 `com.h19h29.naymnaymlevelup` App ID에 iCloud/CloudKit capability가 켜져 있는지 확인한다.
+2. iCloud container `iCloud.com.h19h29.naymnaymlevelup`가 App ID에 연결되어 있는지 확인한다.
+3. App Store provisioning/remote signing export가 해당 iCloud entitlement를 포함하도록 재생성한다.
+4. 로컬 Mac에서 signing keychain/certificate 접근 팝업이 뜨면 허용한다.
+5. build 15 이상으로 archive/export/upload를 다시 진행한다.
+6. 업로드 전 exported IPA의 signed entitlements에 아래 두 값이 실제 포함됐는지 확인한다.
+   - `com.apple.developer.icloud-container-identifiers: iCloud.com.h19h29.naymnaymlevelup`
+   - `com.apple.developer.icloud-services: CloudKit`
 
 ## TestFlight 공개 순서
 
 1. App Store Connect에서 냠냠레벨업 앱으로 이동한다.
-2. TestFlight 빌드 목록에서 `1.0 (14)` 처리 완료 여부를 확인한다.
-3. build 14를 내부 테스트 그룹에 연결한다.
-4. 외부 테스트 그룹 `패밀리`를 만들거나 기존 그룹을 사용한다.
-5. build 14를 외부 테스트 그룹 `패밀리`에 연결한다.
-6. 공개 링크가 build 14를 가리키는지 확인한다.
-7. 외부 테스트 심사 제출 전 아래 심사용 설명을 그대로 사용한다.
+2. build 14는 CloudKit entitlement가 없으므로 내부/외부 테스트 그룹에 최종 후보로 연결하지 않는다.
+3. build 15 이상에서 exported IPA signed entitlements 검증을 통과한 뒤 TestFlight 빌드 목록 처리 완료 여부를 확인한다.
+4. 검증 통과 빌드를 내부 테스트 그룹에 연결한다.
+5. 외부 테스트 그룹 `패밀리`를 만들거나 기존 그룹을 사용한다.
+6. 검증 통과 빌드를 외부 테스트 그룹 `패밀리`에 연결한다.
+7. 공개 링크가 검증 통과 빌드를 가리키는지 확인한다.
+8. 외부 테스트 심사 제출 전 아래 심사용 설명을 그대로 사용한다.
 
 심사용 설명:
 
@@ -144,7 +160,7 @@ Container:
 
 ## CloudKit 운영 스모크 테스트
 
-아래는 TestFlight build 14 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
+아래는 CloudKit entitlement 검증을 통과한 TestFlight build 15 이상 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
 
 1. 아이 모드에서 보호자 연결 초대 코드를 생성한다.
 2. CloudKit Public Database에 `ParentLink` record가 생성되는지 확인한다.

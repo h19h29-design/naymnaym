@@ -13,6 +13,8 @@
 - 권장 카테고리: 교육
 - 보조 카테고리 후보: 건강 및 피트니스
 
+주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않는다. App Store Connect에서 최종 선택할 빌드는 CloudKit entitlement 검증을 통과한 build 15 이상이어야 한다.
+
 ## 프로모션 문구
 편식을 혼내지 않고, 한 입 도전으로 바꾸는 급식 코칭 앱.
 
