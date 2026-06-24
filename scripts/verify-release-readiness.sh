@@ -76,8 +76,41 @@ require_signed_entitlement() {
   expected="$3"
   description="$4"
   value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file" 2>/dev/null || true)"
+  if [ -z "$value" ]; then
+    case "$key" in
+      *:0)
+        value="$(/usr/libexec/PlistBuddy -c "Print :${key%:0}" "$file" 2>/dev/null || true)"
+        ;;
+    esac
+  fi
   [ "$value" = "$expected" ] || fail "$description is '${value:-missing}', expected '$expected'"
   pass "$description is $expected"
+}
+
+require_signed_entitlement_one_of() {
+  file="$1"
+  key="$2"
+  description="$3"
+  shift 3
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file" 2>/dev/null || true)"
+  if [ -z "$value" ]; then
+    case "$key" in
+      *:0)
+        value="$(/usr/libexec/PlistBuddy -c "Print :${key%:0}" "$file" 2>/dev/null || true)"
+        ;;
+    esac
+  fi
+
+  expected_values=""
+  for expected in "$@"; do
+    expected_values="${expected_values}${expected_values:+, }$expected"
+    if [ "$value" = "$expected" ]; then
+      pass "$description is $expected"
+      return
+    fi
+  done
+
+  fail "$description is '${value:-missing}', expected one of: $expected_values"
 }
 
 require_nonempty_plist_value() {
@@ -152,7 +185,7 @@ check_uploaded_ipa() {
   embedded_profile_plist="$tmp_dir/embedded-profile.plist"
   security cms -D -i "$embedded_profile" >"$embedded_profile_plist" 2>/dev/null || fail "$ipa embedded provisioning profile could not be decoded"
   require_signed_entitlement "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup" "$ipa embedded profile iCloud container entitlement"
-  require_signed_entitlement "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-services:0" "CloudKit" "$ipa embedded profile CloudKit service entitlement"
+  require_signed_entitlement_one_of "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-services:0" "$ipa embedded profile CloudKit service entitlement" "CloudKit" "*"
 
   entitlements_file="$tmp_dir/signed-entitlements.plist"
   codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null || fail "$ipa signed entitlements could not be read"

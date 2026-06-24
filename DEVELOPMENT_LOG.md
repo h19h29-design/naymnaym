@@ -47,6 +47,7 @@
 - 전체 데이터 삭제와 도전 기록 삭제의 범위를 XCTest로 고정해 프로필, 부모 연결, 사진 디렉터리 삭제 동작이 섞이지 않게 했다.
 - 부모 공유 도전 기록이 명시적으로 공유 선택된 항목만 CloudKit과 부모 요약에 포함되도록 보강했다.
 - 개인정보 공유 범위 변경분을 반영해 앱 빌드 번호를 14로 올리고 TestFlight CLI 업로드까지 완료했다.
-- build 14 IPA를 직접 검사한 결과 embedded provisioning profile에는 iCloud container가 있지만 CloudKit service entitlement가 없고, signed entitlements에는 iCloud/CloudKit 항목이 없어 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보에서 제외했다.
-- `scripts/verify-release-readiness.sh`에 exported IPA embedded profile 및 signed app CloudKit entitlement 검사를 추가해, CloudKit service entitlement가 없는 build 14는 릴리즈 게이트에서 의도적으로 실패하도록 보강했다.
-- Apple Developer App ID/iCloud capability/provisioning 및 로컬 signing keychain 접근을 확인한 뒤 build 15 이상으로 재서명/재업로드해야 한다.
+- build 14 IPA를 직접 검사한 결과 embedded provisioning profile은 iCloud container와 CloudKit service wildcard를 허용하지만, signed entitlements에는 iCloud/CloudKit 항목이 없어 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보에서 제외했다.
+- `scripts/verify-release-readiness.sh`에 exported IPA embedded profile 및 signed app CloudKit entitlement 검사를 추가해, signed app CloudKit entitlement가 없는 build 14는 릴리즈 게이트에서 의도적으로 실패하도록 보강했다.
+- build 15 이상 검증용 `scripts/inspect-ipa-entitlements.sh`를 추가했다.
+- unsigned archive 기반 remote export는 signed app entitlements를 살리지 못했고, signed archive는 올바른 `.xcent` 생성 후 로컬 `codesign`이 keychain/certificate 접근 대기 상태에서 멈췄다. 로컬 signing keychain 접근을 허용한 뒤 build 15 이상으로 signed archive/export/upload해야 한다.

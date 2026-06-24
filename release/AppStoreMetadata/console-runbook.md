@@ -17,16 +17,14 @@
 
 ## 현재 release hold
 
-build 14 IPA를 직접 확인한 결과, embedded provisioning profile에는 iCloud container `iCloud.com.h19h29.naymnaymlevelup`가 있지만 `com.apple.developer.icloud-services = CloudKit`가 없다. signed app을 `codesign -d --entitlements :-`로 확인해도 `application-identifier`, `beta-reports-active`, team identifier, `get-task-allow`만 있고 iCloud/CloudKit entitlement가 없다.
+build 14 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud container `iCloud.com.h19h29.naymnaymlevelup`와 CloudKit service wildcard `*`를 허용한다. 하지만 signed app을 `codesign -d --entitlements :-`로 확인하면 `application-identifier`, `beta-reports-active`, team identifier, `get-task-allow`만 있고 iCloud/CloudKit entitlement가 없다. build 14 archive가 unsigned였기 때문에 App Store Connect remote signing export만으로 앱 entitlements가 적용되지 않은 상태다.
 
 진행 전 계정 소유자가 먼저 확인해야 할 항목:
 
-1. Apple Developer에서 `com.h19h29.naymnaymlevelup` App ID에 iCloud/CloudKit capability가 켜져 있는지 확인한다.
-2. iCloud container `iCloud.com.h19h29.naymnaymlevelup`가 App ID에 연결되어 있는지 확인한다.
-3. App Store provisioning/remote signing export가 iCloud container와 CloudKit service entitlement를 모두 포함하도록 재생성한다.
-4. 로컬 Mac에서 signing keychain/certificate 접근 팝업이 뜨면 허용한다.
-5. build 15 이상으로 archive/export/upload를 다시 진행한다.
-6. 업로드 전 exported IPA의 signed entitlements에 아래 두 값이 실제 포함됐는지 확인한다.
+1. 로컬 Mac에서 signing keychain/certificate 접근 팝업이 뜨면 허용한다.
+2. build 15 이상으로 signed archive/export를 다시 진행한다.
+3. 업로드 전 `scripts/inspect-ipa-entitlements.sh path/to/NaymNaymLevelUp.ipa`를 실행한다.
+4. exported IPA의 signed entitlements에 아래 두 값이 실제 포함됐는지 확인한다.
    - `com.apple.developer.icloud-container-identifiers: iCloud.com.h19h29.naymnaymlevelup`
    - `com.apple.developer.icloud-services: CloudKit`
 

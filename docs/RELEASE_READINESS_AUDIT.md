@@ -4,18 +4,18 @@
 
 ## 현재 결론
 
-코드, 테스트, 시뮬레이터, App Store 제출 자료는 1.0 후보 수준까지 준비됐다. 다만 TestFlight용 signed build 1.0 (14) IPA는 CLI 업로드까지 완료됐지만 실제 IPA 서명 entitlements에 iCloud/CloudKit 항목이 없어 부모 CloudKit 연동을 포함한 최종 외부 테스트/출시 후보로 사용할 수 없다. build 14는 App Store Connect 처리 확인 전이라도 출시 후보에서 제외하고, CloudKit capability가 포함된 프로비저닝/서명으로 build 15 이상을 다시 export/upload해야 한다.
+코드, 테스트, 시뮬레이터, App Store 제출 자료는 1.0 후보 수준까지 준비됐다. 다만 TestFlight용 signed build 1.0 (14) IPA는 CLI 업로드까지 완료됐지만 실제 앱 서명 entitlements에 iCloud/CloudKit 항목이 없어 부모 CloudKit 연동을 포함한 최종 외부 테스트/출시 후보로 사용할 수 없다. build 14는 App Store Connect 처리 확인 전이라도 출시 후보에서 제외하고, CloudKit entitlement가 실제 signed app에 포함되는 build 15 이상을 다시 archive/export/upload해야 한다.
 
 ### 2026-06-25 build 14 갱신
 
 build 14 후보에서 부모 공유 도전 기록을 선택 공유 항목으로만 제한하고, 전체 데이터 삭제 시 orphan 사진 파일까지 제거하도록 보강했다. XcodeBuildMCP 기준 iPhone 17, iPhone 16, iPhone SE 시뮬레이터 build/run과 전체 테스트는 통과했다. Release archive는 unsigned archive로 생성한 뒤 App Store Connect remote signing export를 통해 Cloud Managed Apple Distribution 인증서와 App Store 프로비저닝으로 서명했고, 동일 archive에서 upload destination으로 CLI 업로드까지 성공했다.
 
-이후 업로드된 IPA를 직접 풀어 검사한 결과, embedded provisioning profile에는 iCloud container `iCloud.com.h19h29.naymnaymlevelup`가 들어 있지만 `com.apple.developer.icloud-services = CloudKit`가 없다. 실제 signed app을 `codesign -d --entitlements :-`로 검사해도 `application-identifier`, `beta-reports-active`, team identifier, `get-task-allow`만 있고 아래 항목이 없다.
+이후 업로드된 IPA를 직접 풀어 검사한 결과, embedded provisioning profile은 iCloud container `iCloud.com.h19h29.naymnaymlevelup`와 CloudKit service wildcard `*`를 허용한다. 하지만 실제 signed app을 `codesign -d --entitlements :-`로 검사하면 `application-identifier`, `beta-reports-active`, team identifier, `get-task-allow`만 있고 아래 항목이 없다.
 
 - `com.apple.developer.icloud-container-identifiers`
 - `com.apple.developer.icloud-services = CloudKit`
 
-프로젝트의 `NaymNaymLevelUp.entitlements`, Xcode build 설정, Release archive 중간 `.xcent`에는 iCloud container와 CloudKit service가 모두 존재한다. 따라서 현재 차단 지점은 App Store provisioning/remote signing 경로다. 최종 signed IPA에 CloudKit service가 반영되지 않았으므로 build 14는 CloudKit 부모 연동 검증/외부 공개 후보가 아니다. 로컬 signed archive 재시도는 올바른 `.xcent` 생성과 `codesign` 단계까지 도달했으나 macOS signing keychain/certificate 접근 대기 상태에서 중단했다. 계정 소유자가 Apple Developer App ID/iCloud capability/provisioning을 확인하고, 로컬 signing keychain 접근을 허용한 뒤 build 15 이상으로 다시 검증해야 한다.
+프로젝트의 `NaymNaymLevelUp.entitlements`, Xcode build 설정, Release archive 중간 `.xcent`에는 iCloud container와 CloudKit service가 모두 존재한다. build 14 archive는 unsigned 상태였고, unsigned archive를 App Store Connect remote signing으로 export한 IPA에는 앱 entitlements가 반영되지 않았다. `iCloudContainerEnvironment = Production`을 명시한 별도 export도 embedded profile은 허용 상태였지만 signed app entitlements는 동일하게 누락됐다. 반대로 signed archive 재시도는 올바른 `.xcent` 생성과 `codesign` 단계까지 도달했으나 macOS signing keychain/certificate 접근 대기 상태에서 중단했다. 따라서 다음 차단 지점은 Apple Developer capability 자체보다 로컬 signing keychain/certificate 접근을 허용해 signed archive를 만드는 것이다.
 
 build 14 확인:
 
@@ -71,7 +71,7 @@ build 14 확인:
 - TestFlight build: `1.0 (14)`
 - TestFlight upload: CLI 업로드 성공, App Store Connect 처리 상태 확인 필요
 - `git diff --check`: 통과
-- `scripts/verify-release-readiness.sh`: 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 14 IPA/업로드 로그 증거, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, App Store 아이콘/스크린샷, 공개 URL 검증을 확인한다. 현재 build 14 embedded profile에는 CloudKit service entitlement가 없어 이 게이트가 의도적으로 실패해야 한다.
+- `scripts/verify-release-readiness.sh`: 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 14 IPA/업로드 로그 증거, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, App Store 아이콘/스크린샷, 공개 URL 검증을 확인한다. 현재 build 14는 signed app iCloud container entitlement 누락에서 의도적으로 실패해야 한다.
 - `scripts/smoke-neis-live.sh`: API 키 비노출 방식으로 등촌고등학교 2026년 6월 `schoolInfo`, `mealServiceDietInfo` 실제 응답 검증
 - `App/Info.plist`, `PrivacyInfo.xcprivacy`, `NaymNaymLevelUp.entitlements`: `plutil -lint` 통과
 - build 14 export summary: buildNumber `14`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인. 단, 실제 IPA signed entitlements에는 iCloud/CloudKit이 없어 release hold.
@@ -87,27 +87,26 @@ build 14 확인:
 
 아래 항목은 로컬 코드로 완료할 수 없고 Apple Developer/App Store Connect 계정에서 확인 또는 처리해야 한다.
 
-1. Apple Developer에서 `com.h19h29.naymnaymlevelup` App ID의 iCloud/CloudKit capability와 `iCloud.com.h19h29.naymnaymlevelup` container 연결 확인
-2. App Store 프로비저닝/remote signing export가 iCloud container와 CloudKit service entitlement를 모두 포함하도록 재생성
-3. 로컬 signing keychain/certificate 접근 허용 후 build 15 이상 archive/export
-4. exported IPA의 signed entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
-5. CloudKit entitlement 검증 통과 후 build 15 이상을 TestFlight에 업로드
-6. App Store Connect에서 build 15 이상 처리 완료 여부 확인
-7. build 15 이상을 내부/외부 테스트 그룹에 연결
-8. 외부 테스트 그룹 공개 링크가 build 15 이상을 가리키는지 확인
-9. 외부 테스트 심사 제출
-10. App Privacy 답변에 선택 부모 공유 데이터 타입 반영
-11. CloudKit Dashboard public database schema 배포 상태 확인
-12. CloudKit queryable index 설정 확인
+1. 로컬 signing keychain/certificate 접근 허용 후 build 15 이상 signed archive 생성
+2. exported IPA의 embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인
+3. exported IPA의 signed app entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
+4. CloudKit entitlement 검증 통과 후 build 15 이상을 TestFlight에 업로드
+5. App Store Connect에서 build 15 이상 처리 완료 여부 확인
+6. build 15 이상을 내부/외부 테스트 그룹에 연결
+7. 외부 테스트 그룹 공개 링크가 build 15 이상을 가리키는지 확인
+8. 외부 테스트 심사 제출
+9. App Privacy 답변에 선택 부모 공유 데이터 타입 반영
+10. CloudKit Dashboard public database schema 배포 상태 확인
+11. CloudKit queryable index 설정 확인
    - `ParentLink.inviteCode`
    - `SharedMealRecord.childLinkId`
    - `SharedChallengeRecord.childLinkId`
    - `SharedMealPhoto.childLinkId`
    - `createdAt` 최신순 정렬은 앱 내부에서 처리하므로 sortable index는 필요 없음
-13. CloudKit public database 권한 확인
+12. CloudKit public database 권한 확인
    - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
    - 초대 코드 조회는 정확한 `inviteCode` 조건에서만 동작해야 함
-14. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
+13. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
    - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
    - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
    - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
