@@ -422,7 +422,7 @@ final class AppState: ObservableObject {
     }
 
     func resetAllData() {
-        localPhotoStore.clear(records: mealPhotos)
+        localPhotoStore.clearAll()
         resetChallengeRecords()
         resetProgress()
         resetProfile()

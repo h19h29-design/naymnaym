@@ -371,6 +371,8 @@ final class LocalStoreTests: XCTestCase {
 
         let photo = try appState.saveMealPhotoData(Data([0x0A, 0x0B, 0x0C]), sharedWithParent: true)
         let photoURL = photoStore.url(for: photo)
+        let orphanPhotoURL = photoURL.deletingLastPathComponent().appendingPathComponent("orphan-photo.jpg")
+        try Data([0x0D, 0x0E, 0x0F]).write(to: orphanPhotoURL)
         _ = appState.recordMealInteraction(
             item: MealItem(name: "콩나물무침", allergyCodes: [], nutrients: ["식이섬유"], tags: ["채소"], sourceRawText: "콩나물무침"),
             date: "20260624",
@@ -380,6 +382,7 @@ final class LocalStoreTests: XCTestCase {
         )
         XCTAssertGreaterThan(appState.progress.exp, 0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: photoURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPhotoURL.path))
 
         appState.resetAllData()
 
@@ -396,6 +399,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(appState.monthlyMeals.isEmpty)
         XCTAssertEqual(appState.mealStatus, .noMeal)
         XCTAssertFalse(FileManager.default.fileExists(atPath: photoURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPhotoURL.path))
         XCTAssertNil(UserProfileStore(defaults: defaults).load())
         XCTAssertTrue(ChallengeStore(defaults: defaults).load().isEmpty)
         XCTAssertTrue(MealRecordStore(defaults: defaults).load().isEmpty)

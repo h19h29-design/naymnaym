@@ -167,6 +167,10 @@ final class LocalPhotoStore {
     func clear(records: [MealPhotoRecord]) {
         records.forEach(delete)
     }
+
+    func clearAll() {
+        try? fileManager.removeItem(at: directoryURL)
+    }
 }
 
 struct CloudSharedPhotoPayload {
