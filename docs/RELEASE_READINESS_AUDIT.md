@@ -4,25 +4,23 @@
 
 ## 현재 결론
 
-코드, 테스트, 시뮬레이터, Release archive, App Store 제출 자료는 1.0 후보 상태까지 준비됐다. TestFlight용 signed build 1.0 (12) IPA는 생성 및 CLI 업로드까지 완료됐다. 외부 테스트 공개는 App Store Connect에서 build 12 처리 완료 확인, 내부/외부 그룹 연결, 외부 테스트 심사 제출이 남아 있다.
+코드, 테스트, 시뮬레이터, Release archive, App Store 제출 자료는 1.0 후보 상태까지 준비됐다. TestFlight용 signed build 1.0 (13) IPA는 생성 및 CLI 업로드까지 완료됐다. 외부 테스트 공개는 App Store Connect에서 build 13 처리 완료 확인, 내부/외부 그룹 연결, 외부 테스트 심사 제출이 남아 있다.
 
-### 2026-06-24 build 12 갱신
+### 2026-06-24 build 13 갱신
 
-build 12 후보에서 XP 정책, SNS 공유 카드, App Store 메타데이터/Privacy 초안, 마케팅 사이트 데이터 안전 페이지를 갱신했다. XcodeBuildMCP 기준 iPhone 16, iPhone 17, iPhone SE 시뮬레이터 빌드/실행과 전체 테스트는 통과했다. Release archive는 unsigned archive로 생성한 뒤 App Store Connect remote signing export를 통해 Cloud Managed Apple Distribution 인증서와 App Store 프로비저닝으로 서명했다. 이후 동일 archive에서 upload destination으로 CLI 업로드까지 성공했다.
+build 13 후보에서 설정 화면의 공개 개인정보 처리방침, 지원 안내, 데이터 안전 안내 링크까지 포함했다. XcodeBuildMCP 기준 iPhone 17 시뮬레이터 build/run과 전체 테스트는 통과했다. Release archive는 unsigned archive로 생성한 뒤 App Store Connect remote signing export를 통해 Cloud Managed Apple Distribution 인증서와 App Store 프로비저닝으로 서명했다. 이후 동일 archive에서 upload destination으로 CLI 업로드까지 성공했다.
 
-build 12 확인:
+build 13 확인:
 
 - XCTest: 55개 통과
-- iPhone 16 Debug build/install/run: 통과
 - iPhone 17 Debug build/install/run: 통과
-- iPhone SE Debug build/install/run: 통과
 - `git diff --check`: 통과
 - NEIS 실제 호출: `서울고등학교` 검색 성공, `mealServiceDietInfo` 2024년 6월 중식 row 18개, `DDISH_NM/CAL_INFO/NTR_INFO` 필드 확인
 - 인트로 검증: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/intro-animation-final.mov`
 - App Store 후보 스크린샷: `build/verification/appstore/*.jpg`
 - Share Sheet 확인: `build/verification/share-sheet-iphone16.jpg`
-- Release unsigned archive: `build/NaymNaymLevelUp-build12-unsigned.xcarchive`
-- App Store Connect remote-signed IPA: `build/TestFlightExportBuild12Signed/NaymNaymLevelUp.ipa`
+- Release unsigned archive: `build/NaymNaymLevelUp-build13-unsigned.xcarchive`
+- App Store Connect remote-signed IPA: `build/TestFlightExportBuild13Signed/NaymNaymLevelUp.ipa`
 - TestFlight CLI upload: 성공, App Store Connect 처리 상태 확인 필요
 
 ## 요구사항별 증거
@@ -39,11 +37,11 @@ build 12 확인:
 | 한 입 도전 성장 | 완료 | `ChallengeRecord`, EXP, badge, `PlayerProgress.currentSkin(for:)` |
 | 알레르기 주의 | 완료 | 선택 알레르기와 메뉴 allergy code 교차 시 한 입 도전 잠금 및 안전 안내 |
 | 초등/중등/고등/부모 모드 | 완료 | `UserMode`, `ThemeProfile`, 모드별 `CharacterSkin` |
-| 부모 다자녀 연결 | 코드 완료, 운영 설정 확인 필요 | CloudKit `ParentLink` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/사진 공유 토글 분리, build 12 export에 Production CloudKit entitlement 포함 |
-| 부모 공유 사진 | 코드 완료, 운영 설정 확인 필요 | 공유 선택 사진만 `SharedMealPhoto` + CKAsset 생성, 사진 공유는 기록 공유가 켜진 경우에만 선택 가능, 기록 공유 해제 시 사진 공유도 비공유로 정리, build 12 export에 Production CloudKit entitlement 포함 |
+| 부모 다자녀 연결 | 코드 완료, 운영 설정 확인 필요 | CloudKit `ParentLink` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/사진 공유 토글 분리, build 13 export에 Production CloudKit entitlement 포함 |
+| 부모 공유 사진 | 코드 완료, 운영 설정 확인 필요 | 공유 선택 사진만 `SharedMealPhoto` + CKAsset 생성, 사진 공유는 기록 공유가 켜진 경우에만 선택 가능, 기록 공유 해제 시 사진 공유도 비공유로 정리, build 13 export에 Production CloudKit entitlement 포함 |
 | 개인정보/지원 안내 | 완료, 공개 배포 완료 | 앱 내 설정 화면, 웹 개인정보 처리방침/지원/데이터 안전 링크, `docs/PRIVACY_POLICY_DRAFT.md`, `docs/SUPPORT.md`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html`, GitHub Pages URL 200 확인 |
 | App Store 스크린샷 | 완료 | `docs/app-store-screenshots/iphone-6-9-upload/*.jpg`, 1320x2868, alpha 없음 |
-| Privacy Manifest | 완료 | `NaymNaymLevelUp/PrivacyInfo.xcprivacy`와 build 12 export에 UserDefaults 사유, 선택 부모 공유용 수집 데이터 타입, 추적 없음 선언 포함 |
+| Privacy Manifest | 완료 | `NaymNaymLevelUp/PrivacyInfo.xcprivacy`와 build 13 export에 UserDefaults 사유, 선택 부모 공유용 수집 데이터 타입, 추적 없음 선언 포함 |
 
 ## 실제 NEIS 확인
 
@@ -61,25 +59,25 @@ build 12 확인:
 - XCTest: 55개 통과
 - Debug build/install/run simulator: 통과
 - Release/generic iOS archive + App Store Connect remote-signed export: 통과
-- TestFlight signed IPA: `build/TestFlightExportBuild12Signed/NaymNaymLevelUp.ipa`
-- TestFlight build: `1.0 (12)`
+- TestFlight signed IPA: `build/TestFlightExportBuild13Signed/NaymNaymLevelUp.ipa`
+- TestFlight build: `1.0 (13)`
 - TestFlight upload: CLI 업로드 성공, App Store Connect 처리 상태 확인 필요
 - `git diff --check`: 통과
 - `App/Info.plist`, `PrivacyInfo.xcprivacy`, `NaymNaymLevelUp.entitlements`: `plutil -lint` 통과
-- build 12 export summary: buildNumber `12`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인
+- build 13 export summary: buildNumber `13`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인
 - GitHub Pages 출시 사이트: `privacy.html`, `support.html`, `data-safety.html` HTTPS 200 확인
 - 2026-06-24 추가 검증: 설정 화면 공개 URL 링크 추가 후 iOS Simulator build 통과, XCTest 55개 통과
-- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T14-34-59-560Z_pid66299_0542ccff.xcresult`
+- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T14-42-53-335Z_pid66299_e951187c.xcresult`
 - 시뮬레이터 스냅샷: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
-- 2026-06-24 추가 갱신: 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 12 signed IPA를 App Store Connect에 업로드 완료
+- 2026-06-24 추가 갱신: 설정 화면 공개 URL 링크, 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 13 signed IPA를 App Store Connect에 업로드 완료
 
 ## 남은 외부 작업
 
 아래 항목은 로컬 코드로 완료할 수 없고 Apple Developer/App Store Connect 계정에서 확인 또는 처리해야 한다.
 
-1. App Store Connect에서 build 12 처리 완료 여부 확인
-2. build 12를 내부/외부 테스트 그룹에 연결
-3. 외부 테스트 그룹 공개 링크에 build 12가 연결됐는지 확인
+1. App Store Connect에서 build 13 처리 완료 여부 확인
+2. build 13을 내부/외부 테스트 그룹에 연결
+3. 외부 테스트 그룹 공개 링크에 build 13이 연결됐는지 확인
 4. 외부 테스트 심사 제출
 5. App Privacy 답변에 선택 부모 공유 데이터 타입 반영
 6. CloudKit Dashboard public database schema 배포 상태 확인
