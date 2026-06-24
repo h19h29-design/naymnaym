@@ -210,9 +210,23 @@ for screenshot in docs/app-store-screenshots/iphone-6-9-upload/*.jpg; do
 done
 
 count="$(find docs/app-store-screenshots/iphone-6-9-upload -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')"
-[ "$count" -ge "1" ] || fail "At least one App Store screenshot is required"
-[ "$count" -le "10" ] || fail "App Store screenshot count is $count, expected at most 10"
+[ "$count" = "10" ] || fail "App Store screenshot count is $count, expected exactly 10"
 pass "App Store screenshot count is $count"
+
+for required_screenshot in \
+  01-onboarding.jpg \
+  02-today-meal.jpg \
+  03-one-bite.jpg \
+  04-levelup.jpg \
+  05-parent-summary.jpg \
+  06-allergy-safety.jpg \
+  07-share-card.jpg \
+  08-monthly-calendar-live.jpg \
+  09-settings-privacy-support.jpg \
+  10-support-guide.jpg
+do
+  require_file "docs/app-store-screenshots/iphone-6-9-upload/$required_screenshot"
+done
 
 for url in \
   "https://h19h29-design.github.io/naymnaym/" \

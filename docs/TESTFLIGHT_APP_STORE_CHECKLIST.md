@@ -42,13 +42,16 @@
 ## 스크린샷 체크리스트
 - 6.9형 업로드 후보: `docs/app-store-screenshots/iphone-6-9-upload/`
 - 규격 검증: `1320 x 2868`, JPG, alpha 없음
-- 오늘 급식: `01-today-no-meal.jpg`
-- 실제 월간 NEIS 식단: `02-monthly-calendar-live.jpg`
-- 레벨/캐릭터: `03-level-character.jpg`
-- 보호자 요약: `04-parent-summary.jpg`
-- 설정/개인정보/지원 접근: `05-settings-privacy-support.jpg`
-- 앱 내 개인정보 처리방침: `06-privacy-policy.jpg`
-- 앱 내 지원 안내: `07-support-guide.jpg`
+- 첫 실행 인트로: `01-onboarding.jpg`
+- 오늘 급식: `02-today-meal.jpg`
+- 한 입 도전 결과: `03-one-bite.jpg`
+- 레벨/캐릭터: `04-levelup.jpg`
+- 보호자 요약: `05-parent-summary.jpg`
+- 알레르기 안전: `06-allergy-safety.jpg`
+- 공유 카드: `07-share-card.jpg`
+- 실제 월간 NEIS 식단: `08-monthly-calendar-live.jpg`
+- 설정/개인정보/지원 접근: `09-settings-privacy-support.jpg`
+- 앱 내 지원 안내: `10-support-guide.jpg`
 - 보조 6.3형 원본: `docs/app-store-screenshots/*.png`
 - 세부 설명: `docs/APP_STORE_SCREENSHOTS.md`
 - 인트로 실기기 크기 검증: `build/verification/intro-iphone17-final.jpg`, `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`

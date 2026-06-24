@@ -17,7 +17,7 @@ build 14 확인:
 - `git diff --check`: 통과
 - NEIS 실제 호출: `등촌고등학교` 검색 성공, `mealServiceDietInfo` 2026년 6월 중식 row 19개, `DDISH_NM/CAL_INFO/NTR_INFO` 필드 확인
 - 인트로 검증: `build/verification/intro-iphone17-final.jpg`, `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/intro-animation-final.mov`
-- App Store 후보 스크린샷: `build/verification/appstore/*.jpg`
+- App Store 후보 스크린샷: `docs/app-store-screenshots/iphone-6-9-upload/*.jpg` 10장, 온보딩/오늘 급식/한 입 도전/레벨업/부모 요약/알레르기 안전/공유 카드 포함
 - Share Sheet 확인: `build/verification/share-sheet-iphone16.jpg`
 - Release unsigned archive: `build/NaymNaymLevelUp-build14-unsigned.xcarchive`
 - App Store Connect remote-signed IPA: `build/TestFlightExportBuild14Signed/NaymNaymLevelUp.ipa`
@@ -41,7 +41,7 @@ build 14 확인:
 | 부모 공유 사진 | 코드 완료, 운영 설정 확인 필요 | 공유 선택 사진만 `SharedMealPhoto` + CKAsset 생성, 사진 공유는 기록 공유가 켜진 경우에만 선택 가능, 기록 공유 해제 시 사진 공유도 비공유로 정리, build 14 export에 Production CloudKit entitlement 포함 |
 | 데이터 삭제 범위 | 완료 | `resetChallengeRecords`는 도전/식사 기록만 지우고 프로필/부모 연결/사진 파일은 유지, `resetAllData`는 프로필/기록/XP/부모 연결/사진 디렉터리/메타데이터까지 삭제하도록 XCTest 고정 |
 | 개인정보/지원 안내 | 완료, 공개 배포 완료 | 앱 내 설정 화면, 웹 개인정보 처리방침/지원/데이터 안전 링크, `docs/PRIVACY_POLICY_DRAFT.md`, `docs/SUPPORT.md`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html`, GitHub Pages URL 200 확인 |
-| App Store 스크린샷 | 완료 | `docs/app-store-screenshots/iphone-6-9-upload/*.jpg`, 1320x2868, alpha 없음 |
+| App Store 스크린샷 | 완료 | `docs/app-store-screenshots/iphone-6-9-upload/*.jpg` 10장, 1320x2868, alpha 없음, 온보딩/오늘 급식/한 입 도전/레벨업/부모 요약/알레르기 안전/공유 카드 포함 |
 | Privacy Manifest | 완료 | `NaymNaymLevelUp/PrivacyInfo.xcprivacy`와 build 14 export에 UserDefaults 사유, 선택 부모 공유용 수집 데이터 타입, 추적 없음 선언 포함 |
 
 ## 실제 NEIS 확인
@@ -71,7 +71,7 @@ build 14 확인:
 - GitHub Pages 출시 사이트: `privacy.html`, `support.html`, `data-safety.html` HTTPS 200 확인
 - 2026-06-24 추가 검증: 설정 화면 공개 URL 링크 추가 후 iOS Simulator build 통과, XCTest 55개 통과
 - 2026-06-25 추가 검증: CloudKit record type/field 계약, Privacy Manifest 수집 데이터 항목, 출시 인트로 필수 에셋 번들링, 전체 데이터 삭제/도전 기록 삭제 범위, 부모 공유 도전 기록 선택 공유 gate 고정 테스트 추가 후 XCTest 66개 통과
-- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T17-12-28-385Z_pid66299_a99022c8.xcresult`
+- 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T17-28-20-518Z_pid66299_efcfa4ca.xcresult`
 - 시뮬레이터 스냅샷: `build/verification/intro-iphone17-final.jpg`, `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
 - 2026-06-24 추가 갱신: 설정 화면 공개 URL 링크, 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 13 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 추가 갱신: 부모 공유 도전 기록 선택 공유 gate와 사진 삭제 보강을 반영한 build 14 signed IPA를 App Store Connect에 업로드 완료
