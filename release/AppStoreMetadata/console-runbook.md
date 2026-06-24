@@ -1,13 +1,13 @@
 # App Store Connect / CloudKit 콘솔 런북
 
-이 문서는 build 13 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다.
+이 문서는 build 14 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다.
 
 ## 현재 배포 후보
 
 - 앱 이름: 냠냠레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.0`
-- 최신 빌드: `13`
+- 최신 빌드: `14`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
@@ -18,11 +18,11 @@
 ## TestFlight 공개 순서
 
 1. App Store Connect에서 냠냠레벨업 앱으로 이동한다.
-2. TestFlight 빌드 목록에서 `1.0 (13)` 처리 완료 여부를 확인한다.
-3. build 13을 내부 테스트 그룹에 연결한다.
+2. TestFlight 빌드 목록에서 `1.0 (14)` 처리 완료 여부를 확인한다.
+3. build 14를 내부 테스트 그룹에 연결한다.
 4. 외부 테스트 그룹 `패밀리`를 만들거나 기존 그룹을 사용한다.
-5. build 13을 외부 테스트 그룹 `패밀리`에 연결한다.
-6. 공개 링크가 build 13을 가리키는지 확인한다.
+5. build 14를 외부 테스트 그룹 `패밀리`에 연결한다.
+6. 공개 링크가 build 14를 가리키는지 확인한다.
 7. 외부 테스트 심사 제출 전 아래 심사용 설명을 그대로 사용한다.
 
 심사용 설명:
@@ -47,7 +47,7 @@
 
 ## App Privacy 답변 기준
 
-최종 답변은 앱 소유자가 확인해야 한다. 현재 build 13 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
+최종 답변은 앱 소유자가 확인해야 한다. 현재 build 14 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
 
 - Tracking: 아니요
 - Contact Info: 수집 안 함
@@ -144,7 +144,7 @@ Container:
 
 ## CloudKit 운영 스모크 테스트
 
-아래는 TestFlight build 13 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
+아래는 TestFlight build 14 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
 
 1. 아이 모드에서 보호자 연결 초대 코드를 생성한다.
 2. CloudKit Public Database에 `ParentLink` record가 생성되는지 확인한다.

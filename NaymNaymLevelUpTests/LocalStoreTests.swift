@@ -54,6 +54,29 @@ final class LocalStoreTests: XCTestCase {
         store.save([record])
 
         XCTAssertEqual(store.load().first?.action, .alreadyEats)
+        XCTAssertEqual(store.load().first?.parentShareEnabled, false)
+    }
+
+    func testLegacyChallengeRecordDefaultsToPrivateParentShare() throws {
+        let json = Data("""
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "date": "20260618",
+          "menuName": "콩나물무침",
+          "action": "oneBite",
+          "gainedExp": 18,
+          "badgeName": "초록 용사",
+          "nutrients": ["식이섬유"],
+          "createdAt": "2026-06-18T00:00:00Z"
+        }
+        """.utf8)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let record = try decoder.decode(ChallengeRecord.self, from: json)
+
+        XCTAssertEqual(record.menuName, "콩나물무침")
+        XCTAssertFalse(record.parentShareEnabled)
     }
 
     func testMealRecordStoreSavesEatingStatusAndReasons() {
@@ -180,8 +203,7 @@ final class LocalStoreTests: XCTestCase {
                 action: .oneBite,
                 gainedExp: 18,
                 badgeName: "초록 용사",
-                nutrients: ["식이섬유"],
-                childLinkId: UUID()
+                nutrients: ["식이섬유"]
             ),
             ChallengeRecord(
                 date: "20260618",
@@ -189,7 +211,8 @@ final class LocalStoreTests: XCTestCase {
                 action: .oneBite,
                 gainedExp: 18,
                 badgeName: "초록 용사",
-                nutrients: ["식이섬유"]
+                nutrients: ["식이섬유"],
+                parentShareEnabled: true
             )
         ]
 
@@ -246,6 +269,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(appState.mealRecords.first?.childLinkId, child.id)
         XCTAssertEqual(appState.records.first?.childLinkId, child.id)
         XCTAssertEqual(appState.mealRecords.first?.parentShareEnabled, true)
+        XCTAssertEqual(appState.records.first?.parentShareEnabled, true)
     }
 
     @MainActor
@@ -597,7 +621,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record["createdAt"] as? Date, createdAt)
     }
 
-    func testCloudKitSharedChallengeRecordUsesCurrentChildForLocalRecord() {
+    func testCloudKitSharedChallengeRecordRequiresParentShare() {
         let service = CloudKitParentLinkService()
         let child = ChildLink(
             childNickname: "지우",
@@ -605,7 +629,7 @@ final class LocalStoreTests: XCTestCase {
             mode: .high,
             inviteCode: "NYAM-ABCD-EFGH-IJKL"
         )
-        let localRecord = ChallengeRecord(
+        let hidden = ChallengeRecord(
             date: "20260618",
             menuName: "시금치나물",
             action: .oneBite,
@@ -614,12 +638,23 @@ final class LocalStoreTests: XCTestCase {
             nutrients: ["식이섬유"],
             childLinkId: nil
         )
+        let shared = ChallengeRecord(
+            date: "20260618",
+            menuName: "콩나물무침",
+            action: .oneBite,
+            gainedExp: 18,
+            badgeName: "초록 용사",
+            nutrients: ["식이섬유"],
+            childLinkId: nil,
+            parentShareEnabled: true
+        )
 
-        let record = service.makeSharedChallengeRecord(localRecord, childLink: child)
+        XCTAssertNil(service.makeSharedChallengeRecord(hidden, childLink: child))
+        let record = service.makeSharedChallengeRecord(shared, childLink: child)
 
         XCTAssertEqual(record?.recordType, CloudKitParentLinkService.sharedChallengeRecordType)
         XCTAssertEqual(record?["childLinkId"] as? String, child.id.uuidString)
-        XCTAssertEqual(record?["menuName"] as? String, "시금치나물")
+        XCTAssertEqual(record?["menuName"] as? String, "콩나물무침")
     }
 
     func testCloudKitSharedChallengeRecordFieldsMatchConsoleRunbook() throws {
@@ -651,7 +686,8 @@ final class LocalStoreTests: XCTestCase {
             createdAt: createdAt,
             eatingStatus: .oneBite,
             difficultyReasons: [.texture],
-            photoIds: ["photo-1"]
+            photoIds: ["photo-1"],
+            parentShareEnabled: true
         )
 
         let record = try XCTUnwrap(service.makeSharedChallengeRecord(challenge, childLink: child))
@@ -901,7 +937,8 @@ final class LocalStoreTests: XCTestCase {
                 gainedExp: 18,
                 badgeName: "초록 용사",
                 nutrients: ["식이섬유"],
-                childLinkId: firstChildId
+                childLinkId: firstChildId,
+                parentShareEnabled: true
             ),
             ChallengeRecord(
                 date: "20260618",
@@ -910,7 +947,8 @@ final class LocalStoreTests: XCTestCase {
                 gainedExp: 3,
                 badgeName: nil,
                 nutrients: ["식이섬유"],
-                childLinkId: secondChildId
+                childLinkId: secondChildId,
+                parentShareEnabled: true
             )
         ]
 

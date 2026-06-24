@@ -455,6 +455,7 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
     var difficultyReasons: [DifficultyReason]?
     var photoIds: [String]?
     var childLinkId: UUID?
+    var parentShareEnabled: Bool
     var baseExp: Int
     var bonusExp: Int
     var recordExp: Int
@@ -476,6 +477,7 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         difficultyReasons: [DifficultyReason] = [],
         photoIds: [String] = [],
         childLinkId: UUID? = nil,
+        parentShareEnabled: Bool = false,
         xpBreakdown: XPBreakdown? = nil,
         baseExp: Int? = nil,
         bonusExp: Int? = nil,
@@ -494,6 +496,7 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         self.difficultyReasons = difficultyReasons
         self.photoIds = photoIds
         self.childLinkId = childLinkId
+        self.parentShareEnabled = parentShareEnabled
         self.baseExp = baseExp ?? gainedExp
         self.bonusExp = bonusExp ?? 0
         self.recordExp = inferredBreakdown.record
@@ -531,6 +534,7 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         case difficultyReasons
         case photoIds
         case childLinkId
+        case parentShareEnabled
         case baseExp
         case bonusExp
         case recordExp
@@ -554,6 +558,7 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         difficultyReasons = try container.decodeIfPresent([DifficultyReason].self, forKey: .difficultyReasons) ?? []
         photoIds = try container.decodeIfPresent([String].self, forKey: .photoIds) ?? []
         childLinkId = try container.decodeIfPresent(UUID.self, forKey: .childLinkId)
+        parentShareEnabled = try container.decodeIfPresent(Bool.self, forKey: .parentShareEnabled) ?? false
         baseExp = try container.decodeIfPresent(Int.self, forKey: .baseExp) ?? gainedExp
         bonusExp = try container.decodeIfPresent(Int.self, forKey: .bonusExp) ?? 0
 

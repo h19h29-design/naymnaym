@@ -40,9 +40,10 @@
 ## 2026-06-25
 - CloudKit record type/field 계약과 Privacy Manifest 수집 데이터 항목을 XCTest로 고정했다.
 - 출시 인트로에서 사용하는 로고, 마스코트, 배경, 기능 아이콘 에셋이 앱 번들에 포함되는지 XCTest로 고정했다.
-- plist lint, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 13 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 상태를 확인하는 출시 검증 스크립트를 추가했다.
+- plist lint, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, TestFlight IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 상태를 확인하는 출시 검증 스크립트를 추가했다.
 - 로컬 API 키를 출력하지 않고 NEIS 학교 검색과 급식식단정보 실제 응답을 확인하는 smoke 스크립트를 추가했다.
 - NEIS smoke 기본 기준을 현재 월 대신 등촌고등학교 2026년 6월로 고정하고, 환경변수로 다른 학교/월을 확인할 수 있게 했다.
-- 제출 전 대기 메모를 build 13 업로드 완료 상태와 남은 App Store Connect/CloudKit 작업 기준으로 갱신했다.
-- 추가 변경은 테스트/문서 보강이므로 build 13 바이너리 재업로드는 하지 않는다.
+- 제출 전 대기 메모를 build 14 업로드 완료 상태와 남은 App Store Connect/CloudKit 작업 기준으로 갱신했다.
 - 전체 데이터 삭제와 도전 기록 삭제의 범위를 XCTest로 고정해 프로필, 부모 연결, 사진 디렉터리 삭제 동작이 섞이지 않게 했다.
+- 부모 공유 도전 기록이 명시적으로 공유 선택된 항목만 CloudKit과 부모 요약에 포함되도록 보강했다.
+- 개인정보 공유 범위 변경분을 반영해 앱 빌드 번호를 14로 올리고 TestFlight CLI 업로드까지 완료했다.

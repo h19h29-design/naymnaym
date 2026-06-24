@@ -11,7 +11,7 @@
 - 기본 언어: 한국어
 - 번들 ID: `com.h19h29.naymnaymlevelup`
 - 버전: 1.0
-- 빌드: 13
+- 빌드: 14
 - 저작권: © 2026 h19h29-design. All rights reserved.
 
 ## 키워드

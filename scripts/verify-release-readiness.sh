@@ -134,9 +134,9 @@ check_uploaded_ipa() {
 
   require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
   require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "1.0"
-  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "13"
+  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "14"
   require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
-  pass "$ipa contains build 1.0 (13)"
+  pass "$ipa contains build 1.0 (14)"
 }
 
 git diff --check
@@ -171,12 +171,12 @@ require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationAlwaysAndW
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-services:0" "CloudKit"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
-require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 13;" "App build number is 13"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 14;" "App build number is 14"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = \"com\\.h19h29\\.naymnaymlevelup\";" "Bundle ID is com.h19h29.naymnaymlevelup"
 require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store metadata version is 1.0"
-require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: 13$" "App Store metadata build is 13"
+require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: 14$" "App Store metadata build is 14"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"
-require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: 13$" "ko-KR metadata build is 13"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: 14$" "ko-KR metadata build is 14"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
 require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
@@ -188,12 +188,12 @@ require_absent_path "Cartfile"
 require_absent_path "Cartfile.resolved"
 require_absent_pattern "NaymNaymLevelUp NaymNaymLevelUp.xcodeproj" "Firebase|GoogleMobileAds|AdMob|AppTrackingTransparency|NSUserTrackingUsageDescription|FBSDK|AppsFlyer|Amplitude|Mixpanel|RevenueCat|StoreKit|CoreLocation|CLLocation|AuthenticationServices|SignInWithApple" "No ad, analytics, tracking, purchase, login, or location SDK references"
 
-require_file "build/build13-upload.log"
-require_file "build/TestFlightExportBuild13Signed/ExportOptions.plist"
-require_pattern "build/build13-upload.log" "Upload succeeded" "build 13 upload log has success marker"
-require_pattern "build/build13-upload.log" "Uploaded package is processing" "build 13 upload log has processing marker"
-require_not_tracked "build/build13-upload.log"
-check_uploaded_ipa "build/TestFlightExportBuild13Signed/NaymNaymLevelUp.ipa"
+require_file "build/build14-upload.log"
+require_file "build/TestFlightExportBuild14Signed/ExportOptions.plist"
+require_pattern "build/build14-upload.log" "Uploaded NaymNaymLevelUp" "build 14 upload log has app upload marker"
+require_pattern "build/build14-upload.log" "EXPORT SUCCEEDED" "build 14 upload command succeeded"
+require_not_tracked "build/build14-upload.log"
+check_uploaded_ipa "build/TestFlightExportBuild14Signed/NaymNaymLevelUp.ipa"
 
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60

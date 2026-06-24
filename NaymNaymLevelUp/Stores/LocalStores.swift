@@ -278,7 +278,7 @@ struct CloudKitParentLinkService {
     }
 
     func makeSharedChallengeRecord(_ challengeRecord: ChallengeRecord, childLink: ChildLink) -> CKRecord? {
-        guard childLink.permissions.shareChallengeRecords else { return nil }
+        guard childLink.permissions.shareChallengeRecords, challengeRecord.parentShareEnabled else { return nil }
         let record = CKRecord(
             recordType: Self.sharedChallengeRecordType,
             recordID: CKRecord.ID(recordName: "challenge-\(childLink.id.uuidString)-\(challengeRecord.id.uuidString)")
@@ -551,7 +551,8 @@ struct CloudKitParentLinkService {
             badgeName: badgeName,
             nutrients: split(record["nutrients"] as? String),
             createdAt: record["createdAt"] as? Date ?? Date(),
-            childLinkId: childLink.id
+            childLinkId: childLink.id,
+            parentShareEnabled: true
         )
     }
 

@@ -268,6 +268,7 @@ final class AppState: ObservableObject {
             difficultyReasons: reasons,
             photoIds: photoIds,
             childLinkId: childLinkId,
+            parentShareEnabled: shareWithParent,
             grant: grant
         )
     }
@@ -362,6 +363,7 @@ final class AppState: ObservableObject {
         difficultyReasons: [DifficultyReason] = [],
         photoIds: [String] = [],
         childLinkId: UUID? = nil,
+        parentShareEnabled: Bool = false,
         grant: XPGrant
     ) -> ChallengeOutcome? {
         var nextProgress = progress
@@ -378,6 +380,7 @@ final class AppState: ObservableObject {
             difficultyReasons: difficultyReasons,
             photoIds: photoIds,
             childLinkId: childLinkId,
+            parentShareEnabled: parentShareEnabled,
             xpBreakdown: outcome.xpBreakdown,
             baseExp: outcome.baseExp,
             bonusExp: outcome.bonusExp,
@@ -544,7 +547,7 @@ final class AppState: ObservableObject {
         }
 
         let sharedMeals = mealRecords.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
-        let sharedChallenges = records.filter { $0.childLinkId == nil || $0.childLinkId == childShareLink.id }
+        let sharedChallenges = records.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
         let sharedPhotos = mealPhotos.filter { $0.isSharedWithParent && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
 
         let cloudRecords =
@@ -623,7 +626,9 @@ final class AppState: ObservableObject {
                     .filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
                     .map(\.id)
             )
-            let challengeRecords = records.filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
+            let challengeRecords = records
+                .filter(\.parentShareEnabled)
+                .filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
             let weeklyMealRecords = sharedMealRecords.filter { $0.createdAt >= weekAgo }
             let weeklyChallengeRecords = challengeRecords.filter { $0.createdAt >= weekAgo }
 
