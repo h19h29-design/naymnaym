@@ -199,6 +199,7 @@ struct LevelUpResultView: View {
 }
 
 enum ShareCardKind: String, CaseIterable, Identifiable {
+    case todayRecord
     case oneBiteSuccess
     case levelUp
     case badgeEarned
@@ -207,6 +208,7 @@ enum ShareCardKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .todayRecord: return "오늘 기록 카드"
         case .oneBiteSuccess: return "한 입 도전 성공 카드"
         case .levelUp: return "레벨업 카드"
         case .badgeEarned: return "뱃지 획득 카드"
@@ -215,6 +217,7 @@ enum ShareCardKind: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .todayRecord: return "calendar.badge.checkmark"
         case .oneBiteSuccess: return "fork.knife.circle.fill"
         case .levelUp: return "arrow.up.circle.fill"
         case .badgeEarned: return "seal.fill"
@@ -222,7 +225,10 @@ enum ShareCardKind: String, CaseIterable, Identifiable {
     }
 
     static func available(for outcome: ChallengeOutcome) -> [ShareCardKind] {
-        var kinds: [ShareCardKind] = [.oneBiteSuccess]
+        var kinds: [ShareCardKind] = [.todayRecord]
+        if outcome.xpBreakdown.challenge > 0 {
+            kinds.append(.oneBiteSuccess)
+        }
         if outcome.didLevelUp {
             kinds.append(.levelUp)
         }
@@ -267,6 +273,12 @@ enum ShareCardRenderer {
 
     static func textLines(kind: ShareCardKind, outcome: ChallengeOutcome) -> [String] {
         switch kind {
+        case .todayRecord:
+            return [
+                "오늘의 기록",
+                "\(outcome.menuName) 기록 완료!",
+                "총 XP +\(outcome.gainedExp)"
+            ]
         case .oneBiteSuccess:
             return [
                 "오늘의 한 입 도전",

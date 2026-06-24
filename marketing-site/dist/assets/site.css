@@ -133,6 +133,12 @@ h1 {
   color: #fff;
 }
 
+.button.muted {
+  border-color: rgba(103, 185, 79, 0.22);
+  background: rgba(103, 185, 79, 0.10);
+  color: var(--green-dark);
+}
+
 .hero-visual {
   display: grid;
   place-items: center;
@@ -162,6 +168,10 @@ h1 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.compact-grid .card {
+  min-height: 132px;
 }
 
 .card {

@@ -618,6 +618,9 @@ enum LevelUpXPPolicy {
     static let dailyBaseCap = 50
     static let dailyChallengeBonusCap = 70
     static let dailyTotalCap = 100
+    static let variedFoodGroupBonus = 5
+    static let streakRecordBonus = 5
+    static let allergySafetyCheckBonus = 10
 
     static func baseBreakdown(for status: EatingStatus) -> XPBreakdown {
         switch status {
@@ -694,15 +697,15 @@ enum LevelUpXPPolicy {
         if status != .allergyAvoided {
             if isFirstRecord(on: date, existingMealRecords: existingMealRecords),
                hasRecord(on: previousDateString(before: date), existingMealRecords: existingMealRecords) {
-                base = base.adding(XPBreakdown(record: 6))
-                notes.append("꾸준한 기록 +6")
+                base = base.adding(XPBreakdown(record: streakRecordBonus))
+                notes.append("연속 기록 +\(streakRecordBonus)")
             }
 
             let existingNutrients = Set(existingRecords.filter { $0.date == date }.flatMap(\.nutrients))
             let newNutrients = nutrients.filter { !existingNutrients.contains($0) }
             if !newNutrients.isEmpty {
-                base = base.adding(XPBreakdown(balance: 6))
-                notes.append("다양한 음식군 기록 +6")
+                base = base.adding(XPBreakdown(balance: variedFoodGroupBonus))
+                notes.append("다양한 음식군 기록 +\(variedFoodGroupBonus)")
             }
 
             let beforeGroupCount = existingNutrients.count
@@ -713,8 +716,8 @@ enum LevelUpXPPolicy {
             }
 
             if !item.allergyCodes.isEmpty {
-                base = base.adding(XPBreakdown(safety: 4))
-                notes.append("알레르기 정보 확인 +4")
+                base = base.adding(XPBreakdown(safety: allergySafetyCheckBonus))
+                notes.append("알레르기 안전 확인 +\(allergySafetyCheckBonus)")
             }
         }
 

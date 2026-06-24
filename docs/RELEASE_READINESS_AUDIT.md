@@ -6,6 +6,23 @@
 
 코드, 테스트, 시뮬레이터, Release archive, App Store 제출 자료는 1.0 후보 상태까지 준비됐다. TestFlight용 signed build 1.0 (11) IPA는 생성 및 업로드까지 완료됐다. 외부 테스트 공개는 App Store Connect에서 build 11 처리 완료 확인, 외부 그룹 연결, 심사 제출이 남아 있다.
 
+### 2026-06-24 build 12 갱신
+
+build 12 후보에서 XP 정책, SNS 공유 카드, App Store 메타데이터/Privacy 초안, 마케팅 사이트 데이터 안전 페이지를 갱신했다. XcodeBuildMCP 기준 iPhone 16, iPhone 17, iPhone SE 시뮬레이터 빌드/실행과 전체 테스트는 통과했다. Release archive는 프로젝트의 Development Team 미지정 오류를 확인해 `47SNWAZN3G`로 보정했으나, 이후 코드서명 단계에서 Apple Development 인증서/키체인 권한 대기 상태로 장시간 멈춰 자동화를 중단했다. 따라서 build 12 TestFlight 업로드는 아직 진행하지 않았다.
+
+build 12 확인:
+
+- XCTest: 55개 통과
+- iPhone 16 Debug build/install/run: 통과
+- iPhone 17 Debug build/install/run: 통과
+- iPhone SE Debug build/install/run: 통과
+- `git diff --check`: 통과
+- NEIS 실제 호출: `서울고등학교` 검색 성공, `mealServiceDietInfo` 2024년 6월 중식 row 18개, `DDISH_NM/CAL_INFO/NTR_INFO` 필드 확인
+- 인트로 검증: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/intro-animation-final.mov`
+- App Store 후보 스크린샷: `build/verification/appstore/*.jpg`
+- Share Sheet 확인: `build/verification/share-sheet-iphone16.jpg`
+- hard blocker: 코드서명 키체인/인증서 권한 확인 필요. 이 단계는 사용자 Mac에서 Apple 계정/키체인 승인 후 재시도해야 한다.
+
 ## 요구사항별 증거
 
 | 요구사항 | 현재 상태 | 증거 |

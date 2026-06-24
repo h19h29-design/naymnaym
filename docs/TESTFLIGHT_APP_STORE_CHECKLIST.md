@@ -10,6 +10,7 @@
 - TestFlight build 1.0 (11) signed IPA가 생성됐다.
 - build 11 IPA에 `PrivacyInfo.xcprivacy`, 선택 부모 공유용 수집 데이터 타입, `ITSAppUsesNonExemptEncryption = false`, TestFlight beta entitlement, CloudKit Production entitlement가 포함됐다.
 - build 11 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
+- 2026-06-24 이후 코드 변경분은 build 12 준비 대상으로 빌드 번호를 올렸다. build 12 archive와 업로드 여부는 최신 검증 보고서를 따른다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
 ## App Store Connect에서 필요한 값
@@ -20,6 +21,7 @@
 - 연령 등급: 알레르기/건강 진단 표현 없음 기준으로 입력
 - 개인정보 처리방침 URL: `marketing-site/dist/` 배포 도메인의 `/privacy.html`
 - 지원 URL: `marketing-site/dist/` 배포 도메인의 `/support.html`
+- 데이터 안전 안내 URL: `marketing-site/dist/` 배포 도메인의 `/data-safety.html`
 
 ## App Privacy 입력 초안
 - 회원가입 없음
@@ -82,6 +84,7 @@
   - 초대 코드 조회는 정확한 `inviteCode` 조건으로만 동작하는지 확인
 - 개인정보 처리방침/지원 URL 공개 상태 확인
 - 정적 출시 사이트 산출물 `marketing-site/dist/index.html`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html` 배포
+- 정적 출시 사이트 산출물 `marketing-site/dist/data-safety.html` 배포
 - App Privacy 답변에서 부모 공유 시 CloudKit에 저장될 수 있는 사용자 콘텐츠, 사진/동영상, 건강 정보, 사용자 ID를 앱 기능 제공 목적과 연결된 데이터로 입력
 
 ## 공식 제출 참고

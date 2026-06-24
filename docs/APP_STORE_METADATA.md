@@ -1,11 +1,13 @@
 # App Store 메타데이터 초안
 
+최신 제출용 초안은 `release/AppStoreMetadata/ko-KR.md`와 `release/AppStoreMetadata/app-privacy-draft.md`에 정리했다. 이 파일은 기존 참고 문서로 유지한다.
+
 ## 기본 정보
 - 앱 이름: 냠냠레벨업
 - 부제: 한 입 도전 급식 코칭
 - 번들 ID: `com.h19h29.naymnaymlevelup`
 - 버전: 1.0
-- 빌드: 8
+- 빌드: 12 준비 대상
 - 가격: 무료
 - 기본 언어: 한국어
 - 권장 카테고리: 교육
@@ -53,6 +55,9 @@
 
 ## 지원 URL
 `marketing-site/dist/`를 정적 호스팅에 배포한 뒤 `https://<배포도메인>/support.html` URL을 App Store Connect에 입력합니다.
+
+## 데이터 안전 안내 URL
+`marketing-site/dist/`를 정적 호스팅에 배포한 뒤 `https://<배포도메인>/data-safety.html` URL을 내부 검토와 지원 문서에 연결합니다.
 
 ## 스크린샷 세트
 - 첫 실행 인트로

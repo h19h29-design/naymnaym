@@ -80,6 +80,44 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertTrue(grant.notes.contains { $0.contains("한 입 도전 +25") })
     }
 
+    func testBalancedAndConsistentRecordsEarnConfiguredXPBonuses() {
+        let item = MealItem(
+            name: "멸치볶음",
+            allergyCodes: [4],
+            nutrients: ["칼슘", "단백질"],
+            tags: [],
+            sourceRawText: "멸치볶음(4)"
+        )
+        let previousMealRecord = MealRecord(date: "20260619", menuName: "현미밥", eatingStatus: .finished)
+        let existingRecord = ChallengeRecord(
+            date: "20260620",
+            menuName: "시금치나물",
+            action: .alreadyEats,
+            gainedExp: 10,
+            badgeName: nil,
+            nutrients: ["식이섬유", "비타민"],
+            createdAt: Date(timeIntervalSince1970: 1),
+            eatingStatus: .finished
+        )
+
+        let grant = LevelUpXPPolicy.grant(
+            for: item,
+            status: .finished,
+            date: "20260620",
+            existingRecords: [existingRecord],
+            existingMealRecords: [previousMealRecord],
+            isAllergyRisk: false
+        )
+
+        XCTAssertEqual(grant.base.record, 15)
+        XCTAssertEqual(grant.base.balance, 15)
+        XCTAssertEqual(grant.base.safety, 10)
+        XCTAssertTrue(grant.notes.contains("연속 기록 +5"))
+        XCTAssertTrue(grant.notes.contains("다양한 음식군 기록 +5"))
+        XCTAssertTrue(grant.notes.contains("균형 잡힌 식사 기록 +10"))
+        XCTAssertTrue(grant.notes.contains("알레르기 안전 확인 +10"))
+    }
+
     func testDailyCapsLimitBaseBonusAndTotalXP() {
         let grant = LevelUpXPPolicy.applyDailyCaps(
             XPGrant(base: XPBreakdown(record: 80), bonus: XPBreakdown(challenge: 90)),
@@ -161,12 +199,14 @@ final class ProgressLevelTests: XCTestCase {
             damage: 30,
             oldLevel: 1,
             newLevel: 2,
-            skin: CharacterSkin.skin(for: 2)
+            skin: CharacterSkin.skin(for: 2),
+            xpBreakdown: XPBreakdown(challenge: 43)
         )
 
         let lines = ShareCardKind.available(for: outcome).flatMap { ShareCardRenderer.textLines(kind: $0, outcome: outcome) }
         let combined = lines.joined(separator: " ")
 
+        XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.todayRecord))
         XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.oneBiteSuccess))
         XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.levelUp))
         XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.badgeEarned))
@@ -174,6 +214,27 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertFalse(combined.contains("학교"))
         XCTAssertFalse(combined.contains("알레르기"))
         XCTAssertFalse(combined.contains("반/번호"))
+    }
+
+    func testShareCardRendererIncludesTodayRecordWithoutOneBiteWhenNoChallengeXP() {
+        let outcome = ChallengeOutcome(
+            menuName: "우유",
+            gainedExp: 8,
+            badgeName: "안전 확인",
+            damage: 0,
+            oldLevel: 1,
+            newLevel: 1,
+            skin: CharacterSkin.skin(for: 1),
+            xpBreakdown: XPBreakdown(safety: 8)
+        )
+
+        let kinds = ShareCardKind.available(for: outcome)
+        let lines = kinds.flatMap { ShareCardRenderer.textLines(kind: $0, outcome: outcome) }
+
+        XCTAssertTrue(kinds.contains(.todayRecord))
+        XCTAssertFalse(kinds.contains(.oneBiteSuccess))
+        XCTAssertTrue(lines.contains("오늘의 기록"))
+        XCTAssertTrue(lines.contains("우유 기록 완료!"))
     }
 
     @MainActor

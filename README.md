@@ -12,6 +12,7 @@
 - 알레르기 번호 안내 및 도전 잠금
 - 급식판 사진 기록과 선택적 부모 공유
 - 부모 화면의 아이별 요약, 칭찬 카드, 주간 리포트
+- SNS 공유 카드와 iOS 기본 공유 시트
 - 회원가입 없는 로컬 저장
 
 ## 데이터 정책
@@ -28,6 +29,7 @@
 - 별명, 학교, 알레르기, 먹은 정도, 사진 메타데이터는 기본적으로 기기 내부에 저장
 - 급식판 사진은 기본적으로 기기 내부 저장
 - 부모 공유를 켠 기록과 사진만 부모 화면에서 다룸
+- SNS 공유 카드에는 학교 상세 정보, 아이 이름, 개인 알레르기 정보, 부모 리포트 전체를 넣지 않음
 - 공개 피드, 친구 공유, 교사용 감시 기능 없음
 
 ## CloudKit 부모 연동 구조
@@ -74,5 +76,12 @@ NEIS_API_KEY = 발급받은_키
 - 오늘 급식 화면의 상태 배너 확인
 - 사진 권한 문구 확인
 - App Privacy 정보 입력
+- 개인정보 처리방침/지원/데이터 안전 URL 공개 상태 확인
 - TestFlight 내부/외부 테스트
 - App Review 제출 전 알레르기 면책 및 개인정보 처리 안내 최종 확인
+
+## App Store 제출 자료
+- App Store 메타데이터 초안: `release/AppStoreMetadata/ko-KR.md`
+- App Privacy 답변 초안: `release/AppStoreMetadata/app-privacy-draft.md`
+- 제출 전 대기 메모: `release/AppStoreMetadata/submission-notes.md`
+- 정적 출시 사이트: `marketing-site/dist/`
