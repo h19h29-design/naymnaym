@@ -18,7 +18,7 @@
 - Apple Developer Program 결제 또는 계약 동의 필요
 - App Store Connect 계정 소유자만 가능한 법적 동의 필요
 - 인증서 또는 프로비저닝 권한 없음
-- 개인정보처리방침 URL 미확정
+- 개인정보처리방침 URL이 공개 URL과 다르거나 App Store Connect 입력 전 법적 확인이 필요한 경우
 - App Privacy 답변을 사실과 다르게 입력해야 하는 상황
 - 실제 App Review `Submit for Review` 버튼을 누르기 직전
 
@@ -26,5 +26,5 @@
 
 - CloudKit container `iCloud.com.h19h29.naymnaymlevelup` 운영 환경 schema 배포
 - public database record type과 queryable index 확인
-- 개인정보 처리방침/지원/데이터 안전 페이지 공개 URL 확정
+- 개인정보 처리방침/지원/데이터 안전 페이지는 GitHub Pages에 공개 완료. App Store Connect 입력 전 최종 법률/표기 확인 필요
 - TestFlight 외부 그룹과 공개 링크에 build 12 연결

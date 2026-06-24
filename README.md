@@ -76,7 +76,7 @@ NEIS_API_KEY = 발급받은_키
 - 오늘 급식 화면의 상태 배너 확인
 - 사진 권한 문구 확인
 - App Privacy 정보 입력
-- 개인정보 처리방침/지원/데이터 안전 URL 공개 상태 확인
+- 개인정보 처리방침/지원/데이터 안전 URL 공개 상태 확인 완료
 - TestFlight 내부/외부 테스트
 - App Review 제출 전 알레르기 면책 및 개인정보 처리 안내 최종 확인
 
@@ -84,4 +84,4 @@ NEIS_API_KEY = 발급받은_키
 - App Store 메타데이터 초안: `release/AppStoreMetadata/ko-KR.md`
 - App Privacy 답변 초안: `release/AppStoreMetadata/app-privacy-draft.md`
 - 제출 전 대기 메모: `release/AppStoreMetadata/submission-notes.md`
-- 정적 출시 사이트: `marketing-site/dist/`
+- 정적 출시 사이트: `marketing-site/dist/`, `https://h19h29-design.github.io/naymnaym/`

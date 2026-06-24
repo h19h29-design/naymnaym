@@ -77,6 +77,5 @@
 - CloudKit public database에 실제 저장되는 필드 확인
 - 부모 공유를 끈 상태에서 CloudKit 전송이 없는지 확인
 - 사진은 공유 토글이 켜진 경우만 전송되는지 확인
-- 개인정보 처리방침 URL 공개 상태 확인
+- 개인정보 처리방침 URL 공개 확인: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - App Privacy 답변과 `PrivacyInfo.xcprivacy`가 서로 충돌하지 않는지 확인
-

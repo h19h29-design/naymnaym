@@ -41,7 +41,7 @@ build 12 확인:
 | 초등/중등/고등/부모 모드 | 완료 | `UserMode`, `ThemeProfile`, 모드별 `CharacterSkin` |
 | 부모 다자녀 연결 | 코드 완료, 운영 설정 확인 필요 | CloudKit `ParentLink` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/사진 공유 토글 분리, build 12 export에 Production CloudKit entitlement 포함 |
 | 부모 공유 사진 | 코드 완료, 운영 설정 확인 필요 | 공유 선택 사진만 `SharedMealPhoto` + CKAsset 생성, 사진 공유는 기록 공유가 켜진 경우에만 선택 가능, 기록 공유 해제 시 사진 공유도 비공유로 정리, build 12 export에 Production CloudKit entitlement 포함 |
-| 개인정보/지원 안내 | 완료, 공개 배포 진행 | 앱 내 설정 화면, `docs/PRIVACY_POLICY_DRAFT.md`, `docs/SUPPORT.md`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html`, GitHub Pages URL 후보 |
+| 개인정보/지원 안내 | 완료, 공개 배포 완료 | 앱 내 설정 화면, `docs/PRIVACY_POLICY_DRAFT.md`, `docs/SUPPORT.md`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html`, GitHub Pages URL 200 확인 |
 | App Store 스크린샷 | 완료 | `docs/app-store-screenshots/iphone-6-9-upload/*.jpg`, 1320x2868, alpha 없음 |
 | Privacy Manifest | 완료 | `NaymNaymLevelUp/PrivacyInfo.xcprivacy`와 build 12 export에 UserDefaults 사유, 선택 부모 공유용 수집 데이터 타입, 추적 없음 선언 포함 |
 
@@ -67,6 +67,7 @@ build 12 확인:
 - `git diff --check`: 통과
 - `App/Info.plist`, `PrivacyInfo.xcprivacy`, `NaymNaymLevelUp.entitlements`: `plutil -lint` 통과
 - build 12 export summary: buildNumber `12`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인
+- GitHub Pages 출시 사이트: `privacy.html`, `support.html`, `data-safety.html` HTTPS 200 확인
 - 최신 XCTest 결과: `/Users/mac-mini/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/result-bundles/test_sim_2026-06-24T13-39-16-357Z_pid66299_7212f7fc.xcresult`
 - 시뮬레이터 스냅샷: `build/verification/intro-iphone16-final.jpg`, `build/verification/intro-iphone-se-final.jpg`, `build/verification/share-sheet-iphone16.jpg`
 - 2026-06-24 추가 갱신: 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 12 signed IPA를 App Store Connect에 업로드 완료
@@ -90,9 +91,10 @@ build 12 확인:
 8. CloudKit public database 권한 확인
    - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
    - 초대 코드 조회는 정확한 `inviteCode` 조건에서만 동작해야 함
-9. 개인정보 처리방침 URL과 지원 URL 공개 상태 확인
-   - GitHub Pages URL 후보: `https://h19h29-design.github.io/naymnaym/privacy.html`, `https://h19h29-design.github.io/naymnaym/support.html`
-   - 정적 출시 사이트 산출물: `marketing-site/dist/`
+9. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
+   - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
+   - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
+   - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
 
 ## 참고 파일
 

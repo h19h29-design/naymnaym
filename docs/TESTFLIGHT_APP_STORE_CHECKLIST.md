@@ -18,9 +18,9 @@
 - 카테고리: 교육 또는 건강 및 피트니스 중 최종 선택
 - 가격: 무료
 - 연령 등급: 알레르기/건강 진단 표현 없음 기준으로 입력
-- 개인정보 처리방침 URL: `marketing-site/dist/` 배포 도메인의 `/privacy.html`
-- 지원 URL: `marketing-site/dist/` 배포 도메인의 `/support.html`
-- 데이터 안전 안내 URL: `marketing-site/dist/` 배포 도메인의 `/data-safety.html`
+- 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
+- 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
+- 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
 
 ## App Privacy 입력 초안
 - 회원가입 없음
@@ -81,9 +81,7 @@
 - CloudKit public database 권한 확인:
   - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
   - 초대 코드 조회는 정확한 `inviteCode` 조건으로만 동작하는지 확인
-- 개인정보 처리방침/지원 URL 공개 상태 확인
-- 정적 출시 사이트 산출물 `marketing-site/dist/index.html`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html` 배포
-- 정적 출시 사이트 산출물 `marketing-site/dist/data-safety.html` 배포
+- 개인정보 처리방침/지원/데이터 안전 URL GitHub Pages 공개 확인 완료
 - App Privacy 답변에서 부모 공유 시 CloudKit에 저장될 수 있는 사용자 콘텐츠, 사진/동영상, 건강 정보, 사용자 ID를 앱 기능 제공 목적과 연결된 데이터로 입력
 
 ## 공식 제출 참고
