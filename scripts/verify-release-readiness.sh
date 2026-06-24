@@ -173,6 +173,7 @@ require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.de
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 14;" "App build number is 14"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = \"com\\.h19h29\\.naymnaymlevelup\";" "Bundle ID is com.h19h29.naymnaymlevelup"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "TARGETED_DEVICE_FAMILY = 1;" "App target is iPhone only for App Store screenshot set"
 require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store metadata version is 1.0"
 require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: 14$" "App Store metadata build is 14"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"

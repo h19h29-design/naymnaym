@@ -40,6 +40,7 @@ iPhone 6.3형 보조 캡처는 아래 위치에 있다.
 ## 캡처 기준
 
 - 시뮬레이터: iPhone 16 검증 캡처와 iPhone 17 Pro Max 6.9형 캡처 조합
+- 앱 타깃: `TARGETED_DEVICE_FAMILY = 1` iPhone 전용
 - 업로드 변환: `1320 x 2868` JPG, alpha 없음
 - 상태: 실제 학교 선택 상태에서는 샘플 자동 대체 없음
 - 월간 캘린더: 2026년 6월 NEIS 급식 데이터 표시
@@ -54,5 +55,6 @@ iPhone 6.3형 보조 캡처는 아래 위치에 있다.
 ## 공식 규격 참고
 
 Apple App Store Connect의 screenshot specifications 기준으로 iPhone 6.9형 portrait 허용 크기에는 `1320 x 2868`이 포함된다. 스크린샷은 `.jpeg`, `.jpg`, `.png` 형식으로 1장 이상 10장 이하 업로드한다.
+현재 앱은 iPhone 전용 타깃이므로 iPad 스크린샷 세트는 제출 필수 범위에 포함하지 않는다.
 
 - https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/
