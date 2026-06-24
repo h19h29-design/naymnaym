@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "mascot_onboarding.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

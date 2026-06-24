@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "logo_naym_levelup.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

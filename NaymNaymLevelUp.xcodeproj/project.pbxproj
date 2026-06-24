@@ -41,6 +41,7 @@
 		C20000000000000000000032 /* ProgressLevelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000032 /* ProgressLevelTests.swift */; };
 		C20000000000000000000033 /* LocalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000033 /* LocalStoreTests.swift */; };
 		C20000000000000000000034 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000039 /* PrivacyInfo.xcprivacy */; };
+		C20000000000000000000035 /* IntroExperienceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000040 /* IntroExperienceView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -93,6 +94,7 @@
 		C10000000000000000000037 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = App/Info.plist; sourceTree = "<group>"; };
 		C10000000000000000000038 /* NaymNaymLevelUp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NaymNaymLevelUp.entitlements; sourceTree = "<group>"; };
 		C10000000000000000000039 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		C10000000000000000000040 /* IntroExperienceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Onboarding/IntroExperienceView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,6 +146,7 @@
 				C10000000000000000000013 /* NutritionEstimator.swift */,
 				C10000000000000000000014 /* DateUtils.swift */,
 				C10000000000000000000015 /* OnboardingFlowView.swift */,
+				C10000000000000000000040 /* IntroExperienceView.swift */,
 				C10000000000000000000016 /* ProfileSetupView.swift */,
 				C10000000000000000000017 /* SchoolSearchView.swift */,
 				C10000000000000000000018 /* AllergySelectionView.swift */,
@@ -305,6 +308,7 @@
 				C20000000000000000000013 /* NutritionEstimator.swift in Sources */,
 				C20000000000000000000014 /* DateUtils.swift in Sources */,
 				C20000000000000000000015 /* OnboardingFlowView.swift in Sources */,
+				C20000000000000000000035 /* IntroExperienceView.swift in Sources */,
 				C20000000000000000000016 /* ProfileSetupView.swift in Sources */,
 				C20000000000000000000017 /* SchoolSearchView.swift in Sources */,
 				C20000000000000000000018 /* AllergySelectionView.swift in Sources */,

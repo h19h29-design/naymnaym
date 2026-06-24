@@ -10,13 +10,19 @@ private enum OnboardingStep {
 
 struct OnboardingFlowView: View {
     @EnvironmentObject private var appState: AppState
+    @AppStorage("last-intro-date") private var lastIntroDate = ""
     @State private var step: OnboardingStep = .intro
+
+    private var todayKey: String {
+        DateUtils.apiString(from: Date())
+    }
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar(step == .intro ? .hidden : .visible, for: .navigationBar)
                 .pageBackground()
         }
     }
@@ -25,13 +31,21 @@ struct OnboardingFlowView: View {
     private var content: some View {
         switch step {
         case .intro:
-            IntroView(
-                onStart: { step = .mode },
+            IntroExperienceView(
+                kind: .firstLaunch,
+                primaryTitle: "오늘 급식 보러가기",
+                primarySubtitle: "학교 등록하고 시작",
+                onPrimary: {
+                    markIntroSeen()
+                    step = .mode
+                },
                 onDemo: {
+                    markIntroSeen()
                     appState.startDemoMode(mode: .elementary)
                     Task { await appState.loadMeals() }
                 },
                 onParent: {
+                    markIntroSeen()
                     appState.draftUserMode = .parent
                     step = .profile
                 }
@@ -66,6 +80,10 @@ struct OnboardingFlowView: View {
         }
     }
 
+    private func markIntroSeen() {
+        lastIntroDate = todayKey
+    }
+
     private var title: String {
         switch step {
         case .intro: return "냠냠레벨업"
@@ -73,56 +91,6 @@ struct OnboardingFlowView: View {
         case .profile: return "별명 입력"
         case .school: return "학교 검색"
         case .allergy: return "알레르기 선택"
-        }
-    }
-}
-
-private struct IntroView: View {
-    var onStart: () -> Void
-    var onDemo: () -> Void
-    var onParent: () -> Void
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 22) {
-                Spacer(minLength: 10)
-                CharacterAvatar(skin: CharacterSkin.skin(for: 1), size: 148)
-                VStack(spacing: 8) {
-                    Text("냠냠레벨업")
-                        .font(.system(size: 38, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppColors.primaryGreen)
-                        .minimumScaleFactor(0.7)
-                        .lineLimit(1)
-                    Text("편식 습관을 바꾸는 한 입의 힘!")
-                        .font(AppTypography.headline)
-                        .multilineTextAlignment(.center)
-                }
-                RoundedCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("오늘 급식에서 안 먹는 반찬을 누르면,\n놓칠 수 있는 영양소를 알려줘요.\n한 입 도전으로 레벨업해요!")
-                            .font(AppTypography.body)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Divider()
-                        privacyRow("회원가입 없이 시작해요.")
-                        privacyRow("이름 대신 별명만 사용해요.")
-                        privacyRow("기록은 내 아이폰에만 저장돼요.")
-                    }
-                }
-                PrimaryButton("시작하기", systemImage: "arrow.right.circle.fill", action: onStart)
-                SecondaryButton("체험 모드", systemImage: "sparkles", action: onDemo)
-                SecondaryButton("보호자 모드", systemImage: "person.2.fill", action: onParent)
-            }
-            .padding(20)
-        }
-    }
-
-    private func privacyRow(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(AppColors.primaryGreen)
-            Text(text)
-                .font(AppTypography.body)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

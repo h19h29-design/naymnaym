@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "icon_one_bite.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -153,6 +153,29 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertFalse(MealDataState.missingAPIKey.usesSample)
     }
 
+    func testShareCardRendererKeepsPersonalDetailsOutOfCardText() {
+        let outcome = ChallengeOutcome(
+            menuName: "시금치나물",
+            gainedExp: 43,
+            badgeName: "초록 용사",
+            damage: 30,
+            oldLevel: 1,
+            newLevel: 2,
+            skin: CharacterSkin.skin(for: 2)
+        )
+
+        let lines = ShareCardKind.available(for: outcome).flatMap { ShareCardRenderer.textLines(kind: $0, outcome: outcome) }
+        let combined = lines.joined(separator: " ")
+
+        XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.oneBiteSuccess))
+        XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.levelUp))
+        XCTAssertTrue(ShareCardKind.available(for: outcome).contains(.badgeEarned))
+        XCTAssertTrue(combined.contains("시금치나물"))
+        XCTAssertFalse(combined.contains("학교"))
+        XCTAssertFalse(combined.contains("알레르기"))
+        XCTAssertFalse(combined.contains("반/번호"))
+    }
+
     @MainActor
     private func makeAppState() -> AppState {
         AppState(
