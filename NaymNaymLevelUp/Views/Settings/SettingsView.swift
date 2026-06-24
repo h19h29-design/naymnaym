@@ -79,15 +79,24 @@ struct SettingsView: View {
                     } label: {
                         Label("개인정보 처리방침 보기", systemImage: "lock.shield")
                     }
+                    Link(destination: AppExternalLinks.privacyPolicy) {
+                        Label("웹 개인정보 처리방침 열기", systemImage: "safari")
+                    }
                     Button {
                         showingSupport = true
                     } label: {
                         Label("지원 안내 보기", systemImage: "questionmark.circle")
                     }
+                    Link(destination: AppExternalLinks.support) {
+                        Label("웹 지원 안내 열기", systemImage: "safari")
+                    }
                     Button {
                         showingSources = true
                     } label: {
                         Label("데이터 출처 보기", systemImage: "doc.text.magnifyingglass")
+                    }
+                    Link(destination: AppExternalLinks.dataSafety) {
+                        Label("데이터 안전 안내 열기", systemImage: "shield.lefthalf.filled")
                     }
                     NavigationLink {
                         AppInfoView()
@@ -429,6 +438,21 @@ private struct PrivacyPolicyGuideView: View {
                             privacy("설정 > 데이터 관리에서 기록, 프로필, 전체 데이터를 삭제할 수 있습니다.")
                         }
                     }
+
+                    RoundedCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("공개 처리방침")
+                                .font(AppTypography.headline)
+                            Text("App Store 제출용 공개 페이지에서도 같은 내용을 확인할 수 있습니다.")
+                                .font(AppTypography.body)
+                                .foregroundStyle(AppColors.graySecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Link(destination: AppExternalLinks.privacyPolicy) {
+                                Label("웹 개인정보 처리방침 열기", systemImage: "safari")
+                                    .font(AppTypography.body.weight(.semibold))
+                            }
+                        }
+                    }
                 }
                 .padding(20)
             }
@@ -478,6 +502,11 @@ private struct SupportGuideView: View {
                     Text("설정 > 데이터 관리에서 기록, 프로필, 전체 데이터를 삭제할 수 있습니다.")
                     Text("삭제한 데이터는 되돌릴 수 없습니다.")
                 }
+                Section("공개 지원 페이지") {
+                    Link(destination: AppExternalLinks.support) {
+                        Label("웹 지원 안내 열기", systemImage: "safari")
+                    }
+                }
             }
             .navigationTitle("지원 안내")
             .toolbar {
@@ -504,6 +533,11 @@ private struct DataSourcesView: View {
                     Text("샘플 데이터는 사용자가 명시적으로 체험 모드를 선택한 경우에만 표시됩니다.")
                     Text("실제 학교 선택 상태에서 API 키 없음, 네트워크 오류, 급식 없음은 정확한 안내 화면으로 표시됩니다.")
                 }
+                Section("데이터 안전") {
+                    Link(destination: AppExternalLinks.dataSafety) {
+                        Label("웹 데이터 안전 안내 열기", systemImage: "shield.lefthalf.filled")
+                    }
+                }
             }
             .navigationTitle("데이터 출처")
             .toolbar {
@@ -513,6 +547,12 @@ private struct DataSourcesView: View {
             }
         }
     }
+}
+
+private enum AppExternalLinks {
+    static let privacyPolicy = URL(string: "https://h19h29-design.github.io/naymnaym/privacy.html")!
+    static let support = URL(string: "https://h19h29-design.github.io/naymnaym/support.html")!
+    static let dataSafety = URL(string: "https://h19h29-design.github.io/naymnaym/data-safety.html")!
 }
 
 private struct AppInfoView: View {

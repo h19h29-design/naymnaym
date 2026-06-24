@@ -34,3 +34,4 @@
 - SNS 공유 카드에 오늘 기록 카드를 추가했다.
 - 변경분 업로드 준비를 위해 앱 빌드 번호를 12로 올렸다.
 - build 12를 unsigned archive로 생성하고 App Store Connect remote signing export 후 TestFlight CLI 업로드까지 완료했다.
+- 설정 화면에 공개 개인정보 처리방침, 지원 안내, 데이터 안전 안내 URL을 바로 열 수 있는 링크를 추가했다.
