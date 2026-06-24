@@ -63,7 +63,7 @@ build 13 확인:
 - TestFlight build: `1.0 (13)`
 - TestFlight upload: CLI 업로드 성공, App Store Connect 처리 상태 확인 필요
 - `git diff --check`: 통과
-- `scripts/verify-release-readiness.sh`: 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, App Store 아이콘/스크린샷, 공개 URL 검증 통과
+- `scripts/verify-release-readiness.sh`: 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 13 IPA/업로드 로그 증거, App Store 아이콘/스크린샷, 공개 URL 검증 통과
 - `scripts/smoke-neis-live.sh`: API 키 비노출 방식으로 등촌고등학교 2026년 6월 `schoolInfo`, `mealServiceDietInfo` 실제 응답 검증
 - `App/Info.plist`, `PrivacyInfo.xcprivacy`, `NaymNaymLevelUp.entitlements`: `plutil -lint` 통과
 - build 13 export summary: buildNumber `13`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인

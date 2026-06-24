@@ -23,6 +23,14 @@ require_absent_path() {
   pass "$1 is absent"
 }
 
+require_not_tracked() {
+  path="$1"
+  if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+    fail "$path must not be tracked by Git"
+  fi
+  pass "$path is not tracked by Git"
+}
+
 check_screenshot() {
   file="$1"
   require_file "$file"
@@ -113,6 +121,24 @@ check_url() {
   pass "$url returned HTTP 200"
 }
 
+check_uploaded_ipa() {
+  ipa="$1"
+  require_file "$ipa"
+  require_not_tracked "$ipa"
+
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' EXIT
+  unzip -q "$ipa" -d "$tmp_dir"
+  app_dir="$(find "$tmp_dir/Payload" -maxdepth 1 -type d -name '*.app' | head -n 1)"
+  [ -n "$app_dir" ] || fail "$ipa does not contain an app bundle"
+
+  require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
+  require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "1.0"
+  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "13"
+  require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
+  pass "$ipa contains build 1.0 (13)"
+}
+
 git diff --check
 pass "git diff --check"
 
@@ -123,6 +149,7 @@ require_file "Config.example.xcconfig"
 
 git check-ignore -q Config.xcconfig || fail "Config.xcconfig must stay ignored"
 pass "Config.xcconfig is ignored"
+require_not_tracked "Config.xcconfig"
 
 plutil -lint \
   "NaymNaymLevelUp/App/Info.plist" \
@@ -160,6 +187,13 @@ require_absent_path "Podfile.lock"
 require_absent_path "Cartfile"
 require_absent_path "Cartfile.resolved"
 require_absent_pattern "NaymNaymLevelUp NaymNaymLevelUp.xcodeproj" "Firebase|GoogleMobileAds|AdMob|AppTrackingTransparency|NSUserTrackingUsageDescription|FBSDK|AppsFlyer|Amplitude|Mixpanel|RevenueCat|StoreKit|CoreLocation|CLLocation|AuthenticationServices|SignInWithApple" "No ad, analytics, tracking, purchase, login, or location SDK references"
+
+require_file "build/build13-upload.log"
+require_file "build/TestFlightExportBuild13Signed/ExportOptions.plist"
+require_pattern "build/build13-upload.log" "Upload succeeded" "build 13 upload log has success marker"
+require_pattern "build/build13-upload.log" "Uploaded package is processing" "build 13 upload log has processing marker"
+require_not_tracked "build/build13-upload.log"
+check_uploaded_ipa "build/TestFlightExportBuild13Signed/NaymNaymLevelUp.ipa"
 
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60
