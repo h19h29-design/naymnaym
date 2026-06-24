@@ -36,3 +36,7 @@
 - build 12를 unsigned archive로 생성하고 App Store Connect remote signing export 후 TestFlight CLI 업로드까지 완료했다.
 - 설정 화면에 공개 개인정보 처리방침, 지원 안내, 데이터 안전 안내 URL을 바로 열 수 있는 링크를 추가했다.
 - 변경분 반영을 위해 앱 빌드 번호를 13으로 올리고 TestFlight CLI 업로드까지 완료했다.
+
+## 2026-06-25
+- CloudKit record type/field 계약과 Privacy Manifest 수집 데이터 항목을 XCTest로 고정했다.
+- 추가 변경은 테스트/문서 보강이므로 build 13 바이너리 재업로드는 하지 않는다.

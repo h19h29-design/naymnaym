@@ -77,6 +77,8 @@ Container:
 - `SharedChallengeRecord`
 - `SharedMealPhoto`
 
+이 record type/field 계약은 `NaymNaymLevelUpTests/LocalStoreTests.swift`의 CloudKit 계약 테스트에서 고정한다.
+
 ### ParentLink 필드
 
 - `childLinkId`: String
@@ -98,7 +100,7 @@ Container:
 
 - `mealRecordId`: String
 - `childLinkId`: String
-- `date`: Date/Time
+- `date`: String
 - `menuName`: String
 - `eatingStatus`: String
 - `difficultyReasons`: String
@@ -114,7 +116,7 @@ Container:
 
 - `challengeRecordId`: String
 - `childLinkId`: String
-- `date`: Date/Time
+- `date`: String
 - `menuName`: String
 - `action`: String
 - `gainedExp`: Int64

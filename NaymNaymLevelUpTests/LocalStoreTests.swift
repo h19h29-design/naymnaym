@@ -314,6 +314,69 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(checklist.contains("sortable index는 필요 없음"))
     }
 
+    func testCloudKitRecordTypesMatchConsoleRunbook() {
+        let service = CloudKitParentLinkService()
+
+        XCTAssertEqual(
+            service.recordTypes,
+            [
+                "ParentLink",
+                "SharedMealRecord",
+                "SharedChallengeRecord",
+                "SharedMealPhoto"
+            ]
+        )
+    }
+
+    func testCloudKitParentLinkRecordFieldsMatchConsoleRunbook() {
+        let service = CloudKitParentLinkService()
+        let childId = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        let createdAt = Date(timeIntervalSince1970: 1_771_718_400)
+        let child = ChildLink(
+            id: childId,
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            permissions: SharingPermission(
+                shareEatingRecords: true,
+                shareChallengeRecords: true,
+                shareAllergyWarnings: false,
+                sharePhotos: true
+            ),
+            createdAt: createdAt
+        )
+
+        let record = service.makeParentLinkRecord(childLink: child)
+
+        XCTAssertEqual(record.recordType, CloudKitParentLinkService.parentLinkRecordType)
+        assertRecordKeys(
+            record,
+            [
+                "childLinkId",
+                "childNickname",
+                "schoolName",
+                "mode",
+                "inviteCode",
+                "shareEatingRecords",
+                "shareChallengeRecords",
+                "shareAllergyWarnings",
+                "sharePhotos",
+                "createdAt"
+            ]
+        )
+        XCTAssertEqual(record["childLinkId"] as? String, childId.uuidString)
+        XCTAssertEqual(record["childNickname"] as? String, "지우")
+        XCTAssertEqual(record["schoolName"] as? String, "등촌고등학교")
+        XCTAssertEqual(record["mode"] as? String, UserMode.high.rawValue)
+        XCTAssertEqual(record["inviteCode"] as? String, "NYAM-ABCD-EFGH-IJKL")
+        XCTAssertEqual(boolRecordValue(record["shareEatingRecords"]), true)
+        XCTAssertEqual(boolRecordValue(record["shareChallengeRecords"]), true)
+        XCTAssertEqual(boolRecordValue(record["shareAllergyWarnings"]), false)
+        XCTAssertEqual(boolRecordValue(record["sharePhotos"]), true)
+        XCTAssertEqual(record["createdAt"] as? Date, createdAt)
+    }
+
     func testCloudKitSharedMealRecordRequiresParentShare() {
         let service = CloudKitParentLinkService()
         let child = ChildLink(
@@ -345,6 +408,64 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record?["eatingStatus"] as? String, EatingStatus.oneBite.rawValue)
     }
 
+    func testCloudKitSharedMealRecordFieldsMatchConsoleRunbook() throws {
+        let service = CloudKitParentLinkService()
+        let childId = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        let mealId = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        let createdAt = Date(timeIntervalSince1970: 1_771_718_500)
+        let child = ChildLink(
+            id: childId,
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            permissions: SharingPermission(
+                shareEatingRecords: true,
+                shareChallengeRecords: true,
+                shareAllergyWarnings: true,
+                sharePhotos: true
+            )
+        )
+        let meal = MealRecord(
+            id: mealId,
+            date: "20260624",
+            menuName: "콩나물무침",
+            eatingStatus: .oneBite,
+            difficultyReasons: [.smell, .texture],
+            allergyCodes: [1, 2],
+            photoIds: ["photo-1", "photo-2"],
+            parentShareEnabled: true,
+            createdAt: createdAt
+        )
+
+        let record = try XCTUnwrap(service.makeSharedMealRecord(meal, childLink: child))
+
+        XCTAssertEqual(record.recordType, CloudKitParentLinkService.sharedMealRecordType)
+        assertRecordKeys(
+            record,
+            [
+                "mealRecordId",
+                "childLinkId",
+                "date",
+                "menuName",
+                "eatingStatus",
+                "difficultyReasons",
+                "allergyCodes",
+                "photoIds",
+                "createdAt"
+            ]
+        )
+        XCTAssertEqual(record["mealRecordId"] as? String, mealId.uuidString)
+        XCTAssertEqual(record["childLinkId"] as? String, childId.uuidString)
+        XCTAssertEqual(record["date"] as? String, "20260624")
+        XCTAssertEqual(record["menuName"] as? String, "콩나물무침")
+        XCTAssertEqual(record["eatingStatus"] as? String, EatingStatus.oneBite.rawValue)
+        XCTAssertEqual(record["difficultyReasons"] as? String, "smell,texture")
+        XCTAssertEqual(record["allergyCodes"] as? String, "1,2")
+        XCTAssertEqual(record["photoIds"] as? String, "photo-1,photo-2")
+        XCTAssertEqual(record["createdAt"] as? Date, createdAt)
+    }
+
     func testCloudKitSharedChallengeRecordUsesCurrentChildForLocalRecord() {
         let service = CloudKitParentLinkService()
         let child = ChildLink(
@@ -368,6 +489,66 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record?.recordType, CloudKitParentLinkService.sharedChallengeRecordType)
         XCTAssertEqual(record?["childLinkId"] as? String, child.id.uuidString)
         XCTAssertEqual(record?["menuName"] as? String, "시금치나물")
+    }
+
+    func testCloudKitSharedChallengeRecordFieldsMatchConsoleRunbook() throws {
+        let service = CloudKitParentLinkService()
+        let childId = UUID(uuidString: "44444444-4444-4444-4444-444444444444")!
+        let challengeId = UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+        let createdAt = Date(timeIntervalSince1970: 1_771_718_600)
+        let child = ChildLink(
+            id: childId,
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            permissions: SharingPermission(
+                shareEatingRecords: true,
+                shareChallengeRecords: true,
+                shareAllergyWarnings: true,
+                sharePhotos: true
+            )
+        )
+        let challenge = ChallengeRecord(
+            id: challengeId,
+            date: "20260624",
+            menuName: "콩나물무침",
+            action: .oneBite,
+            gainedExp: 43,
+            badgeName: "초록 용사",
+            nutrients: ["식이섬유", "비타민"],
+            createdAt: createdAt,
+            eatingStatus: .oneBite,
+            difficultyReasons: [.texture],
+            photoIds: ["photo-1"]
+        )
+
+        let record = try XCTUnwrap(service.makeSharedChallengeRecord(challenge, childLink: child))
+
+        XCTAssertEqual(record.recordType, CloudKitParentLinkService.sharedChallengeRecordType)
+        assertRecordKeys(
+            record,
+            [
+                "challengeRecordId",
+                "childLinkId",
+                "date",
+                "menuName",
+                "action",
+                "gainedExp",
+                "badgeName",
+                "nutrients",
+                "createdAt"
+            ]
+        )
+        XCTAssertEqual(record["challengeRecordId"] as? String, challengeId.uuidString)
+        XCTAssertEqual(record["childLinkId"] as? String, childId.uuidString)
+        XCTAssertEqual(record["date"] as? String, "20260624")
+        XCTAssertEqual(record["menuName"] as? String, "콩나물무침")
+        XCTAssertEqual(record["action"] as? String, ChallengeRecord.Action.oneBite.rawValue)
+        XCTAssertEqual(intRecordValue(record["gainedExp"]), 43)
+        XCTAssertEqual(record["badgeName"] as? String, "초록 용사")
+        XCTAssertEqual(record["nutrients"] as? String, "식이섬유,비타민")
+        XCTAssertEqual(record["createdAt"] as? Date, createdAt)
     }
 
     func testCloudKitSharedMealRecordRespectsSharingPermissions() {
@@ -420,6 +601,91 @@ final class LocalStoreTests: XCTestCase {
             permissions: SharingPermission(shareEatingRecords: true, shareChallengeRecords: true, shareAllergyWarnings: true, sharePhotos: true)
         )
         XCTAssertEqual(service.makeSharedPhotoRecord(photo, childLink: allowedChild)?.recordType, CloudKitParentLinkService.sharedMealPhotoRecordType)
+    }
+
+    func testCloudKitSharedPhotoRecordFieldsMatchConsoleRunbook() throws {
+        let service = CloudKitParentLinkService()
+        let childId = UUID(uuidString: "66666666-6666-6666-6666-666666666666")!
+        let createdAt = Date(timeIntervalSince1970: 1_771_718_700)
+        let photoURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("jpg")
+        try Data([0xFF, 0xD8, 0xFF, 0xD9]).write(to: photoURL)
+        defer { try? FileManager.default.removeItem(at: photoURL) }
+        let child = ChildLink(
+            id: childId,
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            permissions: SharingPermission(
+                shareEatingRecords: true,
+                shareChallengeRecords: true,
+                shareAllergyWarnings: true,
+                sharePhotos: true
+            )
+        )
+        let photo = MealPhotoRecord(
+            id: "photo-1",
+            fileName: "photo-1.jpg",
+            createdAt: createdAt,
+            isSharedWithParent: true
+        )
+
+        let record = try XCTUnwrap(service.makeSharedPhotoRecord(photo, childLink: child, photoURL: photoURL))
+
+        XCTAssertEqual(record.recordType, CloudKitParentLinkService.sharedMealPhotoRecordType)
+        assertRecordKeys(
+            record,
+            [
+                "childLinkId",
+                "photoId",
+                "fileName",
+                "createdAt",
+                "photoAsset"
+            ]
+        )
+        XCTAssertEqual(record["childLinkId"] as? String, childId.uuidString)
+        XCTAssertEqual(record["photoId"] as? String, "photo-1")
+        XCTAssertEqual(record["fileName"] as? String, "photo-1.jpg")
+        XCTAssertEqual(record["createdAt"] as? Date, createdAt)
+        XCTAssertTrue(record["photoAsset"] is CKAsset)
+    }
+
+    func testPrivacyManifestMatchesAppPrivacyDraftCategories() throws {
+        let manifest = try loadPrivacyManifest()
+
+        XCTAssertEqual(manifest["NSPrivacyTracking"] as? Bool, false)
+        XCTAssertEqual(try XCTUnwrap(manifest["NSPrivacyTrackingDomains"] as? [String]), [])
+
+        let accessedAPITypes = try XCTUnwrap(manifest["NSPrivacyAccessedAPITypes"] as? [[String: Any]])
+        let userDefaultsAPI = try XCTUnwrap(accessedAPITypes.first {
+            $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults"
+        })
+        XCTAssertEqual(
+            Set(try XCTUnwrap(userDefaultsAPI["NSPrivacyAccessedAPITypeReasons"] as? [String])),
+            ["CA92.1"]
+        )
+
+        let collectedDataTypes = try XCTUnwrap(manifest["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
+        XCTAssertEqual(
+            Set(collectedDataTypes.compactMap { $0["NSPrivacyCollectedDataType"] as? String }),
+            [
+                "NSPrivacyCollectedDataTypeOtherUserContent",
+                "NSPrivacyCollectedDataTypePhotosorVideos",
+                "NSPrivacyCollectedDataTypeHealth",
+                "NSPrivacyCollectedDataTypeUserID"
+            ]
+        )
+
+        for dataType in collectedDataTypes {
+            XCTAssertEqual(dataType["NSPrivacyCollectedDataTypeLinked"] as? Bool, true)
+            XCTAssertEqual(dataType["NSPrivacyCollectedDataTypeTracking"] as? Bool, false)
+            XCTAssertEqual(
+                Set(try XCTUnwrap(dataType["NSPrivacyCollectedDataTypePurposes"] as? [String])),
+                ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
+            )
+        }
     }
 
     @MainActor
@@ -485,5 +751,39 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(summaries.last?.weeklyRecords.map(\.menuName), ["둘째나물"])
         XCTAssertEqual(summaries.first?.weeklyChallengeRecords.map(\.menuName), ["첫째나물"])
         XCTAssertEqual(summaries.last?.weeklyChallengeRecords.map(\.menuName), ["둘째나물"])
+    }
+
+    private func assertRecordKeys(
+        _ record: CKRecord,
+        _ expectedKeys: Set<String>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(Set(record.allKeys()), expectedKeys, file: file, line: line)
+    }
+
+    private func boolRecordValue(_ value: CKRecordValue?) -> Bool? {
+        if let bool = value as? Bool {
+            return bool
+        }
+        return (value as? NSNumber)?.boolValue
+    }
+
+    private func intRecordValue(_ value: CKRecordValue?) -> Int? {
+        if let int = value as? Int {
+            return int
+        }
+        return (value as? NSNumber)?.intValue
+    }
+
+    private func loadPrivacyManifest() throws -> [String: Any] {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("NaymNaymLevelUp")
+            .appendingPathComponent("PrivacyInfo.xcprivacy")
+        let data = try Data(contentsOf: sourceURL)
+        let propertyList = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return try XCTUnwrap(propertyList as? [String: Any])
     }
 }

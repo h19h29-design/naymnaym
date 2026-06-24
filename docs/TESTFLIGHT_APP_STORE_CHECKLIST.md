@@ -5,7 +5,8 @@
 - NEIS API 키는 코드나 로그에 노출하지 않는다.
 - 실제 학교 선택 상태에서 샘플 급식 자동 fallback을 하지 않는다.
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유와 선택 부모 공유용 수집 데이터 타입을 선언했다.
-- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 55개가 통과한다.
+- iOS Simulator Debug 빌드, 설치, 실행과 XCTest 61개가 통과한다.
+- CloudKit record type/field 계약과 Privacy Manifest 수집 데이터 항목을 XCTest로 고정했다.
 - Release/generic iOS archive와 App Store Connect remote-signed export가 통과한다.
 - TestFlight build 1.0 (13) signed IPA가 생성됐다.
 - build 13 export summary에서 TestFlight beta entitlement와 App Store 프로비저닝 서명을 확인했다.
