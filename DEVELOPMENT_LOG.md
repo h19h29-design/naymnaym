@@ -51,3 +51,4 @@
 - `scripts/verify-release-readiness.sh`에 exported IPA embedded profile 및 signed app CloudKit entitlement 검사를 추가해, signed app CloudKit entitlement가 없는 build 14는 릴리즈 게이트에서 의도적으로 실패하도록 보강했다.
 - build 15 이상 검증용 `scripts/inspect-ipa-entitlements.sh`를 추가했다.
 - unsigned archive 기반 remote export는 signed app entitlements를 살리지 못했고, signed archive는 올바른 `.xcent` 생성 후 로컬 `codesign`이 keychain/certificate 접근 대기 상태에서 멈췄다. 로컬 signing keychain 접근을 허용한 뒤 build 15 이상으로 signed archive/export/upload해야 한다.
+- build 15 이상 signed archive/export/entitlement 검사와 선택적 TestFlight 업로드를 한 흐름으로 묶은 `scripts/release-testflight-build.sh`를 추가했다. 기본 실행은 업로드하지 않고, `UPLOAD=1`일 때만 entitlement 검증 후 업로드를 시도한다.

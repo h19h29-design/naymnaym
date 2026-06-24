@@ -87,26 +87,27 @@ build 14 확인:
 
 아래 항목은 로컬 코드로 완료할 수 없고 Apple Developer/App Store Connect 계정에서 확인 또는 처리해야 한다.
 
-1. 로컬 signing keychain/certificate 접근 허용 후 build 15 이상 signed archive 생성
-2. exported IPA의 embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인
-3. exported IPA의 signed app entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
-4. CloudKit entitlement 검증 통과 후 build 15 이상을 TestFlight에 업로드
-5. App Store Connect에서 build 15 이상 처리 완료 여부 확인
-6. build 15 이상을 내부/외부 테스트 그룹에 연결
-7. 외부 테스트 그룹 공개 링크가 build 15 이상을 가리키는지 확인
-8. 외부 테스트 심사 제출
-9. App Privacy 답변에 선택 부모 공유 데이터 타입 반영
-10. CloudKit Dashboard public database schema 배포 상태 확인
-11. CloudKit queryable index 설정 확인
+1. 로컬 signing keychain/certificate 접근 허용
+2. `scripts/release-testflight-build.sh 15`로 build 15 signed archive/export 및 IPA entitlement 검증
+3. exported IPA의 embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인
+4. exported IPA의 signed app entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
+5. `UPLOAD=1 scripts/release-testflight-build.sh 15`로 CloudKit entitlement 검증 통과 빌드를 TestFlight에 업로드
+6. App Store Connect에서 build 15 이상 처리 완료 여부 확인
+7. build 15 이상을 내부/외부 테스트 그룹에 연결
+8. 외부 테스트 그룹 공개 링크가 build 15 이상을 가리키는지 확인
+9. 외부 테스트 심사 제출
+10. App Privacy 답변에 선택 부모 공유 데이터 타입 반영
+11. CloudKit Dashboard public database schema 배포 상태 확인
+12. CloudKit queryable index 설정 확인
    - `ParentLink.inviteCode`
    - `SharedMealRecord.childLinkId`
    - `SharedChallengeRecord.childLinkId`
    - `SharedMealPhoto.childLinkId`
    - `createdAt` 최신순 정렬은 앱 내부에서 처리하므로 sortable index는 필요 없음
-12. CloudKit public database 권한 확인
+13. CloudKit public database 권한 확인
    - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
    - 초대 코드 조회는 정확한 `inviteCode` 조건에서만 동작해야 함
-13. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
+14. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
    - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
    - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
    - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`

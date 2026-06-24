@@ -27,8 +27,8 @@
 ## 현재 운영 확인 필요 항목
 
 - 로컬 signing keychain/certificate 접근 허용
-- build 15 이상 signed archive/export/upload
-- `scripts/inspect-ipa-entitlements.sh path/to/NaymNaymLevelUp.ipa`로 exported IPA signed entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
+- `scripts/release-testflight-build.sh 15`로 build 15 signed archive/export 및 IPA entitlement 검증
+- `UPLOAD=1 scripts/release-testflight-build.sh 15`로 entitlement 검증 통과 빌드 업로드
 - App Store Connect에서 build 15 이상 처리 완료 상태 확인
 - build 15 이상을 내부 테스트 그룹에 연결
 - build 15 이상을 외부 테스트 그룹 `패밀리`에 연결

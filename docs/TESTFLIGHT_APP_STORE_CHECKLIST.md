@@ -75,7 +75,8 @@
 
 ## 제출 전 남은 계정 작업
 - 로컬 signing keychain/certificate 접근 허용
-- build 15 이상으로 signed archive/export 후 `scripts/inspect-ipa-entitlements.sh path/to/NaymNaymLevelUp.ipa` 실행
+- `scripts/release-testflight-build.sh 15` 실행으로 signed archive/export와 IPA entitlement 검증 완료
+- 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15` 실행으로 TestFlight 업로드
 - exported IPA embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인
 - exported IPA signed app entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
 - CloudKit entitlement 검증 통과 후 build 15 이상을 TestFlight에 업로드
