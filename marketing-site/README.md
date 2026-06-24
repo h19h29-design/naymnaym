@@ -13,11 +13,11 @@
 
 ## App Store Connect URL
 
-정적 호스팅 루트에 `dist/` 내용을 그대로 올린 뒤 아래 URL을 입력한다.
+GitHub Pages `gh-pages` 브랜치 루트에 `dist/` 내용을 배포한 뒤 아래 URL을 입력한다.
 
-- 개인정보 처리방침 URL: `https://<배포도메인>/privacy.html`
-- 데이터 안전 안내 URL: `https://<배포도메인>/data-safety.html`
-- 지원 URL: `https://<배포도메인>/support.html`
+- 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
+- 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
+- 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
 
 ## 검증
 

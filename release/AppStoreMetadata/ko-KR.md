@@ -72,19 +72,15 @@
 
 ## 개인정보 처리방침 URL
 
-검토 필요: 정적 사이트 배포 후 실제 URL 입력.
-
-예상 경로: `https://<배포도메인>/privacy.html`
+`https://h19h29-design.github.io/naymnaym/privacy.html`
 
 ## 지원 URL
 
-검토 필요: 정적 사이트 배포 후 실제 URL 입력.
-
-예상 경로: `https://<배포도메인>/support.html`
+`https://h19h29-design.github.io/naymnaym/support.html`
 
 ## 데이터 안전 안내 URL
 
-예상 경로: `https://<배포도메인>/data-safety.html`
+`https://h19h29-design.github.io/naymnaym/data-safety.html`
 
 ## 연령 등급 참고
 
@@ -105,4 +101,3 @@
 - Health & Fitness: 알레르기 선택값과 식사 기록은 건강 관련 정보로 해석될 수 있어 검토 필요
 - Identifiers: 부모 연결용 초대 코드와 `childLinkId`가 앱 기능 제공 목적으로 사용됨
 - Diagnostics: 앱 자체 진단 SDK 없음. Apple 기본 진단은 App Store Connect 정책에 따름
-
