@@ -11,8 +11,8 @@
 - TestFlight build 1.0 (14) signed IPA가 생성됐다.
 - build 14 export summary에서 TestFlight beta entitlement와 App Store 프로비저닝 서명을 확인했다.
 - build 14 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
-- build 14 IPA를 직접 검사한 결과 실제 signed entitlements에 iCloud/CloudKit 항목이 없으므로, build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
-- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 14 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다. 현재 build 14는 signed IPA CloudKit entitlement 검사에서 의도적으로 실패해야 한다.
+- build 14 IPA를 직접 검사한 결과 embedded provisioning profile에는 iCloud container가 있지만 CloudKit service entitlement가 없고, 실제 signed app entitlements에도 iCloud/CloudKit 항목이 없으므로 build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
+- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 14 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다. 현재 build 14는 embedded profile CloudKit service entitlement 검사에서 의도적으로 실패해야 한다.
 - `scripts/smoke-neis-live.sh`로 로컬 API 키를 출력하지 않고 NEIS `schoolInfo`와 `mealServiceDietInfo` 실제 응답을 확인한다. 기본 smoke 기준은 등촌고등학교 2026년 6월 중식이며, `NEIS_SMOKE_SCHOOL_NAME`, `NEIS_SMOKE_MEAL_MONTH`로 다른 학교/월을 확인할 수 있다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
@@ -75,7 +75,7 @@
 
 ## 제출 전 남은 계정 작업
 - Apple Developer에서 `com.h19h29.naymnaymlevelup` App ID의 iCloud/CloudKit capability와 `iCloud.com.h19h29.naymnaymlevelup` container 연결 확인
-- App Store 프로비저닝/remote signing export가 iCloud/CloudKit entitlement를 포함하도록 재생성
+- App Store 프로비저닝/remote signing export가 iCloud container와 CloudKit service entitlement를 모두 포함하도록 재생성
 - 로컬 signing keychain/certificate 접근 허용
 - build 15 이상으로 archive/export 후 exported IPA signed entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
 - CloudKit entitlement 검증 통과 후 build 15 이상을 TestFlight에 업로드

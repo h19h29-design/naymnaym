@@ -8,7 +8,7 @@
 - Privacy 초안 작성: 완료
 - Release archive 생성: 완료
 - TestFlight build 1.0 (14) CLI 업로드: 완료
-- build 14 signed IPA 검사: iCloud/CloudKit entitlement 없음, 외부 테스트/출시 후보 제외
+- build 14 signed IPA 검사: embedded profile의 CloudKit service entitlement와 signed app의 iCloud/CloudKit entitlement가 없어 외부 테스트/출시 후보 제외
 - 출시 검증 스크립트 실행: `scripts/verify-release-readiness.sh`
 
 ## Hard Blocker
@@ -27,7 +27,7 @@
 ## 현재 운영 확인 필요 항목
 
 - Apple Developer에서 App ID `com.h19h29.naymnaymlevelup`의 iCloud/CloudKit capability와 container 연결 확인
-- App Store provisioning/remote signing export가 iCloud/CloudKit entitlement를 포함하도록 재생성
+- App Store provisioning/remote signing export가 iCloud container와 CloudKit service entitlement를 모두 포함하도록 재생성
 - 로컬 signing keychain/certificate 접근 허용
 - build 15 이상 archive/export/upload
 - exported IPA signed entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인

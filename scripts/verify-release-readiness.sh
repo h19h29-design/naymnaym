@@ -147,6 +147,13 @@ check_uploaded_ipa() {
   require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "14"
   require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
 
+  embedded_profile="$app_dir/embedded.mobileprovision"
+  require_file "$embedded_profile"
+  embedded_profile_plist="$tmp_dir/embedded-profile.plist"
+  security cms -D -i "$embedded_profile" >"$embedded_profile_plist" 2>/dev/null || fail "$ipa embedded provisioning profile could not be decoded"
+  require_signed_entitlement "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup" "$ipa embedded profile iCloud container entitlement"
+  require_signed_entitlement "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-services:0" "CloudKit" "$ipa embedded profile CloudKit service entitlement"
+
   entitlements_file="$tmp_dir/signed-entitlements.plist"
   codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null || fail "$ipa signed entitlements could not be read"
   [ -s "$entitlements_file" ] || fail "$ipa signed entitlements are empty"
