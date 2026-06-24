@@ -63,6 +63,7 @@ build 13 확인:
 - TestFlight build: `1.0 (13)`
 - TestFlight upload: CLI 업로드 성공, App Store Connect 처리 상태 확인 필요
 - `git diff --check`: 통과
+- `scripts/verify-release-readiness.sh`: 통과
 - `App/Info.plist`, `PrivacyInfo.xcprivacy`, `NaymNaymLevelUp.entitlements`: `plutil -lint` 통과
 - build 13 export summary: buildNumber `13`, versionNumber `1.0`, `beta-reports-active = true`, Cloud Managed Apple Distribution 서명 확인
 - GitHub Pages 출시 사이트: `privacy.html`, `support.html`, `data-safety.html` HTTPS 200 확인
