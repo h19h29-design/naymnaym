@@ -32,6 +32,47 @@ check_screenshot() {
   pass "$file is 1320x2868 with no alpha"
 }
 
+check_image() {
+  file="$1"
+  expected_width="$2"
+  expected_height="$3"
+  require_file "$file"
+
+  width="$(sips -g pixelWidth "$file" 2>/dev/null | awk '/pixelWidth:/ { print $2 }')"
+  height="$(sips -g pixelHeight "$file" 2>/dev/null | awk '/pixelHeight:/ { print $2 }')"
+  alpha="$(sips -g hasAlpha "$file" 2>/dev/null | awk '/hasAlpha:/ { print $2 }')"
+
+  [ "$width" = "$expected_width" ] || fail "$file width is $width, expected $expected_width"
+  [ "$height" = "$expected_height" ] || fail "$file height is $height, expected $expected_height"
+  [ "$alpha" = "no" ] || fail "$file has alpha channel"
+  pass "$file is ${expected_width}x${expected_height} with no alpha"
+}
+
+require_plist_value() {
+  file="$1"
+  key="$2"
+  expected="$3"
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file")"
+  [ "$value" = "$expected" ] || fail "$file $key is '$value', expected '$expected'"
+  pass "$file $key is $expected"
+}
+
+require_nonempty_plist_value() {
+  file="$1"
+  key="$2"
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file")"
+  [ -n "$value" ] || fail "$file $key must not be empty"
+  pass "$file $key is present"
+}
+
+require_pattern() {
+  file="$1"
+  pattern="$2"
+  description="$3"
+  grep -Eq "$pattern" "$file" || fail "$description"
+  pass "$description"
+}
+
 check_url() {
   url="$1"
   status="$(curl -L -s -o /dev/null -w '%{http_code}' "$url")"
@@ -55,6 +96,34 @@ plutil -lint \
   "NaymNaymLevelUp/PrivacyInfo.xcprivacy" \
   "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" >/dev/null
 pass "plist files lint"
+
+require_plist_value "NaymNaymLevelUp/App/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
+require_plist_value "NaymNaymLevelUp/App/Info.plist" "CFBundleIconName" "AppIcon"
+require_plist_value "NaymNaymLevelUp/App/Info.plist" "ITSAppUsesNonExemptEncryption" "false"
+require_plist_value "NaymNaymLevelUp/App/Info.plist" "LSApplicationCategoryType" "public.app-category.education"
+require_plist_value "NaymNaymLevelUp/App/Info.plist" "NEIS_API_KEY" "\$(NEIS_API_KEY)"
+require_nonempty_plist_value "NaymNaymLevelUp/App/Info.plist" "NSCameraUsageDescription"
+require_nonempty_plist_value "NaymNaymLevelUp/App/Info.plist" "NSPhotoLibraryUsageDescription"
+require_nonempty_plist_value "NaymNaymLevelUp/App/Info.plist" "NSPhotoLibraryAddUsageDescription"
+require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup"
+require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-services:0" "CloudKit"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 13;" "App build number is 13"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = \"com\\.h19h29\\.naymnaymlevelup\";" "Bundle ID is com.h19h29.naymnaymlevelup"
+require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store metadata version is 1.0"
+require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: 13$" "App Store metadata build is 13"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: 13$" "ko-KR metadata build is 13"
+
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-29@2x.png" 58 58
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-29@3x.png" 87 87
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-40@2x.png" 80 80
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-40@3x.png" 120 120
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60@2x.png" 120 120
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60@3x.png" 180 180
+check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" 1024 1024
 
 for screenshot in docs/app-store-screenshots/iphone-6-9-upload/*.jpg; do
   check_screenshot "$screenshot"
