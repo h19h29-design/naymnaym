@@ -280,6 +280,132 @@ final class LocalStoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: photoDirectory)
     }
 
+    @MainActor
+    func testResetChallengeRecordsKeepsProfileParentLinkAndPhotos() throws {
+        let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let photoStore = LocalPhotoStore(directoryURL: photoDirectory)
+        let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-AAAA-BBBB-CCCC"
+        )
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: childShareLinkStore,
+            localPhotoStore: photoStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.saveProfile(nickname: "지우", school: releaseTestSchool, allergyCodes: [1])
+        appState.addChildLink(inviteCode: "NYAM-DDDD-EEEE-FFFF", nickname: "민준", schoolName: "냠냠중학교", mode: .middle)
+        appState.childShareLink = child
+        childShareLinkStore.save(child)
+
+        let photo = try appState.saveMealPhotoData(Data([0x01, 0x02, 0x03]), sharedWithParent: true)
+        let photoURL = photoStore.url(for: photo)
+        _ = appState.recordMealInteraction(
+            item: MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["식이섬유"], tags: ["채소"], sourceRawText: "시금치나물"),
+            date: "20260624",
+            status: .oneBite,
+            photoIds: [photo.id],
+            shareWithParent: true
+        )
+        XCTAssertFalse(appState.records.isEmpty)
+        XCTAssertFalse(appState.mealRecords.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photoURL.path))
+
+        appState.resetChallengeRecords()
+
+        XCTAssertNotNil(appState.profile)
+        XCTAssertEqual(appState.childShareLink?.inviteCode, child.inviteCode)
+        XCTAssertEqual(appState.parentProfile.childLinks.count, 1)
+        XCTAssertEqual(appState.mealPhotos.map(\.id), [photo.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photoURL.path))
+        XCTAssertTrue(appState.records.isEmpty)
+        XCTAssertTrue(appState.mealRecords.isEmpty)
+        XCTAssertTrue(ChallengeStore(defaults: defaults).load().isEmpty)
+        XCTAssertTrue(MealRecordStore(defaults: defaults).load().isEmpty)
+        XCTAssertEqual(MealPhotoMetadataStore(defaults: defaults).load().map(\.id), [photo.id])
+        XCTAssertEqual(ParentProfileStore(defaults: defaults).load().childLinks.count, 1)
+        XCTAssertEqual(ChildShareLinkStore(defaults: defaults).load()?.inviteCode, child.inviteCode)
+        try? FileManager.default.removeItem(at: photoDirectory)
+    }
+
+    @MainActor
+    func testResetAllDataClearsProfileRecordsProgressParentLinksAndPhotoFiles() throws {
+        let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let photoStore = LocalPhotoStore(directoryURL: photoDirectory)
+        let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-AAAA-BBBB-CCCC"
+        )
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: childShareLinkStore,
+            localPhotoStore: photoStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.saveProfile(nickname: "지우", school: releaseTestSchool, allergyCodes: [1])
+        appState.addChildLink(inviteCode: "NYAM-DDDD-EEEE-FFFF", nickname: "민준", schoolName: "냠냠중학교", mode: .middle)
+        appState.childShareLink = child
+        childShareLinkStore.save(child)
+        appState.parentSyncMessage = "동기화 완료"
+
+        let photo = try appState.saveMealPhotoData(Data([0x0A, 0x0B, 0x0C]), sharedWithParent: true)
+        let photoURL = photoStore.url(for: photo)
+        _ = appState.recordMealInteraction(
+            item: MealItem(name: "콩나물무침", allergyCodes: [], nutrients: ["식이섬유"], tags: ["채소"], sourceRawText: "콩나물무침"),
+            date: "20260624",
+            status: .oneBite,
+            photoIds: [photo.id],
+            shareWithParent: true
+        )
+        XCTAssertGreaterThan(appState.progress.exp, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photoURL.path))
+
+        appState.resetAllData()
+
+        XCTAssertNil(appState.profile)
+        XCTAssertTrue(appState.records.isEmpty)
+        XCTAssertTrue(appState.mealRecords.isEmpty)
+        XCTAssertTrue(appState.mealPhotos.isEmpty)
+        XCTAssertEqual(appState.progress.exp, 0)
+        XCTAssertEqual(appState.progress.level, 1)
+        XCTAssertTrue(appState.parentProfile.childLinks.isEmpty)
+        XCTAssertNil(appState.childShareLink)
+        XCTAssertNil(appState.parentSyncMessage)
+        XCTAssertNil(appState.todayMeal)
+        XCTAssertTrue(appState.monthlyMeals.isEmpty)
+        XCTAssertEqual(appState.mealStatus, .noMeal)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: photoURL.path))
+        XCTAssertNil(UserProfileStore(defaults: defaults).load())
+        XCTAssertTrue(ChallengeStore(defaults: defaults).load().isEmpty)
+        XCTAssertTrue(MealRecordStore(defaults: defaults).load().isEmpty)
+        XCTAssertEqual(ProgressStore(defaults: defaults).load().exp, 0)
+        XCTAssertTrue(MealPhotoMetadataStore(defaults: defaults).load().isEmpty)
+        XCTAssertTrue(ParentProfileStore(defaults: defaults).load().childLinks.isEmpty)
+        XCTAssertNil(ChildShareLinkStore(defaults: defaults).load())
+        try? FileManager.default.removeItem(at: photoDirectory)
+    }
+
     func testCloudKitInviteCodeDoesNotExposeNickname() {
         let service = CloudKitParentLinkService()
         let code = service.makeInviteCode(nickname: "지우", nonce: "fixed-nonce")
@@ -810,6 +936,17 @@ final class LocalStoreTests: XCTestCase {
             RequiredIntroAsset(name: "icon_growth_report", minimumPixelWidth: 256, minimumPixelHeight: 256),
             RequiredIntroAsset(name: "icon_reward", minimumPixelWidth: 256, minimumPixelHeight: 256)
         ]
+    }
+
+    private var releaseTestSchool: School {
+        School(
+            name: "등촌고등학교",
+            officeCode: "B10",
+            schoolCode: "7010700",
+            region: "서울",
+            address: "서울특별시 강서구",
+            schoolType: "고등학교"
+        )
     }
 
     private func assertRecordKeys(
