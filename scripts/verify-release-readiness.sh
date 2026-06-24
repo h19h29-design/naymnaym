@@ -18,6 +18,11 @@ require_file() {
   pass "Found $1"
 }
 
+require_absent_path() {
+  [ ! -e "$1" ] || fail "$1 must not exist for the no-third-party-SDK release profile"
+  pass "$1 is absent"
+}
+
 check_screenshot() {
   file="$1"
   require_file "$file"
@@ -65,11 +70,39 @@ require_nonempty_plist_value() {
   pass "$file $key is present"
 }
 
+require_missing_plist_key() {
+  file="$1"
+  key="$2"
+  if /usr/libexec/PlistBuddy -c "Print :$key" "$file" >/dev/null 2>&1; then
+    fail "$file $key must not be present"
+  fi
+  pass "$file $key is absent"
+}
+
+require_empty_plist_array() {
+  file="$1"
+  key="$2"
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$file")"
+  [ "$value" = "Array {
+}" ] || fail "$file $key must be an empty array"
+  pass "$file $key is an empty array"
+}
+
 require_pattern() {
   file="$1"
   pattern="$2"
   description="$3"
   grep -Eq "$pattern" "$file" || fail "$description"
+  pass "$description"
+}
+
+require_absent_pattern() {
+  scope="$1"
+  pattern="$2"
+  description="$3"
+  if grep -ERq "$pattern" $scope; then
+    fail "$description"
+  fi
   pass "$description"
 }
 
@@ -105,6 +138,9 @@ require_plist_value "NaymNaymLevelUp/App/Info.plist" "NEIS_API_KEY" "\$(NEIS_API
 require_nonempty_plist_value "NaymNaymLevelUp/App/Info.plist" "NSCameraUsageDescription"
 require_nonempty_plist_value "NaymNaymLevelUp/App/Info.plist" "NSPhotoLibraryUsageDescription"
 require_nonempty_plist_value "NaymNaymLevelUp/App/Info.plist" "NSPhotoLibraryAddUsageDescription"
+require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSUserTrackingUsageDescription"
+require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationWhenInUseUsageDescription"
+require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationAlwaysAndWhenInUseUsageDescription"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-services:0" "CloudKit"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
@@ -114,6 +150,16 @@ require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store meta
 require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: 13$" "App Store metadata build is 13"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: 13$" "ko-KR metadata build is 13"
+
+require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
+require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
+require_absent_path "Package.swift"
+require_absent_path "Package.resolved"
+require_absent_path "Podfile"
+require_absent_path "Podfile.lock"
+require_absent_path "Cartfile"
+require_absent_path "Cartfile.resolved"
+require_absent_pattern "NaymNaymLevelUp NaymNaymLevelUp.xcodeproj" "Firebase|GoogleMobileAds|AdMob|AppTrackingTransparency|NSUserTrackingUsageDescription|FBSDK|AppsFlyer|Amplitude|Mixpanel|RevenueCat|StoreKit|CoreLocation|CLLocation|AuthenticationServices|SignInWithApple" "No ad, analytics, tracking, purchase, login, or location SDK references"
 
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60

@@ -40,7 +40,7 @@
 ## 2026-06-25
 - CloudKit record type/field 계약과 Privacy Manifest 수집 데이터 항목을 XCTest로 고정했다.
 - 출시 인트로에서 사용하는 로고, 마스코트, 배경, 기능 아이콘 에셋이 앱 번들에 포함되는지 XCTest로 고정했다.
-- plist lint, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, App Store 아이콘/스크린샷 규격, 공개 URL 상태를 확인하는 출시 검증 스크립트를 추가했다.
+- plist lint, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, App Store 아이콘/스크린샷 규격, 공개 URL 상태를 확인하는 출시 검증 스크립트를 추가했다.
 - 로컬 API 키를 출력하지 않고 NEIS 학교 검색과 급식식단정보 실제 응답을 확인하는 smoke 스크립트를 추가했다.
 - NEIS smoke 기본 기준을 현재 월 대신 등촌고등학교 2026년 6월로 고정하고, 환경변수로 다른 학교/월을 확인할 수 있게 했다.
 - 제출 전 대기 메모를 build 13 업로드 완료 상태와 남은 App Store Connect/CloudKit 작업 기준으로 갱신했다.

@@ -11,7 +11,7 @@
 - TestFlight build 1.0 (13) signed IPA가 생성됐다.
 - build 13 export summary에서 TestFlight beta entitlement와 App Store 프로비저닝 서명을 확인했다.
 - build 13 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
-- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
+- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
 - `scripts/smoke-neis-live.sh`로 로컬 API 키를 출력하지 않고 NEIS `schoolInfo`와 `mealServiceDietInfo` 실제 응답을 확인한다. 기본 smoke 기준은 등촌고등학교 2026년 6월 중식이며, `NEIS_SMOKE_SCHOOL_NAME`, `NEIS_SMOKE_MEAL_MONTH`로 다른 학교/월을 확인할 수 있다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
