@@ -15,7 +15,7 @@
 ## App Store Connect에서 필요한 값
 - 앱 이름: 냠냠레벨업
 - 부제: 한 입 도전 급식 코칭
-- 카테고리: 교육 또는 건강 및 피트니스 중 최종 선택
+- 카테고리: 교육
 - 가격: 무료
 - 연령 등급: 알레르기/건강 진단 표현 없음 기준으로 입력
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
@@ -84,6 +84,7 @@
   - 초대 코드 조회는 정확한 `inviteCode` 조건으로만 동작하는지 확인
 - 개인정보 처리방침/지원/데이터 안전 URL GitHub Pages 공개 확인 완료
 - App Privacy 답변에서 부모 공유 시 CloudKit에 저장될 수 있는 사용자 콘텐츠, 사진/동영상, 건강 정보, 사용자 ID를 앱 기능 제공 목적과 연결된 데이터로 입력
+- 상세 콘솔 실행 순서는 `release/AppStoreMetadata/console-runbook.md`를 따른다.
 
 ## 공식 제출 참고
 - Apple App Store Connect 도움말에 따르면 iOS 앱의 개인정보 처리방침 URL은 필수 입력 항목이다.
