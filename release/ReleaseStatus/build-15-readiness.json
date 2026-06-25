@@ -42,6 +42,7 @@
     "photoRecordsDefaultToLocalStorage": true,
     "photoRecordEvidenceCoveredByReleaseGate": true,
     "privacyManifestPresent": true,
+    "privacyManifestDataTypesMatchAppPrivacyDraft": true,
     "noAdAnalyticsTrackingPurchaseLoginLocationSDKs": true,
     "unfinishedAppCopyBlockedByReleaseGate": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,

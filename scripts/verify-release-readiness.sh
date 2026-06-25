@@ -289,6 +289,7 @@ ruby -rjson -e '
     "unsafeAllergyChallengeCopyBlockedByReleaseGate" => true,
     "shareCardsExcludeSensitiveFields" => true,
     "photoRecordEvidenceCoveredByReleaseGate" => true,
+    "privacyManifestDataTypesMatchAppPrivacyDraft" => true,
     "unfinishedAppCopyBlockedByReleaseGate" => true,
     "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
     "appStoreConnectBetaGroupCheckScript" => true,
@@ -365,6 +366,33 @@ require_pattern "README.md" 'App Privacy 정보는 `release/AppStoreMetadata/app
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
 require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
+ruby -rjson -e '
+  data = JSON.parse(`plutil -convert json -o - #{ARGV.fetch(0).dump}`)
+  abort "privacy tracking must be false" unless data["NSPrivacyTracking"] == false
+  abort "privacy tracking domains must be empty" unless data["NSPrivacyTrackingDomains"] == []
+
+  accessed = data.fetch("NSPrivacyAccessedAPITypes")
+  user_defaults = accessed.find { |item| item["NSPrivacyAccessedAPIType"] == "NSPrivacyAccessedAPICategoryUserDefaults" }
+  abort "UserDefaults required reason missing" unless user_defaults
+  abort "UserDefaults reason CA92.1 missing" unless user_defaults.fetch("NSPrivacyAccessedAPITypeReasons").include?("CA92.1")
+
+  required_types = [
+    "NSPrivacyCollectedDataTypeOtherUserContent",
+    "NSPrivacyCollectedDataTypePhotosorVideos",
+    "NSPrivacyCollectedDataTypeHealth",
+    "NSPrivacyCollectedDataTypeUserID"
+  ]
+  collected = data.fetch("NSPrivacyCollectedDataTypes")
+  required_types.each do |name|
+    row = collected.find { |item| item["NSPrivacyCollectedDataType"] == name }
+    abort "missing Privacy Manifest data type #{name}" unless row
+    abort "#{name} must be linked" unless row["NSPrivacyCollectedDataTypeLinked"] == true
+    abort "#{name} must not track" unless row["NSPrivacyCollectedDataTypeTracking"] == false
+    purposes = row.fetch("NSPrivacyCollectedDataTypePurposes")
+    abort "#{name} must be App Functionality" unless purposes == ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
+  end
+' "NaymNaymLevelUp/PrivacyInfo.xcprivacy"
+pass "Privacy Manifest collected data types match App Privacy draft"
 require_absent_path "Package.swift"
 require_absent_path "Package.resolved"
 require_absent_path "Podfile"

@@ -94,6 +94,7 @@ build 14 확인:
 - 2026-06-25 안전 문구 게이트: `scripts/verify-release-readiness.sh`가 알레르기 메뉴에 부적절한 섭취 권유나 안전 보장 표현이 들어오지 않도록 검사하고, 학교 안내와 보호자 판단 우선 문구가 앱/메타데이터에 남아 있는지 확인
 - 2026-06-25 사진 기록 증거 게이트: App Store 스크린샷에 실제 사진 기록 화면을 전면 노출하지 않는 개인정보 기준을 `docs/PHOTO_RECORD_RELEASE_EVIDENCE.md`로 분리하고, `scripts/verify-release-readiness.sh`가 사진 선택/촬영/부모 공유 UI와 로컬 저장/삭제/CloudKit 사진 공유/전체 삭제 테스트 존재를 검증
 - 2026-06-25 출시 문구 게이트: 앱 소스에 내부 개발 표식이나 미완료/추후 고도화 표현이 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
+- 2026-06-25 App Privacy manifest 게이트: `PrivacyInfo.xcprivacy`의 UserDefaults 사유와 사용자 콘텐츠/사진/건강/User ID 수집 데이터 타입이 App Privacy 입력 초안과 일치하는지 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 App Privacy 갱신: `release/AppStoreMetadata/app-privacy-draft.md`에 App Store Connect 입력 매트릭스를 추가하고 `scripts/verify-release-readiness.sh`가 핵심 데이터 타입 행을 검증하도록 보강
 - 2026-06-25 CloudKit 갱신: CloudKit Production schema/index/권한 콘솔 설정값을 `release/CloudKit/schema-contract.json`으로 구조화
 

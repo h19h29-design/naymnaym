@@ -20,7 +20,7 @@
 - Search History: 수집 안 함
 - Usage Data: 자체 분석 SDK 없음
 
-## 검토 필요 데이터
+## 최종 확인 데이터
 
 아래 항목은 기능상 사용자 입력 또는 선택 공유가 있으므로 “Data Not Collected”로 단정하지 말고 App Store Connect에서 보수적으로 확인해야 합니다.
 
