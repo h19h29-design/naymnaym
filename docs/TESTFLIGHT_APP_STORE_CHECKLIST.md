@@ -12,6 +12,7 @@
 - build 15 IPA에서 embedded profile iCloud container/CloudKit service와 signed app iCloud/CloudKit entitlements를 확인했다.
 - build 15 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
 - App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 조회할 수 있다.
+- TestFlight 그룹 연결까지 확인하려면 `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`를 실행한다.
 - 현재 릴리스 후보와 외부 blocker는 `release/ReleaseStatus/build-15-readiness.json`에 구조화되어 있고 `scripts/verify-release-readiness.sh`가 핵심 값을 검증한다.
 - build 14 IPA를 직접 검사한 결과 embedded provisioning profile은 iCloud container와 CloudKit service wildcard를 허용하지만, 실제 signed app entitlements에 iCloud/CloudKit 항목이 없으므로 build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
 - `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 15 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.

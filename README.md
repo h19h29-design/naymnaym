@@ -77,6 +77,7 @@ NEIS_API_KEY = 발급받은_키
   - 다른 학교/월 검증: `NEIS_SMOKE_SCHOOL_NAME=학교명 NEIS_SMOKE_MEAL_MONTH=YYYYMM scripts/smoke-neis-live.sh`
 - 현재 릴리스 후보 상태 보고서: `release/ReleaseStatus/build-15-readiness.json`
 - App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태 확인
+  - TestFlight 그룹 연결까지 강제 확인: `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`
 - 실제 학교 검색으로 officeCode, schoolCode 저장 확인
 - `mealServiceDietInfo` 호출 로그 확인
 - `DDISH_NM`, `CAL_INFO`, `NTR_INFO` 변환 확인

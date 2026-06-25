@@ -42,6 +42,7 @@
     "privacyManifestPresent": true,
     "noAdAnalyticsTrackingPurchaseLoginLocationSDKs": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,
+    "appStoreConnectBetaGroupCheckScript": true,
     "testFlightCliUploadSucceeded": true
   },
   "evidencePaths": {
@@ -67,6 +68,10 @@
     {
       "command": "scripts/verify-release-readiness.sh",
       "purpose": "Release file, entitlement, screenshot, metadata, privacy, public URL, upload log, and IPA checks."
+    },
+    {
+      "command": "ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh",
+      "purpose": "App Store Connect build processing and TestFlight beta group linkage check when App Store Connect API credentials are available."
     },
     {
       "command": "scripts/smoke-neis-live.sh",
@@ -106,6 +111,7 @@
   ],
   "manualNextSteps": [
     "Run scripts/check-app-store-build-status.sh if App Store Connect API credentials are available locally.",
+    "For TestFlight group verification, run ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh.",
     "In App Store Connect, confirm build 15 finished processing.",
     "Assign build 15 to the internal test group and the external group.",
     "Confirm the public TestFlight link points at build 15.",
