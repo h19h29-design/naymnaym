@@ -48,6 +48,7 @@
     "cloudKitStorageCopyAlignedWithPrivacyDraft": true,
     "koreanReleaseCopySpacingChecked": true,
     "marketingSiteUsesReleaseReadyCopy": true,
+    "livePublicSiteCopyVerified": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,
     "appStoreConnectBetaGroupCheckScript": true,
     "testFlightCliUploadSucceeded": true

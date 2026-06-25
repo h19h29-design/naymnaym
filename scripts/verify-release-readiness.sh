@@ -169,6 +169,31 @@ check_url() {
   pass "$url returned HTTP 200"
 }
 
+require_url_pattern() {
+  url="$1"
+  pattern="$2"
+  description="$3"
+  body="$(mktemp)"
+  curl -fsSL "$url" -o "$body" || fail "$url could not be fetched"
+  grep -Eq "$pattern" "$body" || fail "$description"
+  rm -f "$body"
+  pass "$description"
+}
+
+require_url_absent_pattern() {
+  url="$1"
+  pattern="$2"
+  description="$3"
+  body="$(mktemp)"
+  curl -fsSL "$url" -o "$body" || fail "$url could not be fetched"
+  if grep -Eq "$pattern" "$body"; then
+    rm -f "$body"
+    fail "$description"
+  fi
+  rm -f "$body"
+  pass "$description"
+}
+
 check_uploaded_ipa() {
   ipa="$1"
   expected_build="$2"
@@ -294,6 +319,7 @@ ruby -rjson -e '
     "cloudKitStorageCopyAlignedWithPrivacyDraft" => true,
     "koreanReleaseCopySpacingChecked" => true,
     "marketingSiteUsesReleaseReadyCopy" => true,
+    "livePublicSiteCopyVerified" => true,
     "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
     "appStoreConnectBetaGroupCheckScript" => true,
     "testFlightCliUploadSucceeded" => true
@@ -474,5 +500,11 @@ for url in \
 do
   check_url "$url"
 done
+
+require_url_pattern "https://h19h29-design.github.io/naymnaym/" "무료 iPhone 앱" "Published landing page shows release-ready app badge"
+require_url_pattern "https://h19h29-design.github.io/naymnaym/" "데이터와 안전 기준" "Published landing page shows data and safety section"
+require_url_absent_pattern "https://h19h29-design.github.io/naymnaym/" "준비중|처리 확인 중|제출 전 검토|출시 준비 상태" "Published landing page has no temporary release-status copy"
+require_url_pattern "https://h19h29-design.github.io/naymnaym/support.html" "아이폰에서" "Published support page uses polished iPhone copy"
+require_url_absent_pattern "https://h19h29-design.github.io/naymnaym/support.html" "아이 폰|준비중|처리 확인 중" "Published support page has no stale temporary copy"
 
 pass "release readiness checks completed"

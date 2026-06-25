@@ -98,6 +98,7 @@ build 14 확인:
 - 2026-06-25 CloudKit 저장 문구 게이트: 부모 공유 시 CloudKit/iCloud에 선택 데이터가 저장될 수 있으므로 앱/문서에 과도한 무저장 표현이 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 한국어 출시 문구 게이트: 앱/문서/마케팅 사이트의 어색한 띄어쓰기 표현이 제출 자료에 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 마케팅 사이트 문구 게이트: 공개 랜딩 페이지에 임시 진행 상태 문구가 남지 않고 앱 가치와 데이터 안전 기준만 보이도록 `scripts/verify-release-readiness.sh`가 검사
+- 2026-06-25 공개 사이트 배포 게이트: `gh-pages`에 실제 배포된 GitHub Pages HTML도 검사해 stale 랜딩/지원 문구가 공개 URL에 남지 않도록 확인
 - 2026-06-25 App Privacy 갱신: `release/AppStoreMetadata/app-privacy-draft.md`에 App Store Connect 입력 매트릭스를 추가하고 `scripts/verify-release-readiness.sh`가 핵심 데이터 타입 행을 검증하도록 보강
 - 2026-06-25 CloudKit 갱신: CloudKit Production schema/index/권한 콘솔 설정값을 `release/CloudKit/schema-contract.json`으로 구조화
 
