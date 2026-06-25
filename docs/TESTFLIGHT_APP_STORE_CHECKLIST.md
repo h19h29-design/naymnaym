@@ -11,6 +11,7 @@
 - TestFlight build 1.0 (15) signed archive/export가 생성됐다.
 - build 15 IPA에서 embedded profile iCloud container/CloudKit service와 signed app iCloud/CloudKit entitlements를 확인했다.
 - build 15 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
+- App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 조회할 수 있다.
 - build 14 IPA를 직접 검사한 결과 embedded provisioning profile은 iCloud container와 CloudKit service wildcard를 허용하지만, 실제 signed app entitlements에 iCloud/CloudKit 항목이 없으므로 build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
 - `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 15 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
 - `scripts/smoke-neis-live.sh`로 로컬 API 키를 출력하지 않고 NEIS `schoolInfo`와 `mealServiceDietInfo` 실제 응답을 확인한다. 기본 smoke 기준은 등촌고등학교 2026년 6월 중식이며, `NEIS_SMOKE_SCHOOL_NAME`, `NEIS_SMOKE_MEAL_MONTH`로 다른 학교/월을 확인할 수 있다.
@@ -75,6 +76,7 @@
 
 ## 제출 전 남은 계정 작업
 - App Store Connect에서 build 15 처리 완료 확인
+  - API 키가 있으면 `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`를 설정한 뒤 `scripts/check-app-store-build-status.sh` 실행
 - build 15를 내부 테스트 그룹에 연결
 - build 15를 외부 테스트 그룹 `패밀리`에 연결
 - 외부 테스트 그룹 공개 링크가 build 15를 가리키는지 확인

@@ -1,4 +1,7 @@
 Config.xcconfig
+AuthKey_*.p8
+*.p8
+.asc/
 *.xcuserstate
 *.xcuserdata/
 DerivedData/

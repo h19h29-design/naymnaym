@@ -87,12 +87,14 @@ build 14 확인:
 - 2026-06-24 추가 갱신: 설정 화면 공개 URL 링크, 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 13 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 추가 갱신: 부모 공유 도전 기록 선택 공유 gate와 사진 삭제 보강을 반영한 build 14 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 build 15 갱신: CloudKit entitlement 검증 통과 signed IPA를 생성하고 TestFlight CLI 업로드 완료
+- 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 확인할 수 있도록 보강
 
 ## 남은 외부 작업
 
 아래 항목은 로컬 코드로 완료할 수 없고 Apple Developer/App Store Connect 계정에서 확인 또는 처리해야 한다.
 
 1. App Store Connect에서 build 15 처리 완료 여부 확인
+   - App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 처리 상태를 먼저 확인 가능
 2. build 15를 내부/외부 테스트 그룹에 연결
 3. 외부 테스트 그룹 공개 링크가 build 15를 가리키는지 확인
 4. 외부 테스트 심사 제출

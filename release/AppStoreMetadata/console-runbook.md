@@ -54,6 +54,19 @@ UPLOAD=1 scripts/release-testflight-build.sh 15
 
 냠냠레벨업은 NEIS 공공데이터 기반 무료 급식 식습관 코칭 앱입니다. 회원가입 없이 별명과 학교를 선택해 사용합니다. 샘플 데이터는 사용자가 체험 모드를 직접 선택한 경우에만 표시되며, 실제 학교 급식 조회 실패 시 샘플로 대체하지 않습니다. 알레르기 안내는 안전을 보장하지 않고 학교 안내와 보호자 판단이 우선임을 앱 안에 명시했습니다. 테스트 계정은 필요하지 않으며 첫 실행에서 체험 모드로 주요 기능을 확인할 수 있습니다.
 
+### App Store Connect API로 build 15 상태 확인
+
+웹 콘솔 로그인 없이 처리 상태만 확인하려면 App Store Connect API 키를 만든 뒤 아래처럼 실행한다. `.p8` 키 파일은 Git에 올리지 않는다.
+
+```sh
+ASC_KEY_ID=YOUR_KEY_ID \
+ASC_ISSUER_ID=YOUR_ISSUER_ID \
+ASC_PRIVATE_KEY_PATH=/path/to/AuthKey_YOUR_KEY_ID.p8 \
+scripts/check-app-store-build-status.sh
+```
+
+기본 조회 대상은 bundle id `com.h19h29.naymnaymlevelup`, version `1.0`, build `15`다. 다른 빌드를 확인할 때는 `ASC_VERSION`과 `ASC_BUILD`를 함께 지정한다.
+
 ## App Store Connect 입력값
 
 - 앱 이름: `냠냠레벨업`

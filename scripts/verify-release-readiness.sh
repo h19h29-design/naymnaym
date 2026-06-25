@@ -210,6 +210,9 @@ require_file "NaymNaymLevelUp/App/Info.plist"
 require_file "NaymNaymLevelUp/PrivacyInfo.xcprivacy"
 require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
+require_file "scripts/check-app-store-build-status.sh"
+sh -n scripts/check-app-store-build-status.sh
+pass "App Store Connect build status script syntax"
 
 git check-ignore -q Config.xcconfig || fail "Config.xcconfig must stay ignored"
 pass "Config.xcconfig is ignored"
