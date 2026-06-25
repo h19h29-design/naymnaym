@@ -1,34 +1,30 @@
 # App Store Connect / CloudKit 콘솔 런북
 
-이 문서는 build 14 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다.
+이 문서는 build 15 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다. build 15는 로컬 signed archive/export, IPA CloudKit entitlement 검증, TestFlight CLI 업로드까지 완료했다.
 
 ## 현재 배포 후보
 
 - 앱 이름: 냠냠레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.0`
-- 최신 업로드 빌드: `14`
-- 다음 제출 후보 빌드: `15`
+- 최신 업로드 빌드: `15`
+- 현재 제출 후보 빌드: `15`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
 - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
-- TestFlight 업로드 상태: build 14 CLI 업로드 성공. 단, 실제 IPA signed entitlements에 iCloud/CloudKit이 없어 build 15 이상 재서명/재업로드 전까지 release hold.
+- TestFlight 업로드 상태: build 15 CLI 업로드 성공. App Store Connect 처리 완료 확인과 테스트 그룹 연결이 남아 있다.
 
-## 현재 release hold
+## build 15 검증 결과
 
-build 14 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud container `iCloud.com.h19h29.naymnaymlevelup`와 CloudKit service wildcard `*`를 허용한다. 하지만 signed app을 `codesign -d --entitlements :-`로 확인하면 `application-identifier`, `beta-reports-active`, team identifier, `get-task-allow`만 있고 iCloud/CloudKit entitlement가 없다. build 14 archive가 unsigned였기 때문에 App Store Connect remote signing export만으로 앱 entitlements가 적용되지 않은 상태다.
+build 15 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud container `iCloud.com.h19h29.naymnaymlevelup`와 CloudKit service wildcard `*`를 허용한다. signed app entitlements에도 iCloud container와 CloudKit service가 포함되어 있다.
 
-진행 전 계정 소유자가 먼저 확인해야 할 항목:
+검증 완료 항목:
 
-1. 로컬 Mac에서 signing keychain/certificate 접근 팝업이 뜨면 허용한다.
-2. `scripts/release-testflight-build.sh 15`를 실행해 signed archive/export와 IPA entitlement 검증을 완료한다.
-3. 스크립트가 `codesign keychain access preflight timed out`으로 실패하면 keychain/certificate 접근을 허용한 뒤 같은 명령을 다시 실행한다.
-4. exported IPA의 signed entitlements에 아래 두 값이 실제 포함됐는지 확인한다.
-   - `com.apple.developer.icloud-container-identifiers: iCloud.com.h19h29.naymnaymlevelup`
-   - `com.apple.developer.icloud-services: CloudKit`
-5. 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15`를 실행해 TestFlight에 업로드한다.
+- `scripts/release-testflight-build.sh 15`: signed archive/export와 IPA entitlement 검증 통과
+- `UPLOAD=1 scripts/release-testflight-build.sh 15`: TestFlight CLI upload 성공
+- `scripts/verify-release-readiness.sh`: build 15 upload log, IPA entitlement, App Store icon/screenshot, 공개 URL까지 통과
 
 ### 로컬 signing keychain 접근 허용 절차
 
@@ -47,11 +43,11 @@ UPLOAD=1 scripts/release-testflight-build.sh 15
 
 1. App Store Connect에서 냠냠레벨업 앱으로 이동한다.
 2. build 14는 CloudKit entitlement가 없으므로 내부/외부 테스트 그룹에 최종 후보로 연결하지 않는다.
-3. build 15 이상에서 exported IPA signed entitlements 검증을 통과한 뒤 TestFlight 빌드 목록 처리 완료 여부를 확인한다.
-4. 검증 통과 빌드를 내부 테스트 그룹에 연결한다.
+3. build 15의 TestFlight 빌드 목록 처리 완료 여부를 확인한다.
+4. build 15를 내부 테스트 그룹에 연결한다.
 5. 외부 테스트 그룹 `패밀리`를 만들거나 기존 그룹을 사용한다.
-6. 검증 통과 빌드를 외부 테스트 그룹 `패밀리`에 연결한다.
-7. 공개 링크가 검증 통과 빌드를 가리키는지 확인한다.
+6. build 15를 외부 테스트 그룹 `패밀리`에 연결한다.
+7. 공개 링크가 build 15를 가리키는지 확인한다.
 8. 외부 테스트 심사 제출 전 아래 심사용 설명을 그대로 사용한다.
 
 심사용 설명:
@@ -76,7 +72,7 @@ UPLOAD=1 scripts/release-testflight-build.sh 15
 
 ## App Privacy 답변 기준
 
-최종 답변은 앱 소유자가 확인해야 한다. 현재 build 15 후보 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
+최종 답변은 앱 소유자가 확인해야 한다. 현재 build 15 업로드 후보 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
 
 - Tracking: 아니요
 - Contact Info: 수집 안 함

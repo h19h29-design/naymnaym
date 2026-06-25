@@ -7,12 +7,12 @@
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유와 선택 부모 공유용 수집 데이터 타입을 선언했다.
 - iPhone 17, iPhone 16, iPhone SE 시뮬레이터 Debug 빌드, 설치, 실행과 XCTest 66개가 통과한다.
 - CloudKit record type/field 계약, Privacy Manifest 수집 데이터 항목, 출시 인트로 필수 에셋 번들링, 전체 데이터 삭제/도전 기록 삭제 범위를 XCTest로 고정했다.
-- Release/generic iOS archive와 App Store Connect remote-signed export가 통과한다.
-- TestFlight build 1.0 (14) signed IPA가 생성됐다.
-- build 14 export summary에서 TestFlight beta entitlement와 App Store 프로비저닝 서명을 확인했다.
-- build 14 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
+- build 15 Release/generic iOS signed archive/export와 IPA entitlement 검증이 통과한다.
+- TestFlight build 1.0 (15) signed archive/export가 생성됐다.
+- build 15 IPA에서 embedded profile iCloud container/CloudKit service와 signed app iCloud/CloudKit entitlements를 확인했다.
+- build 15 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
 - build 14 IPA를 직접 검사한 결과 embedded provisioning profile은 iCloud container와 CloudKit service wildcard를 허용하지만, 실제 signed app entitlements에 iCloud/CloudKit 항목이 없으므로 build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
-- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 14 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다. 현재 build 14는 signed app iCloud container entitlement 검사에서 의도적으로 실패해야 한다.
+- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 15 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
 - `scripts/smoke-neis-live.sh`로 로컬 API 키를 출력하지 않고 NEIS `schoolInfo`와 `mealServiceDietInfo` 실제 응답을 확인한다. 기본 smoke 기준은 등촌고등학교 2026년 6월 중식이며, `NEIS_SMOKE_SCHOOL_NAME`, `NEIS_SMOKE_MEAL_MONTH`로 다른 학교/월을 확인할 수 있다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
@@ -74,19 +74,10 @@
 - 설정 > 웹 개인정보 처리방침/지원/데이터 안전 링크 열림 확인
 
 ## 제출 전 남은 계정 작업
-- 로컬 signing keychain/certificate 접근 허용
-  - Mac 보안 팝업에서 `Apple Development: Hwayoung Lee (R6ALQZJ966)` private key 접근 요청이 보이면 Mac 로그인 암호 입력 후 `항상 허용`
-  - 팝업이 보이지 않으면 Keychain Access 앱의 `login` keychain > `My Certificates`에서 해당 인증서/private key 접근 제어 확인
-  - 암호와 private key 값은 문서, 로그, 채팅에 남기지 않기
-- `scripts/release-testflight-build.sh 15` 실행으로 signed archive/export와 IPA entitlement 검증 완료
-  - 스크립트가 `codesign` keychain 접근 preflight에서 멈추거나 실패하면, macOS keychain/certificate 접근을 허용한 뒤 같은 명령을 다시 실행
-- exported IPA embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인
-- exported IPA signed app entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
-- CloudKit entitlement 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15` 실행으로 TestFlight 업로드
-- App Store Connect에서 build 15 이상 처리 완료 확인
-- build 15 이상을 내부 테스트 그룹에 연결
-- build 15 이상을 외부 테스트 그룹 `패밀리`에 연결
-- 외부 테스트 그룹 공개 링크가 build 15 이상을 가리키는지 확인
+- App Store Connect에서 build 15 처리 완료 확인
+- build 15를 내부 테스트 그룹에 연결
+- build 15를 외부 테스트 그룹 `패밀리`에 연결
+- 외부 테스트 그룹 공개 링크가 build 15를 가리키는지 확인
 - 외부 테스트 심사 제출
 - CloudKit Dashboard에서 public database schema 배포 확인
 - CloudKit Dashboard에서 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record type 확인
