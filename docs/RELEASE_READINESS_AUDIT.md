@@ -90,6 +90,8 @@ build 14 확인:
 - 2026-06-25 추가 갱신: 부모 공유 도전 기록 선택 공유 gate와 사진 삭제 보강을 반영한 build 14 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 build 15 갱신: CloudKit entitlement 검증 통과 signed IPA를 생성하고 TestFlight CLI 업로드 완료
 - 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 확인할 수 있도록 보강
+- 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`로 build 15 TestFlight 그룹 연결까지 확인 가능
+- 2026-06-25 안전 문구 게이트: `scripts/verify-release-readiness.sh`가 알레르기 메뉴에 부적절한 섭취 권유나 안전 보장 표현이 들어오지 않도록 검사하고, 학교 안내와 보호자 판단 우선 문구가 앱/메타데이터에 남아 있는지 확인
 - 2026-06-25 App Privacy 갱신: `release/AppStoreMetadata/app-privacy-draft.md`에 App Store Connect 입력 매트릭스를 추가하고 `scripts/verify-release-readiness.sh`가 핵심 데이터 타입 행을 검증하도록 보강
 - 2026-06-25 CloudKit 갱신: CloudKit Production schema/index/권한 콘솔 설정값을 `release/CloudKit/schema-contract.json`으로 구조화
 

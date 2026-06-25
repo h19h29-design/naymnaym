@@ -286,6 +286,7 @@ ruby -rjson -e '
     "missingAPIKeyDoesNotShowSampleMeals" => true,
     "todayMealDoesNotFallbackToMonthlyFirst" => true,
     "allergyChallengeLock" => true,
+    "unsafeAllergyChallengeCopyBlockedByReleaseGate" => true,
     "shareCardsExcludeSensitiveFields" => true,
     "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
     "appStoreConnectBetaGroupCheckScript" => true,
@@ -369,6 +370,10 @@ require_absent_path "Podfile.lock"
 require_absent_path "Cartfile"
 require_absent_path "Cartfile.resolved"
 require_absent_pattern "NaymNaymLevelUp NaymNaymLevelUp.xcodeproj" "Firebase|GoogleMobileAds|AdMob|AppTrackingTransparency|NSUserTrackingUsageDescription|FBSDK|AppsFlyer|Amplitude|Mixpanel|RevenueCat|StoreKit|CoreLocation|CLLocation|AuthenticationServices|SignInWithApple" "No ad, analytics, tracking, purchase, login, or location SDK references"
+require_absent_pattern "NaymNaymLevelUp docs release README.md" "먹어도 괜찮|먹어도 안전|조금만 먹어보|AI가 안전|안전하다고 판단" "No unsafe allergy challenge or safety-guarantee copy"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "보호자와 학교 안내" "Meal screen prioritizes guardian and school allergy guidance"
+require_pattern "NaymNaymLevelUp/Views/Settings/SettingsView.swift" "학교 안내와 보호자 판단" "Settings privacy copy prioritizes school guidance and guardian judgment"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "학교 안내와 보호자 판단이 항상 우선" "App Store metadata includes allergy safety disclaimer"
 
 require_file "$RELEASE_UPLOAD_LOG"
 require_file "${RELEASE_EXPORT_DIR}/ExportOptions.plist"

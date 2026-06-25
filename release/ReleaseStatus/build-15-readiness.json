@@ -36,6 +36,7 @@
       "safety"
     ],
     "allergyChallengeLock": true,
+    "unsafeAllergyChallengeCopyBlockedByReleaseGate": true,
     "shareCardsUseIOSShareSheet": true,
     "shareCardsExcludeSensitiveFields": true,
     "photoRecordsDefaultToLocalStorage": true,
