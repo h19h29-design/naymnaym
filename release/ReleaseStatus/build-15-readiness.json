@@ -43,6 +43,7 @@
     "photoRecordEvidenceCoveredByReleaseGate": true,
     "privacyManifestPresent": true,
     "noAdAnalyticsTrackingPurchaseLoginLocationSDKs": true,
+    "unfinishedAppCopyBlockedByReleaseGate": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,
     "appStoreConnectBetaGroupCheckScript": true,
     "testFlightCliUploadSucceeded": true

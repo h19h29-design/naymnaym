@@ -527,7 +527,7 @@ private struct DataSourcesView: View {
                 Section("활용 데이터") {
                     Text("NEIS 학교기본정보 API")
                     Text("NEIS 급식식단정보 API")
-                    Text("식품영양성분DB는 영양소 추정 보조 자료로 추후 고도화 참고")
+                    Text("식품영양성분DB는 영양소 설명을 보완하는 참고 자료로 활용합니다.")
                 }
                 Section("현재 버전") {
                     Text("샘플 데이터는 사용자가 명시적으로 체험 모드를 선택한 경우에만 표시됩니다.")

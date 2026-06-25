@@ -289,6 +289,7 @@ ruby -rjson -e '
     "unsafeAllergyChallengeCopyBlockedByReleaseGate" => true,
     "shareCardsExcludeSensitiveFields" => true,
     "photoRecordEvidenceCoveredByReleaseGate" => true,
+    "unfinishedAppCopyBlockedByReleaseGate" => true,
     "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
     "appStoreConnectBetaGroupCheckScript" => true,
     "testFlightCliUploadSucceeded" => true
@@ -371,6 +372,7 @@ require_absent_path "Podfile.lock"
 require_absent_path "Cartfile"
 require_absent_path "Cartfile.resolved"
 require_absent_pattern "NaymNaymLevelUp NaymNaymLevelUp.xcodeproj" "Firebase|GoogleMobileAds|AdMob|AppTrackingTransparency|NSUserTrackingUsageDescription|FBSDK|AppsFlyer|Amplitude|Mixpanel|RevenueCat|StoreKit|CoreLocation|CLLocation|AuthenticationServices|SignInWithApple" "No ad, analytics, tracking, purchase, login, or location SDK references"
+require_absent_pattern "NaymNaymLevelUp" "TODO|FIXME|HACK|placeholder|임시|나중|추후|미완료|개발 중|준비중|출시 예정" "No unfinished release copy or development markers in app source"
 require_absent_pattern "NaymNaymLevelUp docs release README.md" "먹어도 괜찮|먹어도 안전|조금만 먹어보|AI가 안전|안전하다고 판단" "No unsafe allergy challenge or safety-guarantee copy"
 require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "보호자와 학교 안내" "Meal screen prioritizes guardian and school allergy guidance"
 require_pattern "NaymNaymLevelUp/Views/Settings/SettingsView.swift" "학교 안내와 보호자 판단" "Settings privacy copy prioritizes school guidance and guardian judgment"
