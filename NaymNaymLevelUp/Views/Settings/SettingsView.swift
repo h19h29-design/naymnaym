@@ -563,7 +563,8 @@ private struct AppInfoView: View {
                 Text("광고 없음")
                 Text("인앱결제 없음")
                 Text("회원가입 없음")
-                Text("서버 저장 없음")
+                Text("기본 로컬 저장")
+                Text("부모 공유 시 iCloud 사용")
             }
             Section("주의사항") {
                 Text("영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다.")

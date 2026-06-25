@@ -45,6 +45,7 @@
     "privacyManifestDataTypesMatchAppPrivacyDraft": true,
     "noAdAnalyticsTrackingPurchaseLoginLocationSDKs": true,
     "unfinishedAppCopyBlockedByReleaseGate": true,
+    "cloudKitStorageCopyAlignedWithPrivacyDraft": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,
     "appStoreConnectBetaGroupCheckScript": true,
     "testFlightCliUploadSucceeded": true
