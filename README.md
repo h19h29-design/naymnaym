@@ -87,6 +87,7 @@ NEIS_API_KEY = 발급받은_키
 
 ## App Store 제출 자료
 - App Store 메타데이터 초안: `release/AppStoreMetadata/ko-KR.md`
+- App Store Connect 구조 입력값: `release/AppStoreMetadata/app-store-connect-values.json`
 - App Privacy 답변 초안: `release/AppStoreMetadata/app-privacy-draft.md`
 - 제출 전 대기 메모: `release/AppStoreMetadata/submission-notes.md`
 - 정적 출시 사이트: `marketing-site/dist/`, `https://h19h29-design.github.io/naymnaym/`

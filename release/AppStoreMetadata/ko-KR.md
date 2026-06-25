@@ -2,6 +2,8 @@
 
 이 문서는 App Store Connect 입력용 초안입니다. 실제 제출 전 앱 소유자가 가격, 연령 등급, 개인정보 처리방침 URL, App Privacy 답변을 최종 확인해야 합니다.
 
+구조화된 입력값은 `release/AppStoreMetadata/app-store-connect-values.json`에도 같은 기준으로 정리되어 있습니다.
+
 ## 기본 정보
 
 - 앱 이름: 냠냠레벨업

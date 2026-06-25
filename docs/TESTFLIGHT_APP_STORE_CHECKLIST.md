@@ -38,6 +38,7 @@
 - 앱 안에서는 기록 공유와 사진 공유를 별도 선택으로 분리
 - 급식 조회를 위해 선택 학교 코드와 날짜가 NEIS 공공데이터 API 요청에 사용될 수 있음
 - App Store Connect 입력 매트릭스는 `release/AppStoreMetadata/app-privacy-draft.md`의 `App Store Connect 입력 매트릭스` 섹션을 기준으로 한다.
+- 콘솔 입력값은 `release/AppStoreMetadata/app-store-connect-values.json`에도 구조화되어 있다.
 
 ## 심사용 안내문 초안
 냠냠레벨업은 NEIS 공공데이터 기반 무료 급식 식습관 코칭 앱입니다. 회원가입 없이 별명과 학교를 선택해 사용합니다. 샘플 데이터는 사용자가 체험 모드를 직접 선택한 경우에만 표시되며, 실제 학교 급식 조회 실패 시 샘플로 대체하지 않습니다. 알레르기 안내는 안전을 보장하지 않고 학교 안내와 보호자 판단이 우선임을 앱 안에 명시했습니다.

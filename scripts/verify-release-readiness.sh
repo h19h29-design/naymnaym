@@ -210,9 +210,28 @@ require_file "NaymNaymLevelUp/App/Info.plist"
 require_file "NaymNaymLevelUp/PrivacyInfo.xcprivacy"
 require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
+require_file "release/AppStoreMetadata/app-store-connect-values.json"
 require_file "scripts/check-app-store-build-status.sh"
 sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
+ruby -rjson -e '
+  data = JSON.parse(File.read(ARGV.fetch(0)))
+  abort "wrong bundle id" unless data.dig("appInfo", "bundleId") == "com.h19h29.naymnaymlevelup"
+  abort "wrong version" unless data.dig("appInfo", "version") == "1.0"
+  abort "wrong build" unless data.dig("appInfo", "build") == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
+  abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://h19h29-design.github.io/naymnaym/privacy.html"
+  data_types = data.dig("appPrivacy", "dataTypes") || []
+  required = ["Other User Content", "Photos or Videos", "Health and Fitness", "User ID"]
+  required.each do |name|
+    row = data_types.find { |item| item["name"] == name }
+    abort "missing privacy data type #{name}" unless row
+    abort "#{name} must be collected" unless row["collected"] == true
+    abort "#{name} purpose must be App Functionality" unless row["purpose"] == "App Functionality"
+    abort "#{name} must be linked" unless row["linkedToUser"] == true
+    abort "#{name} must not track" unless row["tracking"] == false
+  end
+' "release/AppStoreMetadata/app-store-connect-values.json"
+pass "App Store Connect values JSON"
 
 git check-ignore -q Config.xcconfig || fail "Config.xcconfig must stay ignored"
 pass "Config.xcconfig is ignored"
@@ -251,7 +270,9 @@ require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Video
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Health and Fitness \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers health and fitness"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "User ID \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers user id"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "Photos or Videos: 보수 입력 기준 수집함" "ko-KR metadata references photos privacy input"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "app-store-connect-values\\.json" "ko-KR metadata references structured values JSON"
 require_pattern "README.md" "scripts/check-app-store-build-status\\.sh" "README references App Store Connect build status script"
+require_pattern "README.md" "app-store-connect-values\\.json" "README references structured App Store Connect values"
 require_pattern "README.md" 'App Privacy 정보는 `release/AppStoreMetadata/app-privacy-draft\.md`의 입력 매트릭스 기준' "README references App Privacy input matrix"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
