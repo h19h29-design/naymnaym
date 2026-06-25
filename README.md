@@ -43,6 +43,7 @@
   - `SharedMealRecord.childLinkId`
   - `SharedChallengeRecord.childLinkId`
   - `SharedMealPhoto.childLinkId`
+- 콘솔 설정값은 `release/CloudKit/schema-contract.json`에 구조화되어 있습니다.
 - 프로젝트에는 `NaymNaymLevelUp.entitlements`가 포함되어 있으며, Apple Developer 계정에서 `iCloud.com.h19h29.naymnaymlevelup` container를 생성/연결해야 합니다.
 
 ## 알레르기 및 안전

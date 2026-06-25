@@ -211,6 +211,7 @@ require_file "NaymNaymLevelUp/PrivacyInfo.xcprivacy"
 require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
 require_file "release/AppStoreMetadata/app-store-connect-values.json"
+require_file "release/CloudKit/schema-contract.json"
 require_file "scripts/check-app-store-build-status.sh"
 sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
@@ -232,6 +233,34 @@ ruby -rjson -e '
   end
 ' "release/AppStoreMetadata/app-store-connect-values.json"
 pass "App Store Connect values JSON"
+ruby -rjson -e '
+  data = JSON.parse(File.read(ARGV.fetch(0)))
+  abort "wrong CloudKit container" unless data["containerIdentifier"] == "iCloud.com.h19h29.naymnaymlevelup"
+  abort "wrong CloudKit database" unless data["database"] == "public"
+  expected = {
+    "ParentLink" => ["inviteCode"],
+    "SharedMealRecord" => ["childLinkId"],
+    "SharedChallengeRecord" => ["childLinkId"],
+    "SharedMealPhoto" => ["childLinkId"]
+  }
+  record_types = data.fetch("recordTypes")
+  expected.each do |name, queryable_fields|
+    record = record_types.find { |item| item["name"] == name }
+    abort "missing CloudKit record type #{name}" unless record
+    field_names = record.fetch("fields").map { |field| field.fetch("name") }
+    queryable_fields.each do |field|
+      abort "#{name} missing field #{field}" unless field_names.include?(field)
+      index = record.fetch("indexes").find { |item| item["field"] == field }
+      abort "#{name}.#{field} missing queryable index" unless index && index["queryable"] == true
+      abort "#{name}.#{field} should not require sortable index" unless index["sortable"] == false
+    end
+  end
+  forbidden = data.fetch("forbiddenRecordTypes")
+  ["PublicFeed", "Friend", "TeacherDashboard", "SchoolStats", "ChatMessage"].each do |name|
+    abort "missing forbidden record marker #{name}" unless forbidden.include?(name)
+  end
+' "release/CloudKit/schema-contract.json"
+pass "CloudKit schema contract JSON"
 
 git check-ignore -q Config.xcconfig || fail "Config.xcconfig must stay ignored"
 pass "Config.xcconfig is ignored"
@@ -273,6 +302,7 @@ require_pattern "release/AppStoreMetadata/ko-KR.md" "Photos or Videos: 보수 �
 require_pattern "release/AppStoreMetadata/ko-KR.md" "app-store-connect-values\\.json" "ko-KR metadata references structured values JSON"
 require_pattern "README.md" "scripts/check-app-store-build-status\\.sh" "README references App Store Connect build status script"
 require_pattern "README.md" "app-store-connect-values\\.json" "README references structured App Store Connect values"
+require_pattern "README.md" "release/CloudKit/schema-contract\\.json" "README references CloudKit schema contract"
 require_pattern "README.md" 'App Privacy 정보는 `release/AppStoreMetadata/app-privacy-draft\.md`의 입력 매트릭스 기준' "README references App Privacy input matrix"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"

@@ -1,0 +1,108 @@
+{
+  "containerIdentifier": "iCloud.com.h19h29.naymnaymlevelup",
+  "database": "public",
+  "environment": "Production",
+  "notes": [
+    "createdAt 최신순 정렬은 앱 내부에서 처리하므로 CloudKit sortable index는 필요 없음",
+    "자유 채팅, 공개 피드, 학교 통계 record type은 만들지 않음",
+    "사진은 사용자가 부모 공유를 켠 경우만 SharedMealPhoto.photoAsset으로 저장"
+  ],
+  "recordTypes": [
+    {
+      "name": "ParentLink",
+      "purpose": "아이 폰에서 생성한 부모 연결 초대 코드",
+      "fields": [
+        { "name": "childLinkId", "type": "String", "required": true },
+        { "name": "childNickname", "type": "String", "required": true },
+        { "name": "schoolName", "type": "String", "required": true },
+        { "name": "mode", "type": "String", "required": true },
+        { "name": "inviteCode", "type": "String", "required": true },
+        { "name": "shareEatingRecords", "type": "Boolean", "required": true },
+        { "name": "shareChallengeRecords", "type": "Boolean", "required": true },
+        { "name": "shareAllergyWarnings", "type": "Boolean", "required": true },
+        { "name": "sharePhotos", "type": "Boolean", "required": true },
+        { "name": "createdAt", "type": "Date/Time", "required": true }
+      ],
+      "indexes": [
+        { "field": "inviteCode", "queryable": true, "sortable": false }
+      ],
+      "publicPermissions": {
+        "authenticatedUsersCanCreate": true,
+        "authenticatedUsersCanUpdateOwnRecords": true,
+        "inviteCodeExactMatchLookupRequired": true
+      }
+    },
+    {
+      "name": "SharedMealRecord",
+      "purpose": "부모 공유를 켠 먹은 정도 기록",
+      "fields": [
+        { "name": "mealRecordId", "type": "String", "required": true },
+        { "name": "childLinkId", "type": "String", "required": true },
+        { "name": "date", "type": "String", "required": true },
+        { "name": "menuName", "type": "String", "required": true },
+        { "name": "eatingStatus", "type": "String", "required": true },
+        { "name": "difficultyReasons", "type": "String", "required": false },
+        { "name": "allergyCodes", "type": "String", "required": false },
+        { "name": "photoIds", "type": "String", "required": false },
+        { "name": "createdAt", "type": "Date/Time", "required": true }
+      ],
+      "indexes": [
+        { "field": "childLinkId", "queryable": true, "sortable": false }
+      ],
+      "publicPermissions": {
+        "authenticatedUsersCanCreate": true,
+        "authenticatedUsersCanUpdateOwnRecords": true,
+        "childLinkIdExactMatchLookupRequired": true
+      }
+    },
+    {
+      "name": "SharedChallengeRecord",
+      "purpose": "부모 공유를 켠 한 입 도전/레벨업 기록",
+      "fields": [
+        { "name": "challengeRecordId", "type": "String", "required": true },
+        { "name": "childLinkId", "type": "String", "required": true },
+        { "name": "date", "type": "String", "required": true },
+        { "name": "menuName", "type": "String", "required": true },
+        { "name": "action", "type": "String", "required": true },
+        { "name": "gainedExp", "type": "Int64", "required": true },
+        { "name": "badgeName", "type": "String", "required": false },
+        { "name": "nutrients", "type": "String", "required": false },
+        { "name": "createdAt", "type": "Date/Time", "required": true }
+      ],
+      "indexes": [
+        { "field": "childLinkId", "queryable": true, "sortable": false }
+      ],
+      "publicPermissions": {
+        "authenticatedUsersCanCreate": true,
+        "authenticatedUsersCanUpdateOwnRecords": true,
+        "childLinkIdExactMatchLookupRequired": true
+      }
+    },
+    {
+      "name": "SharedMealPhoto",
+      "purpose": "부모 공유를 켠 급식판 사진",
+      "fields": [
+        { "name": "childLinkId", "type": "String", "required": true },
+        { "name": "photoId", "type": "String", "required": true },
+        { "name": "fileName", "type": "String", "required": true },
+        { "name": "createdAt", "type": "Date/Time", "required": true },
+        { "name": "photoAsset", "type": "Asset", "required": false }
+      ],
+      "indexes": [
+        { "field": "childLinkId", "queryable": true, "sortable": false }
+      ],
+      "publicPermissions": {
+        "authenticatedUsersCanCreate": true,
+        "authenticatedUsersCanUpdateOwnRecords": true,
+        "childLinkIdExactMatchLookupRequired": true
+      }
+    }
+  ],
+  "forbiddenRecordTypes": [
+    "PublicFeed",
+    "Friend",
+    "TeacherDashboard",
+    "SchoolStats",
+    "ChatMessage"
+  ]
+}

@@ -89,6 +89,7 @@ build 14 확인:
 - 2026-06-25 build 15 갱신: CloudKit entitlement 검증 통과 signed IPA를 생성하고 TestFlight CLI 업로드 완료
 - 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 확인할 수 있도록 보강
 - 2026-06-25 App Privacy 갱신: `release/AppStoreMetadata/app-privacy-draft.md`에 App Store Connect 입력 매트릭스를 추가하고 `scripts/verify-release-readiness.sh`가 핵심 데이터 타입 행을 검증하도록 보강
+- 2026-06-25 CloudKit 갱신: CloudKit Production schema/index/권한 콘솔 설정값을 `release/CloudKit/schema-contract.json`으로 구조화
 
 ## 남은 외부 작업
 
@@ -102,6 +103,7 @@ build 14 확인:
 5. App Store Connect에 `release/AppStoreMetadata/app-privacy-draft.md`의 입력 매트릭스 기준으로 App Privacy 최종 입력
 6. CloudKit Dashboard public database schema 배포 상태 확인
 7. CloudKit queryable index 설정 확인
+   - 구조화된 기준: `release/CloudKit/schema-contract.json`
    - `ParentLink.inviteCode`
    - `SharedMealRecord.childLinkId`
    - `SharedChallengeRecord.childLinkId`

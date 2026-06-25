@@ -85,6 +85,7 @@
 - 외부 테스트 심사 제출
 - CloudKit Dashboard에서 public database schema 배포 확인
 - CloudKit Dashboard에서 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record type 확인
+- CloudKit 콘솔 설정 기준은 `release/CloudKit/schema-contract.json`
 - CloudKit Dashboard에서 queryable index 구성:
   - `ParentLink.inviteCode`
   - `SharedMealRecord.childLinkId`

@@ -103,6 +103,8 @@ Tracking과 제3자 광고 목적은 모두 `아니요`로 입력한다. 광고 
 
 ## CloudKit 운영 설정
 
+구조화된 콘솔 설정 기준은 `release/CloudKit/schema-contract.json`이다. 아래 설명과 JSON manifest가 다르면 JSON manifest와 앱 코드/테스트를 우선 확인한다.
+
 Container:
 
 - `iCloud.com.h19h29.naymnaymlevelup`
