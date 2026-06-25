@@ -24,6 +24,24 @@
 
 아래 항목은 기능상 사용자 입력 또는 선택 공유가 있으므로 “Data Not Collected”로 단정하지 말고 App Store Connect에서 보수적으로 확인해야 합니다.
 
+## App Store Connect 입력 매트릭스
+
+현재 build 15 코드와 Privacy Manifest 기준의 보수적 입력안입니다. 앱 소유자는 제출 직전 실제 CloudKit 설정과 화면 문구를 함께 확인해야 합니다.
+
+| App Privacy 항목 | 현재 입력안 | 목적 | 사용자 연결 | 추적 | 근거 |
+| --- | --- | --- | --- | --- | --- |
+| Contact Info | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 회원가입, 이메일, 전화번호 입력 없음 |
+| Location | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 위치 권한과 CoreLocation 사용 없음 |
+| Contacts | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 연락처 권한 사용 없음 |
+| Purchases | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 인앱결제/StoreKit 사용 없음 |
+| Usage Data | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 자체 분석 SDK 없음 |
+| Other User Content | 수집함 | App Functionality | 예 | 아니요 | 먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 CloudKit 저장 가능 |
+| Photos or Videos | 수집함 | App Functionality | 예 | 아니요 | 사용자가 선택한 사진만 사진 공유 토글이 켜진 경우 CloudKit 저장 가능 |
+| Health and Fitness | 수집함 | App Functionality | 예 | 아니요 | 알레르기 선택값과 식사 기록이 건강 관련 정보로 해석될 수 있음 |
+| User ID | 수집함 | App Functionality | 예 | 아니요 | 부모 연결용 `childLinkId`와 초대 코드 사용 |
+
+Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고, 데이터 브로커 공유 목적은 현재 코드에 없다.
+
 ### User Content
 
 - 대상: 먹은 정도 기록, 한 입 도전 기록, 어려운 이유, 공유 선택한 급식판 사진

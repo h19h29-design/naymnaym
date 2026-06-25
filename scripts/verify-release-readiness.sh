@@ -245,6 +245,11 @@ require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store meta
 require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "App Store metadata build is ${RELEASE_BUILD_NUMBER}"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "ko-KR metadata build is ${RELEASE_BUILD_NUMBER}"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "App Store Connect 입력 매트릭스" "App Privacy draft includes input matrix"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Other User Content \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers other user content"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers photos or videos"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Health and Fitness \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers health and fitness"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "User ID \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers user id"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
 require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
