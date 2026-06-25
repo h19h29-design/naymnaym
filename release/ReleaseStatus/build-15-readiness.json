@@ -46,6 +46,7 @@
     "noAdAnalyticsTrackingPurchaseLoginLocationSDKs": true,
     "unfinishedAppCopyBlockedByReleaseGate": true,
     "cloudKitStorageCopyAlignedWithPrivacyDraft": true,
+    "koreanReleaseCopySpacingChecked": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,
     "appStoreConnectBetaGroupCheckScript": true,
     "testFlightCliUploadSucceeded": true

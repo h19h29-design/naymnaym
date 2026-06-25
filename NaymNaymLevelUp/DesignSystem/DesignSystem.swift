@@ -329,7 +329,7 @@ struct MealCard: View {
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                     SecondaryButton("안내 보기", systemImage: "info.circle", action: onSkip)
-                    PrimaryButton("한입 도전", systemImage: "checkmark.seal.fill", isDisabled: isAllergyRisk, action: onChallenge)
+                    PrimaryButton("한 입 도전", systemImage: "checkmark.seal.fill", isDisabled: isAllergyRisk, action: onChallenge)
                     SecondaryButton("먹은 정도", systemImage: "list.bullet.clipboard", action: onRecord)
                     SecondaryButton("잘 먹어요", systemImage: "hand.thumbsup", action: onAlreadyEats)
                 }

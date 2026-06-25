@@ -429,7 +429,7 @@ struct ChallengeRecord: Codable, Hashable, Identifiable {
         var title: String {
             switch self {
             case .skipped: return "안 먹어요"
-            case .oneBite: return "한입 도전"
+            case .oneBite: return "한 입 도전"
             case .alreadyEats: return "잘 먹어요"
             }
         }
@@ -939,7 +939,7 @@ struct PlayerProgress: Codable, Hashable {
     static let levelThresholds = [0, 80, 180, 320, 500, 720, 1000]
     static let levelTitles = [
         "냠냠 새싹",
-        "한입 탐험가",
+        "한 입 탐험가",
         "냠냠 용사",
         "편식 몬스터 사냥꾼",
         "급식 히어로",
@@ -1098,7 +1098,7 @@ struct CharacterSkin: Codable, Hashable, Identifiable {
 
     static let all: [CharacterSkin] = [
         CharacterSkin(id: "skin-1", levelRequired: 1, name: "냠냠 새싹", description: "밝게 시작하는 공통 마스코트", emoji: "🌱", primaryColorHex: "#7BC96F", accessory: "새싹", styleType: "sprout"),
-        CharacterSkin(id: "skin-2", levelRequired: 2, name: "한입 탐험가", description: "낯선 반찬을 살펴보는 탐험가", emoji: "🧢", primaryColorHex: "#6FA8FF", accessory: "모자", styleType: "cap", rarity: "bronze"),
+        CharacterSkin(id: "skin-2", levelRequired: 2, name: "한 입 탐험가", description: "낯선 반찬을 살펴보는 탐험가", emoji: "🧢", primaryColorHex: "#6FA8FF", accessory: "모자", styleType: "cap", rarity: "bronze"),
         CharacterSkin(id: "skin-3", levelRequired: 3, name: "냠냠 용사", description: "한 입 도전을 이어가는 용사", emoji: "🦸", primaryColorHex: "#FF9F43", accessory: "망토", styleType: "cape", rarity: "silver"),
         CharacterSkin(id: "skin-4", levelRequired: 4, name: "편식 몬스터 사냥꾼", description: "어려운 메뉴를 차분히 마주하는 캐릭터", emoji: "🛡", primaryColorHex: "#67B280", accessory: "방패", styleType: "shield", rarity: "rare"),
         CharacterSkin(id: "skin-5", levelRequired: 5, name: "급식 히어로", description: "꾸준한 기록으로 성장한 히어로", emoji: "👑", primaryColorHex: "#FFD966", accessory: "왕관", styleType: "crown", rarity: "epic"),

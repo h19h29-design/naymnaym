@@ -10,7 +10,7 @@
   "recordTypes": [
     {
       "name": "ParentLink",
-      "purpose": "아이 폰에서 생성한 부모 연결 초대 코드",
+      "purpose": "아이폰에서 생성한 부모 연결 초대 코드",
       "fields": [
         { "name": "childLinkId", "type": "String", "required": true },
         { "name": "childNickname", "type": "String", "required": true },

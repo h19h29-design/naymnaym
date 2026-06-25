@@ -36,7 +36,7 @@ struct ParentSummaryView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("부모 연동 구조")
                                 .font(AppTypography.headline)
-                            Text("1.0은 자체 서버 없이 iCloud 기반 부모-자녀 연결 구조를 사용합니다. 아이 폰에서 만든 초대 코드를 부모 모드에 입력하면 공유가 켜진 먹은 정도, 한 입 도전 기록, 알레르기 주의, 선택 사진만 불러옵니다.")
+                            Text("1.0은 자체 서버 없이 iCloud 기반 부모-자녀 연결 구조를 사용합니다. 아이폰에서 만든 초대 코드를 부모 모드에 입력하면 공유가 켜진 먹은 정도, 한 입 도전 기록, 알레르기 주의, 선택 사진만 불러옵니다.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -265,7 +265,7 @@ private struct ParentInviteCodeSheet: View {
                     TextField("예: NYAM-ABCD-EFGH-IJKL", text: $inviteCode)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
-                    Text("아이 폰의 설정 > 보호자 연결 화면에서 만든 초대 코드를 입력해요.")
+                    Text("아이폰의 설정 > 보호자 연결 화면에서 만든 초대 코드를 입력해요.")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
                 }

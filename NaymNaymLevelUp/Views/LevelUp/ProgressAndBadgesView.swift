@@ -3,7 +3,7 @@ import SwiftUI
 struct ProgressAndBadgesView: View {
     @EnvironmentObject private var appState: AppState
 
-    private let allBadges = ["한입 도전자", "초록 용사", "단백질 파워", "칼슘 방패", "비타민 스타", "균형 기록", "안전 확인"]
+    private let allBadges = ["한 입 도전자", "초록 용사", "단백질 파워", "칼슘 방패", "비타민 스타", "균형 기록", "안전 확인"]
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
 
     var body: some View {

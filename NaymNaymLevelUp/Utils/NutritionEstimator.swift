@@ -115,7 +115,7 @@ enum NutritionEstimator {
         if nutrients.contains("단백질") || nutrients.contains("철분") { return "단백질 파워" }
         if nutrients.contains("칼슘") { return "칼슘 방패" }
         if nutrients.contains("비타민") { return "비타민 스타" }
-        return "한입 도전자"
+        return "한 입 도전자"
     }
 
     static func expReward(for item: MealItem) -> Int {

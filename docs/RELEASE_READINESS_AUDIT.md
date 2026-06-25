@@ -96,6 +96,7 @@ build 14 확인:
 - 2026-06-25 출시 문구 게이트: 앱 소스에 내부 개발 표식이나 미완료/추후 고도화 표현이 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 App Privacy manifest 게이트: `PrivacyInfo.xcprivacy`의 UserDefaults 사유와 사용자 콘텐츠/사진/건강/User ID 수집 데이터 타입이 App Privacy 입력 초안과 일치하는지 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 CloudKit 저장 문구 게이트: 부모 공유 시 CloudKit/iCloud에 선택 데이터가 저장될 수 있으므로 앱/문서에 과도한 무저장 표현이 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
+- 2026-06-25 한국어 출시 문구 게이트: 앱/문서/마케팅 사이트의 어색한 띄어쓰기 표현이 제출 자료에 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 App Privacy 갱신: `release/AppStoreMetadata/app-privacy-draft.md`에 App Store Connect 입력 매트릭스를 추가하고 `scripts/verify-release-readiness.sh`가 핵심 데이터 타입 행을 검증하도록 보강
 - 2026-06-25 CloudKit 갱신: CloudKit Production schema/index/권한 콘솔 설정값을 `release/CloudKit/schema-contract.json`으로 구조화
 
