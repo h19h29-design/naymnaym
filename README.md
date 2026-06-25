@@ -75,6 +75,7 @@ NEIS_API_KEY = 발급받은_키
 - `scripts/smoke-neis-live.sh`로 실제 NEIS 학교 검색과 급식식단정보 응답 확인
   - 기본 검증: 등촌고등학교, 2026년 6월 중식
   - 다른 학교/월 검증: `NEIS_SMOKE_SCHOOL_NAME=학교명 NEIS_SMOKE_MEAL_MONTH=YYYYMM scripts/smoke-neis-live.sh`
+- 현재 릴리스 후보 상태 보고서: `release/ReleaseStatus/build-15-readiness.json`
 - App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태 확인
 - 실제 학교 검색으로 officeCode, schoolCode 저장 확인
 - `mealServiceDietInfo` 호출 로그 확인
@@ -89,6 +90,7 @@ NEIS_API_KEY = 발급받은_키
 ## App Store 제출 자료
 - App Store 메타데이터 초안: `release/AppStoreMetadata/ko-KR.md`
 - App Store Connect 구조 입력값: `release/AppStoreMetadata/app-store-connect-values.json`
+- build 15 릴리스 상태 보고서: `release/ReleaseStatus/build-15-readiness.json`
 - App Privacy 답변 초안: `release/AppStoreMetadata/app-privacy-draft.md`
 - 제출 전 대기 메모: `release/AppStoreMetadata/submission-notes.md`
 - 정적 출시 사이트: `marketing-site/dist/`, `https://h19h29-design.github.io/naymnaym/`

@@ -6,6 +6,8 @@
 
 코드, 테스트, 시뮬레이터, App Store 제출 자료, build 1.0 (15) signed archive/export, IPA CloudKit entitlement 검증, TestFlight CLI 업로드까지 완료됐다. build 14는 업로드 자체는 성공했지만 실제 앱 서명 entitlements에 iCloud/CloudKit 항목이 없어 최종 외부 테스트/출시 후보로 사용하지 않는다. 현재 출시 후보는 build 15이며, App Store Connect에서 처리 완료 후 내부/외부 테스트 그룹에 연결해야 한다.
 
+현재 릴리스 후보의 단일 상태 보고서는 `release/ReleaseStatus/build-15-readiness.json`이다. 이 파일은 build 15 채택 사유, build 14 제외 사유, 검증 증거 경로, 샘플 데이터 정책, CloudKit/TestFlight/App Privacy/App Review 외부 blocker를 구조화한다. `scripts/verify-release-readiness.sh`가 핵심 값을 함께 검증한다.
+
 ### 2026-06-25 build 15 갱신
 
 로컬 signing keychain/certificate 접근을 허용한 뒤 `scripts/release-testflight-build.sh 15`와 `UPLOAD=1 scripts/release-testflight-build.sh 15`를 실행했다. build 15 signed archive/export가 성공했고, exported IPA의 embedded provisioning profile과 signed app entitlements에서 iCloud container `iCloud.com.h19h29.naymnaymlevelup`와 CloudKit service를 확인했다. TestFlight CLI upload도 성공했고 `scripts/verify-release-readiness.sh` 전체 게이트가 통과했다.

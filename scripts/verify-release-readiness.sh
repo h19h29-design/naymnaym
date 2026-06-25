@@ -212,6 +212,7 @@ require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
 require_file "release/AppStoreMetadata/app-store-connect-values.json"
 require_file "release/CloudKit/schema-contract.json"
+require_file "release/ReleaseStatus/build-15-readiness.json"
 require_file "scripts/check-app-store-build-status.sh"
 sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
@@ -261,6 +262,56 @@ ruby -rjson -e '
   end
 ' "release/CloudKit/schema-contract.json"
 pass "CloudKit schema contract JSON"
+ruby -rjson -e '
+  data = JSON.parse(File.read(ARGV.fetch(0)))
+  release = data.fetch("releaseCandidate")
+  abort "wrong release bundle id" unless release["bundleId"] == "com.h19h29.naymnaymlevelup"
+  abort "wrong release version" unless release["version"] == "1.0"
+  abort "wrong release build" unless release["build"] == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
+  abort "wrong release status" unless release["status"] == "uploaded_to_testflight_cli_processing_unconfirmed"
+
+  decision = data.fetch("decision")
+  abort "wrong candidate build" unless decision["currentCandidateBuild"] == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
+  rejected = decision.fetch("previousBuildsNotForRelease")
+  build14 = rejected.find { |item| item["build"] == "14" }
+  abort "build 14 rejection missing" unless build14
+  abort "build 14 rejection must mention CloudKit entitlements" unless build14["reason"].include?("CloudKit")
+
+  verified = data.fetch("verifiedLocalScope")
+  {
+    "sampleDataOnlyInDemoMode" => true,
+    "missingAPIKeyDoesNotShowSampleMeals" => true,
+    "todayMealDoesNotFallbackToMonthlyFirst" => true,
+    "allergyChallengeLock" => true,
+    "shareCardsExcludeSensitiveFields" => true,
+    "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
+    "testFlightCliUploadSucceeded" => true
+  }.each do |key, expected|
+    abort "#{key} must be #{expected}" unless verified[key] == expected
+  end
+
+  xp = verified.fetch("xpCategories")
+  ["record", "challenge", "balance", "safety"].each do |category|
+    abort "missing xp category #{category}" unless xp.include?(category)
+  end
+
+  paths = data.fetch("evidencePaths")
+  {
+    "signedIPA" => "build/TestFlightExportBuild15Signed/NaymNaymLevelUp.ipa",
+    "uploadLog" => "build/build15-signed-upload.log",
+    "appStoreScreenshots" => "docs/app-store-screenshots/iphone-6-9-upload/",
+    "appStoreConnectValues" => "release/AppStoreMetadata/app-store-connect-values.json",
+    "cloudKitSchemaContract" => "release/CloudKit/schema-contract.json"
+  }.each do |key, expected|
+    abort "#{key} evidence path mismatch" unless paths[key] == expected
+  end
+
+  blockers = data.fetch("externalBlockers")
+  ["App Store Connect", "TestFlight", "CloudKit Dashboard", "App Privacy", "App Review"].each do |area|
+    abort "missing external blocker #{area}" unless blockers.any? { |item| item["area"] == area }
+  end
+' "release/ReleaseStatus/build-15-readiness.json"
+pass "build 15 release status JSON"
 
 git check-ignore -q Config.xcconfig || fail "Config.xcconfig must stay ignored"
 pass "Config.xcconfig is ignored"

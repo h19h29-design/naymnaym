@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "releaseCandidate": {
+    "appName": "냠냠레벨업",
+    "bundleId": "com.h19h29.naymnaymlevelup",
+    "version": "1.0",
+    "build": "15",
+    "platform": "iPhone",
+    "price": "free",
+    "status": "uploaded_to_testflight_cli_processing_unconfirmed"
+  },
+  "decision": {
+    "currentCandidateBuild": "15",
+    "previousBuildsNotForRelease": [
+      {
+        "build": "14",
+        "reason": "The App Store signed IPA was missing signed iCloud/CloudKit app entitlements, so it must not be used for external beta or App Store review."
+      }
+    ],
+    "nextGate": "Confirm build 15 processing in App Store Connect, then attach it to internal and external TestFlight groups."
+  },
+  "verifiedLocalScope": {
+    "neisSchoolSearch": true,
+    "neisMealServiceDietInfo": true,
+    "sampleDataOnlyInDemoMode": true,
+    "missingAPIKeyDoesNotShowSampleMeals": true,
+    "noMealDoesNotShowSampleMeals": true,
+    "apiErrorDoesNotShowSampleMeals": true,
+    "todayMealDoesNotFallbackToMonthlyFirst": true,
+    "introStateCopySeparated": true,
+    "assetBasedIntroMascot": true,
+    "xpCategories": [
+      "record",
+      "challenge",
+      "balance",
+      "safety"
+    ],
+    "allergyChallengeLock": true,
+    "shareCardsUseIOSShareSheet": true,
+    "shareCardsExcludeSensitiveFields": true,
+    "photoRecordsDefaultToLocalStorage": true,
+    "privacyManifestPresent": true,
+    "noAdAnalyticsTrackingPurchaseLoginLocationSDKs": true,
+    "cloudKitEntitlementsVerifiedInBuild15IPA": true,
+    "testFlightCliUploadSucceeded": true
+  },
+  "evidencePaths": {
+    "signedIPA": "build/TestFlightExportBuild15Signed/NaymNaymLevelUp.ipa",
+    "archiveLog": "build/build15-signed-archive.log",
+    "exportLog": "build/build15-signed-export.log",
+    "uploadLog": "build/build15-signed-upload.log",
+    "introIPhone17": "build/verification/intro-iphone17-final.jpg",
+    "introIPhone16": "build/verification/intro-iphone16-final.jpg",
+    "introIPhoneSE": "build/verification/intro-iphone-se-final.jpg",
+    "introAnimation": "build/verification/intro-animation-final.mov",
+    "shareSheet": "build/verification/share-sheet-iphone16.jpg",
+    "appStoreScreenshots": "docs/app-store-screenshots/iphone-6-9-upload/",
+    "releaseAudit": "docs/RELEASE_READINESS_AUDIT.md",
+    "testFlightChecklist": "docs/TESTFLIGHT_APP_STORE_CHECKLIST.md",
+    "metadataDraft": "release/AppStoreMetadata/ko-KR.md",
+    "appPrivacyDraft": "release/AppStoreMetadata/app-privacy-draft.md",
+    "appStoreConnectValues": "release/AppStoreMetadata/app-store-connect-values.json",
+    "cloudKitSchemaContract": "release/CloudKit/schema-contract.json",
+    "consoleRunbook": "release/AppStoreMetadata/console-runbook.md"
+  },
+  "verificationCommands": [
+    {
+      "command": "scripts/verify-release-readiness.sh",
+      "purpose": "Release file, entitlement, screenshot, metadata, privacy, public URL, upload log, and IPA checks."
+    },
+    {
+      "command": "scripts/smoke-neis-live.sh",
+      "purpose": "Live NEIS schoolInfo and mealServiceDietInfo smoke test without printing the API key."
+    },
+    {
+      "command": "test_sim via XcodeBuildMCP",
+      "purpose": "Simulator XCTest suite for app behavior, CloudKit contracts, sample policy, intro assets, XP, sharing, and reset scopes."
+    }
+  ],
+  "externalBlockers": [
+    {
+      "area": "App Store Connect",
+      "item": "Confirm build 15 processing status",
+      "owner": "Apple account holder or App Store Connect API key holder"
+    },
+    {
+      "area": "TestFlight",
+      "item": "Attach build 15 to internal and external groups and submit external beta review",
+      "owner": "Apple account holder"
+    },
+    {
+      "area": "CloudKit Dashboard",
+      "item": "Deploy public database schema and queryable indexes listed in release/CloudKit/schema-contract.json",
+      "owner": "Apple Developer account holder"
+    },
+    {
+      "area": "App Privacy",
+      "item": "Enter final App Privacy answers from release/AppStoreMetadata/app-privacy-draft.md and confirm legal accuracy",
+      "owner": "App owner"
+    },
+    {
+      "area": "App Review",
+      "item": "Final Submit for Review legal/account confirmation",
+      "owner": "App owner"
+    }
+  ],
+  "manualNextSteps": [
+    "Run scripts/check-app-store-build-status.sh if App Store Connect API credentials are available locally.",
+    "In App Store Connect, confirm build 15 finished processing.",
+    "Assign build 15 to the internal test group and the external group.",
+    "Confirm the public TestFlight link points at build 15.",
+    "Apply CloudKit public database schema, indexes, and permissions from release/CloudKit/schema-contract.json.",
+    "Enter App Privacy details from release/AppStoreMetadata/app-privacy-draft.md.",
+    "Review privacy/support/data-safety public pages before final App Review submission."
+  ]
+}
