@@ -31,6 +31,7 @@
 - build 15를 외부 테스트 그룹 `패밀리`에 연결
 - 외부 테스트 공개 링크가 build 15를 가리키는지 확인
 - 외부 테스트 심사 제출
+- `release/AppStoreMetadata/app-privacy-draft.md`의 App Store Connect 입력 매트릭스 기준으로 App Privacy 최종 입력
 - CloudKit container `iCloud.com.h19h29.naymnaymlevelup` 운영 환경 schema 배포
 - public database record type과 queryable index 확인
 - 개인정보 처리방침/지원/데이터 안전 페이지는 GitHub Pages에 공개 완료. App Store Connect 입력 전 최종 법률/표기 확인 필요

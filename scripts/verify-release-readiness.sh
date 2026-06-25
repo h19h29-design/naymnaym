@@ -250,6 +250,9 @@ require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Other User Cont
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers photos or videos"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Health and Fitness \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers health and fitness"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "User ID \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers user id"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "Photos or Videos: 보수 입력 기준 수집함" "ko-KR metadata references photos privacy input"
+require_pattern "README.md" "scripts/check-app-store-build-status\\.sh" "README references App Store Connect build status script"
+require_pattern "README.md" 'App Privacy 정보는 `release/AppStoreMetadata/app-privacy-draft\.md`의 입력 매트릭스 기준' "README references App Privacy input matrix"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
 require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
