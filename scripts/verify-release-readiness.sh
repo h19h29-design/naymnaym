@@ -4,6 +4,11 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-15}"
+RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${RELEASE_BUILD_NUMBER}-signed-upload.log}"
+RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${RELEASE_BUILD_NUMBER}Signed}"
+RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
+
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
@@ -166,6 +171,7 @@ check_url() {
 
 check_uploaded_ipa() {
   ipa="$1"
+  expected_build="$2"
   require_file "$ipa"
   require_not_tracked "$ipa"
 
@@ -177,7 +183,7 @@ check_uploaded_ipa() {
 
   require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
   require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "1.0"
-  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "14"
+  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "$expected_build"
   require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
 
   embedded_profile="$app_dir/embedded.mobileprovision"
@@ -194,7 +200,7 @@ check_uploaded_ipa() {
   require_signed_entitlement "$entitlements_file" "com.apple.developer.icloud-services:0" "CloudKit" "$ipa signed CloudKit service entitlement"
 
   rm -rf "$tmp_dir"
-  pass "$ipa contains build 1.0 (14)"
+  pass "$ipa contains build 1.0 ($expected_build)"
 }
 
 git diff --check
@@ -229,13 +235,13 @@ require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationAlwaysAndW
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-services:0" "CloudKit"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
-require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 14;" "App build number is 14"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = ${RELEASE_BUILD_NUMBER};" "App build number is ${RELEASE_BUILD_NUMBER}"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = \"com\\.h19h29\\.naymnaymlevelup\";" "Bundle ID is com.h19h29.naymnaymlevelup"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "TARGETED_DEVICE_FAMILY = 1;" "App target is iPhone only for App Store screenshot set"
 require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store metadata version is 1.0"
-require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: 14$" "App Store metadata build is 14"
+require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "App Store metadata build is ${RELEASE_BUILD_NUMBER}"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"
-require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: 14$" "ko-KR metadata build is 14"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "ko-KR metadata build is ${RELEASE_BUILD_NUMBER}"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
 require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
@@ -247,12 +253,12 @@ require_absent_path "Cartfile"
 require_absent_path "Cartfile.resolved"
 require_absent_pattern "NaymNaymLevelUp NaymNaymLevelUp.xcodeproj" "Firebase|GoogleMobileAds|AdMob|AppTrackingTransparency|NSUserTrackingUsageDescription|FBSDK|AppsFlyer|Amplitude|Mixpanel|RevenueCat|StoreKit|CoreLocation|CLLocation|AuthenticationServices|SignInWithApple" "No ad, analytics, tracking, purchase, login, or location SDK references"
 
-require_file "build/build14-upload.log"
-require_file "build/TestFlightExportBuild14Signed/ExportOptions.plist"
-require_pattern "build/build14-upload.log" "Uploaded NaymNaymLevelUp" "build 14 upload log has app upload marker"
-require_pattern "build/build14-upload.log" "EXPORT SUCCEEDED" "build 14 upload command succeeded"
-require_not_tracked "build/build14-upload.log"
-check_uploaded_ipa "build/TestFlightExportBuild14Signed/NaymNaymLevelUp.ipa"
+require_file "$RELEASE_UPLOAD_LOG"
+require_file "${RELEASE_EXPORT_DIR}/ExportOptions.plist"
+require_pattern "$RELEASE_UPLOAD_LOG" "Uploaded NaymNaymLevelUp" "build ${RELEASE_BUILD_NUMBER} upload log has app upload marker"
+require_pattern "$RELEASE_UPLOAD_LOG" "EXPORT SUCCEEDED" "build ${RELEASE_BUILD_NUMBER} upload command succeeded"
+require_not_tracked "$RELEASE_UPLOAD_LOG"
+check_uploaded_ipa "$RELEASE_IPA_PATH" "$RELEASE_BUILD_NUMBER"
 
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60

@@ -8,6 +8,7 @@
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.0`
 - 최신 업로드 빌드: `14`
+- 다음 제출 후보 빌드: `15`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
@@ -62,7 +63,7 @@ build 14 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud
 
 ## App Privacy 답변 기준
 
-최종 답변은 앱 소유자가 확인해야 한다. 현재 build 14 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
+최종 답변은 앱 소유자가 확인해야 한다. 현재 build 15 후보 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
 
 - Tracking: 아니요
 - Contact Info: 수집 안 함

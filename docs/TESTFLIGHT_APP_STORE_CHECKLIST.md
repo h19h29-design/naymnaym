@@ -77,10 +77,9 @@
 - 로컬 signing keychain/certificate 접근 허용
 - `scripts/release-testflight-build.sh 15` 실행으로 signed archive/export와 IPA entitlement 검증 완료
   - 스크립트가 `codesign` keychain 접근 preflight에서 멈추거나 실패하면, macOS keychain/certificate 접근을 허용한 뒤 같은 명령을 다시 실행
-- 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15` 실행으로 TestFlight 업로드
 - exported IPA embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인
 - exported IPA signed app entitlements에 iCloud container와 CloudKit service가 포함됐는지 확인
-- CloudKit entitlement 검증 통과 후 build 15 이상을 TestFlight에 업로드
+- CloudKit entitlement 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15` 실행으로 TestFlight 업로드
 - App Store Connect에서 build 15 이상 처리 완료 확인
 - build 15 이상을 내부 테스트 그룹에 연결
 - build 15 이상을 외부 테스트 그룹 `패밀리`에 연결

@@ -11,10 +11,10 @@
 - 기본 언어: 한국어
 - 번들 ID: `com.h19h29.naymnaymlevelup`
 - 버전: 1.0
-- 빌드: 14
+- 빌드: 15
 - 저작권: © 2026 h19h29-design. All rights reserved.
 
-주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. App Store Connect에서 최종 선택할 빌드는 CloudKit entitlement 검증을 통과한 build 15 이상이어야 합니다.
+주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. 현재 다음 제출 후보는 build 15이며, App Store Connect에서 최종 선택할 빌드는 CloudKit entitlement 검증을 통과해야 합니다.
 
 ## 키워드
 

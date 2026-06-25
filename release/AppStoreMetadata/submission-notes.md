@@ -9,6 +9,7 @@
 - Release archive 생성: 완료
 - TestFlight build 1.0 (14) CLI 업로드: 완료
 - build 14 signed IPA 검사: embedded profile은 iCloud/CloudKit을 허용하지만 signed app의 iCloud/CloudKit entitlement가 없어 외부 테스트/출시 후보 제외
+- 다음 제출 후보 build 번호: 15
 - 출시 검증 스크립트 실행: `scripts/verify-release-readiness.sh`
 
 ## Hard Blocker
