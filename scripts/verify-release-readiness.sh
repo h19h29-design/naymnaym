@@ -296,7 +296,7 @@ ruby -rjson -e '
   abort "wrong release bundle id" unless release["bundleId"] == "com.h19h29.naymnaymlevelup"
   abort "wrong release version" unless release["version"] == "1.0"
   abort "wrong release build" unless release["build"] == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
-  abort "wrong release status" unless release["status"] == "uploaded_to_testflight_cli_processing_unconfirmed"
+  abort "wrong release status" unless release["status"] == "testflight_external_testing_active"
 
   decision = data.fetch("decision")
   abort "wrong candidate build" unless decision["currentCandidateBuild"] == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
@@ -322,10 +322,23 @@ ruby -rjson -e '
     "livePublicSiteCopyVerified" => true,
     "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
     "appStoreConnectBetaGroupCheckScript" => true,
-    "testFlightCliUploadSucceeded" => true
+    "testFlightCliUploadSucceeded" => true,
+    "appStoreConnectBuild15ProcessingConfirmed" => true,
+    "testFlightBuild15TestingActive" => true,
+    "testFlightInternalGroupAttached" => true,
+    "testFlightExternalFamilyGroupAttached" => true,
+    "testFlightPublicLinkVerified" => true,
+    "externalBetaReviewSubmitted" => true
   }.each do |key, expected|
     abort "#{key} must be #{expected}" unless verified[key] == expected
   end
+
+  distribution = data.fetch("testFlightDistribution")
+  abort "wrong TestFlight build status" unless distribution["buildStatus"] == "testing"
+  abort "missing internal TestFlight group" unless distribution.fetch("internalGroups").include?("윈드")
+  abort "missing external TestFlight group" unless distribution.fetch("externalGroups").include?("패밀리")
+  abort "wrong public TestFlight link" unless distribution["publicLink"] == "https://testflight.apple.com/join/3A3rKarB"
+  abort "wrong tester visible build" unless distribution["testerVisibleBuild"] == "1.0 (15)"
 
   xp = verified.fetch("xpCategories")
   ["record", "challenge", "balance", "safety"].each do |category|
@@ -344,9 +357,10 @@ ruby -rjson -e '
   end
 
   blockers = data.fetch("externalBlockers")
-  ["App Store Connect", "TestFlight", "CloudKit Dashboard", "App Privacy", "App Review"].each do |area|
+  ["App Store Connect", "CloudKit Dashboard", "App Privacy", "App Review"].each do |area|
     abort "missing external blocker #{area}" unless blockers.any? { |item| item["area"] == area }
   end
+  abort "TestFlight should not remain an external blocker" if blockers.any? { |item| item["area"] == "TestFlight" }
 ' "release/ReleaseStatus/build-15-readiness.json"
 pass "build 15 release status JSON"
 

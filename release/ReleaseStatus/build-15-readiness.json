@@ -7,7 +7,7 @@
     "build": "15",
     "platform": "iPhone",
     "price": "free",
-    "status": "uploaded_to_testflight_cli_processing_unconfirmed"
+    "status": "testflight_external_testing_active"
   },
   "decision": {
     "currentCandidateBuild": "15",
@@ -17,7 +17,7 @@
         "reason": "The App Store signed IPA was missing signed iCloud/CloudKit app entitlements, so it must not be used for external beta or App Store review."
       }
     ],
-    "nextGate": "Confirm build 15 processing in App Store Connect, then attach it to internal and external TestFlight groups."
+    "nextGate": "Complete CloudKit production schema/permissions and App Privacy answers, then resolve the Apple Developer Program license agreement before final App Review submission."
   },
   "verifiedLocalScope": {
     "neisSchoolSearch": true,
@@ -51,7 +51,25 @@
     "livePublicSiteCopyVerified": true,
     "cloudKitEntitlementsVerifiedInBuild15IPA": true,
     "appStoreConnectBetaGroupCheckScript": true,
-    "testFlightCliUploadSucceeded": true
+    "testFlightCliUploadSucceeded": true,
+    "appStoreConnectBuild15ProcessingConfirmed": true,
+    "testFlightBuild15TestingActive": true,
+    "testFlightInternalGroupAttached": true,
+    "testFlightExternalFamilyGroupAttached": true,
+    "testFlightPublicLinkVerified": true,
+    "externalBetaReviewSubmitted": true
+  },
+  "testFlightDistribution": {
+    "verifiedInAppStoreConnectAt": "2026-06-26",
+    "buildStatus": "testing",
+    "internalGroups": [
+      "윈드"
+    ],
+    "externalGroups": [
+      "패밀리"
+    ],
+    "publicLink": "https://testflight.apple.com/join/3A3rKarB",
+    "testerVisibleBuild": "1.0 (15)"
   },
   "evidencePaths": {
     "signedIPA": "build/TestFlightExportBuild15Signed/NaymNaymLevelUp.ipa",
@@ -93,12 +111,7 @@
   "externalBlockers": [
     {
       "area": "App Store Connect",
-      "item": "Confirm build 15 processing status",
-      "owner": "Apple account holder or App Store Connect API key holder"
-    },
-    {
-      "area": "TestFlight",
-      "item": "Attach build 15 to internal and external groups and submit external beta review",
+      "item": "Review and accept the updated Apple Developer Program license agreement before new app updates or final App Review submission if App Store Connect still shows the account banner",
       "owner": "Apple account holder"
     },
     {
@@ -118,11 +131,8 @@
     }
   ],
   "manualNextSteps": [
-    "Run scripts/check-app-store-build-status.sh if App Store Connect API credentials are available locally.",
-    "For TestFlight group verification, run ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh.",
-    "In App Store Connect, confirm build 15 finished processing.",
-    "Assign build 15 to the internal test group and the external group.",
-    "Confirm the public TestFlight link points at build 15.",
+    "Use the external TestFlight public link for testers: https://testflight.apple.com/join/3A3rKarB.",
+    "Accept the updated Apple Developer Program license agreement if App Store Connect still shows the account banner.",
     "Apply CloudKit public database schema, indexes, and permissions from release/CloudKit/schema-contract.json.",
     "Enter App Privacy details from release/AppStoreMetadata/app-privacy-draft.md.",
     "Review privacy/support/data-safety public pages before final App Review submission."

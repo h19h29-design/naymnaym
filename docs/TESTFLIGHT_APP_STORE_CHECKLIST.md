@@ -10,10 +10,13 @@
 - build 15 Release/generic iOS signed archive/export와 IPA entitlement 검증이 통과한다.
 - TestFlight build 1.0 (15) signed archive/export가 생성됐다.
 - build 15 IPA에서 embedded profile iCloud container/CloudKit service와 signed app iCloud/CloudKit entitlements를 확인했다.
-- build 15 CLI 업로드가 성공했고, App Store Connect 처리 상태 확인이 남아 있다.
+- build 15 CLI 업로드가 성공했고, App Store Connect에서 처리 완료 및 `테스트 중` 상태를 확인했다.
+- build 15는 내부 TestFlight 그룹 `윈드`와 외부 그룹 `패밀리`에 연결됐다.
+- 외부 TestFlight 공개 링크 `https://testflight.apple.com/join/3A3rKarB`가 활성화되어 있다.
+- 외부 TestFlight 베타 심사용 테스트 내용을 입력하고 제출했다.
 - App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 조회할 수 있다.
 - TestFlight 그룹 연결까지 확인하려면 `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`를 실행한다.
-- 현재 릴리스 후보와 외부 blocker는 `release/ReleaseStatus/build-15-readiness.json`에 구조화되어 있고 `scripts/verify-release-readiness.sh`가 핵심 값을 검증한다.
+- 현재 릴리스 후보, TestFlight 배포 상태와 외부 blocker는 `release/ReleaseStatus/build-15-readiness.json`에 구조화되어 있고 `scripts/verify-release-readiness.sh`가 핵심 값을 검증한다.
 - build 14 IPA를 직접 검사한 결과 embedded provisioning profile은 iCloud container와 CloudKit service wildcard를 허용하지만, 실제 signed app entitlements에 iCloud/CloudKit 항목이 없으므로 build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
 - `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 15 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
 - `scripts/smoke-neis-live.sh`로 로컬 API 키를 출력하지 않고 NEIS `schoolInfo`와 `mealServiceDietInfo` 실제 응답을 확인한다. 기본 smoke 기준은 등촌고등학교 2026년 6월 중식이며, `NEIS_SMOKE_SCHOOL_NAME`, `NEIS_SMOKE_MEAL_MONTH`로 다른 학교/월을 확인할 수 있다.
@@ -79,12 +82,7 @@
 - 설정 > 웹 개인정보 처리방침/지원/데이터 안전 링크 열림 확인
 
 ## 제출 전 남은 계정 작업
-- App Store Connect에서 build 15 처리 완료 확인
-  - API 키가 있으면 `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`를 설정한 뒤 `scripts/check-app-store-build-status.sh` 실행
-- build 15를 내부 테스트 그룹에 연결
-- build 15를 외부 테스트 그룹 `패밀리`에 연결
-- 외부 테스트 그룹 공개 링크가 build 15를 가리키는지 확인
-- 외부 테스트 심사 제출
+- App Store Connect에 업데이트된 Apple Developer Program 사용권 계약 배너가 계속 보이면 계정 소유자가 계약을 검토하고 동의
 - CloudKit Dashboard에서 public database schema 배포 확인
 - CloudKit Dashboard에서 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record type 확인
 - CloudKit 콘솔 설정 기준은 `release/CloudKit/schema-contract.json`
@@ -101,6 +99,14 @@
 - App Privacy 답변에서 부모 공유 시 CloudKit에 저장될 수 있는 사용자 콘텐츠, 사진/동영상, 건강 정보, 사용자 ID를 앱 기능 제공 목적과 연결된 데이터로 입력
 - 상세 콘솔 실행 순서는 `release/AppStoreMetadata/console-runbook.md`를 따른다.
 - 릴리스 상태 보고서의 `externalBlockers`와 `manualNextSteps`를 완료한 뒤 최종 App Review 제출을 진행한다.
+
+## 완료된 TestFlight 외부 배포
+- 냠냠레벨업 App Store Connect 앱 ID: `6781586745`
+- TestFlight build: `1.0 (15)`
+- 상태: `테스트 중`
+- 내부 그룹: `윈드`
+- 외부 그룹: `패밀리`
+- 공개 링크: `https://testflight.apple.com/join/3A3rKarB`
 
 ## 공식 제출 참고
 - Apple App Store Connect 도움말에 따르면 iOS 앱의 개인정보 처리방침 URL은 필수 입력 항목이다.

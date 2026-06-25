@@ -14,7 +14,9 @@
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
 - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
-- TestFlight 업로드 상태: build 15 CLI 업로드 성공. App Store Connect 처리 완료 확인과 테스트 그룹 연결이 남아 있다.
+- TestFlight 업로드 상태: build 15 CLI 업로드 성공. App Store Connect에서 처리 완료와 `테스트 중` 상태를 확인했다.
+- TestFlight 그룹 상태: build 15가 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결됐다.
+- TestFlight 공개 링크: `https://testflight.apple.com/join/3A3rKarB`
 
 ## build 15 검증 결과
 
@@ -39,16 +41,15 @@ scripts/release-testflight-build.sh 15
 UPLOAD=1 scripts/release-testflight-build.sh 15
 ```
 
-## TestFlight 공개 순서
+## TestFlight 공개 상태
 
-1. App Store Connect에서 냠냠레벨업 앱으로 이동한다.
+1. App Store Connect에서 냠냠레벨업 앱 ID `6781586745`를 확인했다.
 2. build 14는 CloudKit entitlement가 없으므로 내부/외부 테스트 그룹에 최종 후보로 연결하지 않는다.
-3. build 15의 TestFlight 빌드 목록 처리 완료 여부를 확인한다.
-4. build 15를 내부 테스트 그룹에 연결한다.
-5. 외부 테스트 그룹 `패밀리`를 만들거나 기존 그룹을 사용한다.
-6. build 15를 외부 테스트 그룹 `패밀리`에 연결한다.
-7. 공개 링크가 build 15를 가리키는지 확인한다.
-8. 외부 테스트 심사 제출 전 아래 심사용 설명을 그대로 사용한다.
+3. build 15의 TestFlight 처리 완료와 `테스트 중` 상태를 확인했다.
+4. build 15를 내부 테스트 그룹 `윈드`에 연결했다.
+5. build 15를 외부 테스트 그룹 `패밀리`에 연결했다.
+6. 공개 링크 `https://testflight.apple.com/join/3A3rKarB`가 활성 상태임을 확인했다.
+7. 외부 TestFlight 베타 심사용 테스트 내용을 입력하고 제출했다.
 
 심사용 설명:
 
@@ -66,6 +67,12 @@ scripts/check-app-store-build-status.sh
 ```
 
 기본 조회 대상은 bundle id `com.h19h29.naymnaymlevelup`, version `1.0`, build `15`다. 다른 빌드를 확인할 때는 `ASC_VERSION`과 `ASC_BUILD`를 함께 지정한다.
+
+## 남은 계정/콘솔 작업
+
+App Store Connect 앱 목록에 업데이트된 Apple Developer Program 사용권 계약 검토 배너가 계속 보이면 계정 소유자가 계약을 검토하고 동의해야 한다. 이 항목은 TestFlight 외부 배포 완료와 별개로, 새 앱 업데이트나 최종 App Review 제출 전에 해결해야 한다.
+
+CloudKit Dashboard에서는 `release/CloudKit/schema-contract.json` 기준으로 public database record type, queryable index, public database 권한을 최종 확인한다. App Store Connect App Privacy 답변은 `release/AppStoreMetadata/app-privacy-draft.md` 기준으로 입력하고, 최종 법적 정확성은 앱 소유자가 확인한다.
 
 ## App Store Connect 입력값
 

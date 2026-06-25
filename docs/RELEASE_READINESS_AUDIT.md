@@ -1,12 +1,18 @@
 # 1.0 출시 준비 감사
 
-작성일: 2026-06-25
+작성일: 2026-06-26
 
 ## 현재 결론
 
-코드, 테스트, 시뮬레이터, App Store 제출 자료, build 1.0 (15) signed archive/export, IPA CloudKit entitlement 검증, TestFlight CLI 업로드까지 완료됐다. build 14는 업로드 자체는 성공했지만 실제 앱 서명 entitlements에 iCloud/CloudKit 항목이 없어 최종 외부 테스트/출시 후보로 사용하지 않는다. 현재 출시 후보는 build 15이며, App Store Connect에서 처리 완료 후 내부/외부 테스트 그룹에 연결해야 한다.
+코드, 테스트, 시뮬레이터, App Store 제출 자료, build 1.0 (15) signed archive/export, IPA CloudKit entitlement 검증, TestFlight CLI 업로드와 App Store Connect 외부 TestFlight 배포까지 완료됐다. build 14는 업로드 자체는 성공했지만 실제 앱 서명 entitlements에 iCloud/CloudKit 항목이 없어 최종 외부 테스트/출시 후보로 사용하지 않는다. 현재 출시 후보는 build 15이며, App Store Connect에서 `테스트 중` 상태로 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결됐다.
 
-현재 릴리스 후보의 단일 상태 보고서는 `release/ReleaseStatus/build-15-readiness.json`이다. 이 파일은 build 15 채택 사유, build 14 제외 사유, 검증 증거 경로, 샘플 데이터 정책, CloudKit/TestFlight/App Privacy/App Review 외부 blocker를 구조화한다. `scripts/verify-release-readiness.sh`가 핵심 값을 함께 검증한다.
+현재 릴리스 후보의 단일 상태 보고서는 `release/ReleaseStatus/build-15-readiness.json`이다. 이 파일은 build 15 채택 사유, build 14 제외 사유, 검증 증거 경로, 샘플 데이터 정책, TestFlight 배포 상태, CloudKit/App Privacy/App Review 외부 blocker를 구조화한다. `scripts/verify-release-readiness.sh`가 핵심 값을 함께 검증한다.
+
+### 2026-06-26 TestFlight 외부 배포
+
+App Store Connect 로그인 후 냠냠레벨업 앱 ID `6781586745`에서 build 15 처리 완료를 확인했다. build 15를 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결하고 외부 TestFlight 베타 심사용 테스트 내용을 입력해 제출했다. 제출 후 build 15 상태가 `테스트 중`으로 바뀌었고, 공개 링크 `https://testflight.apple.com/join/3A3rKarB`가 활성 상태임을 확인했다.
+
+App Store Connect 앱 목록에는 업데이트된 Apple Developer Program 사용권 계약 검토 배너가 남아 있다. 외부 TestFlight 배포는 완료됐지만, 정식 App Review 또는 새 앱 업데이트 제출 전에는 계정 소유자가 해당 계약을 검토하고 동의해야 한다.
 
 ### 2026-06-25 build 15 갱신
 
@@ -34,7 +40,7 @@ build 14 확인:
 - Share Sheet 확인: `build/verification/share-sheet-iphone16.jpg`
 - Release unsigned archive: `build/NaymNaymLevelUp-build14-unsigned.xcarchive`
 - App Store Connect remote-signed IPA: `build/TestFlightExportBuild14Signed/NaymNaymLevelUp.ipa`
-- TestFlight CLI upload: 성공, App Store Connect 처리 상태 확인 필요
+- TestFlight CLI upload: 성공했지만 build 14는 CloudKit entitlement 누락으로 출시 후보 제외
 
 ## 요구사항별 증거
 
@@ -75,7 +81,8 @@ build 14 확인:
 - build 15 Release/generic iOS signed archive/export: 통과
 - TestFlight signed IPA: `build/TestFlightExportBuild15Signed/NaymNaymLevelUp.ipa`
 - TestFlight build: `1.0 (15)`
-- TestFlight upload: CLI 업로드 성공, App Store Connect 처리 상태 확인 필요
+- TestFlight upload: CLI 업로드 성공, App Store Connect 처리 완료 확인
+- TestFlight 외부 배포: build 15 `테스트 중`, 내부 그룹 `윈드`와 외부 그룹 `패밀리` 연결, 공개 링크 `https://testflight.apple.com/join/3A3rKarB` 활성
 - `git diff --check`: 통과
 - `scripts/verify-release-readiness.sh`: 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 15 IPA/업로드 로그 증거, embedded profile CloudKit entitlement, signed IPA CloudKit entitlement, App Store 아이콘/스크린샷, 공개 URL 검증 통과
 - `scripts/smoke-neis-live.sh`: API 키 비노출 방식으로 등촌고등학교 2026년 6월 `schoolInfo`, `mealServiceDietInfo` 실제 응답 검증
@@ -89,6 +96,7 @@ build 14 확인:
 - 2026-06-24 추가 갱신: 설정 화면 공개 URL 링크, 부모 모드, XP 정책, SNS 공유 카드, App Store 제출 자료를 반영한 build 13 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 추가 갱신: 부모 공유 도전 기록 선택 공유 gate와 사진 삭제 보강을 반영한 build 14 signed IPA를 App Store Connect에 업로드 완료
 - 2026-06-25 build 15 갱신: CloudKit entitlement 검증 통과 signed IPA를 생성하고 TestFlight CLI 업로드 완료
+- 2026-06-26 TestFlight 외부 배포: App Store Connect에서 build 15 처리 완료, 내부 `윈드`/외부 `패밀리` 그룹 연결, 외부 베타 심사 제출, 공개 링크 활성 확인
 - 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 확인할 수 있도록 보강
 - 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`로 build 15 TestFlight 그룹 연결까지 확인 가능
 - 2026-06-25 안전 문구 게이트: `scripts/verify-release-readiness.sh`가 알레르기 메뉴에 부적절한 섭취 권유나 안전 보장 표현이 들어오지 않도록 검사하고, 학교 안내와 보호자 판단 우선 문구가 앱/메타데이터에 남아 있는지 확인
@@ -106,24 +114,20 @@ build 14 확인:
 
 아래 항목은 로컬 코드로 완료할 수 없고 Apple Developer/App Store Connect 계정에서 확인 또는 처리해야 한다.
 
-1. App Store Connect에서 build 15 처리 완료 여부 확인
-   - App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 처리 상태를 먼저 확인 가능
-2. build 15를 내부/외부 테스트 그룹에 연결
-3. 외부 테스트 그룹 공개 링크가 build 15를 가리키는지 확인
-4. 외부 테스트 심사 제출
-5. App Store Connect에 `release/AppStoreMetadata/app-privacy-draft.md`의 입력 매트릭스 기준으로 App Privacy 최종 입력
-6. CloudKit Dashboard public database schema 배포 상태 확인
-7. CloudKit queryable index 설정 확인
+1. App Store Connect에 업데이트된 Apple Developer Program 사용권 계약 배너가 계속 보이면 계정 소유자가 계약을 검토하고 동의
+2. App Store Connect에 `release/AppStoreMetadata/app-privacy-draft.md`의 입력 매트릭스 기준으로 App Privacy 최종 입력
+3. CloudKit Dashboard public database schema 배포 상태 확인
+4. CloudKit queryable index 설정 확인
    - 구조화된 기준: `release/CloudKit/schema-contract.json`
    - `ParentLink.inviteCode`
    - `SharedMealRecord.childLinkId`
    - `SharedChallengeRecord.childLinkId`
    - `SharedMealPhoto.childLinkId`
    - `createdAt` 최신순 정렬은 앱 내부에서 처리하므로 sortable index는 필요 없음
-8. CloudKit public database 권한 확인
+5. CloudKit public database 권한 확인
    - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
    - 초대 코드 조회는 정확한 `inviteCode` 조건에서만 동작해야 함
-9. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
+6. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
    - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
    - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
    - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
