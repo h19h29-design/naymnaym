@@ -75,6 +75,9 @@
 
 ## 제출 전 남은 계정 작업
 - 로컬 signing keychain/certificate 접근 허용
+  - Mac 보안 팝업에서 `Apple Development: Hwayoung Lee (R6ALQZJ966)` private key 접근 요청이 보이면 Mac 로그인 암호 입력 후 `항상 허용`
+  - 팝업이 보이지 않으면 Keychain Access 앱의 `login` keychain > `My Certificates`에서 해당 인증서/private key 접근 제어 확인
+  - 암호와 private key 값은 문서, 로그, 채팅에 남기지 않기
 - `scripts/release-testflight-build.sh 15` 실행으로 signed archive/export와 IPA entitlement 검증 완료
   - 스크립트가 `codesign` keychain 접근 preflight에서 멈추거나 실패하면, macOS keychain/certificate 접근을 허용한 뒤 같은 명령을 다시 실행
 - exported IPA embedded profile이 iCloud container와 CloudKit service를 허용하는지 확인

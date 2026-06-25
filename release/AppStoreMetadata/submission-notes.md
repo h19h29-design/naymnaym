@@ -28,6 +28,9 @@
 ## 현재 운영 확인 필요 항목
 
 - 로컬 signing keychain/certificate 접근 허용
+  - Mac 보안 팝업에서 `Apple Development: Hwayoung Lee (R6ALQZJ966)` private key 접근 요청이 보이면 Mac 로그인 암호 입력 후 `항상 허용`
+  - 팝업이 숨겨졌다면 Keychain Access의 `login` keychain > `My Certificates`에서 해당 인증서/private key 접근 제어 확인
+  - 암호와 private key 값은 문서, 로그, 채팅에 남기지 않기
 - `scripts/release-testflight-build.sh 15`로 build 15 signed archive/export 및 IPA entitlement 검증
 - `UPLOAD=1 scripts/release-testflight-build.sh 15`로 entitlement 검증 통과 빌드 업로드
 - App Store Connect에서 build 15 이상 처리 완료 상태 확인

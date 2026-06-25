@@ -30,6 +30,19 @@ build 14 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud
    - `com.apple.developer.icloud-services: CloudKit`
 5. 검증 통과 후 `UPLOAD=1 scripts/release-testflight-build.sh 15`를 실행해 TestFlight에 업로드한다.
 
+### 로컬 signing keychain 접근 허용 절차
+
+1. Mac 화면에서 숨겨진 보안 팝업이 있는지 확인한다. 문구는 보통 `codesign` 또는 Xcode가 `Apple Development: Hwayoung Lee (R6ALQZJ966)` private key 접근을 요청하는 형태다.
+2. 팝업이 보이면 Mac 로그인 암호를 입력하고 `항상 허용`을 선택한다. 일회성 `허용`만 누르면 archive/export 중 같은 요청이 다시 뜰 수 있다.
+3. 팝업이 보이지 않으면 Keychain Access 앱을 열고 `login` keychain의 `My Certificates`에서 `Apple Development: Hwayoung Lee (R6ALQZJ966)` 인증서와 private key가 있는지 확인한다.
+4. private key 접근 제어에서 `/usr/bin/codesign`과 Xcode 접근이 차단되어 있지 않은지 확인한다. 암호나 인증서 private key 값은 문서, 로그, 채팅에 남기지 않는다.
+5. 접근을 허용한 뒤 같은 터미널에서 아래 순서로 다시 실행한다.
+
+```sh
+scripts/release-testflight-build.sh 15
+UPLOAD=1 scripts/release-testflight-build.sh 15
+```
+
 ## TestFlight 공개 순서
 
 1. App Store Connect에서 냠냠레벨업 앱으로 이동한다.
