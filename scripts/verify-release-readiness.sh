@@ -288,6 +288,7 @@ ruby -rjson -e '
     "allergyChallengeLock" => true,
     "unsafeAllergyChallengeCopyBlockedByReleaseGate" => true,
     "shareCardsExcludeSensitiveFields" => true,
+    "photoRecordEvidenceCoveredByReleaseGate" => true,
     "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
     "appStoreConnectBetaGroupCheckScript" => true,
     "testFlightCliUploadSucceeded" => true
@@ -374,6 +375,19 @@ require_absent_pattern "NaymNaymLevelUp docs release README.md" "먹어도 괜�
 require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "보호자와 학교 안내" "Meal screen prioritizes guardian and school allergy guidance"
 require_pattern "NaymNaymLevelUp/Views/Settings/SettingsView.swift" "학교 안내와 보호자 판단" "Settings privacy copy prioritizes school guidance and guardian judgment"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "학교 안내와 보호자 판단이 항상 우선" "App Store metadata includes allergy safety disclaimer"
+require_file "docs/PHOTO_RECORD_RELEASE_EVIDENCE.md"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "Section\\(\"급식판 사진\"\\)" "Meal detail includes photo record section"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" 'PhotosPicker\(selection: \$selectedPhotoItem, matching: \.images\)' "Meal detail includes photo picker"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "Label\\(\"사진 찍기\", systemImage: \"camera\"\\)" "Meal detail includes camera action"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "Toggle\\(\"부모에게 이 사진 공유\"" "Meal detail includes parent photo sharing toggle"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "사진 공유는 이 기록 공유가 켜진 경우에만 선택할 수 있어요" "Photo sharing is gated by record sharing copy"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testLocalPhotoStoreSavesAndDeletesFile" "Photo local save/delete test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testUpdateMealPhotoSharingClearsChildLinkWhenDisabled" "Photo sharing disable test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testChildSummariesOnlyExposeParentSharedPhotosAndRecords" "Parent summary shared photo privacy test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testCloudKitPhotoRecordRequiresBothPermissions" "CloudKit photo permission test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testCloudKitSharedPhotoRecordFieldsMatchConsoleRunbook" "CloudKit shared photo contract test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testResetAllDataClearsProfileRecordsProgressParentLinksAndPhotoFiles" "Full reset deletes photo files test exists"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers photo records"
 
 require_file "$RELEASE_UPLOAD_LOG"
 require_file "${RELEASE_EXPORT_DIR}/ExportOptions.plist"
