@@ -457,6 +457,17 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testCloudKitInviteCodeValidationRequiresExactShape() {
+        let service = CloudKitParentLinkService()
+
+        XCTAssertTrue(service.isValidInviteCode("nyam abcd efgh ijkl"))
+        XCTAssertTrue(service.isValidInviteCode("NYAM-ABCD-EFGH-IJKL"))
+        XCTAssertFalse(service.isValidInviteCode(""))
+        XCTAssertFalse(service.isValidInviteCode("ABCD-EFGH-IJKL"))
+        XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-IJ"))
+        XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-IJKL-EXTRA"))
+    }
+
     func testCloudKitSetupOnlyRequiresQueryableIndexes() {
         let service = CloudKitParentLinkService()
         let checklist = service.setupChecklist.joined(separator: "\n")

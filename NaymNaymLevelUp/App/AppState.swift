@@ -500,6 +500,10 @@ final class AppState: ObservableObject {
             parentSyncMessage = "초대 코드를 입력해 주세요."
             return false
         }
+        guard parentLinkService.isValidInviteCode(normalizedCode) else {
+            parentSyncMessage = "초대 코드 형식을 확인해 주세요."
+            return false
+        }
 
         isParentSyncing = true
         defer { isParentSyncing = false }

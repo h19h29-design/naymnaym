@@ -255,7 +255,7 @@ private struct ParentInviteCodeSheet: View {
     }
 
     private var canSave: Bool {
-        normalizedInviteCode.hasPrefix("NYAM-") && normalizedInviteCode.count >= 17
+        CloudKitParentLinkService().isValidInviteCode(inviteCode)
     }
 
     var body: some View {

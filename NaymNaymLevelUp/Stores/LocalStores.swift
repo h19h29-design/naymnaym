@@ -231,6 +231,15 @@ struct CloudKitParentLinkService {
         return "NYAM-\(first)-\(second)-\(third)"
     }
 
+    func isValidInviteCode(_ code: String) -> Bool {
+        let normalized = normalizeInviteCode(code)
+        let segments = normalized.split(separator: "-")
+        guard segments.count == 4, segments[0] == "NYAM" else { return false }
+        return segments.dropFirst().allSatisfy { segment in
+            segment.count == 4 && segment.allSatisfy { $0.isLetter || $0.isNumber }
+        }
+    }
+
     func makeChildLink(profile: UserProfile, permissions: SharingPermission = .defaultChildSafe) -> ChildLink {
         ChildLink(
             childNickname: profile.nickname,
