@@ -264,7 +264,7 @@ sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
 require_pattern "scripts/check-app-store-build-status.sh" "ASC_REQUIRE_BETA_GROUPS" "App Store Connect script can require TestFlight beta group linkage"
 require_pattern "scripts/check-app-store-build-status.sh" "ASC_EXPECTED_BETA_GROUP_NAME" "App Store Connect script can check the expected TestFlight group"
-require_pattern "scripts/check-app-store-build-status.sh" "/v1/builds/#\\{URI\\.encode_www_form_component\\(build\\.fetch\\(\"id\"\\)\\)\\}/betaGroups" "App Store Connect script checks build beta group linkage"
+require_pattern "scripts/check-app-store-build-status.sh" "filter\\[builds\\]" "App Store Connect script checks build beta group linkage"
 ruby -rjson -e '
   data = JSON.parse(File.read(ARGV.fetch(0)))
   abort "wrong bundle id" unless data.dig("appInfo", "bundleId") == "com.h19h29.naymnaymlevelup"

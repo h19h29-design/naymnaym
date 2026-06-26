@@ -4,6 +4,24 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+ENV_FILE="${ASC_ENV_FILE:-.asc/app-store-connect.env}"
+if [ -f "$ENV_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    key="${line%%=*}"
+    case "$key" in
+      ASC_*) ;;
+      *) continue ;;
+    esac
+    eval "already_set=\${$key+x}"
+    if [ -z "$already_set" ]; then
+      eval "export $line"
+    fi
+  done <"$ENV_FILE"
+fi
+
 BUNDLE_ID="${ASC_BUNDLE_ID:-com.h19h29.naymnaymlevelup}"
 VERSION="${ASC_VERSION:-1.0}"
 BUILD_NUMBER="${ASC_BUILD:-15}"
@@ -57,6 +75,27 @@ def base64url(value)
   Base64.urlsafe_encode64(value).delete("=")
 end
 
+def integer_to_bytes(value)
+  value = value.to_i
+  bytes = []
+  while value > 0
+    bytes.unshift(value & 0xff)
+    value >>= 8
+  end
+  bytes.empty? ? "\x00" : bytes.pack("C*")
+end
+
+def ecdsa_der_to_jose(signature, key_bytes: 32)
+  asn1 = OpenSSL::ASN1.decode(signature)
+  unless asn1.is_a?(OpenSSL::ASN1::Sequence) && asn1.value.length == 2
+    fail "ECDSA signature is not a DER sequence"
+  end
+
+  r = integer_to_bytes(asn1.value[0].value).rjust(key_bytes, "\x00")[-key_bytes, key_bytes]
+  s = integer_to_bytes(asn1.value[1].value).rjust(key_bytes, "\x00")[-key_bytes, key_bytes]
+  r + s
+end
+
 header = {
   alg: "ES256",
   kid: key_id,
@@ -75,7 +114,7 @@ segments = [
 ]
 signing_input = segments.join(".")
 signature = private_key.sign(OpenSSL::Digest::SHA256.new, signing_input)
-jwt = "#{signing_input}.#{base64url(signature)}"
+jwt = "#{signing_input}.#{base64url(ecdsa_der_to_jose(signature))}"
 
 def get_json(path, jwt, required: true)
   uri = URI("https://api.appstoreconnect.apple.com#{path}")
@@ -112,14 +151,25 @@ info "app: #{app_name} (#{bundle_id})"
 
 builds_query = URI.encode_www_form(
   "filter[app]" => app_id,
-  "filter[version]" => version,
-  "filter[buildNumber]" => build_number,
+  "filter[version]" => build_number,
   "sort" => "-uploadedDate",
   "limit" => "1"
 )
 builds = get_json("/v1/builds?#{builds_query}", jwt)
 build = builds.fetch("data", []).first
 fail "No build found for #{version} (#{build_number})" unless build
+
+pre_release_version = get_json("/v1/builds/#{URI.encode_www_form_component(build.fetch("id"))}/preReleaseVersion", jwt, required: false)
+if pre_release_version && pre_release_version["data"]
+  app_version = pre_release_version.dig("data", "attributes", "version").to_s
+  if app_version == version
+    pass "build belongs to app version #{version}"
+  else
+    fail "build belongs to app version #{app_version}, expected #{version}"
+  end
+else
+  info "app version relationship could not be verified"
+end
 
 attributes = build.fetch("attributes", {})
 state = attributes["processingState"] || "unknown"
@@ -144,7 +194,11 @@ else
   pass "build processing state is not an obvious failure"
 end
 
-beta_groups = get_json("/v1/builds/#{URI.encode_www_form_component(build.fetch("id"))}/betaGroups?limit=50", jwt, required: false)
+beta_groups_query = URI.encode_www_form(
+  "filter[builds]" => build.fetch("id"),
+  "limit" => "50"
+)
+beta_groups = get_json("/v1/betaGroups?#{beta_groups_query}", jwt, required: false)
 if beta_groups
   groups = beta_groups.fetch("data", [])
   if groups.empty?
