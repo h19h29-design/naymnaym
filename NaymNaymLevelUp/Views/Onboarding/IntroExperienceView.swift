@@ -14,6 +14,7 @@ struct IntroMission: Equatable {
     var primaryTitle: String?
     var primarySubtitle: String?
     var showsDemoBadge: Bool
+    var mascotState: MascotAnimationState
 
     init(
         title: String,
@@ -22,7 +23,8 @@ struct IntroMission: Equatable {
         tintHex: String,
         primaryTitle: String? = nil,
         primarySubtitle: String? = nil,
-        showsDemoBadge: Bool = false
+        showsDemoBadge: Bool = false,
+        mascotState: MascotAnimationState = .idle
     ) {
         self.title = title
         self.message = message
@@ -31,6 +33,7 @@ struct IntroMission: Equatable {
         self.primaryTitle = primaryTitle
         self.primarySubtitle = primarySubtitle
         self.showsDemoBadge = showsDemoBadge
+        self.mascotState = mascotState
     }
 }
 
@@ -51,7 +54,8 @@ enum IntroMissionTextFactory {
                 iconName: "building.columns.fill",
                 tintHex: "#7BC96F",
                 primaryTitle: "오늘 급식 보러가기",
-                primarySubtitle: "학교 등록하고 시작"
+                primarySubtitle: "학교 등록하고 시작",
+                mascotState: .wave
             )
         }
 
@@ -70,7 +74,8 @@ enum IntroMissionTextFactory {
                 message: "실제 학교 급식이 아니라 샘플 데이터로 앱을 둘러보는 중이에요.",
                 iconName: "sparkles",
                 tintHex: "#8B5CF6",
-                showsDemoBadge: true
+                showsDemoBadge: true,
+                mascotState: .wave
             )
         }
 
@@ -80,7 +85,8 @@ enum IntroMissionTextFactory {
                     title: "먼저 안전 확인",
                     message: "오늘 급식에 주의가 필요한 메뉴가 있어요. 한 입 도전보다 먼저 확인해요!",
                     iconName: "shield.lefthalf.filled",
-                    tintHex: "#EF4444"
+                    tintHex: "#EF4444",
+                    mascotState: .allergyWarning
                 )
             }
 
@@ -89,7 +95,8 @@ enum IntroMissionTextFactory {
                     title: "오늘의 한 입 미션",
                     message: "오늘은 \(candidate.name) 한 입 도전이 추천돼요!",
                     iconName: "star.fill",
-                    tintHex: "#FF9F43"
+                    tintHex: "#FF9F43",
+                    mascotState: .wave
                 )
             }
         }
@@ -128,7 +135,8 @@ enum IntroMissionTextFactory {
                 message: "실제 학교 급식이 아니라 샘플 데이터로 앱을 둘러보는 중이에요.",
                 iconName: "sparkles",
                 tintHex: "#8B5CF6",
-                showsDemoBadge: true
+                showsDemoBadge: true,
+                mascotState: .wave
             )
         case .noMeal:
             return IntroMission(
@@ -159,6 +167,7 @@ struct IntroExperienceView: View {
     var onParent: () -> Void
 
     @State private var phase: MascotIntroPhase = .hidden
+    @State private var mascotAnimationState: MascotAnimationState = .intro
     @State private var particlesAreMoving = false
     @State private var hasPlayedIntro = false
 
@@ -199,11 +208,16 @@ struct IntroExperienceView: View {
 
                     ZStack {
                         ParticleField(isMoving: particlesAreMoving, compact: isCompactHeight(proxy.size.height))
-                        AnimatedMascotView(
-                            phase: phase,
-                            size: mascotSize(for: proxy.size),
-                            style: style
-                        )
+                        LottieMascotView(
+                            state: mascotAnimationState,
+                            onComplete: handleMascotAnimationComplete
+                        ) {
+                            AnimatedMascotView(
+                                phase: phase,
+                                size: mascotSize(for: proxy.size),
+                                style: style
+                            )
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: mascotStageHeight(for: proxy.size))
@@ -242,8 +256,15 @@ struct IntroExperienceView: View {
         .task {
             guard !hasPlayedIntro else { return }
             hasPlayedIntro = true
+            mascotAnimationState = .intro
             particlesAreMoving = true
             await playIntro()
+        }
+        .onChange(of: mission) { newMission in
+            guard phase == .settled, mascotAnimationState != .intro else { return }
+            withAnimation(.easeOut(duration: 0.22)) {
+                mascotAnimationState = newMission.mascotState
+            }
         }
         .accessibilityElement(children: .contain)
     }
@@ -267,6 +288,18 @@ struct IntroExperienceView: View {
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: delay)
             }
+        }
+
+        withAnimation(.easeOut(duration: 0.22)) {
+            mascotAnimationState = mission.mascotState
+        }
+    }
+
+    private func handleMascotAnimationComplete() {
+        guard let nextState = mascotAnimationState.stateAfterCompletion else { return }
+        let targetState = mascotAnimationState == .intro ? mission.mascotState : nextState
+        withAnimation(.easeOut(duration: 0.22)) {
+            mascotAnimationState = targetState
         }
     }
 

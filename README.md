@@ -63,12 +63,44 @@ NEIS_API_KEY = 발급받은_키
 - SwiftUI
 - iOS 16+
 - XCTest
-- 외부 Swift 패키지 없음
+- Swift Package Manager
+- lottie-ios 4.6.1
 
 ## 실행 방법
 1. Xcode에서 `NaymNaymLevelUp.xcodeproj`를 엽니다.
 2. iPhone 시뮬레이터를 선택합니다.
 3. Build & Run을 실행합니다.
+
+## 첫 실행 Lottie 애니메이션
+
+첫 실행 인트로는 `lottie-ios` 기반 재생 구조를 사용합니다. SwiftUI에서는 `LottieMascotView`가 Lottie JSON을 먼저 찾고, 파일이 없으면 기존 PNG 에셋 기반 fallback을 보여줍니다. fallback은 출시용 최종 애니메이션이 아니라 Lottie JSON이 준비되지 않은 상태에서 crash를 막기 위한 안전 장치입니다.
+
+애니메이션 파일은 앱 번들 내부의 `NaymNaymLevelUp/Resources/Animations/`에 넣습니다. 앱 실행 중 외부 URL에서 Lottie 파일을 다운로드하지 않습니다.
+
+필수 파일명:
+
+- `mascot_intro.json`: 앱 첫 실행 시 캐릭터 등장
+- `mascot_idle_loop.json`: 첫 화면 대기 반복
+- `mascot_wave.json`: 캐릭터 손 흔들기
+- `mascot_success.json`: 한 입 도전 성공
+- `mascot_levelup.json`: 레벨업/뱃지 획득
+- `mascot_allergy_warning.json`: 알레르기 주의
+
+현재 레포에는 실제 캐릭터 Lottie JSON을 포함하지 않습니다. 따라서 앱은 `mascot_onboarding`, `mascot_wave_1`, `mascot_wave_2`, `mascot_jump` PNG 에셋을 fallback으로 사용합니다. Lottie 파일을 추가할 때는 다음 원칙을 지켜야 합니다.
+
+- 상업적 사용 가능 라이선스가 명확한 파일만 사용
+- 유료/프리미엄 또는 라이선스 불명확 파일 사용 금지
+- 캐릭터가 냠냠레벨업 브랜드와 맞지 않으면 사용 금지
+- 출처, 라이선스, 저작권 표기 요구사항을 `THIRD_PARTY_NOTICES.md`에 기록
+- 앱 개인정보 수집, 광고, 분석 SDK를 추가하지 않음
+
+교체 방법:
+
+1. 위 파일명 규칙에 맞춰 Lottie JSON을 `NaymNaymLevelUp/Resources/Animations/`에 추가합니다.
+2. Xcode target의 Resources에 포함되어 있는지 확인합니다.
+3. `MascotAnimationState`의 상태별 `animationName`과 loop 정책을 확인합니다.
+4. iPhone 16과 iPhone SE 시뮬레이터에서 첫 실행 인트로와 fallback 없는 Lottie 재생을 확인합니다.
+5. 라이선스 정보를 `THIRD_PARTY_NOTICES.md`에 추가합니다.
 
 ## 출시 전 체크
 - `scripts/verify-release-readiness.sh`로 plist, 버전/빌드, 아이콘, 스크린샷, 공개 URL 상태 확인
@@ -87,6 +119,7 @@ NEIS_API_KEY = 발급받은_키
 - 개인정보 처리방침/지원/데이터 안전 URL 공개 상태 확인 완료
 - TestFlight 내부/외부 테스트
 - App Review 제출 전 알레르기 면책 및 개인정보 처리 안내 최종 확인
+- App Review 제출 전 Lottie JSON이 번들에 포함되어 있고, 외부 서버 다운로드나 라이선스 불명확 애니메이션이 없는지 확인
 
 ## App Store 제출 자료
 - App Store 메타데이터 초안: `release/AppStoreMetadata/ko-KR.md`
