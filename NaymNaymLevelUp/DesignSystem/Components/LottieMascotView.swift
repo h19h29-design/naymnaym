@@ -130,7 +130,8 @@ private struct LottieMascotRepresentable: UIViewRepresentable {
         let view = LottieAnimationView()
         view.backgroundBehavior = .pauseAndRestore
         view.contentMode = contentMode
-        view.clipsToBounds = false
+        view.clipsToBounds = true
+        view.maskAnimationToBounds = true
         configure(view, context: context)
         return view
     }
@@ -149,6 +150,11 @@ private struct LottieMascotRepresentable: UIViewRepresentable {
                 animationName,
                 bundle: .main,
                 subdirectory: LottieAnimationCatalog.resourceSubdirectory
+            )
+            view.imageProvider = BundleImageProvider(
+                bundle: .main,
+                searchPath: LottieAnimationCatalog.imageSearchPath,
+                contentsGravity: .resizeAspect
             )
             context.coordinator.animationName = animationName
             context.coordinator.hasStarted = false

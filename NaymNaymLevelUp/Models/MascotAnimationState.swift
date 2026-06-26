@@ -69,6 +69,7 @@ enum MascotAnimationState: String, CaseIterable, Equatable {
 
 enum LottieAnimationCatalog {
     static let resourceSubdirectory = "Animations"
+    static let imageSearchPath = "Animations/images"
 
     static let expectedAnimationNames = [
         MascotAnimationState.intro.animationName,
@@ -89,5 +90,9 @@ enum LottieAnimationCatalog {
 
     static func isAnimationBundled(_ animationName: String, bundle: Bundle = .main) -> Bool {
         url(for: animationName, bundle: bundle) != nil
+    }
+
+    static func areAllExpectedAnimationsBundled(bundle: Bundle = .main) -> Bool {
+        expectedAnimationNames.allSatisfy { isAnimationBundled($0, bundle: bundle) }
     }
 }

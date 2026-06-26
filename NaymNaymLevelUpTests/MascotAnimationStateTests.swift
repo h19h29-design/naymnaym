@@ -47,4 +47,28 @@ final class MascotAnimationStateTests: XCTestCase {
     func testMissingLottieResourceCanBeDetectedWithoutCrashing() {
         XCTAssertFalse(LottieAnimationCatalog.isAnimationBundled("__missing_mascot_animation__", bundle: .main))
     }
+
+    func testAllExpectedLottieResourcesAreBundled() {
+        XCTAssertTrue(LottieAnimationCatalog.areAllExpectedAnimationsBundled(bundle: .main))
+    }
+
+    func testLottieImageAssetsAreBundled() {
+        let imageNames = [
+            "mascot_onboarding",
+            "mascot_wave_1",
+            "mascot_wave_2",
+            "mascot_jump"
+        ]
+
+        for imageName in imageNames {
+            XCTAssertNotNil(
+                Bundle.main.url(
+                    forResource: imageName,
+                    withExtension: "png",
+                    subdirectory: LottieAnimationCatalog.imageSearchPath
+                ),
+                "\(imageName).png should be bundled for Lottie playback"
+            )
+        }
+    }
 }

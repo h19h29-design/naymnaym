@@ -73,7 +73,7 @@ NEIS_API_KEY = 발급받은_키
 
 ## 첫 실행 Lottie 애니메이션
 
-첫 실행 인트로는 `lottie-ios` 기반 재생 구조를 사용합니다. SwiftUI에서는 `LottieMascotView`가 Lottie JSON을 먼저 찾고, 파일이 없으면 기존 PNG 에셋 기반 fallback을 보여줍니다. fallback은 출시용 최종 애니메이션이 아니라 Lottie JSON이 준비되지 않은 상태에서 crash를 막기 위한 안전 장치입니다.
+첫 실행 인트로는 `lottie-ios` 기반 재생 구조를 사용합니다. SwiftUI에서는 `LottieMascotView`가 Lottie JSON을 먼저 찾고, 파일이 없거나 로딩할 수 없으면 기존 PNG 에셋 기반 fallback을 보여줍니다.
 
 애니메이션 파일은 앱 번들 내부의 `NaymNaymLevelUp/Resources/Animations/`에 넣습니다. 앱 실행 중 외부 URL에서 Lottie 파일을 다운로드하지 않습니다.
 
@@ -86,7 +86,7 @@ NEIS_API_KEY = 발급받은_키
 - `mascot_levelup.json`: 레벨업/뱃지 획득
 - `mascot_allergy_warning.json`: 알레르기 주의
 
-현재 레포에는 실제 캐릭터 Lottie JSON을 포함하지 않습니다. 따라서 앱은 `mascot_onboarding`, `mascot_wave_1`, `mascot_wave_2`, `mascot_jump` PNG 에셋을 fallback으로 사용합니다. Lottie 파일을 추가할 때는 다음 원칙을 지켜야 합니다.
+현재 레포에는 앱 소유 PNG 캐릭터 에셋을 움직이는 1차 Lottie JSON이 포함되어 있습니다. JSON은 `NaymNaymLevelUp/Resources/Animations/images/`의 `mascot_onboarding`, `mascot_wave_1`, `mascot_wave_2`, `mascot_jump` PNG를 참조합니다. 외부/유료 Lottie 파일을 새로 추가하거나 교체할 때는 다음 원칙을 지켜야 합니다.
 
 - 상업적 사용 가능 라이선스가 명확한 파일만 사용
 - 유료/프리미엄 또는 라이선스 불명확 파일 사용 금지

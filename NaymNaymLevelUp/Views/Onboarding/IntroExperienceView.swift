@@ -170,6 +170,7 @@ struct IntroExperienceView: View {
     @State private var mascotAnimationState: MascotAnimationState = .intro
     @State private var particlesAreMoving = false
     @State private var hasPlayedIntro = false
+    @State private var introSequenceCompleted = false
 
     private var style: IntroStyle {
         IntroStyle(mode: appState.currentMode)
@@ -188,7 +189,7 @@ struct IntroExperienceView: View {
     }
 
     private var buttonsReady: Bool {
-        phase == .settled
+        introSequenceCompleted
     }
 
     var body: some View {
@@ -247,7 +248,7 @@ struct IntroExperienceView: View {
                         .padding(.bottom, isCompactHeight(proxy.size.height) ? 10 : 24)
                 }
                 .padding(.horizontal, proxy.size.width < 360 ? 15 : 22)
-                .frame(maxWidth: 520)
+                .frame(width: min(proxy.size.width, 520))
                 .frame(minHeight: proxy.size.height)
                 .frame(maxWidth: .infinity)
             }
@@ -258,10 +259,16 @@ struct IntroExperienceView: View {
             hasPlayedIntro = true
             mascotAnimationState = .intro
             particlesAreMoving = true
-            await playIntro()
+
+            if LottieAnimationCatalog.isAnimationBundled(MascotAnimationState.intro.animationName) {
+                phase = .settled
+                await completeLottieIntroAfterTimeoutIfNeeded()
+            } else {
+                await playFallbackIntro()
+            }
         }
         .onChange(of: mission) { newMission in
-            guard phase == .settled, mascotAnimationState != .intro else { return }
+            guard introSequenceCompleted, mascotAnimationState != .intro else { return }
             withAnimation(.easeOut(duration: 0.22)) {
                 mascotAnimationState = newMission.mascotState
             }
@@ -269,7 +276,7 @@ struct IntroExperienceView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func playIntro() async {
+    private func playFallbackIntro() async {
         let sequence: [(MascotIntroPhase, UInt64)] = [
             (.peek, 340_000_000),
             (.rise, 520_000_000),
@@ -290,16 +297,32 @@ struct IntroExperienceView: View {
             }
         }
 
-        withAnimation(.easeOut(duration: 0.22)) {
-            mascotAnimationState = mission.mascotState
-        }
+        completeIntroSequence()
+    }
+
+    private func completeLottieIntroAfterTimeoutIfNeeded() async {
+        try? await Task.sleep(nanoseconds: 4_200_000_000)
+        guard !Task.isCancelled, mascotAnimationState == .intro, !introSequenceCompleted else { return }
+        completeIntroSequence()
     }
 
     private func handleMascotAnimationComplete() {
+        if mascotAnimationState == .intro {
+            completeIntroSequence()
+            return
+        }
+
         guard let nextState = mascotAnimationState.stateAfterCompletion else { return }
-        let targetState = mascotAnimationState == .intro ? mission.mascotState : nextState
         withAnimation(.easeOut(duration: 0.22)) {
-            mascotAnimationState = targetState
+            mascotAnimationState = nextState
+        }
+    }
+
+    private func completeIntroSequence() {
+        withAnimation(.easeOut(duration: 0.22)) {
+            phase = .settled
+            introSequenceCompleted = true
+            mascotAnimationState = mission.mascotState
         }
     }
 

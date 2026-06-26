@@ -242,6 +242,24 @@ require_file "scripts/check-app-store-build-status.sh"
 require_file "THIRD_PARTY_NOTICES.md"
 require_file "NaymNaymLevelUp/Resources/Animations/README.md"
 require_file "NaymNaymLevelUp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+for lottie_file in \
+  mascot_intro.json \
+  mascot_idle_loop.json \
+  mascot_wave.json \
+  mascot_success.json \
+  mascot_levelup.json \
+  mascot_allergy_warning.json
+do
+  require_file "NaymNaymLevelUp/Resources/Animations/$lottie_file"
+done
+for lottie_image in \
+  mascot_onboarding.png \
+  mascot_wave_1.png \
+  mascot_wave_2.png \
+  mascot_jump.png
+do
+  require_file "NaymNaymLevelUp/Resources/Animations/images/$lottie_image"
+done
 sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
 require_pattern "scripts/check-app-store-build-status.sh" "ASC_REQUIRE_BETA_GROUPS" "App Store Connect script can require TestFlight beta group linkage"
@@ -415,6 +433,7 @@ require_pattern "README.md" "첫 실행 Lottie 애니메이션" "README document
 require_pattern "README.md" "mascot_intro\\.json" "README documents required intro animation JSON"
 require_pattern "THIRD_PARTY_NOTICES.md" "lottie-ios" "Third-party notices include lottie-ios"
 require_pattern "THIRD_PARTY_NOTICES.md" "Apache License 2\\.0" "Third-party notices include lottie-ios license"
+require_pattern "THIRD_PARTY_NOTICES.md" "first-party Lottie JSON" "Third-party notices identify bundled mascot JSON as first-party"
 require_pattern "NaymNaymLevelUp/Resources/Animations/README.md" "mascot_idle_loop\\.json" "Animation README documents idle loop JSON"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
