@@ -151,12 +151,38 @@ final class LocalStoreTests: XCTestCase {
             sampleProvider: SampleDataProvider()
         )
 
-        appState.addChildLink(inviteCode: " nyam-123456 ", nickname: "지우", schoolName: "등촌고등학교", mode: .high)
-        appState.addChildLink(inviteCode: "NYAM-123456", nickname: "민준", schoolName: "냠냠중학교", mode: .middle)
+        appState.addChildLink(inviteCode: " nyam abcd efgh jklm ", nickname: "지우", schoolName: "등촌고등학교", mode: .high)
+        appState.addChildLink(inviteCode: "NYAM-ABCD-EFGH-JKLM", nickname: "민준", schoolName: "냠냠중학교", mode: .middle)
 
         XCTAssertEqual(appState.parentProfile.childLinks.count, 1)
-        XCTAssertEqual(appState.parentProfile.childLinks.first?.inviteCode, "NYAM-123456")
+        XCTAssertEqual(appState.parentProfile.childLinks.first?.inviteCode, "NYAM-ABCD-EFGH-JKLM")
         XCTAssertEqual(appState.parentProfile.childLinks.first?.childNickname, "민준")
+        try? FileManager.default.removeItem(at: photoDirectory)
+    }
+
+    @MainActor
+    func testAppStateRejectsInvalidLocalInviteCodeChildLink() {
+        let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            localPhotoStore: LocalPhotoStore(directoryURL: photoDirectory),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider()
+        )
+
+        appState.addChildLink(inviteCode: "NYAM-ABCD-EFGH-JK1M", nickname: "지우", schoolName: "등촌고등학교", mode: .high)
+
+        XCTAssertTrue(appState.parentProfile.childLinks.isEmpty)
+        XCTAssertEqual(
+            appState.parentSyncMessage,
+            "헷갈리는 문자 O, 0, I, 1은 초대 코드에 사용하지 않아요. 아이 기기에서 코드를 다시 확인해 주세요."
+        )
+        XCTAssertEqual(appState.parentSyncError, appState.parentSyncMessage)
         try? FileManager.default.removeItem(at: photoDirectory)
     }
 
@@ -588,7 +614,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(
                 shareEatingRecords: true,
                 shareChallengeRecords: true,
@@ -620,7 +646,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record["childNickname"] as? String, "지우")
         XCTAssertEqual(record["schoolName"] as? String, "등촌고등학교")
         XCTAssertEqual(record["mode"] as? String, UserMode.high.rawValue)
-        XCTAssertEqual(record["inviteCode"] as? String, "NYAM-ABCD-EFGH-IJKL")
+        XCTAssertEqual(record["inviteCode"] as? String, "NYAM-ABCD-EFGH-JKLM")
         XCTAssertEqual(boolRecordValue(record["shareEatingRecords"]), true)
         XCTAssertEqual(boolRecordValue(record["shareChallengeRecords"]), true)
         XCTAssertEqual(boolRecordValue(record["shareAllergyWarnings"]), false)
@@ -634,7 +660,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-123456"
+            inviteCode: "NYAM-ABCD-EFGH-JKLM"
         )
         let hidden = MealRecord(
             date: "20260618",
@@ -669,7 +695,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(
                 shareEatingRecords: true,
                 shareChallengeRecords: true,
@@ -723,7 +749,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL"
+            inviteCode: "NYAM-ABCD-EFGH-JKLM"
         )
         let hidden = ChallengeRecord(
             date: "20260618",
@@ -763,7 +789,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(
                 shareEatingRecords: true,
                 shareChallengeRecords: true,
@@ -820,14 +846,14 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(shareEatingRecords: false, shareChallengeRecords: true, shareAllergyWarnings: true, sharePhotos: true)
         )
         let allergyHiddenChild = ChildLink(
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(shareEatingRecords: true, shareChallengeRecords: true, shareAllergyWarnings: false, sharePhotos: true)
         )
         let shared = MealRecord(
@@ -849,7 +875,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-123456",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(shareEatingRecords: true, shareChallengeRecords: true, shareAllergyWarnings: true, sharePhotos: false)
         )
         let photo = MealPhotoRecord(id: "photo-1", fileName: "photo-1.jpg", createdAt: Date(), isSharedWithParent: true)
@@ -860,7 +886,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-123456",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(shareEatingRecords: true, shareChallengeRecords: true, shareAllergyWarnings: true, sharePhotos: true)
         )
         XCTAssertEqual(service.makeSharedPhotoRecord(photo, childLink: allowedChild)?.recordType, CloudKitParentLinkService.sharedMealPhotoRecordType)
@@ -880,7 +906,7 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-IJKL",
+            inviteCode: "NYAM-ABCD-EFGH-JKLM",
             permissions: SharingPermission(
                 shareEatingRecords: true,
                 shareChallengeRecords: true,

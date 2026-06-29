@@ -459,6 +459,11 @@ final class AppState: ObservableObject {
 
     func addChildLink(inviteCode: String, nickname: String, schoolName: String, mode: UserMode) {
         let normalizedCode = parentLinkService.normalizeInviteCode(inviteCode)
+        if let validationMessage = parentLinkService.inviteCodeValidationMessage(inviteCode) {
+            parentSyncMessage = validationMessage
+            parentSyncError = validationMessage
+            return
+        }
         guard !normalizedCode.isEmpty else { return }
 
         let child = ChildLink(
