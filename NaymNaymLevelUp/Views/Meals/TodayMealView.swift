@@ -60,7 +60,7 @@ struct TodayMealView: View {
             }
             .navigationTitle("오늘 급식")
             .navigationBarTitleDisplayMode(.inline)
-            .pageBackground()
+            .pageBackground(theme: appState.currentTheme)
             .refreshable {
                 await appState.loadMeals()
             }

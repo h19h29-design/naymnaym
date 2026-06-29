@@ -132,6 +132,37 @@ final class MealParserTests: XCTestCase {
         XCTAssertTrue(mission.showsDemoBadge)
         XCTAssertTrue(mission.message.contains("샘플 데이터"))
     }
+
+    func testMealCalendarModeDefaultsToWeeklyContract() {
+        XCTAssertEqual(MealCalendarMode.weekly.title, "주간")
+        XCTAssertEqual(MealCalendarMode.monthly.title, "월간")
+        XCTAssertEqual(MealCalendarMode.allCases.first, .weekly)
+    }
+
+    func testMealCalendarWeekPeriodUsesSevenDayWindow() throws {
+        let start = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20260624"))
+        let dates = MealCalendarPeriod.weekDates(starting: start)
+
+        XCTAssertEqual(dates.map(DateUtils.apiString(from:)), [
+            "20260624",
+            "20260625",
+            "20260626",
+            "20260627",
+            "20260628",
+            "20260629",
+            "20260630"
+        ])
+        XCTAssertEqual(MealCalendarPeriod.weekTitle(starting: start), "2026.06.24 ~ 2026.06.30")
+    }
+
+    func testMealCalendarWeekNavigationMovesBySevenDays() throws {
+        let start = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20260624"))
+        let previous = MealCalendarPeriod.shiftedWeekStart(start, by: -1)
+        let next = MealCalendarPeriod.shiftedWeekStart(start, by: 1)
+
+        XCTAssertEqual(DateUtils.apiString(from: previous), "20260617")
+        XCTAssertEqual(DateUtils.apiString(from: next), "20260701")
+    }
 }
 
 final class MealServiceTests: XCTestCase {

@@ -47,7 +47,7 @@ struct ParentSummaryView: View {
             }
             .navigationTitle("보호자 요약")
             .navigationBarTitleDisplayMode(.inline)
-            .pageBackground()
+            .pageBackground(theme: appState.currentTheme)
             .task {
                 await appState.refreshParentSharedData()
             }
@@ -83,6 +83,16 @@ struct ParentSummaryView: View {
                 }
                 .disabled(appState.isParentSyncing || appState.parentProfile.childLinks.isEmpty)
 
+#if DEBUG
+                Button {
+                    appState.addLocalChildLink()
+                    appState.parentSyncMessage = "이 기기에서만 보이는 테스트 연결을 추가했어요. 실제 보호자 기기 연동이 아닙니다."
+                } label: {
+                    Label("테스트 아이 추가", systemImage: "person.crop.circle.badge.plus")
+                        .font(.caption.weight(.semibold))
+                }
+#endif
+
                 if let message = appState.parentSyncMessage {
                     Text(message)
                         .font(AppTypography.caption)
@@ -98,42 +108,59 @@ struct ParentSummaryView: View {
 
     private var childCards: some View {
         VStack(spacing: 12) {
-            ForEach(appState.childSummaries) { child in
+            if appState.childSummaries.isEmpty {
                 RoundedCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label(child.childNickname, systemImage: child.mode.systemImage)
-                                .font(AppTypography.headline)
-                            Spacer()
-                            Text(child.mode.title)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Color(hex: ThemeProfile.profile(id: nil, mode: child.mode).primaryColorHex))
-                        }
-                        Text(child.schoolName)
+                        Label("연결된 아이가 아직 없어요", systemImage: "person.badge.plus")
+                            .font(AppTypography.headline)
+                            .foregroundStyle(AppColors.indigo)
+                        Text("아이 기기의 설정 > 보호자 연결에서 초대 코드를 만든 뒤, 부모 모드의 아이 추가에 입력하면 공유가 켜진 기록만 표시됩니다.")
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.graySecondary)
-                        HStack(spacing: 8) {
-                            summaryPill(title: "오늘 도전", value: "\(child.todayChallengeCount)회", color: AppColors.primaryGreen)
-                            summaryPill(title: "주의 메뉴", value: "\(child.allergyWarningMenus.count)개", color: AppColors.orange)
-                            summaryPill(title: "사진", value: "\(child.recentPhotoIds.count)장", color: Color.blue)
+                            .fixedSize(horizontal: false, vertical: true)
+                        SecondaryButton("아이 추가", systemImage: "plus.circle") {
+                            showingInviteSheet = true
                         }
-                        if !child.allergyWarningMenus.isEmpty {
-                            Text("알레르기 주의: \(child.allergyWarningMenus.joined(separator: ", "))")
-                                .font(AppTypography.caption)
-                                .foregroundStyle(Color.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Divider()
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("변화 요약")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(AppColors.textDark)
-                            Text(NutritionEstimator.makeParentSummary(records: child.weeklyChallengeRecords))
+                    }
+                }
+            } else {
+                ForEach(appState.childSummaries) { child in
+                    RoundedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Label(child.childNickname, systemImage: child.mode.systemImage)
+                                    .font(AppTypography.headline)
+                                Spacer()
+                                Text(child.mode.title)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color(hex: ThemeProfile.profile(id: nil, mode: child.mode).primaryColorHex))
+                            }
+                            Text(child.schoolName)
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 8) {
+                                summaryPill(title: "오늘 도전", value: "\(child.todayChallengeCount)회", color: AppColors.successGreen)
+                                summaryPill(title: "주의 메뉴", value: "\(child.allergyWarningMenus.count)개", color: AppColors.orange)
+                                summaryPill(title: "사진", value: "\(child.recentPhotoIds.count)장", color: AppColors.infoBlue)
+                            }
+                            if !child.allergyWarningMenus.isEmpty {
+                                Text("알레르기 주의: \(child.allergyWarningMenus.joined(separator: ", "))")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.warningRed)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Divider()
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("변화 요약")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppColors.textDark)
+                                Text(NutritionEstimator.makeParentSummary(records: child.weeklyChallengeRecords))
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.graySecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            sharedPhotoStrip(for: child)
                         }
-                        sharedPhotoStrip(for: child)
                     }
                 }
             }
@@ -262,12 +289,19 @@ private struct ParentInviteCodeSheet: View {
         NavigationStack {
             Form {
                 Section("초대 코드") {
-                    TextField("예: NYAM-ABCD-EFGH-IJKL", text: $inviteCode)
+                    TextField("예: NYAM-8K3P-7M2A-C9YD", text: $inviteCode)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                     Text("아이폰의 설정 > 보호자 연결 화면에서 만든 초대 코드를 입력해요.")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
+                    if let validationMessage = CloudKitParentLinkService().inviteCodeValidationMessage(inviteCode),
+                       !inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.warningRed)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Section("공유 범위") {

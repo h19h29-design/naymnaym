@@ -1,4 +1,5 @@
 import Foundation
+import CloudKit
 import SwiftUI
 
 @MainActor
@@ -20,6 +21,7 @@ final class AppState: ObservableObject {
     @Published var draftAllergyCodes: Set<Int> = []
     @Published var draftUserMode: UserMode = .elementary
     @Published var parentSyncMessage: String?
+    @Published var parentSyncError: String?
     @Published var isParentSyncing = false
 
     private let profileStore: UserProfileStore
@@ -437,16 +439,19 @@ final class AppState: ObservableObject {
         mealMessage = nil
         mealStatus = .noMeal
         parentSyncMessage = nil
+        parentSyncError = nil
         mealPhotoMetadataStore.clear()
         parentProfileStore.clear()
         childShareLinkStore.clear()
     }
 
     func addLocalChildLink() {
+        let index = parentProfile.childLinks.count + 1
         let child = ChildLink(
-            childNickname: profile?.nickname ?? "아이",
+            childNickname: "\(profile?.nickname ?? "아이") \(index)",
             schoolName: profile?.schoolName ?? "학교 미설정",
-            mode: currentMode
+            mode: currentMode,
+            inviteCode: "LOCAL-PREVIEW-\(index)"
         )
         parentProfile.childLinks.insert(child, at: 0)
         parentProfileStore.save(parentProfile)
@@ -482,26 +487,34 @@ final class AppState: ObservableObject {
         link.schoolName = profile.schoolName
         link.mode = profile.effectiveMode
         link.permissions = permissions
+        childShareLink = link
+        childShareLinkStore.save(link)
 
         do {
             _ = try await parentLinkService.saveParentLink(link)
-            childShareLink = link
-            childShareLinkStore.save(link)
             parentSyncMessage = "초대 코드가 iCloud에 등록됐어요."
+            parentSyncError = nil
             await publishChildSharedData()
         } catch {
-            parentSyncMessage = "iCloud 등록 실패: \(error.localizedDescription)"
+            let message = cloudKitMessage(
+                for: error,
+                fallback: "초대 코드는 생성됐지만 iCloud 등록에 실패했어요. iCloud 로그인, 네트워크, CloudKit 설정을 확인한 뒤 다시 저장해 주세요."
+            )
+            parentSyncMessage = message
+            parentSyncError = message
         }
     }
 
     func connectChild(inviteCode: String) async -> Bool {
         let normalizedCode = parentLinkService.normalizeInviteCode(inviteCode)
-        guard !normalizedCode.isEmpty else {
-            parentSyncMessage = "초대 코드를 입력해 주세요."
+        if let validationMessage = parentLinkService.inviteCodeValidationMessage(inviteCode) {
+            parentSyncMessage = validationMessage
+            parentSyncError = validationMessage
             return false
         }
-        guard parentLinkService.isValidInviteCode(normalizedCode) else {
-            parentSyncMessage = "초대 코드 형식을 확인해 주세요."
+        guard !parentProfile.childLinks.contains(where: { $0.inviteCode == normalizedCode }) else {
+            parentSyncMessage = "이미 연결된 아이예요. 새로고침으로 기록을 다시 불러올 수 있어요."
+            parentSyncError = parentSyncMessage
             return false
         }
 
@@ -512,10 +525,21 @@ final class AppState: ObservableObject {
             let child = try await parentLinkService.fetchParentLink(inviteCode: normalizedCode)
             upsertChildLink(child)
             parentSyncMessage = "\(child.childNickname) 연결을 완료했어요."
+            parentSyncError = nil
             await refreshParentSharedData()
             return true
+        } catch CloudKitParentLinkError.inviteCodeNotFound {
+            let message = "초대 코드를 찾지 못했어요. 아이 기기에서 코드를 다시 확인해 주세요."
+            parentSyncMessage = message
+            parentSyncError = message
+            return false
         } catch {
-            parentSyncMessage = "아이 연결 실패: \(error.localizedDescription)"
+            let message = cloudKitMessage(
+                for: error,
+                fallback: "아이 연결 실패: \(error.localizedDescription)"
+            )
+            parentSyncMessage = message
+            parentSyncError = message
             return false
         }
     }
@@ -533,12 +557,18 @@ final class AppState: ObservableObject {
                 merge(snapshot: snapshot, for: child)
             } catch {
                 didFail = true
-                parentSyncMessage = "\(child.childNickname) 기록 동기화 실패: \(error.localizedDescription)"
+                let message = cloudKitMessage(
+                    for: error,
+                    fallback: "\(child.childNickname) 기록 동기화 실패: \(error.localizedDescription)"
+                )
+                parentSyncMessage = message
+                parentSyncError = message
             }
         }
 
         if !didFail {
             parentSyncMessage = "아이 기록을 최신 상태로 불러왔어요."
+            parentSyncError = nil
         }
     }
 
@@ -566,8 +596,14 @@ final class AppState: ObservableObject {
         do {
             try await parentLinkService.saveSharedRecords(cloudRecords)
             parentSyncMessage = "공유 기록을 iCloud에 저장했어요."
+            parentSyncError = nil
         } catch {
-            parentSyncMessage = "공유 기록 저장 실패: \(error.localizedDescription)"
+            let message = cloudKitMessage(
+                for: error,
+                fallback: "공유 기록 저장 실패: \(error.localizedDescription)"
+            )
+            parentSyncMessage = message
+            parentSyncError = message
         }
     }
 
@@ -608,31 +644,36 @@ final class AppState: ObservableObject {
         mealPhotoMetadataStore.save(mealPhotos)
     }
 
-    var childSummaries: [ChildSummary] {
-        let usesLocalPreview = parentProfile.childLinks.isEmpty
-        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        let links = usesLocalPreview ? [
-            childShareLink ?? ChildLink(
-                childNickname: profile?.nickname ?? "냠냠이",
-                schoolName: profile?.schoolName ?? "학교 미설정",
-                mode: currentMode,
-                inviteCode: "LOCAL1"
-            )
-        ] : parentProfile.childLinks
+    var parentConnectionDiagnostics: ParentConnectionDiagnostics {
+        ParentConnectionDiagnostics(
+            hasChildShareLink: childShareLink != nil,
+            inviteCode: childShareLink?.inviteCode ?? "생성되지 않음",
+            parentChildLinkCount: parentProfile.childLinks.count,
+            iCloudCapabilityMessage: "iCloud.com.h19h29.naymnaymlevelup CloudKit public database 사용",
+            lastSyncMessage: parentSyncMessage ?? "아직 동기화 기록이 없어요.",
+            lastSyncError: parentSyncError ?? "최근 오류 없음",
+            permissions: childShareLink?.permissions ?? .defaultChildSafe,
+            sharedRecordCount: mealRecords.filter(\.parentShareEnabled).count + records.filter(\.parentShareEnabled).count,
+            sharedPhotoCount: mealPhotos.filter(\.isSharedWithParent).count
+        )
+    }
 
-        return links.map { link in
+    var childSummaries: [ChildSummary] {
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+
+        return parentProfile.childLinks.map { link in
             let sharedMealRecords = mealRecords
                 .filter(\.parentShareEnabled)
-                .filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
+                .filter { $0.childLinkId == link.id }
             let sharedPhotoIds = Set(
                 mealPhotos
                     .filter(\.isSharedWithParent)
-                    .filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
+                    .filter { $0.childLinkId == link.id }
                     .map(\.id)
             )
             let challengeRecords = records
                 .filter(\.parentShareEnabled)
-                .filter { usesLocalPreview ? $0.childLinkId == nil || $0.childLinkId == childShareLink?.id : $0.childLinkId == link.id }
+                .filter { $0.childLinkId == link.id }
             let weeklyMealRecords = sharedMealRecords.filter { $0.createdAt >= weekAgo }
             let weeklyChallengeRecords = challengeRecords.filter { $0.createdAt >= weekAgo }
 
@@ -652,5 +693,23 @@ final class AppState: ObservableObject {
                 weeklyChallengeRecords: Array(weeklyChallengeRecords.prefix(12))
             )
         }
+    }
+
+    private func cloudKitMessage(for error: Error, fallback: String) -> String {
+        if let cloudError = error as? CKError {
+            switch cloudError.code {
+            case .notAuthenticated:
+                return "iCloud에 로그인되어 있지 않아요. iCloud 계정과 Drive/CloudKit 사용 상태를 확인해 주세요."
+            case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy:
+                return "iCloud 연결이 원활하지 않아요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
+            case .permissionFailure:
+                return "iCloud 접근 권한이 부족해요. 앱의 iCloud 권한과 CloudKit 설정을 확인해 주세요."
+            case .unknownItem:
+                return "초대 코드를 찾지 못했어요. 아이 기기에서 코드를 다시 확인해 주세요."
+            default:
+                break
+            }
+        }
+        return fallback
     }
 }

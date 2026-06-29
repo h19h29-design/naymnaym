@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -63,6 +64,11 @@ struct SettingsView: View {
                     } label: {
                         Label("보호자 연결", systemImage: "person.2.fill")
                     }
+                    NavigationLink {
+                        ParentConnectionDiagnosticsView()
+                    } label: {
+                        Label("보호자 연동 상태 확인", systemImage: "stethoscope")
+                    }
                 }
 
                 Section("관리") {
@@ -105,6 +111,8 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(ThemeBackdrop(theme: appState.currentTheme).ignoresSafeArea())
             .navigationTitle("설정")
             .onAppear {
                 nickname = appState.profile?.nickname ?? ""
@@ -181,6 +189,7 @@ private struct ParentConnectionGuideView: View {
     @State private var shareChallenge = true
     @State private var shareAllergy = true
     @State private var sharePhotos = false
+    @State private var didCopyInviteCode = false
 
     private let service = CloudKitParentLinkService()
 
@@ -197,6 +206,10 @@ private struct ParentConnectionGuideView: View {
         appState.childShareLink?.inviteCode ?? "아직 생성되지 않았어요"
     }
 
+    private var hasInviteCode: Bool {
+        appState.childShareLink?.inviteCode.isEmpty == false
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -211,8 +224,29 @@ private struct ParentConnectionGuideView: View {
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)
-                                .background(AppColors.primaryGreen.opacity(0.16))
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .background(AppColors.lavender.opacity(0.65))
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            if hasInviteCode {
+                                HStack(spacing: 10) {
+                                    SecondaryButton(didCopyInviteCode ? "복사 완료" : "복사", systemImage: didCopyInviteCode ? "checkmark" : "doc.on.doc") {
+                                        UIPasteboard.general.string = inviteCodeText
+                                        didCopyInviteCode = true
+                                    }
+                                    ShareLink(item: inviteCodeText) {
+                                        Label("공유", systemImage: "square.and.arrow.up")
+                                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                            .frame(maxWidth: .infinity)
+                                            .frame(minHeight: 46)
+                                            .foregroundStyle(AppColors.indigo)
+                                            .background(Color.white)
+                                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                    .stroke(AppColors.indigo.opacity(0.22), lineWidth: 1)
+                                            )
+                                    }
+                                }
+                            }
                             Text("공유 설정을 저장하면 이 코드가 iCloud에 등록됩니다. 부모 모드에서 아이 추가를 누르고 같은 코드를 입력해요.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
@@ -263,6 +297,34 @@ private struct ParentConnectionGuideView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+
+                    NavigationLink {
+                        ParentConnectionDiagnosticsView()
+                    } label: {
+                        RoundedCard {
+                            HStack(spacing: 12) {
+                                Image(systemName: "stethoscope")
+                                    .font(.title3.weight(.bold))
+                                    .foregroundStyle(AppColors.indigo)
+                                    .frame(width: 42, height: 42)
+                                    .background(AppColors.lavender)
+                                    .clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("보호자 연동 상태 확인")
+                                        .font(AppTypography.headline)
+                                        .foregroundStyle(AppColors.textDark)
+                                    Text("초대 코드, 권한, 공유 기록 수, 최근 오류를 확인해요.")
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColors.graySecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppColors.graySecondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(20)
             }
@@ -281,6 +343,59 @@ private struct ParentConnectionGuideView: View {
                     shareAllergy = permissions.shareAllergyWarnings
                     sharePhotos = permissions.sharePhotos
                 }
+            }
+        }
+    }
+}
+
+private struct ParentConnectionDiagnosticsView: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        List {
+            Section("아이 기기 공유 상태") {
+                diagnosticsRow(
+                    title: "childShareLink",
+                    value: diagnostics.hasChildShareLink ? "있음" : "없음",
+                    systemImage: diagnostics.hasChildShareLink ? "checkmark.circle.fill" : "xmark.circle"
+                )
+                diagnosticsRow(title: "inviteCode", value: diagnostics.inviteCode, systemImage: "number")
+                diagnosticsRow(title: "공유 권한", value: diagnostics.permissionSummary, systemImage: "slider.horizontal.3")
+                diagnosticsRow(title: "공유된 기록", value: "\(diagnostics.sharedRecordCount)개", systemImage: "list.bullet.clipboard")
+                diagnosticsRow(title: "공유된 사진", value: "\(diagnostics.sharedPhotoCount)장", systemImage: "photo")
+            }
+
+            Section("부모 모드 연결 상태") {
+                diagnosticsRow(title: "연결된 아이", value: "\(diagnostics.parentChildLinkCount)명", systemImage: "person.2.fill")
+                diagnosticsRow(title: "iCloud 설정", value: diagnostics.iCloudCapabilityMessage, systemImage: "icloud")
+            }
+
+            Section("최근 동기화") {
+                diagnosticsRow(title: "마지막 메시지", value: diagnostics.lastSyncMessage, systemImage: "message")
+                diagnosticsRow(title: "마지막 오류", value: diagnostics.lastSyncError, systemImage: diagnostics.lastSyncError == "최근 오류 없음" ? "checkmark.shield" : "exclamationmark.triangle.fill")
+            }
+        }
+        .navigationTitle("연동 상태")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var diagnostics: ParentConnectionDiagnostics {
+        appState.parentConnectionDiagnostics
+    }
+
+    private func diagnosticsRow(title: String, value: String, systemImage: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(value == "최근 오류 없음" || value == "있음" ? AppColors.successGreen : AppColors.indigo)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.graySecondary)
+                Text(value)
+                    .font(AppTypography.body.weight(.semibold))
+                    .foregroundStyle(AppColors.textDark)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

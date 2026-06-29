@@ -163,6 +163,12 @@ final class LocalStoreTests: XCTestCase {
     @MainActor
     func testChildSummariesOnlyExposeParentSharedPhotosAndRecords() {
         let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-8K3P-7M2A-C9YD"
+        )
         let appState = AppState(
             profileStore: UserProfileStore(defaults: defaults),
             progressStore: ProgressStore(defaults: defaults),
@@ -174,8 +180,9 @@ final class LocalStoreTests: XCTestCase {
             mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
             sampleProvider: SampleDataProvider()
         )
+        appState.parentProfile = ParentProfile(childLinks: [child])
         appState.mealPhotos = [
-            MealPhotoRecord(id: "shared-photo", fileName: "shared-photo.jpg", createdAt: Date(), isSharedWithParent: true),
+            MealPhotoRecord(id: "shared-photo", fileName: "shared-photo.jpg", createdAt: Date(), isSharedWithParent: true, childLinkId: child.id),
             MealPhotoRecord(id: "private-photo", fileName: "private-photo.jpg", createdAt: Date(), isSharedWithParent: false)
         ]
         appState.mealRecords = [
@@ -185,7 +192,8 @@ final class LocalStoreTests: XCTestCase {
                 eatingStatus: .difficultToday,
                 allergyCodes: [1],
                 photoIds: ["shared-photo"],
-                parentShareEnabled: false
+                parentShareEnabled: false,
+                childLinkId: child.id
             ),
             MealRecord(
                 date: "20260618",
@@ -193,7 +201,8 @@ final class LocalStoreTests: XCTestCase {
                 eatingStatus: .oneBite,
                 allergyCodes: [1],
                 photoIds: ["shared-photo", "private-photo"],
-                parentShareEnabled: true
+                parentShareEnabled: true,
+                childLinkId: child.id
             )
         ]
         appState.records = [
@@ -203,7 +212,8 @@ final class LocalStoreTests: XCTestCase {
                 action: .oneBite,
                 gainedExp: 18,
                 badgeName: "초록 용사",
-                nutrients: ["식이섬유"]
+                nutrients: ["식이섬유"],
+                childLinkId: child.id
             ),
             ChallengeRecord(
                 date: "20260618",
@@ -212,6 +222,7 @@ final class LocalStoreTests: XCTestCase {
                 gainedExp: 18,
                 badgeName: "초록 용사",
                 nutrients: ["식이섬유"],
+                childLinkId: child.id,
                 parentShareEnabled: true
             )
         ]
@@ -223,6 +234,25 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(summary.allergyWarningMenus, ["공유나물"])
         XCTAssertEqual(summary.recentPhotoIds, ["shared-photo"])
         try? FileManager.default.removeItem(at: photoDirectory)
+    }
+
+    @MainActor
+    func testChildSummariesRequireConnectedChildLink() {
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider()
+        )
+        appState.mealRecords = [
+            MealRecord(date: "20260618", menuName: "공유나물", eatingStatus: .oneBite, parentShareEnabled: true)
+        ]
+
+        XCTAssertTrue(appState.childSummaries.isEmpty)
     }
 
     func testLocalPhotoStoreSavesAndDeletesFile() throws {
@@ -448,24 +478,79 @@ final class LocalStoreTests: XCTestCase {
         let service = CloudKitParentLinkService()
 
         XCTAssertEqual(
-            service.normalizeInviteCode("nyam abcd efgh ijkl"),
-            "NYAM-ABCD-EFGH-IJKL"
+            service.normalizeInviteCode("nyam abcd efgh jklm"),
+            "NYAM-ABCD-EFGH-JKLM"
         )
         XCTAssertEqual(
-            service.normalizeInviteCode("nyamabcdefghijkl"),
-            "NYAM-ABCD-EFGH-IJKL"
+            service.normalizeInviteCode("nyamabcdefghjklm"),
+            "NYAM-ABCD-EFGH-JKLM"
         )
     }
 
     func testCloudKitInviteCodeValidationRequiresExactShape() {
         let service = CloudKitParentLinkService()
 
-        XCTAssertTrue(service.isValidInviteCode("nyam abcd efgh ijkl"))
-        XCTAssertTrue(service.isValidInviteCode("NYAM-ABCD-EFGH-IJKL"))
+        XCTAssertTrue(service.isValidInviteCode("nyam abcd efgh jklm"))
+        XCTAssertTrue(service.isValidInviteCode("NYAM-ABCD-EFGH-JKLM"))
         XCTAssertFalse(service.isValidInviteCode(""))
         XCTAssertFalse(service.isValidInviteCode("ABCD-EFGH-IJKL"))
         XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-IJ"))
         XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-IJKL-EXTRA"))
+    }
+
+    func testCloudKitInviteCodeRejectsAmbiguousCharacters() {
+        let service = CloudKitParentLinkService()
+
+        XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-JK1M"))
+        XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-JK0M"))
+        XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-JKIM"))
+        XCTAssertFalse(service.isValidInviteCode("NYAM-ABCD-EFGH-JKOM"))
+        XCTAssertTrue(service.hasAmbiguousInviteCharacters("NYAM-ABCD-EFGH-JK1M"))
+        XCTAssertEqual(
+            service.inviteCodeValidationMessage("NYAM-ABCD-EFGH-JK1M"),
+            "헷갈리는 문자 O, 0, I, 1은 초대 코드에 사용하지 않아요. 아이 기기에서 코드를 다시 확인해 주세요."
+        )
+    }
+
+    @MainActor
+    func testParentConnectionDiagnosticsCountsSharedRecordsAndPhotos() {
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-8K3P-7M2A-C9YD"
+        )
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider()
+        )
+        appState.childShareLink = child
+        appState.parentProfile = ParentProfile(childLinks: [child])
+        appState.mealRecords = [
+            MealRecord(date: "20260618", menuName: "공유나물", eatingStatus: .oneBite, parentShareEnabled: true, childLinkId: child.id),
+            MealRecord(date: "20260618", menuName: "비공유나물", eatingStatus: .difficultToday, parentShareEnabled: false, childLinkId: child.id)
+        ]
+        appState.records = [
+            ChallengeRecord(date: "20260618", menuName: "공유나물", action: .oneBite, gainedExp: 18, badgeName: nil, nutrients: [], childLinkId: child.id, parentShareEnabled: true)
+        ]
+        appState.mealPhotos = [
+            MealPhotoRecord(id: "photo-1", fileName: "photo-1.jpg", createdAt: Date(), isSharedWithParent: true, childLinkId: child.id)
+        ]
+
+        let diagnostics = appState.parentConnectionDiagnostics
+
+        XCTAssertTrue(diagnostics.hasChildShareLink)
+        XCTAssertEqual(diagnostics.inviteCode, "NYAM-8K3P-7M2A-C9YD")
+        XCTAssertEqual(diagnostics.parentChildLinkCount, 1)
+        XCTAssertEqual(diagnostics.sharedRecordCount, 2)
+        XCTAssertEqual(diagnostics.sharedPhotoCount, 1)
+        XCTAssertEqual(diagnostics.permissions.sharePhotos, false)
     }
 
     func testCloudKitSetupOnlyRequiresQueryableIndexes() {

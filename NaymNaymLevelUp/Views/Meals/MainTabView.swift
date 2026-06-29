@@ -37,9 +37,9 @@ struct MainTabView: View {
                     }
                     .tag(MainTab.today)
 
-                MonthlyMealCalendarView()
+                MealCalendarView()
                     .tabItem {
-                        Label("월간식단", systemImage: "calendar")
+                        Label("식단", systemImage: "calendar")
                     }
                     .tag(MainTab.calendar)
 

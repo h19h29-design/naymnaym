@@ -206,23 +206,22 @@ struct CloudKitParentLinkService {
     }
 
     func normalizeInviteCode(_ code: String) -> String {
-        let trimmed = code
+        let uppercased = code
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
-            .replacingOccurrences(of: " ", with: "")
 
-        let compact = trimmed.unicodeScalars
+        let compact = uppercased.unicodeScalars
             .filter { $0.value <= 127 && CharacterSet.alphanumerics.contains($0) }
             .map(String.init)
             .joined()
 
         guard compact.hasPrefix("NYAM") else {
-            return trimmed
+            return uppercased
         }
 
         let body = String(compact.dropFirst(4))
         guard body.count == 12 else {
-            return trimmed
+            return uppercased
         }
 
         let first = body.prefix(4)
@@ -235,9 +234,40 @@ struct CloudKitParentLinkService {
         let normalized = normalizeInviteCode(code)
         let segments = normalized.split(separator: "-")
         guard segments.count == 4, segments[0] == "NYAM" else { return false }
+        let body = segments.dropFirst().joined()
+        guard body.count == 12, !containsAmbiguousInviteCharacters(body) else { return false }
         return segments.dropFirst().allSatisfy { segment in
-            segment.count == 4 && segment.allSatisfy { $0.isLetter || $0.isNumber }
+            segment.count == 4 && segment.allSatisfy { isAllowedInviteCharacter($0) }
         }
+    }
+
+    func inviteCodeValidationMessage(_ code: String) -> String? {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "초대 코드를 입력해 주세요."
+        }
+        if hasAmbiguousInviteCharacters(trimmed) {
+            return "헷갈리는 문자 O, 0, I, 1은 초대 코드에 사용하지 않아요. 아이 기기에서 코드를 다시 확인해 주세요."
+        }
+        let normalized = normalizeInviteCode(trimmed)
+        guard normalized.hasPrefix("NYAM") else {
+            return "초대 코드는 NYAM으로 시작해야 해요."
+        }
+        guard isValidInviteCode(normalized) else {
+            return "초대 코드 형식을 확인해 주세요. 예: NYAM-8K3P-7M2A-C9YD"
+        }
+        return nil
+    }
+
+    func hasAmbiguousInviteCharacters(_ code: String) -> Bool {
+        let compact = code
+            .uppercased()
+            .unicodeScalars
+            .filter { $0.value <= 127 && CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
+        let body = compact.hasPrefix("NYAM") ? String(compact.dropFirst(4)) : compact
+        return containsAmbiguousInviteCharacters(body)
     }
 
     func makeChildLink(profile: UserProfile, permissions: SharingPermission = .defaultChildSafe) -> ChildLink {
@@ -591,6 +621,14 @@ struct CloudKitParentLinkService {
     private func split(_ text: String?) -> [String] {
         guard let text, !text.isEmpty else { return [] }
         return text.split(separator: ",").map { String($0) }
+    }
+
+    private func isAllowedInviteCharacter(_ character: Character) -> Bool {
+        Set("23456789ABCDEFGHJKLMNPQRSTUVWXYZ").contains(character)
+    }
+
+    private func containsAmbiguousInviteCharacters(_ text: String) -> Bool {
+        text.contains { ["O", "0", "I", "1"].contains($0) }
     }
 
     private func base32(_ value: UInt64, length: Int) -> String {

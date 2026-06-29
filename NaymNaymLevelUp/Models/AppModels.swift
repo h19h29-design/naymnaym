@@ -60,11 +60,11 @@ struct ThemeProfile: Codable, Hashable, Identifiable {
     static let all: [ThemeProfile] = [
         ThemeProfile(
             id: "elementary-green",
-            name: "ElementaryGreen",
+            name: "냠냠 멀티",
             targetMode: .elementary,
-            primaryColorHex: "#7BC96F",
-            accentColorHex: "#FFD966",
-            backgroundColorHex: "#FFF9EC",
+            primaryColorHex: "#FF9F43",
+            accentColorHex: "#65B7D4",
+            backgroundColorHex: "#FFF8E7",
             cardStyle: "soft",
             buttonStyle: "largeRounded",
             characterStyle: "cuteMascot",
@@ -72,10 +72,10 @@ struct ThemeProfile: Codable, Hashable, Identifiable {
         ),
         ThemeProfile(
             id: "middle-game-dark",
-            name: "MiddleGameDark",
+            name: "네온 미션",
             targetMode: .middle,
-            primaryColorHex: "#1A1F4A",
-            accentColorHex: "#7C5CFF",
+            primaryColorHex: "#7C5CFF",
+            accentColorHex: "#00E5FF",
             backgroundColorHex: "#0B1024",
             cardStyle: "neon",
             buttonStyle: "mission",
@@ -84,10 +84,10 @@ struct ThemeProfile: Codable, Hashable, Identifiable {
         ),
         ThemeProfile(
             id: "high-clean-blue",
-            name: "HighCleanBlue",
+            name: "클린 블루",
             targetMode: .high,
             primaryColorHex: "#3F6AE6",
-            accentColorHex: "#65B7D4",
+            accentColorHex: "#9C7AC7",
             backgroundColorHex: "#F4F7FC",
             cardStyle: "clean",
             buttonStyle: "compact",
@@ -96,11 +96,11 @@ struct ThemeProfile: Codable, Hashable, Identifiable {
         ),
         ThemeProfile(
             id: "parent-soft-report",
-            name: "ParentSoftReport",
+            name: "패밀리 리포트",
             targetMode: .parent,
-            primaryColorHex: "#F06292",
-            accentColorHex: "#9C7AC7",
-            backgroundColorHex: "#FFF6FA",
+            primaryColorHex: "#7C5CFF",
+            accentColorHex: "#FF6B6B",
+            backgroundColorHex: "#FFF6EE",
             cardStyle: "report",
             buttonStyle: "soft",
             characterStyle: "familyReport",
@@ -830,6 +830,16 @@ struct SharingPermission: Codable, Hashable {
         shareAllergyWarnings: true,
         sharePhotos: false
     )
+
+    var enabledTitles: [String] {
+        [
+            shareEatingRecords ? "먹은 정도" : nil,
+            shareChallengeRecords ? "한 입 도전" : nil,
+            shareAllergyWarnings ? "알레르기 주의" : nil,
+            sharePhotos ? "선택 사진" : nil
+        ]
+        .compactMap { $0 }
+    }
 }
 
 struct ChildLink: Codable, Hashable, Identifiable {
@@ -881,6 +891,23 @@ struct ParentProfile: Codable, Hashable, Identifiable {
         self.id = id
         self.nickname = nickname
         self.childLinks = childLinks
+    }
+}
+
+struct ParentConnectionDiagnostics: Codable, Hashable {
+    var hasChildShareLink: Bool
+    var inviteCode: String
+    var parentChildLinkCount: Int
+    var iCloudCapabilityMessage: String
+    var lastSyncMessage: String
+    var lastSyncError: String
+    var permissions: SharingPermission
+    var sharedRecordCount: Int
+    var sharedPhotoCount: Int
+
+    var permissionSummary: String {
+        let titles = permissions.enabledTitles
+        return titles.isEmpty ? "공유 항목 없음" : titles.joined(separator: ", ")
     }
 }
 
