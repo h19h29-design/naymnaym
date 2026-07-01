@@ -59,10 +59,12 @@ struct SettingsView: View {
                     } label: {
                         Label("알레르기 정보 수정", systemImage: "checklist")
                     }
-                    Button {
-                        showingParentConnection = true
-                    } label: {
-                        Label("보호자 연결", systemImage: "person.2.fill")
+                    if appState.currentMode != .parent {
+                        Button {
+                            showingParentConnection = true
+                        } label: {
+                            Label("보호자 초대하기", systemImage: "person.2.fill")
+                        }
                     }
                     NavigationLink {
                         ParentConnectionDiagnosticsView()
@@ -182,7 +184,7 @@ struct SettingsView: View {
     }
 }
 
-private struct ParentConnectionGuideView: View {
+struct ParentConnectionGuideView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var shareEating = true
@@ -210,6 +212,30 @@ private struct ParentConnectionGuideView: View {
         appState.childShareLink?.inviteCode.isEmpty == false
     }
 
+    private var isInviteReady: Bool {
+        appState.childShareLink?.isCloudRegistered == true
+    }
+
+    private var inviteStatusColor: Color {
+        if appState.isParentSyncing { return AppColors.infoBlue }
+        if isInviteReady { return AppColors.successGreen }
+        if appState.childShareLink?.registrationErrorMessage != nil || appState.parentSyncError != nil { return AppColors.warningRed }
+        return AppColors.graySecondary
+    }
+
+    private var inviteStatusText: String {
+        if appState.isParentSyncing {
+            return "서버에 등록하는 중이에요."
+        }
+        if isInviteReady {
+            return "등록 완료. 부모에게 보내도 됩니다."
+        }
+        if hasInviteCode {
+            return "아직 부모가 연결할 수 없는 코드예요. 먼저 등록을 완료해 주세요."
+        }
+        return "초대 코드를 만들면 부모가 이 아이를 연결할 수 있어요."
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -226,13 +252,17 @@ private struct ParentConnectionGuideView: View {
                                 .padding(.vertical, 18)
                                 .background(AppColors.lavender.opacity(0.65))
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            if hasInviteCode {
+                            Label(inviteStatusText, systemImage: isInviteReady ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                                .font(AppTypography.caption.weight(.semibold))
+                                .foregroundStyle(inviteStatusColor)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if let link = appState.childShareLink, isInviteReady {
                                 HStack(spacing: 10) {
                                     SecondaryButton(didCopyInviteCode ? "복사 완료" : "복사", systemImage: didCopyInviteCode ? "checkmark" : "doc.on.doc") {
                                         UIPasteboard.general.string = inviteCodeText
                                         didCopyInviteCode = true
                                     }
-                                    ShareLink(item: inviteCodeText) {
+                                    ShareLink(item: link.parentInviteShareMessage) {
                                         Label("공유", systemImage: "square.and.arrow.up")
                                             .font(.system(.subheadline, design: .rounded).weight(.semibold))
                                             .frame(maxWidth: .infinity)
@@ -247,21 +277,26 @@ private struct ParentConnectionGuideView: View {
                                     }
                                 }
                             }
-                            Text("공유 설정을 저장하면 이 코드가 iCloud에 등록됩니다. 부모 모드에서 아이 추가를 누르고 같은 코드를 입력해요.")
+                            Text("등록 완료 전에는 부모 기기에서 이 코드를 찾을 수 없어요. 등록이 끝난 뒤 공유하면 부모는 코드 붙여넣기만 하면 됩니다.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             PrimaryButton(
-                                appState.childShareLink == nil ? "초대 코드 생성" : "공유 설정 저장",
+                                appState.childShareLink == nil ? "초대 코드 만들기" : "초대 코드 등록하기",
                                 systemImage: "icloud.and.arrow.up",
                                 isDisabled: appState.isParentSyncing
                             ) {
                                 Task { await appState.activateParentSharing(permissions: permissions) }
                             }
+                            if hasInviteCode {
+                                SecondaryButton("등록 상태 확인", systemImage: "checkmark.icloud") {
+                                    Task { await appState.verifyParentInviteRegistration() }
+                                }
+                            }
                             if let message = appState.parentSyncMessage {
                                 Text(message)
                                     .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.graySecondary)
+                                    .foregroundStyle(appState.parentSyncError == nil ? AppColors.graySecondary : AppColors.warningRed)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -284,17 +319,28 @@ private struct ParentConnectionGuideView: View {
 
                     RoundedCard {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("CloudKit 준비 항목")
+                            Text("부모에게 이렇게 안내돼요")
                                 .font(AppTypography.headline)
-                            ForEach(service.setupChecklist, id: \.self) { item in
-                                Label(item, systemImage: "checkmark.circle.fill")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.textDark)
-                            }
-                            Text("Record types: \(service.recordTypes.joined(separator: ", "))")
+                            Label("부모 모드에서 아이 연결하기를 눌러요.", systemImage: "1.circle.fill")
                                 .font(AppTypography.caption)
-                                .foregroundStyle(AppColors.graySecondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .foregroundStyle(AppColors.textDark)
+                            Label("공유받은 코드를 붙여넣고 연결해요.", systemImage: "2.circle.fill")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.textDark)
+                            Label("먹은 정도, 한 입 도전, 알레르기 주의, 선택 사진만 보여요.", systemImage: "lock.shield.fill")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.textDark)
+                            DisclosureGroup("고급 설정 항목") {
+                                ForEach(service.setupChecklist, id: \.self) { item in
+                                    Label(item, systemImage: "checkmark.circle.fill")
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColors.textDark)
+                                }
+                                Text("Record types: \(service.recordTypes.joined(separator: ", "))")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.graySecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
 

@@ -191,9 +191,17 @@ struct CloudKitParentLinkService {
     static let sharedMealPhotoRecordType = "SharedMealPhoto"
 
     private let container: CKContainer?
+    private let saveParentLinkHandler: ((ChildLink) async throws -> CKRecord.ID)?
+    private let fetchParentLinkHandler: ((String) async throws -> ChildLink)?
 
-    init(container: CKContainer? = nil) {
+    init(
+        container: CKContainer? = nil,
+        saveParentLinkHandler: ((ChildLink) async throws -> CKRecord.ID)? = nil,
+        fetchParentLinkHandler: ((String) async throws -> ChildLink)? = nil
+    ) {
         self.container = container
+        self.saveParentLinkHandler = saveParentLinkHandler
+        self.fetchParentLinkHandler = fetchParentLinkHandler
     }
 
     func makeInviteCode(nickname: String, nonce: String = UUID().uuidString) -> String {
@@ -351,6 +359,9 @@ struct CloudKitParentLinkService {
     }
 
     func saveParentLink(_ childLink: ChildLink) async throws -> CKRecord.ID {
+        if let saveParentLinkHandler {
+            return try await saveParentLinkHandler(childLink)
+        }
         let record = makeParentLinkRecord(childLink: childLink)
         let saved = try await saveOrUpdate(record)
         return saved.recordID
@@ -364,6 +375,9 @@ struct CloudKitParentLinkService {
 
     func fetchParentLink(inviteCode: String) async throws -> ChildLink {
         let normalizedCode = normalizeInviteCode(inviteCode)
+        if let fetchParentLinkHandler {
+            return try await fetchParentLinkHandler(normalizedCode)
+        }
         let predicate = NSPredicate(format: "inviteCode == %@", normalizedCode)
         let query = CKQuery(recordType: Self.parentLinkRecordType, predicate: predicate)
         let links = try await perform(query)
@@ -542,7 +556,8 @@ struct CloudKitParentLinkService {
                 shareAllergyWarnings: record["shareAllergyWarnings"] as? Bool ?? true,
                 sharePhotos: record["sharePhotos"] as? Bool ?? false
             ),
-            createdAt: record["createdAt"] as? Date ?? Date()
+            createdAt: record["createdAt"] as? Date ?? Date(),
+            registeredAt: record.modificationDate ?? record.creationDate ?? Date()
         )
     }
 

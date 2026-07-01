@@ -187,6 +187,89 @@ final class LocalStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testActivateParentSharingMarksInviteReadyOnlyAfterCloudSave() async {
+        let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: childShareLinkStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            parentLinkService: CloudKitParentLinkService(
+                saveParentLinkHandler: { childLink in
+                    CKRecord.ID(recordName: "parentlink-\(childLink.id.uuidString)")
+                }
+            ),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.saveProfile(
+            nickname: "지우",
+            school: School(name: "냠냠초등학교", officeCode: "B10", schoolCode: "7010111", region: "서울", address: "서울", schoolType: "초등학교"),
+            allergyCodes: []
+        )
+
+        await appState.activateParentSharing(permissions: .defaultChildSafe)
+
+        XCTAssertTrue(appState.childShareLink?.isCloudRegistered == true)
+        XCTAssertNil(appState.childShareLink?.registrationErrorMessage)
+        XCTAssertTrue(childShareLinkStore.load()?.isCloudRegistered == true)
+        XCTAssertEqual(appState.parentSyncMessage, "초대 코드가 등록됐어요. 이제 부모에게 보낼 수 있어요.")
+        XCTAssertNil(appState.parentSyncError)
+    }
+
+    @MainActor
+    func testActivateParentSharingKeepsFailedInviteUnshareable() async {
+        let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: childShareLinkStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            parentLinkService: CloudKitParentLinkService(
+                saveParentLinkHandler: { _ in
+                    throw CloudKitParentLinkError.emptyResponse
+                }
+            ),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.saveProfile(
+            nickname: "지우",
+            school: School(name: "냠냠초등학교", officeCode: "B10", schoolCode: "7010111", region: "서울", address: "서울", schoolType: "초등학교"),
+            allergyCodes: []
+        )
+
+        await appState.activateParentSharing(permissions: .defaultChildSafe)
+
+        XCTAssertFalse(appState.childShareLink?.isCloudRegistered == true)
+        XCTAssertNotNil(appState.childShareLink?.registrationErrorMessage)
+        XCTAssertFalse(childShareLinkStore.load()?.isCloudRegistered == true)
+        XCTAssertEqual(appState.parentSyncError, appState.parentSyncMessage)
+    }
+
+    func testParentInviteShareMessageCanBePastedAsInviteCode() {
+        let service = CloudKitParentLinkService()
+        let child = ChildLink(
+            childNickname: "지우",
+            schoolName: "냠냠초등학교",
+            mode: .elementary,
+            inviteCode: "NYAM-8K3P-7M2A-C9YD",
+            registeredAt: Date()
+        )
+
+        XCTAssertEqual(service.normalizeInviteCode(child.parentInviteShareMessage), child.inviteCode)
+        XCTAssertFalse(child.parentInviteShareMessage.contains(child.schoolName))
+    }
+
+    @MainActor
     func testChildSummariesOnlyExposeParentSharedPhotosAndRecords() {
         let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let child = ChildLink(

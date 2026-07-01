@@ -8,12 +8,14 @@ struct TodayMealView: View {
     @State private var recordingItem: MealItem?
     @State private var challengeOutcome: ChallengeOutcome?
     @State private var recordNotice: String?
+    @State private var showingParentInvite = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     header
+                    parentInvitePrompt
 
                     if appState.isLoadingMeals {
                         ProgressView("급식 정보를 불러오는 중")
@@ -84,6 +86,9 @@ struct TodayMealView: View {
             .sheet(item: $challengeOutcome) { outcome in
                 LevelUpResultView(outcome: outcome)
             }
+            .sheet(isPresented: $showingParentInvite) {
+                ParentConnectionGuideView()
+            }
         }
     }
 
@@ -105,6 +110,43 @@ struct TodayMealView: View {
                 Text("안 먹고 싶은 반찬을 누르면 놓칠 수 있는 영양소를 쉽게 알려줘요.")
                     .font(AppTypography.body)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var parentInvitePrompt: some View {
+        if appState.currentMode != .parent {
+            let isReady = appState.childShareLink?.isCloudRegistered == true
+            RoundedCard {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: isReady ? "checkmark.shield.fill" : "person.crop.circle.badge.plus")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(isReady ? AppColors.successGreen : AppColors.indigo)
+                        .frame(width: 42, height: 42)
+                        .background((isReady ? AppColors.successGreen : AppColors.indigo).opacity(0.12))
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(isReady ? "보호자 초대 준비 완료" : "보호자 초대하기")
+                            .font(AppTypography.headline)
+                        Text(isReady ? "초대 코드를 부모에게 보내면 기록 공유를 시작할 수 있어요." : "부모가 기록을 보려면 먼저 초대 코드를 등록해야 해요.")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColors.graySecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button {
+                        showingParentInvite = true
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppColors.indigo)
+                            .frame(width: 34, height: 34)
+                            .background(AppColors.lavender.opacity(0.8))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(isReady ? "초대 코드 보내기" : "초대 코드 만들기")
+                }
             }
         }
     }

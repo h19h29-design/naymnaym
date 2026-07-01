@@ -850,6 +850,8 @@ struct ChildLink: Codable, Hashable, Identifiable {
     var inviteCode: String
     var permissions: SharingPermission
     var createdAt: Date
+    var registeredAt: Date?
+    var registrationErrorMessage: String?
 
     init(
         id: UUID = UUID(),
@@ -858,7 +860,9 @@ struct ChildLink: Codable, Hashable, Identifiable {
         mode: UserMode,
         inviteCode: String = String(UUID().uuidString.prefix(6)),
         permissions: SharingPermission = .defaultChildSafe,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        registeredAt: Date? = nil,
+        registrationErrorMessage: String? = nil
     ) {
         self.id = id
         self.childNickname = childNickname
@@ -867,6 +871,20 @@ struct ChildLink: Codable, Hashable, Identifiable {
         self.inviteCode = inviteCode
         self.permissions = permissions
         self.createdAt = createdAt
+        self.registeredAt = registeredAt
+        self.registrationErrorMessage = registrationErrorMessage
+    }
+
+    var isCloudRegistered: Bool {
+        registeredAt != nil && registrationErrorMessage == nil
+    }
+
+    var parentInviteShareMessage: String {
+        """
+        냠냠레벨업 보호자 연결 코드: \(inviteCode)
+        앱에서 부모 모드 > 아이 연결하기에 붙여넣어 주세요.
+        공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의, 선택 사진뿐이에요.
+        """
     }
 }
 

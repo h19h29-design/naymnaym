@@ -492,19 +492,75 @@ final class AppState: ObservableObject {
         link.schoolName = profile.schoolName
         link.mode = profile.effectiveMode
         link.permissions = permissions
+        link.registeredAt = nil
+        link.registrationErrorMessage = nil
         childShareLink = link
         childShareLinkStore.save(link)
 
         do {
             _ = try await parentLinkService.saveParentLink(link)
-            parentSyncMessage = "초대 코드가 iCloud에 등록됐어요."
+            link.registeredAt = Date()
+            link.registrationErrorMessage = nil
+            childShareLink = link
+            childShareLinkStore.save(link)
+            parentSyncMessage = "초대 코드가 등록됐어요. 이제 부모에게 보낼 수 있어요."
             parentSyncError = nil
             await publishChildSharedData()
+            if parentSyncError == nil {
+                parentSyncMessage = "초대 코드가 등록됐어요. 이제 부모에게 보낼 수 있어요."
+            }
         } catch {
             let message = cloudKitMessage(
                 for: error,
-                fallback: "초대 코드는 생성됐지만 iCloud 등록에 실패했어요. iCloud 로그인, 네트워크, CloudKit 설정을 확인한 뒤 다시 저장해 주세요."
+                fallback: "초대 코드를 서버에 등록하지 못했어요. iCloud 로그인과 네트워크를 확인한 뒤 다시 등록해 주세요."
             )
+            link.registeredAt = nil
+            link.registrationErrorMessage = message
+            childShareLink = link
+            childShareLinkStore.save(link)
+            parentSyncMessage = message
+            parentSyncError = message
+        }
+    }
+
+    func verifyParentInviteRegistration() async {
+        guard var link = childShareLink else {
+            parentSyncMessage = "먼저 보호자 초대 코드를 만들어 주세요."
+            parentSyncError = parentSyncMessage
+            return
+        }
+
+        isParentSyncing = true
+        defer { isParentSyncing = false }
+
+        do {
+            let registeredLink = try await parentLinkService.fetchParentLink(inviteCode: link.inviteCode)
+            guard registeredLink.id == link.id else {
+                let message = "같은 코드로 다른 연결 정보가 조회됐어요. 초대 코드를 다시 생성해 주세요."
+                link.registeredAt = nil
+                link.registrationErrorMessage = message
+                childShareLink = link
+                childShareLinkStore.save(link)
+                parentSyncMessage = message
+                parentSyncError = message
+                return
+            }
+
+            link.registeredAt = Date()
+            link.registrationErrorMessage = nil
+            childShareLink = link
+            childShareLinkStore.save(link)
+            parentSyncMessage = "초대 코드가 서버에서 확인됐어요. 부모에게 보내도 됩니다."
+            parentSyncError = nil
+        } catch {
+            let message = cloudKitMessage(
+                for: error,
+                fallback: "초대 코드 등록 상태를 확인하지 못했어요. 다시 등록한 뒤 확인해 주세요."
+            )
+            link.registeredAt = nil
+            link.registrationErrorMessage = message
+            childShareLink = link
+            childShareLinkStore.save(link)
             parentSyncMessage = message
             parentSyncError = message
         }
@@ -581,6 +637,12 @@ final class AppState: ObservableObject {
         guard let childShareLink else {
             if mealRecords.contains(where: \.parentShareEnabled) {
                 parentSyncMessage = "보호자 연결을 먼저 생성해야 공유 기록을 올릴 수 있어요."
+            }
+            return
+        }
+        guard childShareLink.isCloudRegistered else {
+            if mealRecords.contains(where: \.parentShareEnabled) || records.contains(where: \.parentShareEnabled) || mealPhotos.contains(where: \.isSharedWithParent) {
+                parentSyncMessage = "초대 코드가 등록 완료된 뒤 공유 기록을 올릴 수 있어요."
             }
             return
         }
