@@ -1,21 +1,21 @@
 # App Store Connect / CloudKit 콘솔 런북
 
-이 문서는 build 15 업로드 이후 앱 소유자가 App Store Connect와 CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다. build 15는 로컬 signed archive/export, IPA CloudKit entitlement 검증, TestFlight CLI 업로드까지 완료했다.
+이 문서는 build 20 후보 기준으로 앱 소유자가 App Store Connect, Supabase, CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다. build 20은 부모 급식 결과 알림과 로컬 전용 사진 정책을 포함한다.
 
 ## 현재 배포 후보
 
 - 앱 이름: 냠냠레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.0`
-- 최신 업로드 빌드: `15`
-- 현재 제출 후보 빌드: `15`
+- 최신 업로드 빌드: `20`
+- 현재 제출 후보 빌드: `20`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
 - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
-- TestFlight 업로드 상태: build 15 CLI 업로드 성공. App Store Connect에서 처리 완료와 `테스트 중` 상태를 확인했다.
-- TestFlight 그룹 상태: build 15가 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결됐다.
+- TestFlight 업로드 상태: build 20 CLI 업로드 후 App Store Connect 처리 완료와 `테스트 중` 상태를 확인한다.
+- TestFlight 그룹 상태: build 20을 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결한다.
 - TestFlight 공개 링크: `https://testflight.apple.com/join/3A3rKarB`
 
 ## build 15 검증 결과
@@ -37,8 +37,8 @@ build 15 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud
 5. 접근을 허용한 뒤 같은 터미널에서 아래 순서로 다시 실행한다.
 
 ```sh
-scripts/release-testflight-build.sh 15
-UPLOAD=1 scripts/release-testflight-build.sh 15
+scripts/release-testflight-build.sh 20
+UPLOAD=1 scripts/release-testflight-build.sh 20
 ```
 
 ## TestFlight 공개 상태
@@ -66,7 +66,7 @@ ASC_PRIVATE_KEY_PATH=/path/to/AuthKey_YOUR_KEY_ID.p8 \
 scripts/check-app-store-build-status.sh
 ```
 
-기본 조회 대상은 bundle id `com.h19h29.naymnaymlevelup`, version `1.0`, build `15`다. 다른 빌드를 확인할 때는 `ASC_VERSION`과 `ASC_BUILD`를 함께 지정한다.
+기본 조회 대상은 bundle id `com.h19h29.naymnaymlevelup`, version `1.0`, build `15`다. 최신 후보를 확인할 때는 `ASC_BUILD=20`을 지정한다.
 
 ## 남은 계정/콘솔 작업
 
@@ -92,7 +92,7 @@ CloudKit Dashboard에서는 `release/CloudKit/schema-contract.json` 기준으로
 
 ## App Privacy 답변 기준
 
-최종 답변은 앱 소유자가 확인해야 한다. 현재 build 15 업로드 후보 코드와 `PrivacyInfo.xcprivacy` 기준으로는 아래 방향이 가장 보수적이다.
+최종 답변은 앱 소유자가 확인해야 한다. 현재 build 20 업로드 후보 코드와 `PrivacyInfo.xcprivacy` 기준은 아래와 같다.
 
 - Tracking: 아니요
 - Contact Info: 수집 안 함
@@ -100,17 +100,27 @@ CloudKit Dashboard에서는 `release/CloudKit/schema-contract.json` 기준으로
 - Contacts: 수집 안 함
 - Purchases: 수집 안 함
 - Usage Data: 자체 분석 SDK 없음
-- User Content: 앱 기능 제공 목적, 부모 공유 선택 시 CloudKit 저장 가능
-- Photos or Videos: 앱 기능 제공 목적, 사진 공유 토글이 켜진 경우만 CloudKit 저장 가능
+- User Content: 앱 기능 제공 목적, 부모 공유 선택 시 Supabase 부모 연결 서버 저장 가능
+- Photos or Videos: 수집 안 함. 급식판 사진은 기기 내부에만 저장하고 서버 부모 동기화나 부모 모드로 업로드하지 않음
 - Health and Fitness: 알레르기 선택값과 식사 기록이 건강 관련 정보로 해석될 수 있으므로 앱 기능 제공 목적 데이터로 검토
 - Identifiers: 부모 연결용 초대 코드와 `childLinkId`, 앱 기능 제공 목적
 - Other Data: 선택 학교 코드, 교육청 코드, 조회 날짜. NEIS 급식 조회 목적
 
 Tracking과 제3자 광고 목적은 모두 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 인앱결제, 자체 로그인은 없다.
 
-## CloudKit 운영 설정
+## 부모 연결 운영 설정
 
-구조화된 콘솔 설정 기준은 `release/CloudKit/schema-contract.json`이다. 아래 설명과 JSON manifest가 다르면 JSON manifest와 앱 코드/테스트를 우선 확인한다.
+부모 연결은 Supabase Edge Function `parent-sync`가 주 경로다. CloudKit 계약은 레거시 호환 범위로 유지하며, 사진 공유 record type은 사용하지 않는다.
+
+Supabase:
+
+- Edge Function: `parent-sync`
+- Tables: `nyam_parent_links`, `nyam_parent_meal_records`, `nyam_parent_challenge_records`, `nyam_parent_devices`
+- Public Data API 직접 접근: 사용하지 않음
+- 사진 원본/사진 ID: 서버 저장하지 않음
+- 부모 알림: APNs device token을 `nyam_parent_devices`에 등록하고 아이가 공유 기록을 올릴 때 Edge Function에서 발송
+
+구조화된 CloudKit 콘솔 설정 기준은 `release/CloudKit/schema-contract.json`이다. 아래 설명과 JSON manifest가 다르면 JSON manifest와 앱 코드/테스트를 우선 확인한다.
 
 Container:
 
@@ -122,7 +132,6 @@ Container:
 - `ParentLink`
 - `SharedMealRecord`
 - `SharedChallengeRecord`
-- `SharedMealPhoto`
 
 이 record type/field 계약은 `NaymNaymLevelUpTests/LocalStoreTests.swift`의 CloudKit 계약 테스트에서 고정한다.
 
@@ -175,34 +184,22 @@ Container:
 
 - `childLinkId`: Queryable
 
-### SharedMealPhoto 필드
-
-- `childLinkId`: String
-- `photoId`: String
-- `fileName`: String
-- `createdAt`: Date/Time
-- `photoAsset`: Asset
-
-필수 index:
-
-- `childLinkId`: Queryable
-
 `createdAt` 최신순 정렬은 앱 내부에서 처리하므로 CloudKit sortable index는 필요 없다.
 
 ## CloudKit 운영 스모크 테스트
 
-아래는 CloudKit entitlement 검증을 통과한 TestFlight build 15 이상 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
+아래는 TestFlight build 20 이상 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
 
 1. 아이 모드에서 보호자 연결 초대 코드를 생성한다.
-2. CloudKit Public Database에 `ParentLink` record가 생성되는지 확인한다.
+2. `parent-sync`에 `registerInvite`가 성공하고 서버에 `nyam_parent_links` row가 생성되는지 확인한다.
 3. 부모 모드에서 같은 초대 코드를 입력해 아이 카드가 추가되는지 확인한다.
-4. 아이 모드에서 먹은 정도 기록 공유를 켜고 기록한다.
-5. CloudKit에 `SharedMealRecord`가 생성되고 `childLinkId`로 조회되는지 확인한다.
-6. 한 입 도전 기록 후 `SharedChallengeRecord`가 생성되는지 확인한다.
-7. 사진 공유 토글을 켠 사진만 `SharedMealPhoto`와 `photoAsset`으로 올라가는지 확인한다.
-8. 사진 공유 토글을 끈 사진은 CloudKit에 올라가지 않는지 확인한다.
-9. 부모 모드에서 여러 아이의 기록이 서로 섞이지 않는지 확인한다.
-10. CloudKit schema를 Production에 배포한다.
+4. 부모 모드에서 알림 권한을 허용하고 `registerParentDevice`가 성공하는지 확인한다.
+5. 아이 모드에서 먹은 정도 기록 공유를 켜고 기록한다.
+6. Supabase에 `nyam_parent_meal_records`가 생성되고 `photo_ids`가 빈 배열인지 확인한다.
+7. 한 입 도전 기록 후 `nyam_parent_challenge_records`가 생성되는지 확인한다.
+8. APNs 설정이 되어 있으면 부모 기기에 급식 결과 알림이 도착하는지 확인한다.
+9. 사진 원본과 사진 ID가 Supabase/CloudKit 부모 공유 경로로 올라가지 않는지 확인한다.
+10. 부모 모드에서 여러 아이의 기록이 서로 섞이지 않는지 확인한다.
 
 ## 멈춰야 하는 지점
 

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct ParentSummaryView: View {
     @EnvironmentObject private var appState: AppState
@@ -83,7 +82,7 @@ struct ParentSummaryView: View {
         if appState.childShareLink?.isCloudRegistered == true {
             return "초대 코드가 준비됐어요. 부모에게 보내면 부모 모드에서 바로 연결할 수 있어요."
         }
-        return "부모가 아이의 먹은 정도, 한 입 도전 기록, 알레르기 주의, 선택 사진만 볼 수 있게 초대할 수 있어요."
+        return "부모가 아이의 먹은 정도, 한 입 도전 기록, 알레르기 주의를 볼 수 있게 초대할 수 있어요."
     }
 
     private var childInviteButtonTitle: String {
@@ -120,8 +119,8 @@ struct ParentSummaryView: View {
                     .font(AppTypography.headline)
                 helperRow("먹은 정도와 한 입 도전 기록")
                 helperRow("알레르기 주의 표시")
-                helperRow("부모 공유를 켠 사진만")
-                Text("반/번호, 개인 알레르기 메모, 전체 식사 기록은 공유 카드에 넣지 않아요.")
+                helperRow("아이 급식 결과 알림")
+                Text("사진, 반/번호, 개인 알레르기 메모, 전체 식사 기록은 공유 카드에 넣지 않아요.")
                     .font(AppTypography.caption)
                     .foregroundStyle(AppColors.graySecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -162,6 +161,14 @@ struct ParentSummaryView: View {
                 }
                 .disabled(appState.isParentSyncing || appState.parentProfile.childLinks.isEmpty)
 
+                Button {
+                    Task { await appState.enableParentResultNotifications() }
+                } label: {
+                    Label("급식 결과 알림 켜기", systemImage: "bell.badge.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .disabled(appState.parentProfile.childLinks.isEmpty)
+
 #if DEBUG
                 Button {
                     appState.addLocalChildLink()
@@ -176,6 +183,12 @@ struct ParentSummaryView: View {
                     Text(message)
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let message = appState.parentNotificationMessage {
+                    Text(message)
+                        .font(AppTypography.caption)
+                        .foregroundStyle(appState.parentNotificationError == nil ? AppColors.graySecondary : AppColors.warningRed)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -221,7 +234,7 @@ struct ParentSummaryView: View {
                             HStack(spacing: 8) {
                                 summaryPill(title: "오늘 도전", value: "\(child.todayChallengeCount)회", color: AppColors.successGreen)
                                 summaryPill(title: "주의 메뉴", value: "\(child.allergyWarningMenus.count)개", color: AppColors.orange)
-                                summaryPill(title: "사진", value: "\(child.recentPhotoIds.count)장", color: AppColors.infoBlue)
+                                summaryPill(title: "알림", value: "가능", color: AppColors.infoBlue)
                             }
                             if !child.allergyWarningMenus.isEmpty {
                                 Text("알레르기 주의: \(child.allergyWarningMenus.joined(separator: ", "))")
@@ -239,7 +252,6 @@ struct ParentSummaryView: View {
                                     .foregroundStyle(AppColors.graySecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
-                            sharedPhotoStrip(for: child)
                         }
                     }
                 }
@@ -323,57 +335,6 @@ struct ParentSummaryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private func sharedPhotoStrip(for child: ChildSummary) -> some View {
-        let photos = sharedPhotoRecords(for: child)
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("공유된 급식판 사진")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(AppColors.textDark)
-            if photos.isEmpty {
-                Label("아직 공유된 사진이 없어요.", systemImage: "photo")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(AppColors.graySecondary)
-            } else {
-                HStack(spacing: 8) {
-                    ForEach(photos) { photo in
-                        SharedMealPhotoThumbnail(url: appState.photoURL(for: photo))
-                    }
-                }
-            }
-        }
-    }
-
-    private func sharedPhotoRecords(for child: ChildSummary) -> [MealPhotoRecord] {
-        child.recentPhotoIds.compactMap { photoId in
-            appState.mealPhotos.first {
-                $0.id == photoId && $0.isSharedWithParent && ($0.childLinkId == nil || $0.childLinkId == child.id)
-            }
-        }
-    }
-}
-
-private struct SharedMealPhotoThumbnail: View {
-    var url: URL
-
-    var body: some View {
-        Group {
-            if let image = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: "photo")
-                    .font(.title3)
-                    .foregroundStyle(AppColors.graySecondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.gray.opacity(0.08))
-            }
-        }
-        .frame(width: 58, height: 58)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppColors.cardStroke))
-        .accessibilityLabel("공유된 급식판 사진")
-    }
 }
 
 private struct ParentInviteCodeSheet: View {
@@ -424,7 +385,7 @@ private struct ParentInviteCodeSheet: View {
                 }
 
                 Section("공유 범위") {
-                    Label("먹은 정도, 한 입 도전, 알레르기 주의, 선택 사진만 연결 대상입니다.", systemImage: "lock.shield")
+                    Label("먹은 정도, 한 입 도전, 알레르기 주의만 연결 대상입니다.", systemImage: "lock.shield")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
                     Label("코드가 아이 기기에서 서버 등록 완료된 상태여야 연결됩니다.", systemImage: "checkmark.shield")

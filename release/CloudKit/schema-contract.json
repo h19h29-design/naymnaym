@@ -5,7 +5,7 @@
   "notes": [
     "createdAt 최신순 정렬은 앱 내부에서 처리하므로 CloudKit sortable index는 필요 없음",
     "자유 채팅, 공개 피드, 학교 통계 record type은 만들지 않음",
-    "사진은 사용자가 부모 공유를 켠 경우만 SharedMealPhoto.photoAsset으로 저장"
+    "급식판 사진은 부모 공유 대상이 아니며 기기 내부에만 저장"
   ],
   "recordTypes": [
     {
@@ -68,25 +68,6 @@
         { "name": "badgeName", "type": "String", "required": false },
         { "name": "nutrients", "type": "String", "required": false },
         { "name": "createdAt", "type": "Date/Time", "required": true }
-      ],
-      "indexes": [
-        { "field": "childLinkId", "queryable": true, "sortable": false }
-      ],
-      "publicPermissions": {
-        "authenticatedUsersCanCreate": true,
-        "authenticatedUsersCanUpdateOwnRecords": true,
-        "childLinkIdExactMatchLookupRequired": true
-      }
-    },
-    {
-      "name": "SharedMealPhoto",
-      "purpose": "부모 공유를 켠 급식판 사진",
-      "fields": [
-        { "name": "childLinkId", "type": "String", "required": true },
-        { "name": "photoId", "type": "String", "required": true },
-        { "name": "fileName", "type": "String", "required": true },
-        { "name": "createdAt", "type": "Date/Time", "required": true },
-        { "name": "photoAsset", "type": "Asset", "required": false }
       ],
       "indexes": [
         { "field": "childLinkId", "queryable": true, "sortable": false }

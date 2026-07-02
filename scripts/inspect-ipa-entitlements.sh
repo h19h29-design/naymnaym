@@ -83,8 +83,10 @@ security cms -D -i "$embedded_profile" >"$embedded_profile_plist" 2>/dev/null ||
 
 profile_container="$(read_plist_first_or_scalar "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-container-identifiers")"
 profile_service="$(read_plist_first_or_scalar "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-services")"
+profile_aps="$(read_plist_first_or_scalar "$embedded_profile_plist" "Entitlements:aps-environment")"
 require_value "$profile_container" "$EXPECTED_ICLOUD_CONTAINER" "embedded profile iCloud container entitlement"
 require_one_of "$profile_service" "embedded profile CloudKit service entitlement" "CloudKit" "*"
+require_value "$profile_aps" "production" "embedded profile APS entitlement"
 
 signed_entitlements="$tmp_dir/signed-entitlements.plist"
 codesign -d --entitlements :- "$app_dir" >"$signed_entitlements" 2>/dev/null || fail "signed app entitlements could not be read"
@@ -92,7 +94,9 @@ codesign -d --entitlements :- "$app_dir" >"$signed_entitlements" 2>/dev/null || 
 
 signed_container="$(read_plist_first_or_scalar "$signed_entitlements" "com.apple.developer.icloud-container-identifiers")"
 signed_service="$(read_plist_first_or_scalar "$signed_entitlements" "com.apple.developer.icloud-services")"
+signed_aps="$(read_plist_first_or_scalar "$signed_entitlements" "aps-environment")"
 require_value "$signed_container" "$EXPECTED_ICLOUD_CONTAINER" "signed app iCloud container entitlement"
 require_value "$signed_service" "CloudKit" "signed app CloudKit service entitlement"
+require_value "$signed_aps" "production" "signed app APS entitlement"
 
-pass "$ipa has release-ready CloudKit entitlements"
+pass "$ipa has release-ready CloudKit and APS entitlements"

@@ -107,6 +107,16 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(store.load().childLinks.first?.mode, .high)
     }
 
+    func testParentPushDeviceTokenStoreSavesAndClearsToken() {
+        let store = ParentPushDeviceTokenStore(defaults: defaults)
+
+        store.save(String(repeating: "a", count: 64))
+
+        XCTAssertEqual(store.load(), String(repeating: "a", count: 64))
+        store.clear()
+        XCTAssertNil(store.load())
+    }
+
     @MainActor
     func testParentModeStartsWithoutSchoolAndSkipsMealFetch() async {
         let appState = AppState(
@@ -272,10 +282,57 @@ final class LocalStoreTests: XCTestCase {
 
         XCTAssertEqual(service.normalizeInviteCode(child.parentInviteShareMessage), child.inviteCode)
         XCTAssertFalse(child.parentInviteShareMessage.contains(child.schoolName))
+        XCTAssertFalse(child.parentInviteShareMessage.contains("사진"))
     }
 
     @MainActor
-    func testChildSummariesOnlyExposeParentSharedPhotosAndRecords() {
+    func testRegisterParentPushDeviceTokenRegistersAllConnectedChildren() async {
+        let firstChild = ChildLink(
+            childNickname: "첫째",
+            schoolName: "등촌고등학교",
+            mode: .high,
+            inviteCode: "NYAM-8K3P-7M2A-C9YD"
+        )
+        let secondChild = ChildLink(
+            childNickname: "둘째",
+            schoolName: "냠냠중학교",
+            mode: .middle,
+            inviteCode: "NYAM-9K3P-7M2A-C9YD"
+        )
+        var registered: [(UUID, String, String)] = []
+        let tokenStore = ParentPushDeviceTokenStore(defaults: defaults)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            parentPushDeviceTokenStore: tokenStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            serverParentLinkService: ServerParentLinkService(
+                registerParentDeviceHandler: { child, token, environment in
+                    registered.append((child.id, token, environment))
+                }
+            ),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.parentProfile = ParentProfile(childLinks: [firstChild, secondChild])
+        let deviceToken = String(repeating: "a", count: 64)
+
+        await appState.registerParentPushDeviceToken(deviceToken)
+
+        XCTAssertEqual(tokenStore.load(), deviceToken)
+        XCTAssertEqual(registered.map(\.0), [firstChild.id, secondChild.id])
+        XCTAssertEqual(Set(registered.map(\.1)), [deviceToken])
+        XCTAssertEqual(Set(registered.map(\.2)), [ParentPushNotificationBridge.apnsEnvironment])
+        XCTAssertEqual(appState.parentNotificationMessage, "아이 급식 결과 알림을 받을 준비가 됐어요.")
+        XCTAssertNil(appState.parentNotificationError)
+    }
+
+    @MainActor
+    func testChildSummariesOnlyExposeParentSharedRecords() {
         let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let child = ChildLink(
             childNickname: "지우",
@@ -295,17 +352,12 @@ final class LocalStoreTests: XCTestCase {
             sampleProvider: SampleDataProvider()
         )
         appState.parentProfile = ParentProfile(childLinks: [child])
-        appState.mealPhotos = [
-            MealPhotoRecord(id: "shared-photo", fileName: "shared-photo.jpg", createdAt: Date(), isSharedWithParent: true, childLinkId: child.id),
-            MealPhotoRecord(id: "private-photo", fileName: "private-photo.jpg", createdAt: Date(), isSharedWithParent: false)
-        ]
         appState.mealRecords = [
             MealRecord(
                 date: "20260618",
                 menuName: "비공유나물",
                 eatingStatus: .difficultToday,
                 allergyCodes: [1],
-                photoIds: ["shared-photo"],
                 parentShareEnabled: false,
                 childLinkId: child.id
             ),
@@ -314,7 +366,6 @@ final class LocalStoreTests: XCTestCase {
                 menuName: "공유나물",
                 eatingStatus: .oneBite,
                 allergyCodes: [1],
-                photoIds: ["shared-photo", "private-photo"],
                 parentShareEnabled: true,
                 childLinkId: child.id
             )
@@ -346,7 +397,6 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(summary.weeklyRecords.map(\.menuName), ["공유나물"])
         XCTAssertEqual(summary.weeklyChallengeRecords.map(\.menuName), ["공유나물"])
         XCTAssertEqual(summary.allergyWarningMenus, ["공유나물"])
-        XCTAssertEqual(summary.recentPhotoIds, ["shared-photo"])
         try? FileManager.default.removeItem(at: photoDirectory)
     }
 
@@ -417,7 +467,7 @@ final class LocalStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testUpdateMealPhotoSharingClearsChildLinkWhenDisabled() throws {
+    func testMealPhotoSharingRemainsLocalOnly() throws {
         let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let child = ChildLink(
             childNickname: "지우",
@@ -440,8 +490,10 @@ final class LocalStoreTests: XCTestCase {
         appState.childShareLink = child
 
         let sharedPhoto = try appState.saveMealPhotoData(Data([0x01, 0x02]), sharedWithParent: true)
-        let privatePhoto = try XCTUnwrap(appState.updateMealPhotoSharing(sharedPhoto, sharedWithParent: false))
+        let privatePhoto = try XCTUnwrap(appState.updateMealPhotoSharing(sharedPhoto, sharedWithParent: true))
 
+        XCTAssertFalse(sharedPhoto.isSharedWithParent)
+        XCTAssertNil(sharedPhoto.childLinkId)
         XCTAssertFalse(privatePhoto.isSharedWithParent)
         XCTAssertNil(privatePhoto.childLinkId)
         XCTAssertEqual(appState.mealPhotos.first?.isSharedWithParent, false)
@@ -627,7 +679,7 @@ final class LocalStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testParentConnectionDiagnosticsCountsSharedRecordsAndPhotos() {
+    func testParentConnectionDiagnosticsCountsSharedRecords() {
         let child = ChildLink(
             childNickname: "지우",
             schoolName: "등촌고등학교",
@@ -653,9 +705,6 @@ final class LocalStoreTests: XCTestCase {
         appState.records = [
             ChallengeRecord(date: "20260618", menuName: "공유나물", action: .oneBite, gainedExp: 18, badgeName: nil, nutrients: [], childLinkId: child.id, parentShareEnabled: true)
         ]
-        appState.mealPhotos = [
-            MealPhotoRecord(id: "photo-1", fileName: "photo-1.jpg", createdAt: Date(), isSharedWithParent: true, childLinkId: child.id)
-        ]
 
         let diagnostics = appState.parentConnectionDiagnostics
 
@@ -663,7 +712,6 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(diagnostics.inviteCode, "NYAM-8K3P-7M2A-C9YD")
         XCTAssertEqual(diagnostics.parentChildLinkCount, 1)
         XCTAssertEqual(diagnostics.sharedRecordCount, 2)
-        XCTAssertEqual(diagnostics.sharedPhotoCount, 1)
         XCTAssertEqual(diagnostics.permissions.sharePhotos, false)
     }
 
@@ -674,7 +722,6 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(checklist.contains("ParentLink.inviteCode"))
         XCTAssertTrue(checklist.contains("SharedMealRecord.childLinkId"))
         XCTAssertTrue(checklist.contains("SharedChallengeRecord.childLinkId"))
-        XCTAssertTrue(checklist.contains("SharedMealPhoto.childLinkId"))
         XCTAssertTrue(checklist.contains("queryable index"))
         XCTAssertTrue(checklist.contains("sortable index는 필요 없음"))
     }
@@ -687,8 +734,7 @@ final class LocalStoreTests: XCTestCase {
             [
                 "ParentLink",
                 "SharedMealRecord",
-                "SharedChallengeRecord",
-                "SharedMealPhoto"
+                "SharedChallengeRecord"
             ]
         )
     }
@@ -738,7 +784,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(boolRecordValue(record["shareEatingRecords"]), true)
         XCTAssertEqual(boolRecordValue(record["shareChallengeRecords"]), true)
         XCTAssertEqual(boolRecordValue(record["shareAllergyWarnings"]), false)
-        XCTAssertEqual(boolRecordValue(record["sharePhotos"]), true)
+        XCTAssertEqual(boolRecordValue(record["sharePhotos"]), false)
         XCTAssertEqual(record["createdAt"] as? Date, createdAt)
     }
 
@@ -827,7 +873,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record["eatingStatus"] as? String, EatingStatus.oneBite.rawValue)
         XCTAssertEqual(record["difficultyReasons"] as? String, "smell,texture")
         XCTAssertEqual(record["allergyCodes"] as? String, "1,2")
-        XCTAssertEqual(record["photoIds"] as? String, "photo-1,photo-2")
+        XCTAssertEqual(record["photoIds"] as? String, "")
         XCTAssertEqual(record["createdAt"] as? Date, createdAt)
     }
 
@@ -957,76 +1003,16 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(record?["allergyCodes"] as? String, "")
     }
 
-    func testCloudKitPhotoRecordRequiresBothPermissions() {
+    func testCloudKitPhotoRecordIsDisabled() {
         let service = CloudKitParentLinkService()
-        let blockedChild = ChildLink(
-            childNickname: "지우",
-            schoolName: "등촌고등학교",
-            mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-JKLM",
-            permissions: SharingPermission(shareEatingRecords: true, shareChallengeRecords: true, shareAllergyWarnings: true, sharePhotos: false)
-        )
-        let photo = MealPhotoRecord(id: "photo-1", fileName: "photo-1.jpg", createdAt: Date(), isSharedWithParent: true)
 
-        XCTAssertNil(service.makeSharedPhotoRecord(photo, childLink: blockedChild))
-
-        let allowedChild = ChildLink(
-            childNickname: "지우",
-            schoolName: "등촌고등학교",
-            mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-JKLM",
-            permissions: SharingPermission(shareEatingRecords: true, shareChallengeRecords: true, shareAllergyWarnings: true, sharePhotos: true)
-        )
-        XCTAssertEqual(service.makeSharedPhotoRecord(photo, childLink: allowedChild)?.recordType, CloudKitParentLinkService.sharedMealPhotoRecordType)
+        XCTAssertFalse(service.recordTypes.contains("SharedMealPhoto"))
     }
 
-    func testCloudKitSharedPhotoRecordFieldsMatchConsoleRunbook() throws {
+    func testCloudKitSharedPhotoRecordNeverBuildsAsset() {
         let service = CloudKitParentLinkService()
-        let childId = UUID(uuidString: "66666666-6666-6666-6666-666666666666")!
-        let createdAt = Date(timeIntervalSince1970: 1_771_718_700)
-        let photoURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("jpg")
-        try Data([0xFF, 0xD8, 0xFF, 0xD9]).write(to: photoURL)
-        defer { try? FileManager.default.removeItem(at: photoURL) }
-        let child = ChildLink(
-            id: childId,
-            childNickname: "지우",
-            schoolName: "등촌고등학교",
-            mode: .high,
-            inviteCode: "NYAM-ABCD-EFGH-JKLM",
-            permissions: SharingPermission(
-                shareEatingRecords: true,
-                shareChallengeRecords: true,
-                shareAllergyWarnings: true,
-                sharePhotos: true
-            )
-        )
-        let photo = MealPhotoRecord(
-            id: "photo-1",
-            fileName: "photo-1.jpg",
-            createdAt: createdAt,
-            isSharedWithParent: true
-        )
 
-        let record = try XCTUnwrap(service.makeSharedPhotoRecord(photo, childLink: child, photoURL: photoURL))
-
-        XCTAssertEqual(record.recordType, CloudKitParentLinkService.sharedMealPhotoRecordType)
-        assertRecordKeys(
-            record,
-            [
-                "childLinkId",
-                "photoId",
-                "fileName",
-                "createdAt",
-                "photoAsset"
-            ]
-        )
-        XCTAssertEqual(record["childLinkId"] as? String, childId.uuidString)
-        XCTAssertEqual(record["photoId"] as? String, "photo-1")
-        XCTAssertEqual(record["fileName"] as? String, "photo-1.jpg")
-        XCTAssertEqual(record["createdAt"] as? Date, createdAt)
-        XCTAssertTrue(record["photoAsset"] is CKAsset)
+        XCTAssertFalse(service.setupChecklist.joined(separator: " ").contains("photoAsset"))
     }
 
     func testPrivacyManifestMatchesAppPrivacyDraftCategories() throws {
@@ -1049,7 +1035,6 @@ final class LocalStoreTests: XCTestCase {
             Set(collectedDataTypes.compactMap { $0["NSPrivacyCollectedDataType"] as? String }),
             [
                 "NSPrivacyCollectedDataTypeOtherUserContent",
-                "NSPrivacyCollectedDataTypePhotosorVideos",
                 "NSPrivacyCollectedDataTypeHealth",
                 "NSPrivacyCollectedDataTypeUserID"
             ]

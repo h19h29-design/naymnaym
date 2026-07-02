@@ -113,6 +113,28 @@ final class ChildShareLinkStore {
     func clear() { store.clear() }
 }
 
+final class ParentPushDeviceTokenStore {
+    private let key: String
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.key = "parent-push-device-token"
+        self.defaults = defaults
+    }
+
+    func load() -> String? {
+        defaults.string(forKey: key)
+    }
+
+    func save(_ token: String) {
+        defaults.set(token, forKey: key)
+    }
+
+    func clear() {
+        defaults.removeObject(forKey: key)
+    }
+}
+
 final class LocalPhotoStore {
     private let fileManager: FileManager
     private let directoryURL: URL
@@ -137,22 +159,7 @@ final class LocalPhotoStore {
             id: id,
             fileName: fileName,
             createdAt: Date(),
-            isSharedWithParent: sharedWithParent
-        )
-    }
-
-    func importSharedPhotoData(_ data: Data, id: String, createdAt: Date, childLinkId: UUID?) throws -> MealPhotoRecord {
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        let safeId = id.replacingOccurrences(of: "/", with: "-")
-        let fileName = "\(safeId)-shared.jpg"
-        let fileURL = directoryURL.appendingPathComponent(fileName)
-        try data.write(to: fileURL, options: [.atomic])
-        return MealPhotoRecord(
-            id: id,
-            fileName: fileName,
-            createdAt: createdAt,
-            isSharedWithParent: true,
-            childLinkId: childLinkId
+            isSharedWithParent: false
         )
     }
 
@@ -214,6 +221,7 @@ struct ServerParentLinkService {
     private let fetchParentLinkHandler: ((String) async throws -> ChildLink)?
     private let fetchSharedSnapshotHandler: ((ChildLink) async throws -> CloudChildShareSnapshot)?
     private let publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)?
+    private let registerParentDeviceHandler: ((ChildLink, String, String) async throws -> Void)?
 
     init(
         endpointURL: URL? = ServerParentLinkService.defaultEndpointURL,
@@ -221,7 +229,8 @@ struct ServerParentLinkService {
         registerParentLinkHandler: ((ChildLink) async throws -> ChildLink)? = nil,
         fetchParentLinkHandler: ((String) async throws -> ChildLink)? = nil,
         fetchSharedSnapshotHandler: ((ChildLink) async throws -> CloudChildShareSnapshot)? = nil,
-        publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)? = nil
+        publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)? = nil,
+        registerParentDeviceHandler: ((ChildLink, String, String) async throws -> Void)? = nil
     ) {
         self.endpointURL = endpointURL
         self.session = session
@@ -229,6 +238,7 @@ struct ServerParentLinkService {
         self.fetchParentLinkHandler = fetchParentLinkHandler
         self.fetchSharedSnapshotHandler = fetchSharedSnapshotHandler
         self.publishSharedSnapshotHandler = publishSharedSnapshotHandler
+        self.registerParentDeviceHandler = registerParentDeviceHandler
     }
 
     static var defaultEndpointURL: URL? {
@@ -304,6 +314,22 @@ struct ServerParentLinkService {
                 inviteSecret: inviteSecret,
                 mealRecords: mealRecords.map { ParentSyncMealRecordDTO($0, childLink: childLink) },
                 challengeRecords: challengeRecords.map { ParentSyncChallengeRecordDTO($0, childLink: childLink) }
+            )
+        )
+    }
+
+    func registerParentDevice(childLink: ChildLink, deviceToken: String, environment: String) async throws {
+        if let registerParentDeviceHandler {
+            try await registerParentDeviceHandler(childLink, deviceToken, environment)
+            return
+        }
+        let _: ParentSyncEmptyResponse = try await post(
+            action: "registerParentDevice",
+            payload: ParentSyncRegisterParentDevicePayload(
+                childLinkId: childLink.id.uuidString,
+                inviteCode: childLink.inviteCode,
+                deviceToken: deviceToken,
+                environment: environment
             )
         )
     }
@@ -384,6 +410,13 @@ private struct ParentSyncPublishSnapshotPayload: Encodable {
     var challengeRecords: [ParentSyncChallengeRecordDTO]
 }
 
+private struct ParentSyncRegisterParentDevicePayload: Encodable {
+    var childLinkId: String
+    var inviteCode: String
+    var deviceToken: String
+    var environment: String
+}
+
 private struct ParentSyncLinkResponse: Decodable {
     var link: ParentSyncChildLinkDTO
 }
@@ -420,12 +453,15 @@ private struct ParentSyncChildLinkDTO: Codable {
         mode = childLink.mode.rawValue
         inviteCode = childLink.inviteCode
         permissions = childLink.permissions
+        permissions.sharePhotos = false
         createdAt = childLink.createdAt
         registeredAt = childLink.registeredAt
     }
 
     func childLink(inviteSecret: String?) -> ChildLink {
-        ChildLink(
+        var sanitizedPermissions = permissions
+        sanitizedPermissions.sharePhotos = false
+        return ChildLink(
             id: UUID(uuidString: id) ?? UUID(),
             childNickname: childNickname,
             schoolName: schoolName,
@@ -435,7 +471,7 @@ private struct ParentSyncChildLinkDTO: Codable {
             mode: UserMode(rawValue: mode) ?? .elementary,
             inviteCode: inviteCode,
             inviteSecret: inviteSecret,
-            permissions: permissions,
+            permissions: sanitizedPermissions,
             createdAt: createdAt,
             registeredAt: registeredAt ?? Date()
         )
@@ -477,7 +513,7 @@ private struct ParentSyncMealRecordDTO: Codable {
         eatingStatus = record.eatingStatus.rawValue
         difficultyReasons = record.difficultyReasons.map(\.rawValue)
         allergyCodes = childLink.permissions.shareAllergyWarnings ? record.allergyCodes : []
-        photoIds = childLink.permissions.sharePhotos ? record.photoIds : []
+        photoIds = []
         createdAt = record.createdAt
     }
 
@@ -538,7 +574,6 @@ struct CloudKitParentLinkService {
     static let parentLinkRecordType = "ParentLink"
     static let sharedMealRecordType = "SharedMealRecord"
     static let sharedChallengeRecordType = "SharedChallengeRecord"
-    static let sharedMealPhotoRecordType = "SharedMealPhoto"
 
     private let container: CKContainer?
     private let saveParentLinkHandler: ((ChildLink) async throws -> CKRecord.ID)?
@@ -654,7 +689,7 @@ struct CloudKitParentLinkService {
         record["shareEatingRecords"] = childLink.permissions.shareEatingRecords as CKRecordValue
         record["shareChallengeRecords"] = childLink.permissions.shareChallengeRecords as CKRecordValue
         record["shareAllergyWarnings"] = childLink.permissions.shareAllergyWarnings as CKRecordValue
-        record["sharePhotos"] = childLink.permissions.sharePhotos as CKRecordValue
+        record["sharePhotos"] = false as CKRecordValue
         record["createdAt"] = childLink.createdAt as CKRecordValue
         return record
     }
@@ -672,7 +707,7 @@ struct CloudKitParentLinkService {
         record["eatingStatus"] = mealRecord.eatingStatus.rawValue as CKRecordValue
         record["difficultyReasons"] = mealRecord.difficultyReasons.map(\.rawValue).joined(separator: ",") as CKRecordValue
         record["allergyCodes"] = childLink.permissions.shareAllergyWarnings ? mealRecord.allergyCodes.map(String.init).joined(separator: ",") as CKRecordValue : "" as CKRecordValue
-        record["photoIds"] = mealRecord.photoIds.joined(separator: ",") as CKRecordValue
+        record["photoIds"] = "" as CKRecordValue
         record["createdAt"] = mealRecord.createdAt as CKRecordValue
         return record
     }
@@ -692,22 +727,6 @@ struct CloudKitParentLinkService {
         record["badgeName"] = (challengeRecord.badgeName ?? "") as CKRecordValue
         record["nutrients"] = challengeRecord.nutrients.joined(separator: ",") as CKRecordValue
         record["createdAt"] = challengeRecord.createdAt as CKRecordValue
-        return record
-    }
-
-    func makeSharedPhotoRecord(_ photoRecord: MealPhotoRecord, childLink: ChildLink, photoURL: URL? = nil) -> CKRecord? {
-        guard childLink.permissions.sharePhotos, photoRecord.isSharedWithParent else { return nil }
-        let record = CKRecord(
-            recordType: Self.sharedMealPhotoRecordType,
-            recordID: CKRecord.ID(recordName: "photo-\(childLink.id.uuidString)-\(photoRecord.id)")
-        )
-        record["childLinkId"] = childLink.id.uuidString as CKRecordValue
-        record["photoId"] = photoRecord.id as CKRecordValue
-        record["fileName"] = photoRecord.fileName as CKRecordValue
-        record["createdAt"] = photoRecord.createdAt as CKRecordValue
-        if let photoURL {
-            record["photoAsset"] = CKAsset(fileURL: photoURL)
-        }
         return record
     }
 
@@ -756,20 +775,14 @@ struct CloudKitParentLinkService {
             .compactMap { makeChallengeRecord(from: $0, childLink: childLink) }
             .sorted { $0.createdAt > $1.createdAt }
 
-        let photoQuery = CKQuery(recordType: Self.sharedMealPhotoRecordType, predicate: predicate)
-        let photos = try await perform(photoQuery)
-            .compactMap { makePhotoPayload(from: $0, childLink: childLink) }
-            .sorted { $0.record.createdAt > $1.record.createdAt }
-
-        return CloudChildShareSnapshot(mealRecords: meals, challengeRecords: challenges, photoPayloads: photos)
+        return CloudChildShareSnapshot(mealRecords: meals, challengeRecords: challenges, photoPayloads: [])
     }
 
     var recordTypes: [String] {
         [
             Self.parentLinkRecordType,
             Self.sharedMealRecordType,
-            Self.sharedChallengeRecordType,
-            Self.sharedMealPhotoRecordType
+            Self.sharedChallengeRecordType
         ]
     }
 
@@ -777,9 +790,9 @@ struct CloudKitParentLinkService {
         [
             "iCloud capability와 CloudKit container 연결",
             "초대 코드로 public CloudKit ParentLink record 생성",
-            "ParentLink.inviteCode, SharedMealRecord.childLinkId, SharedChallengeRecord.childLinkId, SharedMealPhoto.childLinkId queryable index 구성",
+            "ParentLink.inviteCode, SharedMealRecord.childLinkId, SharedChallengeRecord.childLinkId queryable index 구성",
             "createdAt 최신순 정렬은 앱 내부에서 처리하므로 CloudKit sortable index는 필요 없음",
-            "먹은 정도, 한 입 도전, 알레르기 주의, 선택 사진만 공유",
+            "먹은 정도, 한 입 도전, 알레르기 주의만 공유",
             "자유 채팅, 공개 피드, 학교 통계 record는 만들지 않음"
         ]
     }
@@ -907,7 +920,7 @@ struct CloudKitParentLinkService {
                 shareEatingRecords: record["shareEatingRecords"] as? Bool ?? true,
                 shareChallengeRecords: record["shareChallengeRecords"] as? Bool ?? true,
                 shareAllergyWarnings: record["shareAllergyWarnings"] as? Bool ?? true,
-                sharePhotos: record["sharePhotos"] as? Bool ?? false
+                sharePhotos: false
             ),
             createdAt: record["createdAt"] as? Date ?? Date(),
             registeredAt: record.modificationDate ?? record.creationDate ?? Date()
@@ -931,7 +944,7 @@ struct CloudKitParentLinkService {
             eatingStatus: status,
             difficultyReasons: split(record["difficultyReasons"] as? String).compactMap(DifficultyReason.init(rawValue:)),
             allergyCodes: split(record["allergyCodes"] as? String).compactMap(Int.init),
-            photoIds: split(record["photoIds"] as? String),
+            photoIds: [],
             parentShareEnabled: true,
             createdAt: record["createdAt"] as? Date ?? Date(),
             childLinkId: childLink.id

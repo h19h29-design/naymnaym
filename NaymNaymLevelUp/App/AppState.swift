@@ -1,6 +1,7 @@
 import Foundation
 import CloudKit
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppState: ObservableObject {
@@ -23,6 +24,8 @@ final class AppState: ObservableObject {
     @Published var parentSyncMessage: String?
     @Published var parentSyncError: String?
     @Published var isParentSyncing = false
+    @Published var parentNotificationMessage: String?
+    @Published var parentNotificationError: String?
     @Published var parentChildMeals: [UUID: MealDay] = [:]
     @Published var parentChildMealMessages: [UUID: String] = [:]
 
@@ -34,6 +37,7 @@ final class AppState: ObservableObject {
     private let parentProfileStore: ParentProfileStore
     private let childShareLinkStore: ChildShareLinkStore
     private let localPhotoStore: LocalPhotoStore
+    private let parentPushDeviceTokenStore: ParentPushDeviceTokenStore
     private let mealService: MealService
     private let sampleProvider: SampleDataProvider
     private let parentLinkService: CloudKitParentLinkService
@@ -49,6 +53,7 @@ final class AppState: ObservableObject {
         parentProfileStore: ParentProfileStore = ParentProfileStore(),
         childShareLinkStore: ChildShareLinkStore = ChildShareLinkStore(),
         localPhotoStore: LocalPhotoStore = LocalPhotoStore(),
+        parentPushDeviceTokenStore: ParentPushDeviceTokenStore = ParentPushDeviceTokenStore(),
         mealService: MealService = MealService(),
         sampleProvider: SampleDataProvider = SampleDataProvider(),
         parentLinkService: CloudKitParentLinkService = CloudKitParentLinkService(),
@@ -63,6 +68,7 @@ final class AppState: ObservableObject {
         self.parentProfileStore = parentProfileStore
         self.childShareLinkStore = childShareLinkStore
         self.localPhotoStore = localPhotoStore
+        self.parentPushDeviceTokenStore = parentPushDeviceTokenStore
         self.mealService = mealService
         self.sampleProvider = sampleProvider
         self.parentLinkService = parentLinkService
@@ -295,10 +301,7 @@ final class AppState: ObservableObject {
     }
 
     func saveMealPhotoData(_ data: Data, sharedWithParent: Bool = false) throws -> MealPhotoRecord {
-        var record = try localPhotoStore.savePhotoData(data, sharedWithParent: sharedWithParent)
-        if sharedWithParent {
-            record.childLinkId = childShareLink?.id
-        }
+        let record = try localPhotoStore.savePhotoData(data, sharedWithParent: false)
         mealPhotos.insert(record, at: 0)
         mealPhotoMetadataStore.save(mealPhotos)
         return record
@@ -317,8 +320,8 @@ final class AppState: ObservableObject {
     func updateMealPhotoSharing(_ record: MealPhotoRecord, sharedWithParent: Bool) -> MealPhotoRecord? {
         guard let index = mealPhotos.firstIndex(where: { $0.id == record.id }) else { return nil }
         var updated = mealPhotos[index]
-        updated.isSharedWithParent = sharedWithParent
-        updated.childLinkId = sharedWithParent ? childShareLink?.id : nil
+        updated.isSharedWithParent = false
+        updated.childLinkId = nil
         mealPhotos[index] = updated
         mealPhotoMetadataStore.save(mealPhotos)
         return updated
@@ -461,9 +464,12 @@ final class AppState: ObservableObject {
         mealStatus = .noMeal
         parentSyncMessage = nil
         parentSyncError = nil
+        parentNotificationMessage = nil
+        parentNotificationError = nil
         mealPhotoMetadataStore.clear()
         parentProfileStore.clear()
         childShareLinkStore.clear()
+        parentPushDeviceTokenStore.clear()
     }
 
     func addLocalChildLink() {
@@ -516,6 +522,7 @@ final class AppState: ObservableObject {
         link.regionName = profile.regionName
         link.mode = profile.effectiveMode
         link.permissions = permissions
+        link.permissions.sharePhotos = false
         if link.inviteSecret?.isEmpty ?? true {
             link.inviteSecret = ServerParentLinkService.makeUploadSecret()
         }
@@ -616,6 +623,7 @@ final class AppState: ObservableObject {
             parentSyncError = nil
             await refreshParentSharedData()
             await loadParentChildMeals()
+            await enableParentResultNotifications()
             return true
         } catch ParentSyncServiceError.inviteCodeNotFound {
             let message = "초대 코드를 찾지 못했어요. 아이 기기에서 코드를 다시 확인해 주세요."
@@ -698,7 +706,7 @@ final class AppState: ObservableObject {
             return
         }
         guard childShareLink.isCloudRegistered else {
-            if mealRecords.contains(where: \.parentShareEnabled) || records.contains(where: \.parentShareEnabled) || mealPhotos.contains(where: \.isSharedWithParent) {
+            if mealRecords.contains(where: \.parentShareEnabled) || records.contains(where: \.parentShareEnabled) {
                 parentSyncMessage = "초대 코드가 등록 완료된 뒤 공유 기록을 올릴 수 있어요."
             }
             return
@@ -727,6 +735,69 @@ final class AppState: ObservableObject {
         }
     }
 
+    func enableParentResultNotifications() async {
+        guard !parentProfile.childLinks.isEmpty else {
+            parentNotificationMessage = "아이를 먼저 연결하면 급식 결과 알림을 받을 수 있어요."
+            parentNotificationError = parentNotificationMessage
+            return
+        }
+
+        do {
+            let granted = try await ParentPushNotificationBridge.requestAuthorizationAndRegister()
+            guard granted else {
+                parentNotificationMessage = "알림 권한이 꺼져 있어요. 설정 앱에서 냠냠레벨업 알림을 허용해 주세요."
+                parentNotificationError = parentNotificationMessage
+                return
+            }
+
+            if let token = parentPushDeviceTokenStore.load(), !token.isEmpty {
+                await registerParentPushDeviceToken(token)
+            } else {
+                parentNotificationMessage = "알림 권한을 확인했어요. 기기 토큰을 받으면 자동으로 등록할게요."
+                parentNotificationError = nil
+            }
+        } catch {
+            parentNotificationMessage = "알림 권한 요청에 실패했어요."
+            parentNotificationError = parentNotificationMessage
+        }
+    }
+
+    func registerParentPushDeviceToken(_ token: String) async {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else { return }
+        parentPushDeviceTokenStore.save(trimmedToken)
+
+        guard !parentProfile.childLinks.isEmpty else { return }
+
+        var successCount = 0
+        var lastError: String?
+        for child in parentProfile.childLinks {
+            do {
+                try await serverParentLinkService.registerParentDevice(
+                    childLink: child,
+                    deviceToken: trimmedToken,
+                    environment: ParentPushNotificationBridge.apnsEnvironment
+                )
+                successCount += 1
+            } catch {
+                lastError = parentServerMessage(
+                    for: error,
+                    fallback: "\(child.childNickname) 알림 기기 등록 실패: \(error.localizedDescription)"
+                )
+            }
+        }
+
+        if successCount > 0 {
+            parentNotificationMessage = successCount == parentProfile.childLinks.count
+                ? "아이 급식 결과 알림을 받을 준비가 됐어요."
+                : "\(successCount)명 알림 등록을 완료했어요. 일부 아이는 다시 시도해 주세요."
+            parentNotificationError = successCount == parentProfile.childLinks.count ? nil : lastError
+        } else if let lastError {
+            parentNotificationMessage = lastError
+            parentNotificationError = lastError
+        }
+    }
+
     private func upsertChildLink(_ child: ChildLink) {
         parentProfile.childLinks.removeAll { $0.id == child.id || $0.inviteCode == child.inviteCode }
         parentProfile.childLinks.insert(child, at: 0)
@@ -743,25 +814,6 @@ final class AppState: ObservableObject {
         records.append(contentsOf: snapshot.challengeRecords)
         records.sort { $0.createdAt > $1.createdAt }
         challengeStore.save(records)
-
-        let oldRemotePhotos = mealPhotos.filter { $0.childLinkId == child.id }
-        localPhotoStore.clear(records: oldRemotePhotos)
-        mealPhotos.removeAll { $0.childLinkId == child.id }
-        for payload in snapshot.photoPayloads {
-            if let data = payload.data,
-               let imported = try? localPhotoStore.importSharedPhotoData(
-                    data,
-                    id: payload.record.id,
-                    createdAt: payload.record.createdAt,
-                    childLinkId: child.id
-               ) {
-                mealPhotos.append(imported)
-            } else {
-                mealPhotos.append(payload.record)
-            }
-        }
-        mealPhotos.sort { $0.createdAt > $1.createdAt }
-        mealPhotoMetadataStore.save(mealPhotos)
     }
 
     var parentConnectionDiagnostics: ParentConnectionDiagnostics {
@@ -773,8 +825,7 @@ final class AppState: ObservableObject {
             lastSyncMessage: parentSyncMessage ?? "아직 동기화 기록이 없어요.",
             lastSyncError: parentSyncError ?? "최근 오류 없음",
             permissions: childShareLink?.permissions ?? .defaultChildSafe,
-            sharedRecordCount: mealRecords.filter(\.parentShareEnabled).count + records.filter(\.parentShareEnabled).count,
-            sharedPhotoCount: mealPhotos.filter(\.isSharedWithParent).count
+            sharedRecordCount: mealRecords.filter(\.parentShareEnabled).count + records.filter(\.parentShareEnabled).count
         )
     }
 
@@ -785,12 +836,6 @@ final class AppState: ObservableObject {
             let sharedMealRecords = mealRecords
                 .filter(\.parentShareEnabled)
                 .filter { $0.childLinkId == link.id }
-            let sharedPhotoIds = Set(
-                mealPhotos
-                    .filter(\.isSharedWithParent)
-                    .filter { $0.childLinkId == link.id }
-                    .map(\.id)
-            )
             let challengeRecords = records
                 .filter(\.parentShareEnabled)
                 .filter { $0.childLinkId == link.id }
@@ -804,11 +849,6 @@ final class AppState: ObservableObject {
                 mode: link.mode,
                 todayChallengeCount: challengeRecords.filter { $0.action == .oneBite && $0.date == DateUtils.apiString(from: Date()) }.count,
                 allergyWarningMenus: sharedMealRecords.filter { !$0.allergyCodes.isEmpty }.prefix(3).map(\.menuName),
-                recentPhotoIds: sharedMealRecords
-                    .flatMap(\.photoIds)
-                    .filter { sharedPhotoIds.contains($0) }
-                    .prefix(3)
-                    .map { $0 },
                 weeklyRecords: Array(weeklyMealRecords.prefix(12)),
                 weeklyChallengeRecords: Array(weeklyChallengeRecords.prefix(12))
             )

@@ -56,12 +56,12 @@ build 14 확인:
 | 한 입 도전 성장 | 완료 | `ChallengeRecord`, EXP, badge, `PlayerProgress.currentSkin(for:)` |
 | 알레르기 주의 | 완료 | 선택 알레르기와 메뉴 allergy code 교차 시 한 입 도전 잠금 및 안전 안내 |
 | 초등/중등/고등/부모 모드 | 완료 | `UserMode`, `ThemeProfile`, 모드별 `CharacterSkin` |
-| 부모 다자녀 연결 | 코드 완료, build 15 entitlement 검증 완료 | CloudKit `ParentLink` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/사진 공유/도전 기록 공유 토글 분리. build 15 signed IPA에 CloudKit entitlement 포함 확인 |
-| 부모 공유 사진 | 코드 완료, build 15 entitlement 검증 완료 | 공유 선택 사진만 `SharedMealPhoto` + CKAsset 생성, 사진 공유는 기록 공유가 켜진 경우에만 선택 가능, 기록 공유 해제 시 사진 공유도 비공유로 정리. build 15 signed IPA에 CloudKit entitlement 포함 확인 |
+| 부모 다자녀 연결 | 코드 완료, build 20 후보 검증 중 | Supabase `parent-sync` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/도전 기록 공유/알레르기 주의 토글 분리. 아이가 공유 기록을 올리면 부모에게 급식 결과 알림 전송 가능 |
+| 급식판 사진 | 로컬 전용 | 급식판 사진은 기기 내부 저장만 지원하며 부모 모드, Supabase 동기화, CloudKit 공유 record에 원본과 사진 ID를 올리지 않음 |
 | 데이터 삭제 범위 | 완료 | `resetChallengeRecords`는 도전/식사 기록만 지우고 프로필/부모 연결/사진 파일은 유지, `resetAllData`는 프로필/기록/XP/부모 연결/사진 디렉터리/메타데이터까지 삭제하도록 XCTest 고정 |
 | 개인정보/지원 안내 | 완료, 공개 배포 완료 | 앱 내 설정 화면, 웹 개인정보 처리방침/지원/데이터 안전 링크, `docs/PRIVACY_POLICY_DRAFT.md`, `docs/SUPPORT.md`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html`, GitHub Pages URL 200 확인 |
 | App Store 스크린샷 | 완료 | `docs/app-store-screenshots/iphone-6-9-upload/*.jpg` 10장, 1320x2868, alpha 없음, 온보딩/오늘 급식/한 입 도전/레벨업/부모 요약/알레르기 안전/공유 카드 포함 |
-| Privacy Manifest | 완료 | `NaymNaymLevelUp/PrivacyInfo.xcprivacy`와 build 15 export에 UserDefaults 사유, 선택 부모 공유용 수집 데이터 타입, 추적 없음 선언 포함 |
+| Privacy Manifest | 완료 | `NaymNaymLevelUp/PrivacyInfo.xcprivacy`에 UserDefaults 사유, 선택 부모 공유용 사용자 콘텐츠/건강/User ID 데이터 타입, 추적 없음 선언 포함. 사진/동영상은 로컬 전용이라 수집 데이터 타입에서 제외 |
 
 ## 실제 NEIS 확인
 
@@ -100,9 +100,9 @@ build 14 확인:
 - 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `scripts/check-app-store-build-status.sh`로 build 15 처리 상태를 콘솔 로그인 없이 확인할 수 있도록 보강
 - 2026-06-25 추가 자동화: App Store Connect API 키가 있는 경우 `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`로 build 15 TestFlight 그룹 연결까지 확인 가능
 - 2026-06-25 안전 문구 게이트: `scripts/verify-release-readiness.sh`가 알레르기 메뉴에 부적절한 섭취 권유나 안전 보장 표현이 들어오지 않도록 검사하고, 학교 안내와 보호자 판단 우선 문구가 앱/메타데이터에 남아 있는지 확인
-- 2026-06-25 사진 기록 증거 게이트: App Store 스크린샷에 실제 사진 기록 화면을 전면 노출하지 않는 개인정보 기준을 `docs/PHOTO_RECORD_RELEASE_EVIDENCE.md`로 분리하고, `scripts/verify-release-readiness.sh`가 사진 선택/촬영/부모 공유 UI와 로컬 저장/삭제/CloudKit 사진 공유/전체 삭제 테스트 존재를 검증
+- 2026-07-02 사진 기록 증거 게이트 갱신: App Store 스크린샷에 실제 사진 기록 화면을 전면 노출하지 않는 개인정보 기준을 `docs/PHOTO_RECORD_RELEASE_EVIDENCE.md`로 유지하고, `scripts/verify-release-readiness.sh`가 사진 선택/촬영 UI, 부모 사진 공유 토글 부재, 로컬 저장/삭제/전체 삭제 테스트 존재를 검증
 - 2026-06-25 출시 문구 게이트: 앱 소스에 내부 개발 표식이나 미완료/추후 고도화 표현이 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
-- 2026-06-25 App Privacy manifest 게이트: `PrivacyInfo.xcprivacy`의 UserDefaults 사유와 사용자 콘텐츠/사진/건강/User ID 수집 데이터 타입이 App Privacy 입력 초안과 일치하는지 `scripts/verify-release-readiness.sh`가 검사
+- 2026-07-02 App Privacy manifest 게이트 갱신: `PrivacyInfo.xcprivacy`의 UserDefaults 사유와 사용자 콘텐츠/건강/User ID 수집 데이터 타입이 App Privacy 입력 초안과 일치하고, 사진/동영상 데이터 타입이 제외되어 있는지 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 CloudKit 저장 문구 게이트: 부모 공유 시 CloudKit/iCloud에 선택 데이터가 저장될 수 있으므로 앱/문서에 과도한 무저장 표현이 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 한국어 출시 문구 게이트: 앱/문서/마케팅 사이트의 어색한 띄어쓰기 표현이 제출 자료에 남지 않도록 `scripts/verify-release-readiness.sh`가 검사
 - 2026-06-25 마케팅 사이트 문구 게이트: 공개 랜딩 페이지에 임시 진행 상태 문구가 남지 않고 앱 가치와 데이터 안전 기준만 보이도록 `scripts/verify-release-readiness.sh`가 검사
@@ -116,18 +116,18 @@ build 14 확인:
 
 1. App Store Connect에 업데이트된 Apple Developer Program 사용권 계약 배너가 계속 보이면 계정 소유자가 계약을 검토하고 동의
 2. App Store Connect에 `release/AppStoreMetadata/app-privacy-draft.md`의 입력 매트릭스 기준으로 App Privacy 최종 입력
-3. CloudKit Dashboard public database schema 배포 상태 확인
-4. CloudKit queryable index 설정 확인
+3. Supabase Edge Function `parent-sync` 배포와 `nyam_parent_devices` migration 적용 확인
+4. 부모 알림 실발송이 필요하면 Supabase Edge Function secrets에 APNs 키 설정
+5. CloudKit queryable index 설정 확인
    - 구조화된 기준: `release/CloudKit/schema-contract.json`
    - `ParentLink.inviteCode`
    - `SharedMealRecord.childLinkId`
    - `SharedChallengeRecord.childLinkId`
-   - `SharedMealPhoto.childLinkId`
    - `createdAt` 최신순 정렬은 앱 내부에서 처리하므로 sortable index는 필요 없음
-5. CloudKit public database 권한 확인
-   - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto`를 생성/수정할 수 있어야 함
+6. CloudKit public database 권한 확인
+   - 앱 사용자가 `ParentLink`, `SharedMealRecord`, `SharedChallengeRecord`를 생성/수정할 수 있어야 함
    - 초대 코드 조회는 정확한 `inviteCode` 조건에서만 동작해야 함
-6. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
+7. App Store Connect 입력 전 개인정보 처리방침, 지원, 데이터 안전 문구의 최종 법률/표기 확인
    - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
    - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
    - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`

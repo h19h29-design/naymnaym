@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-15}"
+RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-20}"
 RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${RELEASE_BUILD_NUMBER}-signed-upload.log}"
 RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${RELEASE_BUILD_NUMBER}Signed}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
@@ -217,12 +217,14 @@ check_uploaded_ipa() {
   security cms -D -i "$embedded_profile" >"$embedded_profile_plist" 2>/dev/null || fail "$ipa embedded provisioning profile could not be decoded"
   require_signed_entitlement "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup" "$ipa embedded profile iCloud container entitlement"
   require_signed_entitlement_one_of "$embedded_profile_plist" "Entitlements:com.apple.developer.icloud-services:0" "$ipa embedded profile CloudKit service entitlement" "CloudKit" "*"
+  require_signed_entitlement "$embedded_profile_plist" "Entitlements:aps-environment" "production" "$ipa embedded profile APS entitlement"
 
   entitlements_file="$tmp_dir/signed-entitlements.plist"
   codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null || fail "$ipa signed entitlements could not be read"
   [ -s "$entitlements_file" ] || fail "$ipa signed entitlements are empty"
   require_signed_entitlement "$entitlements_file" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup" "$ipa signed iCloud container entitlement"
   require_signed_entitlement "$entitlements_file" "com.apple.developer.icloud-services:0" "CloudKit" "$ipa signed CloudKit service entitlement"
+  require_signed_entitlement "$entitlements_file" "aps-environment" "production" "$ipa signed APS entitlement"
 
   rm -rf "$tmp_dir"
   pass "$ipa contains build 1.0 ($expected_build)"
@@ -237,8 +239,9 @@ require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
 require_file "release/AppStoreMetadata/app-store-connect-values.json"
 require_file "release/CloudKit/schema-contract.json"
-require_file "release/ReleaseStatus/build-15-readiness.json"
 require_file "scripts/check-app-store-build-status.sh"
+require_file "supabase/functions/parent-sync/index.ts"
+require_file "supabase/migrations/20260702_parent_notifications.sql"
 require_file "THIRD_PARTY_NOTICES.md"
 require_file "NaymNaymLevelUp/Resources/Animations/README.md"
 require_file "NaymNaymLevelUp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
@@ -272,7 +275,7 @@ ruby -rjson -e '
   abort "wrong build" unless data.dig("appInfo", "build") == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
   abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://h19h29-design.github.io/naymnaym/privacy.html"
   data_types = data.dig("appPrivacy", "dataTypes") || []
-  required = ["Other User Content", "Photos or Videos", "Health and Fitness", "User ID"]
+  required = ["Other User Content", "Health and Fitness", "User ID"]
   required.each do |name|
     row = data_types.find { |item| item["name"] == name }
     abort "missing privacy data type #{name}" unless row
@@ -281,6 +284,8 @@ ruby -rjson -e '
     abort "#{name} must be linked" unless row["linkedToUser"] == true
     abort "#{name} must not track" unless row["tracking"] == false
   end
+  photo_row = data_types.find { |item| item["name"] == "Photos or Videos" }
+  abort "Photos or Videos must be marked not collected" if photo_row && photo_row["collected"] != false
 ' "release/AppStoreMetadata/app-store-connect-values.json"
 pass "App Store Connect values JSON"
 ruby -rjson -e '
@@ -290,8 +295,7 @@ ruby -rjson -e '
   expected = {
     "ParentLink" => ["inviteCode"],
     "SharedMealRecord" => ["childLinkId"],
-    "SharedChallengeRecord" => ["childLinkId"],
-    "SharedMealPhoto" => ["childLinkId"]
+    "SharedChallengeRecord" => ["childLinkId"]
   }
   record_types = data.fetch("recordTypes")
   expected.each do |name, queryable_fields|
@@ -305,85 +309,13 @@ ruby -rjson -e '
       abort "#{name}.#{field} should not require sortable index" unless index["sortable"] == false
     end
   end
+  abort "SharedMealPhoto must not be required for the local-only photo policy" if record_types.any? { |item| item["name"] == "SharedMealPhoto" }
   forbidden = data.fetch("forbiddenRecordTypes")
   ["PublicFeed", "Friend", "TeacherDashboard", "SchoolStats", "ChatMessage"].each do |name|
     abort "missing forbidden record marker #{name}" unless forbidden.include?(name)
   end
 ' "release/CloudKit/schema-contract.json"
 pass "CloudKit schema contract JSON"
-ruby -rjson -e '
-  data = JSON.parse(File.read(ARGV.fetch(0)))
-  release = data.fetch("releaseCandidate")
-  abort "wrong release bundle id" unless release["bundleId"] == "com.h19h29.naymnaymlevelup"
-  abort "wrong release version" unless release["version"] == "1.0"
-  abort "wrong release build" unless release["build"] == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
-  abort "wrong release status" unless release["status"] == "testflight_external_testing_active"
-
-  decision = data.fetch("decision")
-  abort "wrong candidate build" unless decision["currentCandidateBuild"] == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
-  rejected = decision.fetch("previousBuildsNotForRelease")
-  build14 = rejected.find { |item| item["build"] == "14" }
-  abort "build 14 rejection missing" unless build14
-  abort "build 14 rejection must mention CloudKit entitlements" unless build14["reason"].include?("CloudKit")
-
-  verified = data.fetch("verifiedLocalScope")
-  {
-    "sampleDataOnlyInDemoMode" => true,
-    "missingAPIKeyDoesNotShowSampleMeals" => true,
-    "todayMealDoesNotFallbackToMonthlyFirst" => true,
-    "allergyChallengeLock" => true,
-    "unsafeAllergyChallengeCopyBlockedByReleaseGate" => true,
-    "shareCardsExcludeSensitiveFields" => true,
-    "photoRecordEvidenceCoveredByReleaseGate" => true,
-    "privacyManifestDataTypesMatchAppPrivacyDraft" => true,
-    "unfinishedAppCopyBlockedByReleaseGate" => true,
-    "cloudKitStorageCopyAlignedWithPrivacyDraft" => true,
-    "koreanReleaseCopySpacingChecked" => true,
-    "marketingSiteUsesReleaseReadyCopy" => true,
-    "livePublicSiteCopyVerified" => true,
-    "cloudKitEntitlementsVerifiedInBuild15IPA" => true,
-    "appStoreConnectBetaGroupCheckScript" => true,
-    "testFlightCliUploadSucceeded" => true,
-    "appStoreConnectBuild15ProcessingConfirmed" => true,
-    "testFlightBuild15TestingActive" => true,
-    "testFlightInternalGroupAttached" => true,
-    "testFlightExternalFamilyGroupAttached" => true,
-    "testFlightPublicLinkVerified" => true,
-    "externalBetaReviewSubmitted" => true
-  }.each do |key, expected|
-    abort "#{key} must be #{expected}" unless verified[key] == expected
-  end
-
-  distribution = data.fetch("testFlightDistribution")
-  abort "wrong TestFlight build status" unless distribution["buildStatus"] == "testing"
-  abort "missing internal TestFlight group" unless distribution.fetch("internalGroups").include?("윈드")
-  abort "missing external TestFlight group" unless distribution.fetch("externalGroups").include?("패밀리")
-  abort "wrong public TestFlight link" unless distribution["publicLink"] == "https://testflight.apple.com/join/3A3rKarB"
-  abort "wrong tester visible build" unless distribution["testerVisibleBuild"] == "1.0 (15)"
-
-  xp = verified.fetch("xpCategories")
-  ["record", "challenge", "balance", "safety"].each do |category|
-    abort "missing xp category #{category}" unless xp.include?(category)
-  end
-
-  paths = data.fetch("evidencePaths")
-  {
-    "signedIPA" => "build/TestFlightExportBuild15Signed/NaymNaymLevelUp.ipa",
-    "uploadLog" => "build/build15-signed-upload.log",
-    "appStoreScreenshots" => "docs/app-store-screenshots/iphone-6-9-upload/",
-    "appStoreConnectValues" => "release/AppStoreMetadata/app-store-connect-values.json",
-    "cloudKitSchemaContract" => "release/CloudKit/schema-contract.json"
-  }.each do |key, expected|
-    abort "#{key} evidence path mismatch" unless paths[key] == expected
-  end
-
-  blockers = data.fetch("externalBlockers")
-  ["App Store Connect", "CloudKit Dashboard", "App Privacy", "App Review"].each do |area|
-    abort "missing external blocker #{area}" unless blockers.any? { |item| item["area"] == area }
-  end
-  abort "TestFlight should not remain an external blocker" if blockers.any? { |item| item["area"] == "TestFlight" }
-' "release/ReleaseStatus/build-15-readiness.json"
-pass "build 15 release status JSON"
 
 git check-ignore -q Config.xcconfig || fail "Config.xcconfig must stay ignored"
 pass "Config.xcconfig is ignored"
@@ -408,10 +340,13 @@ require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationWhenInUseU
 require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationAlwaysAndWhenInUseUsageDescription"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-services:0" "CloudKit"
+require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "aps-environment" "\$(APS_ENVIRONMENT)"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = ${RELEASE_BUILD_NUMBER};" "App build number is ${RELEASE_BUILD_NUMBER}"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = \"com\\.h19h29\\.naymnaymlevelup\";" "Bundle ID is com.h19h29.naymnaymlevelup"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "TARGETED_DEVICE_FAMILY = 1;" "App target is iPhone only for App Store screenshot set"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "com\\.apple\\.Push" "Push Notifications capability is enabled"
+require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "APS_ENVIRONMENT = production;" "Release APS environment is production"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "https://github\\.com/airbnb/lottie-spm\\.git" "lottie-spm Swift package URL is configured"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "minimumVersion = 4\\.6\\.1;" "lottie-spm package minimum version is 4.6.1"
 require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store metadata version is 1.0"
@@ -420,10 +355,10 @@ require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR m
 require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "ko-KR metadata build is ${RELEASE_BUILD_NUMBER}"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "App Store Connect 입력 매트릭스" "App Privacy draft includes input matrix"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Other User Content \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers other user content"
-require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers photos or videos"
+require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집 안 함" "App Privacy draft keeps local-only photos out of collected data"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Health and Fitness \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers health and fitness"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "User ID \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers user id"
-require_pattern "release/AppStoreMetadata/ko-KR.md" "Photos or Videos: 보수 입력 기준 수집함" "ko-KR metadata references photos privacy input"
+require_pattern "release/AppStoreMetadata/ko-KR.md" "Photos or Videos: 수집 안 함" "ko-KR metadata references local-only photos privacy input"
 require_pattern "release/AppStoreMetadata/ko-KR.md" "app-store-connect-values\\.json" "ko-KR metadata references structured values JSON"
 require_pattern "README.md" "scripts/check-app-store-build-status\\.sh" "README references App Store Connect build status script"
 require_pattern "README.md" "app-store-connect-values\\.json" "README references structured App Store Connect values"
@@ -450,7 +385,6 @@ ruby -rjson -e '
 
   required_types = [
     "NSPrivacyCollectedDataTypeOtherUserContent",
-    "NSPrivacyCollectedDataTypePhotosorVideos",
     "NSPrivacyCollectedDataTypeHealth",
     "NSPrivacyCollectedDataTypeUserID"
   ]
@@ -463,6 +397,7 @@ ruby -rjson -e '
     purposes = row.fetch("NSPrivacyCollectedDataTypePurposes")
     abort "#{name} must be App Functionality" unless purposes == ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
   end
+  abort "Photos or Videos must stay out of Privacy Manifest while photos are local only" if collected.any? { |item| item["NSPrivacyCollectedDataType"] == "NSPrivacyCollectedDataTypePhotosorVideos" }
 ' "NaymNaymLevelUp/PrivacyInfo.xcprivacy"
 pass "Privacy Manifest collected data types match App Privacy draft"
 require_absent_path "Package.swift"
@@ -487,15 +422,20 @@ require_file "docs/PHOTO_RECORD_RELEASE_EVIDENCE.md"
 require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "Section\\(\"급식판 사진\"\\)" "Meal detail includes photo record section"
 require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" 'PhotosPicker\(selection: \$selectedPhotoItem, matching: \.images\)' "Meal detail includes photo picker"
 require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "Label\\(\"사진 찍기\", systemImage: \"camera\"\\)" "Meal detail includes camera action"
-require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "Toggle\\(\"부모에게 이 사진 공유\"" "Meal detail includes parent photo sharing toggle"
-require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "사진 공유는 이 기록 공유가 켜진 경우에만 선택할 수 있어요" "Photo sharing is gated by record sharing copy"
+require_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "사진은 부모에게 공유하지 않고 이 기기 안에만 저장돼요" "Meal detail explains local-only photos"
+require_absent_pattern "NaymNaymLevelUp/Views/Meals/TodayMealView.swift" "부모에게 이 사진 공유" "Meal detail has no parent photo sharing toggle"
 require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testLocalPhotoStoreSavesAndDeletesFile" "Photo local save/delete test exists"
-require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testUpdateMealPhotoSharingClearsChildLinkWhenDisabled" "Photo sharing disable test exists"
-require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testChildSummariesOnlyExposeParentSharedPhotosAndRecords" "Parent summary shared photo privacy test exists"
-require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testCloudKitPhotoRecordRequiresBothPermissions" "CloudKit photo permission test exists"
-require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testCloudKitSharedPhotoRecordFieldsMatchConsoleRunbook" "CloudKit shared photo contract test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testMealPhotoSharingRemainsLocalOnly" "Photo sharing stays local-only test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testCloudKitPhotoRecordIsDisabled" "CloudKit photo sharing disabled test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testCloudKitSharedPhotoRecordNeverBuildsAsset" "CloudKit shared photo asset disable test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testParentPushDeviceTokenStoreSavesAndClearsToken" "Parent push token store test exists"
+require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testRegisterParentPushDeviceTokenRegistersAllConnectedChildren" "Parent push registration test exists"
 require_pattern "NaymNaymLevelUpTests/LocalStoreTests.swift" "testResetAllDataClearsProfileRecordsProgressParentLinksAndPhotoFiles" "Full reset deletes photo files test exists"
-require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers photo records"
+require_pattern "supabase/functions/parent-sync/index.ts" "registerParentDevice" "Parent sync Edge Function registers parent push devices"
+require_pattern "supabase/functions/parent-sync/index.ts" "sendParentMealResultNotifications" "Parent sync Edge Function sends meal result notifications"
+require_pattern "supabase/functions/parent-sync/index.ts" "apns_not_configured" "Parent sync Edge Function reports missing APNs secrets without exposing them"
+require_pattern "supabase/functions/parent-sync/index.ts" "photo_ids: \\[\\]" "Parent sync strips photo ids from uploaded meal records"
+require_pattern "supabase/migrations/20260702_parent_notifications.sql" "nyam_parent_devices" "Parent notification device table migration exists"
 
 require_file "$RELEASE_UPLOAD_LOG"
 require_file "${RELEASE_EXPORT_DIR}/ExportOptions.plist"

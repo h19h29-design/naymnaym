@@ -36,7 +36,7 @@
 | Purchases | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 인앱결제/StoreKit 사용 없음 |
 | Usage Data | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 자체 분석 SDK 없음 |
 | Other User Content | 수집함 | App Functionality | 예 | 아니요 | 먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 서버 저장 가능 |
-| Photos or Videos | 수집함 | App Functionality | 예 | 아니요 | 급식판 사진 기능과 공유 시트가 있으므로 보수적으로 수집함으로 입력 |
+| Photos or Videos | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 급식판 사진은 기기 내부에만 저장하고 서버 부모 동기화나 부모 모드로 업로드하지 않음 |
 | Health and Fitness | 수집함 | App Functionality | 예 | 아니요 | 알레르기 선택값과 식사 기록이 건강 관련 정보로 해석될 수 있음 |
 | User ID | 수집함 | App Functionality | 예 | 아니요 | 부모 연결용 `childLinkId`와 초대 코드 사용 |
 
@@ -55,9 +55,9 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 
 - 대상: 사용자가 선택하거나 촬영한 급식판 사진
 - 기본 저장: 기기 내부
-- 공유 가능: 서버 부모 동기화에는 사진 원본을 업로드하지 않음. 사용자가 iOS 공유 시트나 사진 저장 기능을 직접 사용할 수 있으므로 보수적으로 확인
-- 목적: App Functionality
-- Linked to User: 부모 공유를 사용하는 경우 연결될 수 있음
+- 서버 전송: 없음
+- 부모 공유: 없음
+- App Store Connect 입력: 수집 안 함
 - Tracking: 아니요
 
 ### Health and Fitness
@@ -87,7 +87,7 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 현재 `NaymNaymLevelUp/PrivacyInfo.xcprivacy`는 다음 방향으로 선언되어 있습니다.
 
 - UserDefaults required reason API: 앱 설정/기록 저장
-- 부모 공유 선택 시 사용자 콘텐츠/사진/건강 정보/사용자 ID 가능성
+- 부모 공유 선택 시 사용자 콘텐츠/건강 정보/사용자 ID 가능성
 - Tracking: false
 
 ## 최종 제출 전 확인

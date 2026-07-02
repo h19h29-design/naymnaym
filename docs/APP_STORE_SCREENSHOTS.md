@@ -30,7 +30,7 @@ iPhone 6.3형 보조 캡처는 아래 위치에 있다.
 | 2 | `02-today-meal.jpg` | 오늘 급식 | 실제/체험 상태 구분, 메뉴별 한 입 도전 진입 |
 | 3 | `03-one-bite.jpg` | 한 입 도전 결과 | XP, 뱃지, 공유 카드 안내 |
 | 4 | `04-levelup.jpg` | 레벨업 | 캐릭터 성장, EXP, 뱃지 구조 |
-| 5 | `05-parent-summary.jpg` | 보호자 요약 | 아이별 기록, 공유 사진, 칭찬 카드 |
+| 5 | `05-parent-summary.jpg` | 보호자 요약 | 아이별 기록, 급식 결과 알림, 칭찬 카드 |
 | 6 | `06-allergy-safety.jpg` | 알레르기 안전 | 알레르기 주의 메뉴는 한 입 도전보다 안전 확인 우선 |
 | 7 | `07-share-card.jpg` | 공유 카드 | iOS 공유 시트로 보낼 카드 생성/저장 진입 |
 | 8 | `08-monthly-calendar-live.jpg` | 월간 급식 캘린더 | NEIS 실제 월간 식단 조회 결과 |

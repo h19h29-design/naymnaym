@@ -835,8 +835,7 @@ struct SharingPermission: Codable, Hashable {
         [
             shareEatingRecords ? "먹은 정도" : nil,
             shareChallengeRecords ? "한 입 도전" : nil,
-            shareAllergyWarnings ? "알레르기 주의" : nil,
-            sharePhotos ? "선택 사진" : nil
+            shareAllergyWarnings ? "알레르기 주의" : nil
         ]
         .compactMap { $0 }
     }
@@ -916,7 +915,7 @@ struct ChildLink: Codable, Hashable, Identifiable {
         """
         냠냠레벨업 보호자 연결 코드: \(inviteCode)
         앱에서 부모 모드 > 아이 연결하기에 붙여넣어 주세요.
-        공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의, 선택 사진뿐이에요.
+        공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐이에요.
         """
     }
 }
@@ -928,7 +927,6 @@ struct ChildSummary: Codable, Hashable, Identifiable {
     var mode: UserMode
     var todayChallengeCount: Int
     var allergyWarningMenus: [String]
-    var recentPhotoIds: [String]
     var weeklyRecords: [MealRecord]
     var weeklyChallengeRecords: [ChallengeRecord]
 }
@@ -954,7 +952,6 @@ struct ParentConnectionDiagnostics: Codable, Hashable {
     var lastSyncError: String
     var permissions: SharingPermission
     var sharedRecordCount: Int
-    var sharedPhotoCount: Int
 
     var permissionSummary: String {
         let titles = permissions.enabledTitles

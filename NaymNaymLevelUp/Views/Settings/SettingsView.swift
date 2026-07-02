@@ -190,7 +190,6 @@ struct ParentConnectionGuideView: View {
     @State private var shareEating = true
     @State private var shareChallenge = true
     @State private var shareAllergy = true
-    @State private var sharePhotos = false
     @State private var didCopyInviteCode = false
 
     private let service = CloudKitParentLinkService()
@@ -200,7 +199,7 @@ struct ParentConnectionGuideView: View {
             shareEatingRecords: shareEating,
             shareChallengeRecords: shareChallenge,
             shareAllergyWarnings: shareAllergy,
-            sharePhotos: sharePhotos
+            sharePhotos: false
         )
     }
 
@@ -309,8 +308,7 @@ struct ParentConnectionGuideView: View {
                             Toggle("먹은 정도 기록", isOn: $shareEating)
                             Toggle("한 입 도전 기록", isOn: $shareChallenge)
                             Toggle("알레르기 주의", isOn: $shareAllergy)
-                            Toggle("선택한 급식판 사진", isOn: $sharePhotos)
-                            Text("사진은 기본적으로 내 기기에만 저장되고, 공유를 켠 사진만 부모에게 보여주는 구조입니다.")
+                            Text("사진은 부모에게 공유하지 않고 이 기기 안에만 저장됩니다. 아이가 급식 결과를 올리면 부모에게 알림을 보낼 수 있어요.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -327,7 +325,7 @@ struct ParentConnectionGuideView: View {
                             Label("공유받은 코드를 붙여넣고 연결해요.", systemImage: "2.circle.fill")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textDark)
-                            Label("먹은 정도, 한 입 도전, 알레르기 주의, 선택 사진만 보여요.", systemImage: "lock.shield.fill")
+                            Label("먹은 정도, 한 입 도전, 알레르기 주의만 보여요.", systemImage: "lock.shield.fill")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textDark)
                             DisclosureGroup("고급 설정 항목") {
@@ -338,6 +336,9 @@ struct ParentConnectionGuideView: View {
                                     .font(AppTypography.caption)
                                     .foregroundStyle(AppColors.textDark)
                                 Label("부모 급식 메뉴는 아이 학교 코드로 NEIS API를 다시 조회합니다.", systemImage: "checkmark.circle.fill")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.textDark)
+                                Label("부모 알림은 부모 기기에서 허용한 경우에만 전송됩니다.", systemImage: "bell.badge.fill")
                                     .font(AppTypography.caption)
                                     .foregroundStyle(AppColors.textDark)
                             }
@@ -387,7 +388,6 @@ struct ParentConnectionGuideView: View {
                     shareEating = permissions.shareEatingRecords
                     shareChallenge = permissions.shareChallengeRecords
                     shareAllergy = permissions.shareAllergyWarnings
-                    sharePhotos = permissions.sharePhotos
                 }
             }
         }
@@ -408,7 +408,6 @@ private struct ParentConnectionDiagnosticsView: View {
                 diagnosticsRow(title: "inviteCode", value: diagnostics.inviteCode, systemImage: "number")
                 diagnosticsRow(title: "공유 권한", value: diagnostics.permissionSummary, systemImage: "slider.horizontal.3")
                 diagnosticsRow(title: "공유된 기록", value: "\(diagnostics.sharedRecordCount)개", systemImage: "list.bullet.clipboard")
-                diagnosticsRow(title: "공유된 사진", value: "\(diagnostics.sharedPhotoCount)장", systemImage: "photo")
             }
 
             Section("부모 모드 연결 상태") {
@@ -575,7 +574,7 @@ private struct PrivacyPolicyGuideView: View {
                             privacy("이름, 이메일, 전화번호, 위치정보, 연락처, 광고 식별자를 수집하지 않습니다.")
                             privacy("광고와 인앱결제가 없습니다.")
                             privacy("별명, 학교 선택, 먹은 정도 기록, 알레르기 선택값은 기본적으로 사용자의 기기 내부에 저장됩니다.")
-                            privacy("급식판 사진은 기본적으로 기기 내부에 저장되고, 부모 공유를 켠 사진만 보호자에게 공유됩니다.")
+                            privacy("급식판 사진은 기본적으로 기기 내부에만 저장되며 보호자에게 공유하지 않습니다.")
                         }
                     }
 
@@ -584,9 +583,9 @@ private struct PrivacyPolicyGuideView: View {
                             Text("공공데이터와 부모 공유")
                                 .font(AppTypography.headline)
                             privacy("급식 조회를 위해 선택한 학교 코드와 날짜가 NEIS 공공데이터 API 요청에 사용될 수 있습니다.")
-                            privacy("부모 연동 시 선택한 기록과 선택한 사진만 공유 대상이며 공개 피드나 친구 공유는 없습니다.")
+                            privacy("부모 연동 시 선택한 기록만 공유 대상이며 공개 피드나 친구 공유는 없습니다.")
                             privacy("부모 연결은 Supabase 기반 서버로 초대 코드와 선택 공유 기록을 동기화합니다.")
-                            privacy("사진은 급식판만 찍는 용도이며 친구 얼굴, 이름표, 반/번호 촬영을 권장하지 않습니다.")
+                            privacy("부모가 알림을 허용하면 아이가 급식 결과를 올렸을 때 푸시 알림을 받을 수 있습니다.")
                         }
                     }
 
@@ -657,7 +656,7 @@ private struct SupportGuideView: View {
                 }
                 Section("사진") {
                     Text("급식판 사진은 기본적으로 기기 내부에 저장됩니다.")
-                    Text("부모 공유를 켠 사진만 부모 모드 공유 대상입니다.")
+                    Text("사진은 부모 모드로 공유하지 않습니다.")
                 }
                 Section("데이터 삭제") {
                     Text("설정 > 데이터 관리에서 기록, 프로필, 전체 데이터를 삭제할 수 있습니다.")
