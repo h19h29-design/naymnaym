@@ -283,13 +283,13 @@ struct ParentConnectionGuideView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             PrimaryButton(
                                 appState.childShareLink == nil ? "초대 코드 만들기" : "초대 코드 등록하기",
-                                systemImage: "icloud.and.arrow.up",
+                                systemImage: "network",
                                 isDisabled: appState.isParentSyncing
                             ) {
                                 Task { await appState.activateParentSharing(permissions: permissions) }
                             }
                             if hasInviteCode {
-                                SecondaryButton("등록 상태 확인", systemImage: "checkmark.icloud") {
+                                SecondaryButton("등록 상태 확인", systemImage: "checkmark.shield") {
                                     Task { await appState.verifyParentInviteRegistration() }
                                 }
                             }
@@ -331,15 +331,15 @@ struct ParentConnectionGuideView: View {
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textDark)
                             DisclosureGroup("고급 설정 항목") {
-                                ForEach(service.setupChecklist, id: \.self) { item in
-                                    Label(item, systemImage: "checkmark.circle.fill")
-                                        .font(AppTypography.caption)
-                                        .foregroundStyle(AppColors.textDark)
-                                }
-                                Text("Record types: \(service.recordTypes.joined(separator: ", "))")
+                                Label("초대 코드는 서버에 등록되고 부모는 코드로 읽기만 합니다.", systemImage: "checkmark.circle.fill")
                                     .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.graySecondary)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .foregroundStyle(AppColors.textDark)
+                                Label("아이 기기 업로드 키는 공유 메시지에 포함하지 않습니다.", systemImage: "checkmark.circle.fill")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.textDark)
+                                Label("부모 급식 메뉴는 아이 학교 코드로 NEIS API를 다시 조회합니다.", systemImage: "checkmark.circle.fill")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.textDark)
                             }
                         }
                     }
@@ -413,7 +413,7 @@ private struct ParentConnectionDiagnosticsView: View {
 
             Section("부모 모드 연결 상태") {
                 diagnosticsRow(title: "연결된 아이", value: "\(diagnostics.parentChildLinkCount)명", systemImage: "person.2.fill")
-                diagnosticsRow(title: "iCloud 설정", value: diagnostics.iCloudCapabilityMessage, systemImage: "icloud")
+                diagnosticsRow(title: "서버 설정", value: diagnostics.iCloudCapabilityMessage, systemImage: "network")
             }
 
             Section("최근 동기화") {
@@ -585,7 +585,7 @@ private struct PrivacyPolicyGuideView: View {
                                 .font(AppTypography.headline)
                             privacy("급식 조회를 위해 선택한 학교 코드와 날짜가 NEIS 공공데이터 API 요청에 사용될 수 있습니다.")
                             privacy("부모 연동 시 선택한 기록과 선택한 사진만 공유 대상이며 공개 피드나 친구 공유는 없습니다.")
-                            privacy("CloudKit 부모 연결은 자체 서버 없이 iCloud 기반으로 구성합니다.")
+                            privacy("부모 연결은 Supabase 기반 서버로 초대 코드와 선택 공유 기록을 동기화합니다.")
                             privacy("사진은 급식판만 찍는 용도이며 친구 얼굴, 이름표, 반/번호 촬영을 권장하지 않습니다.")
                         }
                     }
@@ -725,7 +725,7 @@ private struct AppInfoView: View {
                 Text("인앱결제 없음")
                 Text("회원가입 없음")
                 Text("기본 로컬 저장")
-                Text("부모 공유 시 iCloud 사용")
+                Text("부모 공유 시 서버 동기화 사용")
             }
             Section("주의사항") {
                 Text("영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다.")

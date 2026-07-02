@@ -74,7 +74,7 @@
         "purpose": "App Functionality",
         "linkedToUser": true,
         "tracking": false,
-        "note": "먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 CloudKit 저장 가능"
+        "note": "먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 서버 저장 가능"
       },
       {
         "name": "Photos or Videos",
@@ -82,7 +82,7 @@
         "purpose": "App Functionality",
         "linkedToUser": true,
         "tracking": false,
-        "note": "사진 공유 토글이 켜진 급식판 사진만 CloudKit 저장 가능"
+        "note": "급식판 사진 기능과 iOS 공유 시트가 있으므로 보수적으로 확인"
       },
       {
         "name": "Health and Fitness",

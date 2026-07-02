@@ -846,8 +846,12 @@ struct ChildLink: Codable, Hashable, Identifiable {
     var id: UUID
     var childNickname: String
     var schoolName: String
+    var officeCode: String
+    var schoolCode: String
+    var regionName: String
     var mode: UserMode
     var inviteCode: String
+    var inviteSecret: String?
     var permissions: SharingPermission
     var createdAt: Date
     var registeredAt: Date?
@@ -857,8 +861,12 @@ struct ChildLink: Codable, Hashable, Identifiable {
         id: UUID = UUID(),
         childNickname: String,
         schoolName: String,
+        officeCode: String = "",
+        schoolCode: String = "",
+        regionName: String = "",
         mode: UserMode,
         inviteCode: String = String(UUID().uuidString.prefix(6)),
+        inviteSecret: String? = nil,
         permissions: SharingPermission = .defaultChildSafe,
         createdAt: Date = Date(),
         registeredAt: Date? = nil,
@@ -867,8 +875,12 @@ struct ChildLink: Codable, Hashable, Identifiable {
         self.id = id
         self.childNickname = childNickname
         self.schoolName = schoolName
+        self.officeCode = officeCode
+        self.schoolCode = schoolCode
+        self.regionName = regionName
         self.mode = mode
         self.inviteCode = inviteCode
+        self.inviteSecret = inviteSecret
         self.permissions = permissions
         self.createdAt = createdAt
         self.registeredAt = registeredAt
@@ -877,6 +889,27 @@ struct ChildLink: Codable, Hashable, Identifiable {
 
     var isCloudRegistered: Bool {
         registeredAt != nil && registrationErrorMessage == nil
+    }
+
+    var isServerRegistered: Bool {
+        isCloudRegistered
+    }
+
+    var hasSchoolIdentifiers: Bool {
+        !officeCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !schoolCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var school: School? {
+        guard hasSchoolIdentifiers else { return nil }
+        return School(
+            name: schoolName,
+            officeCode: officeCode,
+            schoolCode: schoolCode,
+            region: regionName,
+            address: "",
+            schoolType: ""
+        )
     }
 
     var parentInviteShareMessage: String {

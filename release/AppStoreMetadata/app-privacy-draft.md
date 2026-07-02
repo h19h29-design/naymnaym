@@ -1,6 +1,6 @@
 # 냠냠레벨업 App Privacy 답변 초안
 
-이 문서는 App Store Connect의 App Privacy 입력을 위한 보수적 초안입니다. 최종 제출 전 앱 소유자가 실제 배포 빌드, CloudKit 설정, 개인정보 처리방침 URL과 함께 확인해야 합니다.
+이 문서는 App Store Connect의 App Privacy 입력을 위한 보수적 초안입니다. 최종 제출 전 앱 소유자가 실제 배포 빌드, Supabase 부모 연결 서버 설정, 개인정보 처리방침 URL과 함께 확인해야 합니다.
 
 ## 추적
 
@@ -26,7 +26,7 @@
 
 ## App Store Connect 입력 매트릭스
 
-현재 build 15 코드와 Privacy Manifest 기준의 보수적 입력안입니다. 앱 소유자는 제출 직전 실제 CloudKit 설정과 화면 문구를 함께 확인해야 합니다.
+현재 코드와 Privacy Manifest 기준의 보수적 입력안입니다. 앱 소유자는 제출 직전 실제 부모 연결 서버 설정과 화면 문구를 함께 확인해야 합니다.
 
 | App Privacy 항목 | 현재 입력안 | 목적 | 사용자 연결 | 추적 | 근거 |
 | --- | --- | --- | --- | --- | --- |
@@ -35,8 +35,8 @@
 | Contacts | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 연락처 권한 사용 없음 |
 | Purchases | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 인앱결제/StoreKit 사용 없음 |
 | Usage Data | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 자체 분석 SDK 없음 |
-| Other User Content | 수집함 | App Functionality | 예 | 아니요 | 먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 CloudKit 저장 가능 |
-| Photos or Videos | 수집함 | App Functionality | 예 | 아니요 | 사용자가 선택한 사진만 사진 공유 토글이 켜진 경우 CloudKit 저장 가능 |
+| Other User Content | 수집함 | App Functionality | 예 | 아니요 | 먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 서버 저장 가능 |
+| Photos or Videos | 수집함 | App Functionality | 예 | 아니요 | 급식판 사진 기능과 공유 시트가 있으므로 보수적으로 수집함으로 입력 |
 | Health and Fitness | 수집함 | App Functionality | 예 | 아니요 | 알레르기 선택값과 식사 기록이 건강 관련 정보로 해석될 수 있음 |
 | User ID | 수집함 | App Functionality | 예 | 아니요 | 부모 연결용 `childLinkId`와 초대 코드 사용 |
 
@@ -44,9 +44,9 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 
 ### User Content
 
-- 대상: 먹은 정도 기록, 한 입 도전 기록, 어려운 이유, 공유 선택한 급식판 사진
+- 대상: 먹은 정도 기록, 한 입 도전 기록, 어려운 이유
 - 기본 저장: 기기 내부
-- 공유 가능: 부모 공유를 켠 기록과 사진만 CloudKit에 저장될 수 있음
+- 공유 가능: 부모 공유를 켠 기록만 서버에 저장될 수 있음
 - 목적: App Functionality
 - Linked to User: 부모 연결을 사용하는 경우 `childLinkId`와 연결될 수 있음
 - Tracking: 아니요
@@ -55,7 +55,7 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 
 - 대상: 사용자가 선택하거나 촬영한 급식판 사진
 - 기본 저장: 기기 내부
-- 공유 가능: 사진 공유 토글을 켠 경우만 부모 모드 표시를 위해 CloudKit에 저장될 수 있음
+- 공유 가능: 서버 부모 동기화에는 사진 원본을 업로드하지 않음. 사용자가 iOS 공유 시트나 사진 저장 기능을 직접 사용할 수 있으므로 보수적으로 확인
 - 목적: App Functionality
 - Linked to User: 부모 공유를 사용하는 경우 연결될 수 있음
 - Tracking: 아니요
@@ -92,8 +92,8 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 
 ## 최종 제출 전 확인
 
-- CloudKit public database에 실제 저장되는 필드 확인
-- 부모 공유를 끈 상태에서 CloudKit 전송이 없는지 확인
-- 사진은 공유 토글이 켜진 경우만 전송되는지 확인
+- Supabase `parent-sync` Edge Function과 `nyam_parent_*` 테이블에 실제 저장되는 필드 확인
+- 부모 공유를 끈 상태에서 서버 전송이 없는지 확인
+- 사진 원본이 서버 부모 동기화로 전송되지 않는지 확인
 - 개인정보 처리방침 URL 공개 확인: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - App Privacy 답변과 `PrivacyInfo.xcprivacy`가 서로 충돌하지 않는지 확인

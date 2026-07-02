@@ -184,6 +184,356 @@ struct CloudChildShareSnapshot {
     var photoPayloads: [CloudSharedPhotoPayload]
 }
 
+enum ParentSyncServiceError: LocalizedError, Equatable {
+    case notConfigured
+    case inviteCodeNotFound
+    case missingUploadSecret
+    case invalidResponse
+    case server(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            return "부모 연결 서버 주소가 설정되지 않았어요."
+        case .inviteCodeNotFound:
+            return "초대 코드를 찾지 못했어요."
+        case .missingUploadSecret:
+            return "아이 기기 업로드 키가 없어 공유 기록을 저장하지 못했어요."
+        case .invalidResponse:
+            return "부모 연결 서버 응답을 읽지 못했어요."
+        case .server(let message):
+            return message
+        }
+    }
+}
+
+struct ServerParentLinkService {
+    var endpointURL: URL?
+    var session: URLSession
+    private let registerParentLinkHandler: ((ChildLink) async throws -> ChildLink)?
+    private let fetchParentLinkHandler: ((String) async throws -> ChildLink)?
+    private let fetchSharedSnapshotHandler: ((ChildLink) async throws -> CloudChildShareSnapshot)?
+    private let publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)?
+
+    init(
+        endpointURL: URL? = ServerParentLinkService.defaultEndpointURL,
+        session: URLSession = .shared,
+        registerParentLinkHandler: ((ChildLink) async throws -> ChildLink)? = nil,
+        fetchParentLinkHandler: ((String) async throws -> ChildLink)? = nil,
+        fetchSharedSnapshotHandler: ((ChildLink) async throws -> CloudChildShareSnapshot)? = nil,
+        publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)? = nil
+    ) {
+        self.endpointURL = endpointURL
+        self.session = session
+        self.registerParentLinkHandler = registerParentLinkHandler
+        self.fetchParentLinkHandler = fetchParentLinkHandler
+        self.fetchSharedSnapshotHandler = fetchSharedSnapshotHandler
+        self.publishSharedSnapshotHandler = publishSharedSnapshotHandler
+    }
+
+    static var defaultEndpointURL: URL? {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "PARENT_SYNC_API_BASE_URL") as? String
+        let trimmed = (configured ?? "https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/parent-sync")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("$(") else { return nil }
+        return URL(string: trimmed)
+    }
+
+    static func makeUploadSecret() -> String {
+        "\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+    }
+
+    func registerParentLink(_ childLink: ChildLink) async throws -> ChildLink {
+        if let registerParentLinkHandler {
+            return try await registerParentLinkHandler(childLink)
+        }
+        guard let inviteSecret = childLink.inviteSecret, !inviteSecret.isEmpty else {
+            throw ParentSyncServiceError.missingUploadSecret
+        }
+        let response: ParentSyncLinkResponse = try await post(
+            action: "registerInvite",
+            payload: ParentSyncRegisterInvitePayload(
+                link: ParentSyncChildLinkDTO(childLink),
+                inviteSecret: inviteSecret
+            )
+        )
+        return response.link.childLink(inviteSecret: childLink.inviteSecret)
+    }
+
+    func fetchParentLink(inviteCode: String) async throws -> ChildLink {
+        if let fetchParentLinkHandler {
+            return try await fetchParentLinkHandler(inviteCode)
+        }
+        let response: ParentSyncLinkAndSnapshotResponse = try await post(
+            action: "connectInvite",
+            payload: ParentSyncInviteCodePayload(inviteCode: inviteCode)
+        )
+        return response.link.childLink(inviteSecret: nil)
+    }
+
+    func fetchSharedSnapshot(childLink: ChildLink) async throws -> CloudChildShareSnapshot {
+        if let fetchSharedSnapshotHandler {
+            return try await fetchSharedSnapshotHandler(childLink)
+        }
+        let response: ParentSyncSnapshotResponse = try await post(
+            action: "fetchSnapshot",
+            payload: ParentSyncSnapshotFetchPayload(
+                childLinkId: childLink.id.uuidString,
+                inviteCode: childLink.inviteCode
+            )
+        )
+        return response.snapshot.cloudSnapshot(childLink: childLink)
+    }
+
+    func publishSharedSnapshot(
+        childLink: ChildLink,
+        mealRecords: [MealRecord],
+        challengeRecords: [ChallengeRecord]
+    ) async throws {
+        if let publishSharedSnapshotHandler {
+            try await publishSharedSnapshotHandler(childLink, mealRecords, challengeRecords)
+            return
+        }
+        guard let inviteSecret = childLink.inviteSecret, !inviteSecret.isEmpty else {
+            throw ParentSyncServiceError.missingUploadSecret
+        }
+        let _: ParentSyncEmptyResponse = try await post(
+            action: "publishSnapshot",
+            payload: ParentSyncPublishSnapshotPayload(
+                childLinkId: childLink.id.uuidString,
+                inviteSecret: inviteSecret,
+                mealRecords: mealRecords.map { ParentSyncMealRecordDTO($0, childLink: childLink) },
+                challengeRecords: challengeRecords.map { ParentSyncChallengeRecordDTO($0, childLink: childLink) }
+            )
+        )
+    }
+
+    private func post<Response: Decodable, Payload: Encodable>(
+        action: String,
+        payload: Payload
+    ) async throws -> Response {
+        guard let endpointURL else {
+            throw ParentSyncServiceError.notConfigured
+        }
+
+        var request = URLRequest(url: endpointURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(ParentSyncActionRequest(action: action, payload: payload))
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ParentSyncServiceError.invalidResponse
+        }
+
+        let envelope = try decoder.decode(ParentSyncResponseEnvelope<Response>.self, from: data)
+        if http.statusCode == 404 || envelope.code == "invite_code_not_found" {
+            throw ParentSyncServiceError.inviteCodeNotFound
+        }
+        guard (200..<300).contains(http.statusCode), envelope.ok, let value = envelope.data else {
+            throw ParentSyncServiceError.server(envelope.error ?? "부모 연결 서버 요청에 실패했어요.")
+        }
+        return value
+    }
+
+    private var encoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    private var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
+private struct ParentSyncActionRequest<Payload: Encodable>: Encodable {
+    var action: String
+    var payload: Payload
+}
+
+private struct ParentSyncResponseEnvelope<Response: Decodable>: Decodable {
+    var ok: Bool
+    var code: String?
+    var error: String?
+    var data: Response?
+}
+
+private struct ParentSyncEmptyResponse: Codable {}
+
+private struct ParentSyncRegisterInvitePayload: Encodable {
+    var link: ParentSyncChildLinkDTO
+    var inviteSecret: String
+}
+
+private struct ParentSyncInviteCodePayload: Encodable {
+    var inviteCode: String
+}
+
+private struct ParentSyncSnapshotFetchPayload: Encodable {
+    var childLinkId: String
+    var inviteCode: String
+}
+
+private struct ParentSyncPublishSnapshotPayload: Encodable {
+    var childLinkId: String
+    var inviteSecret: String
+    var mealRecords: [ParentSyncMealRecordDTO]
+    var challengeRecords: [ParentSyncChallengeRecordDTO]
+}
+
+private struct ParentSyncLinkResponse: Decodable {
+    var link: ParentSyncChildLinkDTO
+}
+
+private struct ParentSyncLinkAndSnapshotResponse: Decodable {
+    var link: ParentSyncChildLinkDTO
+    var snapshot: ParentSyncSnapshotDTO?
+}
+
+private struct ParentSyncSnapshotResponse: Decodable {
+    var snapshot: ParentSyncSnapshotDTO
+}
+
+private struct ParentSyncChildLinkDTO: Codable {
+    var id: String
+    var childNickname: String
+    var schoolName: String
+    var officeCode: String
+    var schoolCode: String
+    var regionName: String
+    var mode: String
+    var inviteCode: String
+    var permissions: SharingPermission
+    var createdAt: Date
+    var registeredAt: Date?
+
+    init(_ childLink: ChildLink) {
+        id = childLink.id.uuidString
+        childNickname = childLink.childNickname
+        schoolName = childLink.schoolName
+        officeCode = childLink.officeCode
+        schoolCode = childLink.schoolCode
+        regionName = childLink.regionName
+        mode = childLink.mode.rawValue
+        inviteCode = childLink.inviteCode
+        permissions = childLink.permissions
+        createdAt = childLink.createdAt
+        registeredAt = childLink.registeredAt
+    }
+
+    func childLink(inviteSecret: String?) -> ChildLink {
+        ChildLink(
+            id: UUID(uuidString: id) ?? UUID(),
+            childNickname: childNickname,
+            schoolName: schoolName,
+            officeCode: officeCode,
+            schoolCode: schoolCode,
+            regionName: regionName,
+            mode: UserMode(rawValue: mode) ?? .elementary,
+            inviteCode: inviteCode,
+            inviteSecret: inviteSecret,
+            permissions: permissions,
+            createdAt: createdAt,
+            registeredAt: registeredAt ?? Date()
+        )
+    }
+}
+
+private struct ParentSyncSnapshotDTO: Codable {
+    var mealRecords: [ParentSyncMealRecordDTO]
+    var challengeRecords: [ParentSyncChallengeRecordDTO]
+
+    init(mealRecords: [ParentSyncMealRecordDTO] = [], challengeRecords: [ParentSyncChallengeRecordDTO] = []) {
+        self.mealRecords = mealRecords
+        self.challengeRecords = challengeRecords
+    }
+
+    func cloudSnapshot(childLink: ChildLink) -> CloudChildShareSnapshot {
+        CloudChildShareSnapshot(
+            mealRecords: mealRecords.map { $0.mealRecord(childLinkId: childLink.id) },
+            challengeRecords: challengeRecords.map { $0.challengeRecord(childLinkId: childLink.id) },
+            photoPayloads: []
+        )
+    }
+}
+
+private struct ParentSyncMealRecordDTO: Codable {
+    var id: String
+    var date: String
+    var menuName: String
+    var eatingStatus: String
+    var difficultyReasons: [String]
+    var allergyCodes: [Int]
+    var photoIds: [String]
+    var createdAt: Date
+
+    init(_ record: MealRecord, childLink: ChildLink) {
+        id = record.id.uuidString
+        date = record.date
+        menuName = record.menuName
+        eatingStatus = record.eatingStatus.rawValue
+        difficultyReasons = record.difficultyReasons.map(\.rawValue)
+        allergyCodes = childLink.permissions.shareAllergyWarnings ? record.allergyCodes : []
+        photoIds = childLink.permissions.sharePhotos ? record.photoIds : []
+        createdAt = record.createdAt
+    }
+
+    func mealRecord(childLinkId: UUID) -> MealRecord {
+        MealRecord(
+            id: UUID(uuidString: id) ?? UUID(),
+            date: date,
+            menuName: menuName,
+            eatingStatus: EatingStatus(rawValue: eatingStatus) ?? .difficultToday,
+            difficultyReasons: difficultyReasons.compactMap(DifficultyReason.init(rawValue:)),
+            allergyCodes: allergyCodes,
+            photoIds: photoIds,
+            parentShareEnabled: true,
+            createdAt: createdAt,
+            childLinkId: childLinkId
+        )
+    }
+}
+
+private struct ParentSyncChallengeRecordDTO: Codable {
+    var id: String
+    var date: String
+    var menuName: String
+    var action: String
+    var gainedExp: Int
+    var badgeName: String?
+    var nutrients: [String]
+    var createdAt: Date
+
+    init(_ record: ChallengeRecord, childLink: ChildLink) {
+        id = record.id.uuidString
+        date = record.date
+        menuName = record.menuName
+        action = record.action.rawValue
+        gainedExp = record.gainedExp
+        badgeName = record.badgeName
+        nutrients = childLink.permissions.shareChallengeRecords ? record.nutrients : []
+        createdAt = record.createdAt
+    }
+
+    func challengeRecord(childLinkId: UUID) -> ChallengeRecord {
+        ChallengeRecord(
+            id: UUID(uuidString: id) ?? UUID(),
+            date: date,
+            menuName: menuName,
+            action: ChallengeRecord.Action(rawValue: action) ?? .skipped,
+            gainedExp: gainedExp,
+            badgeName: badgeName,
+            nutrients: nutrients,
+            createdAt: createdAt,
+            childLinkId: childLinkId,
+            parentShareEnabled: true
+        )
+    }
+}
+
 struct CloudKitParentLinkService {
     static let parentLinkRecordType = "ParentLink"
     static let sharedMealRecordType = "SharedMealRecord"
@@ -282,6 +632,9 @@ struct CloudKitParentLinkService {
         ChildLink(
             childNickname: profile.nickname,
             schoolName: profile.schoolName,
+            officeCode: profile.officeCode,
+            schoolCode: profile.schoolCode,
+            regionName: profile.regionName,
             mode: profile.effectiveMode,
             inviteCode: makeInviteCode(nickname: profile.nickname),
             permissions: permissions

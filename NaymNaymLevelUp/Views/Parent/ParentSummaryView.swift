@@ -92,7 +92,7 @@ struct ParentSummaryView: View {
 
     private var inviteStatusBadge: some View {
         let isReady = appState.childShareLink?.isCloudRegistered == true
-        return Label(isReady ? "등록 완료" : "등록 필요", systemImage: isReady ? "checkmark.shield.fill" : "icloud.and.arrow.up")
+        return Label(isReady ? "등록 완료" : "등록 필요", systemImage: isReady ? "checkmark.shield.fill" : "network")
             .font(AppTypography.caption.weight(.bold))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -121,7 +121,7 @@ struct ParentSummaryView: View {
                 helperRow("먹은 정도와 한 입 도전 기록")
                 helperRow("알레르기 주의 표시")
                 helperRow("부모 공유를 켠 사진만")
-                Text("학교 상세 정보, 개인 알레르기 메모, 전체 식사 기록은 공유 카드에 넣지 않아요.")
+                Text("반/번호, 개인 알레르기 메모, 전체 식사 기록은 공유 카드에 넣지 않아요.")
                     .font(AppTypography.caption)
                     .foregroundStyle(AppColors.graySecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -217,6 +217,7 @@ struct ParentSummaryView: View {
                             Text(child.schoolName)
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
+                            parentMealPreview(for: child)
                             HStack(spacing: 8) {
                                 summaryPill(title: "오늘 도전", value: "\(child.todayChallengeCount)회", color: AppColors.successGreen)
                                 summaryPill(title: "주의 메뉴", value: "\(child.allergyWarningMenus.count)개", color: AppColors.orange)
@@ -244,6 +245,31 @@ struct ParentSummaryView: View {
                 }
             }
         }
+    }
+
+    private func parentMealPreview(for child: ChildSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("오늘 급식", systemImage: "fork.knife.circle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppColors.successGreen)
+            if let meal = appState.parentChildMeals[child.id] {
+                Text(meal.representativeMenu.isEmpty ? "메뉴 이름을 읽지 못했어요." : meal.representativeMenu)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.textDark)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("NEIS 공공데이터로 조회한 실제 급식 메뉴예요.")
+                    .font(.caption2)
+                    .foregroundStyle(AppColors.graySecondary)
+            } else {
+                Text(appState.parentChildMealMessages[child.id] ?? "급식 메뉴를 불러오는 중이에요.")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.graySecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(AppColors.successGreen.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var praiseCards: some View {
@@ -401,7 +427,7 @@ private struct ParentInviteCodeSheet: View {
                     Label("먹은 정도, 한 입 도전, 알레르기 주의, 선택 사진만 연결 대상입니다.", systemImage: "lock.shield")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
-                    Label("코드가 아이 기기에서 등록 완료된 상태여야 연결됩니다.", systemImage: "checkmark.icloud")
+                    Label("코드가 아이 기기에서 서버 등록 완료된 상태여야 연결됩니다.", systemImage: "checkmark.shield")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
                     if let message {

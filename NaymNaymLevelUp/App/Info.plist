@@ -30,6 +30,8 @@
 	<false/>
 	<key>NEIS_API_KEY</key>
 	<string>$(NEIS_API_KEY)</string>
+	<key>PARENT_SYNC_API_BASE_URL</key>
+	<string>$(PARENT_SYNC_API_BASE_URL)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>급식판 사진을 기록하려고 카메라를 사용합니다. 친구 얼굴, 이름표, 반/번호가 나오지 않게 촬영해 주세요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

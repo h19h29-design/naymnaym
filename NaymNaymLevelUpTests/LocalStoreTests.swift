@@ -133,7 +133,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(appState.monthlyMeals.isEmpty)
         XCTAssertNil(appState.todayMeal)
         XCTAssertEqual(appState.mealStatus, .noMeal)
-        XCTAssertEqual(appState.mealMessage, "부모 모드는 아이 초대 코드를 연결해 기록을 확인해요.")
+        XCTAssertEqual(appState.mealMessage, "부모 모드는 아이 초대 코드를 연결해 기록과 급식 메뉴를 확인해요.")
     }
 
     @MainActor
@@ -187,7 +187,7 @@ final class LocalStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testActivateParentSharingMarksInviteReadyOnlyAfterCloudSave() async {
+    func testActivateParentSharingMarksInviteReadyOnlyAfterServerSave() async {
         let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
         let appState = AppState(
             profileStore: UserProfileStore(defaults: defaults),
@@ -199,9 +199,11 @@ final class LocalStoreTests: XCTestCase {
             childShareLinkStore: childShareLinkStore,
             mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
             sampleProvider: SampleDataProvider(),
-            parentLinkService: CloudKitParentLinkService(
-                saveParentLinkHandler: { childLink in
-                    CKRecord.ID(recordName: "parentlink-\(childLink.id.uuidString)")
+            serverParentLinkService: ServerParentLinkService(
+                registerParentLinkHandler: { childLink in
+                    var registered = childLink
+                    registered.registeredAt = Date()
+                    return registered
                 }
             ),
             automaticallyPublishesParentSharedData: false
@@ -217,7 +219,10 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(appState.childShareLink?.isCloudRegistered == true)
         XCTAssertNil(appState.childShareLink?.registrationErrorMessage)
         XCTAssertTrue(childShareLinkStore.load()?.isCloudRegistered == true)
-        XCTAssertEqual(appState.parentSyncMessage, "초대 코드가 등록됐어요. 이제 부모에게 보낼 수 있어요.")
+        XCTAssertEqual(appState.childShareLink?.officeCode, "B10")
+        XCTAssertEqual(appState.childShareLink?.schoolCode, "7010111")
+        XCTAssertNotNil(appState.childShareLink?.inviteSecret)
+        XCTAssertEqual(appState.parentSyncMessage, "초대 코드가 서버에 등록됐어요. 부모에게 보내면 바로 연결할 수 있어요.")
         XCTAssertNil(appState.parentSyncError)
     }
 
@@ -234,9 +239,9 @@ final class LocalStoreTests: XCTestCase {
             childShareLinkStore: childShareLinkStore,
             mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
             sampleProvider: SampleDataProvider(),
-            parentLinkService: CloudKitParentLinkService(
-                saveParentLinkHandler: { _ in
-                    throw CloudKitParentLinkError.emptyResponse
+            serverParentLinkService: ServerParentLinkService(
+                registerParentLinkHandler: { _ in
+                    throw ParentSyncServiceError.invalidResponse
                 }
             ),
             automaticallyPublishesParentSharedData: false

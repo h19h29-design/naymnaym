@@ -101,8 +101,8 @@
 - Analytics SDK: 없음
 - Contact Info: 수집 안 함
 - Location: 수집 안 함
-- User Content: 보수 입력 기준 수집함. 사진/기록은 기본 로컬 저장, 부모 공유 선택 시 CloudKit 전송 가능
-- Photos or Videos: 보수 입력 기준 수집함. 사진 공유 토글이 켜진 경우만 CloudKit 전송 가능
+- User Content: 보수 입력 기준 수집함. 기록은 기본 로컬 저장, 부모 공유 선택 시 서버 전송 가능
+- Photos or Videos: 보수 입력 기준 수집함. 급식판 사진 기능과 iOS 공유 시트가 있으므로 보수적으로 확인
 - Health & Fitness: 보수 입력 기준 수집함. 알레르기 선택값과 식사 기록이 건강 관련 정보로 해석될 수 있음
 - Identifiers: 보수 입력 기준 수집함. 부모 연결용 초대 코드와 `childLinkId`가 앱 기능 제공 목적으로 사용됨
 - Diagnostics: 앱 자체 진단 SDK 없음. Apple 기본 진단은 App Store Connect 정책에 따름

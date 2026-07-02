@@ -1,3 +1,3 @@
 NEIS_API_KEY =
+PARENT_SYNC_API_BASE_URL = https:/$()/rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/parent-sync
 #include? "../../Config.xcconfig"
-

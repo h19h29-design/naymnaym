@@ -23,6 +23,8 @@ final class AppState: ObservableObject {
     @Published var parentSyncMessage: String?
     @Published var parentSyncError: String?
     @Published var isParentSyncing = false
+    @Published var parentChildMeals: [UUID: MealDay] = [:]
+    @Published var parentChildMealMessages: [UUID: String] = [:]
 
     private let profileStore: UserProfileStore
     private let progressStore: ProgressStore
@@ -35,6 +37,7 @@ final class AppState: ObservableObject {
     private let mealService: MealService
     private let sampleProvider: SampleDataProvider
     private let parentLinkService: CloudKitParentLinkService
+    private let serverParentLinkService: ServerParentLinkService
     private let automaticallyPublishesParentSharedData: Bool
 
     init(
@@ -49,6 +52,7 @@ final class AppState: ObservableObject {
         mealService: MealService = MealService(),
         sampleProvider: SampleDataProvider = SampleDataProvider(),
         parentLinkService: CloudKitParentLinkService = CloudKitParentLinkService(),
+        serverParentLinkService: ServerParentLinkService = ServerParentLinkService(),
         automaticallyPublishesParentSharedData: Bool = true
     ) {
         self.profileStore = profileStore
@@ -62,6 +66,7 @@ final class AppState: ObservableObject {
         self.mealService = mealService
         self.sampleProvider = sampleProvider
         self.parentLinkService = parentLinkService
+        self.serverParentLinkService = serverParentLinkService
         self.automaticallyPublishesParentSharedData = automaticallyPublishesParentSharedData
         profile = profileStore.load()
         progress = progressStore.load()
@@ -144,6 +149,17 @@ final class AppState: ObservableObject {
         profile.isDemoMode = false
         self.profile = profile
         profileStore.save(profile)
+
+        if var link = childShareLink {
+            link.schoolName = school.name
+            link.officeCode = school.officeCode
+            link.schoolCode = school.schoolCode
+            link.regionName = school.region
+            link.registeredAt = nil
+            link.registrationErrorMessage = "학교를 바꿔서 보호자 초대 코드를 다시 등록해야 해요."
+            childShareLink = link
+            childShareLinkStore.save(link)
+        }
     }
 
     func updateUserMode(_ mode: UserMode) {
@@ -193,7 +209,10 @@ final class AppState: ObservableObject {
             todayMeal = nil
             monthlyMeals = []
             mealStatus = .noMeal
-            mealMessage = "부모 모드는 아이 초대 코드를 연결해 기록을 확인해요."
+            mealMessage = parentProfile.childLinks.isEmpty
+                ? "부모 모드는 아이 초대 코드를 연결해 기록과 급식 메뉴를 확인해요."
+                : "부모 모드에서 연결된 아이의 오늘 급식을 불러왔어요."
+            await loadParentChildMeals(for: date)
             return
         }
 
@@ -436,6 +455,8 @@ final class AppState: ObservableObject {
         mealPhotos = []
         parentProfile = ParentProfile()
         childShareLink = nil
+        parentChildMeals = [:]
+        parentChildMealMessages = [:]
         mealMessage = nil
         mealStatus = .noMeal
         parentSyncMessage = nil
@@ -490,29 +511,35 @@ final class AppState: ObservableObject {
         var link = childShareLink ?? parentLinkService.makeChildLink(profile: profile, permissions: permissions)
         link.childNickname = profile.nickname
         link.schoolName = profile.schoolName
+        link.officeCode = profile.officeCode
+        link.schoolCode = profile.schoolCode
+        link.regionName = profile.regionName
         link.mode = profile.effectiveMode
         link.permissions = permissions
+        if link.inviteSecret?.isEmpty ?? true {
+            link.inviteSecret = ServerParentLinkService.makeUploadSecret()
+        }
         link.registeredAt = nil
         link.registrationErrorMessage = nil
         childShareLink = link
         childShareLinkStore.save(link)
 
         do {
-            _ = try await parentLinkService.saveParentLink(link)
-            link.registeredAt = Date()
+            let registeredLink = try await serverParentLinkService.registerParentLink(link)
+            link.registeredAt = registeredLink.registeredAt ?? Date()
             link.registrationErrorMessage = nil
             childShareLink = link
             childShareLinkStore.save(link)
-            parentSyncMessage = "초대 코드가 등록됐어요. 이제 부모에게 보낼 수 있어요."
+            parentSyncMessage = "초대 코드가 서버에 등록됐어요. 부모에게 보내면 바로 연결할 수 있어요."
             parentSyncError = nil
             await publishChildSharedData()
             if parentSyncError == nil {
-                parentSyncMessage = "초대 코드가 등록됐어요. 이제 부모에게 보낼 수 있어요."
+                parentSyncMessage = "초대 코드가 서버에 등록됐어요. 부모에게 보내면 바로 연결할 수 있어요."
             }
         } catch {
-            let message = cloudKitMessage(
+            let message = parentServerMessage(
                 for: error,
-                fallback: "초대 코드를 서버에 등록하지 못했어요. iCloud 로그인과 네트워크를 확인한 뒤 다시 등록해 주세요."
+                fallback: "초대 코드를 서버에 등록하지 못했어요. 네트워크 상태를 확인한 뒤 다시 등록해 주세요."
             )
             link.registeredAt = nil
             link.registrationErrorMessage = message
@@ -534,7 +561,7 @@ final class AppState: ObservableObject {
         defer { isParentSyncing = false }
 
         do {
-            let registeredLink = try await parentLinkService.fetchParentLink(inviteCode: link.inviteCode)
+            let registeredLink = try await serverParentLinkService.fetchParentLink(inviteCode: link.inviteCode)
             guard registeredLink.id == link.id else {
                 let message = "같은 코드로 다른 연결 정보가 조회됐어요. 초대 코드를 다시 생성해 주세요."
                 link.registeredAt = nil
@@ -553,7 +580,7 @@ final class AppState: ObservableObject {
             parentSyncMessage = "초대 코드가 서버에서 확인됐어요. 부모에게 보내도 됩니다."
             parentSyncError = nil
         } catch {
-            let message = cloudKitMessage(
+            let message = parentServerMessage(
                 for: error,
                 fallback: "초대 코드 등록 상태를 확인하지 못했어요. 다시 등록한 뒤 확인해 주세요."
             )
@@ -583,19 +610,20 @@ final class AppState: ObservableObject {
         defer { isParentSyncing = false }
 
         do {
-            let child = try await parentLinkService.fetchParentLink(inviteCode: normalizedCode)
+            let child = try await serverParentLinkService.fetchParentLink(inviteCode: normalizedCode)
             upsertChildLink(child)
             parentSyncMessage = "\(child.childNickname) 연결을 완료했어요."
             parentSyncError = nil
             await refreshParentSharedData()
+            await loadParentChildMeals()
             return true
-        } catch CloudKitParentLinkError.inviteCodeNotFound {
+        } catch ParentSyncServiceError.inviteCodeNotFound {
             let message = "초대 코드를 찾지 못했어요. 아이 기기에서 코드를 다시 확인해 주세요."
             parentSyncMessage = message
             parentSyncError = message
             return false
         } catch {
-            let message = cloudKitMessage(
+            let message = parentServerMessage(
                 for: error,
                 fallback: "아이 연결 실패: \(error.localizedDescription)"
             )
@@ -614,11 +642,11 @@ final class AppState: ObservableObject {
         var didFail = false
         for child in parentProfile.childLinks {
             do {
-                let snapshot = try await parentLinkService.fetchSharedSnapshot(childLink: child)
+                let snapshot = try await serverParentLinkService.fetchSharedSnapshot(childLink: child)
                 merge(snapshot: snapshot, for: child)
             } catch {
                 didFail = true
-                let message = cloudKitMessage(
+                let message = parentServerMessage(
                     for: error,
                     fallback: "\(child.childNickname) 기록 동기화 실패: \(error.localizedDescription)"
                 )
@@ -631,6 +659,35 @@ final class AppState: ObservableObject {
             parentSyncMessage = "아이 기록을 최신 상태로 불러왔어요."
             parentSyncError = nil
         }
+        await loadParentChildMeals()
+    }
+
+    func loadParentChildMeals(for date: Date = Date()) async {
+        guard !parentProfile.childLinks.isEmpty else {
+            parentChildMeals = [:]
+            parentChildMealMessages = [:]
+            return
+        }
+
+        var nextMeals: [UUID: MealDay] = [:]
+        var nextMessages: [UUID: String] = [:]
+
+        for child in parentProfile.childLinks {
+            guard let school = child.school else {
+                nextMessages[child.id] = "아이 학교 코드가 없어 급식 메뉴를 불러올 수 없어요. 초대 코드를 다시 연결해 주세요."
+                continue
+            }
+
+            let result = await mealService.fetchDailyMeal(school: school, date: date, allowsDemo: false)
+            if let meal = result.meals.first, result.status == .live {
+                nextMeals[child.id] = meal
+            } else {
+                nextMessages[child.id] = result.message ?? "오늘 급식 정보가 아직 없어요."
+            }
+        }
+
+        parentChildMeals = nextMeals
+        parentChildMealMessages = nextMessages
     }
 
     func publishChildSharedData() async {
@@ -649,23 +706,19 @@ final class AppState: ObservableObject {
 
         let sharedMeals = mealRecords.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
         let sharedChallenges = records.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
-        let sharedPhotos = mealPhotos.filter { $0.isSharedWithParent && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
 
-        let cloudRecords =
-            sharedMeals.compactMap { parentLinkService.makeSharedMealRecord($0, childLink: childShareLink) } +
-            sharedChallenges.compactMap { parentLinkService.makeSharedChallengeRecord($0, childLink: childShareLink) } +
-            sharedPhotos.compactMap { photo in
-                parentLinkService.makeSharedPhotoRecord(photo, childLink: childShareLink, photoURL: localPhotoStore.url(for: photo))
-            }
-
-        guard !cloudRecords.isEmpty else { return }
+        guard !sharedMeals.isEmpty || !sharedChallenges.isEmpty else { return }
 
         do {
-            try await parentLinkService.saveSharedRecords(cloudRecords)
-            parentSyncMessage = "공유 기록을 iCloud에 저장했어요."
+            try await serverParentLinkService.publishSharedSnapshot(
+                childLink: childShareLink,
+                mealRecords: sharedMeals,
+                challengeRecords: sharedChallenges
+            )
+            parentSyncMessage = "공유 기록을 서버에 저장했어요."
             parentSyncError = nil
         } catch {
-            let message = cloudKitMessage(
+            let message = parentServerMessage(
                 for: error,
                 fallback: "공유 기록 저장 실패: \(error.localizedDescription)"
             )
@@ -716,7 +769,7 @@ final class AppState: ObservableObject {
             hasChildShareLink: childShareLink != nil,
             inviteCode: childShareLink?.inviteCode ?? "생성되지 않음",
             parentChildLinkCount: parentProfile.childLinks.count,
-            iCloudCapabilityMessage: "iCloud.com.h19h29.naymnaymlevelup CloudKit public database 사용",
+            iCloudCapabilityMessage: "Supabase Edge Function parent-sync 서버 사용",
             lastSyncMessage: parentSyncMessage ?? "아직 동기화 기록이 없어요.",
             lastSyncError: parentSyncError ?? "최근 오류 없음",
             permissions: childShareLink?.permissions ?? .defaultChildSafe,
@@ -760,6 +813,19 @@ final class AppState: ObservableObject {
                 weeklyChallengeRecords: Array(weeklyChallengeRecords.prefix(12))
             )
         }
+    }
+
+    private func parentServerMessage(for error: Error, fallback: String) -> String {
+        if let parentSyncError = error as? ParentSyncServiceError {
+            return parentSyncError.localizedDescription
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return "부모 연결 서버에 접속하지 못했어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
+        }
+
+        return fallback
     }
 
     private func cloudKitMessage(for error: Error, fallback: String) -> String {

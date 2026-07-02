@@ -38,35 +38,32 @@
 - 인앱결제 없음
 - 별명, 학교, 알레르기, 먹은 정도, 사진 메타데이터는 기본적으로 기기 내부에 저장
 - 급식판 사진은 기본적으로 기기 내부 저장
-- 부모 공유를 켠 기록과 사진만 부모 화면에서 다룸
+- 부모 공유를 켠 기록만 서버에 동기화하며, 사진은 기본적으로 기기 내부에 저장
 - SNS 공유 카드에는 학교 상세 정보, 아이 이름, 개인 알레르기 정보, 부모 리포트 전체를 넣지 않음
 - 공개 피드, 친구 공유, 교사용 감시 기능 없음
 
-## CloudKit 부모 연동 구조
-- 자체 서버 없이 iCloud/CloudKit 기반 부모-자녀 연결을 사용합니다.
-- 아이폰은 설정 > 보호자 연결에서 초대 코드를 만들고 `ParentLink`를 public CloudKit database에 등록합니다.
-- 부모 모드는 아이 추가 화면에서 초대 코드를 조회해 여러 아이를 연결하고, 아이별 공유 기록을 따로 보여줍니다.
-- 공유 대상은 먹은 정도, 한 입 도전 기록, 알레르기 주의, 사용자가 공유를 켠 사진으로 제한합니다.
-- 공유 기록은 `SharedMealRecord`, `SharedChallengeRecord`, `SharedMealPhoto` record로 저장되며, 사진은 사용자가 부모 공유를 켠 경우에만 CKAsset으로 올라갑니다.
+## 서버 기반 부모 연동 구조
+- Supabase Edge Function `parent-sync`와 RLS가 켜진 서버 테이블로 부모-자녀 연결을 사용합니다.
+- 아이폰은 설정 > 보호자 연결에서 초대 코드를 만들고 서버에 등록합니다.
+- 부모 모드는 아이 추가 화면에서 초대 코드를 조회해 여러 아이를 연결하고, 아이별 공유 기록과 오늘 급식 메뉴를 따로 보여줍니다.
+- 부모 급식 메뉴는 연결된 아이의 `officeCode`와 `schoolCode`로 NEIS 급식식단정보 API를 다시 조회합니다.
+- 공유 대상은 먹은 정도, 한 입 도전 기록, 알레르기 주의로 제한합니다. 알레르기 주의 정보는 공유 권한이 꺼져 있으면 서버 응답에서 제외됩니다.
+- 아이 기기 업로드는 공유 메시지에 포함되지 않는 `inviteSecret`으로만 허용하고, 서버에는 해시만 저장합니다.
+- 서버 테이블은 `nyam_parent_links`, `nyam_parent_meal_records`, `nyam_parent_challenge_records`입니다. 공개 Data API 접근은 열지 않고 Edge Function 내부 service role만 사용합니다.
 - 초대 코드는 `NYAM-XXXX-XXXX-XXXX` 형식으로 표시합니다. 입력 시 공백과 하이픈은 정리하고 대문자로 맞춥니다.
 - 헷갈리는 문자 `O`, `0`, `I`, `1`은 초대 코드에 사용하지 않습니다. 해당 문자가 들어간 코드는 사용자에게 경고하고 연결하지 않습니다.
 - 아이 기기에서는 초대코드 생성 후 복사 버튼과 iOS 공유 시트를 사용할 수 있습니다.
-- 설정의 `보호자 연동 상태 확인` 화면에서 childShareLink 존재 여부, inviteCode, 부모 childLink 수, iCloud capability 안내, 마지막 동기화 메시지/오류, 공유 권한, 공유 record/photo 수를 확인할 수 있습니다.
+- 설정의 `보호자 연동 상태 확인` 화면에서 childShareLink 존재 여부, inviteCode, 부모 childLink 수, 서버 연결 안내, 마지막 동기화 메시지/오류, 공유 권한, 공유 record/photo 수를 확인할 수 있습니다.
 - 부모 모드에서 같은 초대 코드를 다시 입력하면 중복 연결 대신 `이미 연결된 아이` 안내를 표시합니다.
 - 연결된 childLink가 없으면 부모 요약에는 가짜 아이 카드나 로컬 미리보기를 표시하지 않습니다.
-- App Store 제출 전 iCloud capability, container, public database schema와 아래 queryable index 구성이 필요합니다. 최신순 정렬은 앱 내부에서 처리하므로 `createdAt` sortable index는 필요하지 않습니다.
-  - `ParentLink.inviteCode`
-  - `SharedMealRecord.childLinkId`
-  - `SharedChallengeRecord.childLinkId`
-  - `SharedMealPhoto.childLinkId`
-- 콘솔 설정값은 `release/CloudKit/schema-contract.json`에 구조화되어 있습니다.
-- 프로젝트에는 `NaymNaymLevelUp.entitlements`가 포함되어 있으며, Apple Developer 계정에서 `iCloud.com.h19h29.naymnaymlevelup` container를 생성/연결해야 합니다.
+- 서버 스키마 기준은 `supabase/migrations/20260702_parent_sync.sql`에 있습니다.
+- Edge Function 기준은 `supabase/functions/parent-sync/index.ts`에 있습니다.
 
 ### 부모 초대코드 실패 안내
 - 코드 없음: 아이 기기에서 초대 코드를 먼저 생성합니다.
 - 형식 오류: `NYAM-8K3P-7M2A-C9YD`처럼 4글자씩 3묶음인지 확인합니다.
 - 헷갈리는 문자 포함: `O`, `0`, `I`, `1`은 사용하지 않습니다.
-- iCloud 연결 실패: iCloud 로그인, 네트워크, 앱 iCloud 권한, CloudKit container/schema/index를 확인합니다.
+- 서버 연결 실패: 네트워크 상태와 `parent-sync` Edge Function 상태를 확인합니다.
 - 코드를 찾을 수 없음: 아이 기기에서 코드를 새로 확인하고 부모 기기에서 다시 입력합니다.
 - 이미 연결됨: 새로고침으로 공유 기록을 다시 불러옵니다.
 

@@ -1,2 +1,2 @@
 NEIS_API_KEY = YOUR_KEY_HERE
-
+PARENT_SYNC_API_BASE_URL = https:/$()/rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/parent-sync
