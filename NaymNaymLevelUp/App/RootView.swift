@@ -56,10 +56,31 @@ struct RootView: View {
             }
         }
         .tint(Color(hex: appState.currentTheme.primaryColorHex))
+        .onOpenURL { url in
+            Task {
+                await handleOpenURL(url)
+            }
+        }
     }
 
     private var shouldShowIntro: Bool {
         !introDismissed && lastIntroDate != todayKey
+    }
+
+    @MainActor
+    private func handleOpenURL(_ url: URL) async {
+        guard let route = await appState.handleDeepLink(url) else { return }
+        introDismissed = true
+        lastIntroDate = todayKey
+
+        switch route {
+        case .parentSummary:
+            selectedTab = .parent
+        case .childInvite:
+            selectedTab = .parent
+        case .onboarding:
+            break
+        }
     }
 }
 

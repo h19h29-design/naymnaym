@@ -257,12 +257,12 @@ struct ParentConnectionGuideView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             if let link = appState.childShareLink, isInviteReady {
                                 HStack(spacing: 10) {
-                                    SecondaryButton(didCopyInviteCode ? "복사 완료" : "복사", systemImage: didCopyInviteCode ? "checkmark" : "doc.on.doc") {
-                                        UIPasteboard.general.string = inviteCodeText
+                                    SecondaryButton(didCopyInviteCode ? "링크 복사 완료" : "링크 복사", systemImage: didCopyInviteCode ? "checkmark" : "link") {
+                                        UIPasteboard.general.string = AppInviteLink.parentConnectionURLString(inviteCode: link.inviteCode)
                                         didCopyInviteCode = true
                                     }
                                     ShareLink(item: link.parentInviteShareMessage) {
-                                        Label("공유", systemImage: "square.and.arrow.up")
+                                        Label("링크 공유", systemImage: "square.and.arrow.up")
                                             .font(.system(.subheadline, design: .rounded).weight(.semibold))
                                             .frame(maxWidth: .infinity)
                                             .frame(minHeight: 46)
@@ -276,7 +276,7 @@ struct ParentConnectionGuideView: View {
                                     }
                                 }
                             }
-                            Text("등록 완료 전에는 부모 기기에서 이 코드를 찾을 수 없어요. 등록이 끝난 뒤 공유하면 부모는 코드 붙여넣기만 하면 됩니다.")
+                            Text("등록 완료 전에는 부모 기기에서 이 코드를 찾을 수 없어요. 등록이 끝난 뒤 링크를 공유하면 부모 기기에서 앱이 열리고 자동 연결됩니다.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -319,10 +319,10 @@ struct ParentConnectionGuideView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("부모에게 이렇게 안내돼요")
                                 .font(AppTypography.headline)
-                            Label("부모 모드에서 아이 연결하기를 눌러요.", systemImage: "1.circle.fill")
+                            Label("부모가 초대 링크를 누르면 앱이 열려요.", systemImage: "1.circle.fill")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textDark)
-                            Label("공유받은 코드를 붙여넣고 연결해요.", systemImage: "2.circle.fill")
+                            Label("링크가 열리지 않으면 메시지의 코드를 붙여넣어요.", systemImage: "2.circle.fill")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textDark)
                             Label("먹은 정도, 한 입 도전, 알레르기 주의만 보여요.", systemImage: "lock.shield.fill")

@@ -281,8 +281,31 @@ final class LocalStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(service.normalizeInviteCode(child.parentInviteShareMessage), child.inviteCode)
+        XCTAssertTrue(child.parentInviteShareMessage.contains(AppInviteLink.parentConnectionURLString(inviteCode: child.inviteCode)))
+        XCTAssertTrue(service.isValidInviteCode(AppInviteLink.parentConnectionURLString(inviteCode: child.inviteCode)))
         XCTAssertFalse(child.parentInviteShareMessage.contains(child.schoolName))
         XCTAssertFalse(child.parentInviteShareMessage.contains("사진"))
+    }
+
+    func testAppInviteLinksResolveExpectedDestinations() {
+        let code = "NYAM-8K3P-7M2A-C9YD"
+
+        XCTAssertEqual(
+            AppInviteLink.destination(from: AppInviteLink.parentConnectionURL(inviteCode: code)),
+            .connectChild(inviteCode: code)
+        )
+        XCTAssertEqual(
+            AppInviteLink.destination(from: URL(string: "naymnaym://invite?code=\(code)")!),
+            .connectChild(inviteCode: code)
+        )
+        XCTAssertEqual(
+            AppInviteLink.destination(from: URL(string: "https://h19h29-design.github.io/naymnaym/invite?code=\(code)")!),
+            .connectChild(inviteCode: code)
+        )
+        XCTAssertEqual(
+            AppInviteLink.destination(from: AppInviteLink.childInviteRequestURL),
+            .openChildInvite
+        )
     }
 
     @MainActor

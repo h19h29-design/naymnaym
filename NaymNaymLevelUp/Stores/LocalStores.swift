@@ -608,15 +608,32 @@ struct CloudKitParentLinkService {
             .map(String.init)
             .joined()
 
-        guard compact.hasPrefix("NYAM") else {
+        guard let candidate = firstInviteCodeCandidate(in: compact) else {
             return uppercased
         }
+        return candidate
+    }
 
-        let body = String(compact.dropFirst(4))
-        guard body.count == 12 else {
-            return uppercased
+    private func firstInviteCodeCandidate(in compact: String) -> String? {
+        var searchStart = compact.startIndex
+        while searchStart < compact.endIndex,
+              let range = compact.range(of: "NYAM", range: searchStart..<compact.endIndex) {
+            let bodyStart = range.upperBound
+            guard let bodyEnd = compact.index(bodyStart, offsetBy: 12, limitedBy: compact.endIndex) else {
+                return nil
+            }
+            let body = String(compact[bodyStart..<bodyEnd])
+            if body.count == 12,
+               !containsAmbiguousInviteCharacters(body),
+               body.allSatisfy({ isAllowedInviteCharacter($0) }) {
+                return formattedInviteCode(body: body)
+            }
+            searchStart = range.upperBound
         }
+        return nil
+    }
 
+    private func formattedInviteCode(body: String) -> String {
         let first = body.prefix(4)
         let second = body.dropFirst(4).prefix(4)
         let third = body.dropFirst(8).prefix(4)
@@ -639,12 +656,12 @@ struct CloudKitParentLinkService {
         guard !trimmed.isEmpty else {
             return "초대 코드를 입력해 주세요."
         }
-        if hasAmbiguousInviteCharacters(trimmed) {
-            return "헷갈리는 문자 O, 0, I, 1은 초대 코드에 사용하지 않아요. 아이 기기에서 코드를 다시 확인해 주세요."
-        }
         let normalized = normalizeInviteCode(trimmed)
         guard normalized.hasPrefix("NYAM") else {
             return "초대 코드는 NYAM으로 시작해야 해요."
+        }
+        if hasAmbiguousInviteCharacters(normalized) {
+            return "헷갈리는 문자 O, 0, I, 1은 초대 코드에 사용하지 않아요. 아이 기기에서 코드를 다시 확인해 주세요."
         }
         guard isValidInviteCode(normalized) else {
             return "초대 코드 형식을 확인해 주세요. 예: NYAM-8K3P-7M2A-C9YD"
@@ -653,7 +670,8 @@ struct CloudKitParentLinkService {
     }
 
     func hasAmbiguousInviteCharacters(_ code: String) -> Bool {
-        let compact = code
+        let normalized = normalizeInviteCode(code)
+        let compact = normalized
             .uppercased()
             .unicodeScalars
             .filter { $0.value <= 127 && CharacterSet.alphanumerics.contains($0) }

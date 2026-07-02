@@ -3,6 +3,12 @@ import CloudKit
 import SwiftUI
 import UserNotifications
 
+enum AppDeepLinkRoute {
+    case parentSummary
+    case childInvite
+    case onboarding
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var profile: UserProfile?
@@ -137,6 +143,41 @@ final class AppState: ObservableObject {
 
     var currentSkin: CharacterSkin {
         progress.currentSkin(for: currentMode)
+    }
+
+    func handleDeepLink(_ url: URL) async -> AppDeepLinkRoute? {
+        guard let destination = AppInviteLink.destination(from: url) else {
+            return nil
+        }
+
+        switch destination {
+        case .connectChild(let inviteCode):
+            if profile == nil {
+                saveParentProfile(nickname: "보호자")
+            } else if currentMode != .parent {
+                updateUserMode(.parent)
+            }
+            parentSyncMessage = "초대 링크로 아이 연결을 시작했어요."
+            parentSyncError = nil
+            _ = await connectChild(inviteCode: inviteCode)
+            return .parentSummary
+
+        case .openChildInvite:
+            guard profile != nil else {
+                draftUserMode = .elementary
+                parentSyncMessage = "아이 프로필을 먼저 만든 뒤 보호자 초대 코드를 만들 수 있어요."
+                parentSyncError = nil
+                return .onboarding
+            }
+            guard currentMode != .parent else {
+                parentSyncMessage = "이 링크는 아이 기기에서 열어 보호자 초대를 시작하는 링크예요."
+                parentSyncError = nil
+                return .parentSummary
+            }
+            parentSyncMessage = "보호자 초대 화면을 열었어요. 초대 링크를 만들고 부모에게 보내 주세요."
+            parentSyncError = nil
+            return .childInvite
+        }
     }
 
     func updateNickname(_ nickname: String) {

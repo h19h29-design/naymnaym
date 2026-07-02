@@ -80,13 +80,13 @@ struct ParentSummaryView: View {
 
     private var childInviteDescription: String {
         if appState.childShareLink?.isCloudRegistered == true {
-            return "초대 코드가 준비됐어요. 부모에게 보내면 부모 모드에서 바로 연결할 수 있어요."
+            return "초대 링크가 준비됐어요. 부모에게 보내면 부모 기기에서 앱이 열리고 바로 연결할 수 있어요."
         }
         return "부모가 아이의 먹은 정도, 한 입 도전 기록, 알레르기 주의를 볼 수 있게 초대할 수 있어요."
     }
 
     private var childInviteButtonTitle: String {
-        appState.childShareLink?.isCloudRegistered == true ? "초대 코드 보내기" : "초대 코드 만들기"
+        appState.childShareLink?.isCloudRegistered == true ? "초대 링크 보내기" : "초대 링크 만들기"
     }
 
     private var inviteStatusBadge: some View {
@@ -106,8 +106,9 @@ struct ParentSummaryView: View {
                 Text("초대 방법")
                     .font(AppTypography.headline)
                 helperRow("아이 기기에서 초대 코드를 등록해요")
-                helperRow("공유 버튼으로 부모에게 코드를 보내요")
-                helperRow("부모는 아이 연결하기에서 붙여넣기만 하면 돼요")
+                helperRow("공유 버튼으로 부모에게 초대 링크를 보내요")
+                helperRow("부모가 링크를 누르면 앱이 열리고 자동 연결돼요")
+                helperRow("링크가 열리지 않으면 메시지의 코드를 붙여넣어요")
             }
         }
     }
@@ -135,7 +136,7 @@ struct ParentSummaryView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("우리 아이들")
                             .font(AppTypography.title)
-                        Text("아이 연결하기로 초대 코드를 붙여넣으면 공유된 기록만 확인할 수 있어요.")
+                        Text("초대 링크를 누르면 자동 연결되고, 링크가 안 열리면 코드 붙여넣기로 연결할 수 있어요.")
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.graySecondary)
                     }
@@ -152,6 +153,15 @@ struct ParentSummaryView: View {
                             .clipShape(Capsule())
                     }
                     .accessibilityLabel("아이 연결하기")
+                }
+                ShareLink(item: AppInviteLink.childInviteRequestShareMessage) {
+                    Label("아이에게 초대 요청 링크 보내기", systemImage: "paperplane.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppColors.indigo)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(AppColors.lavender.opacity(0.55))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 Button {
                     Task { await appState.refreshParentSharedData() }
@@ -210,6 +220,15 @@ struct ParentSummaryView: View {
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.graySecondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        ShareLink(item: AppInviteLink.childInviteRequestShareMessage) {
+                            Label("아이에게 초대 요청 링크 보내기", systemImage: "paperplane.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppColors.indigo)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(AppColors.lavender.opacity(0.55))
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
                         PrimaryButton("아이 연결하기", systemImage: "link") {
                             showingInviteSheet = true
                         }
@@ -373,6 +392,9 @@ private struct ParentInviteCodeSheet: View {
                         Label("클립보드에서 붙여넣기", systemImage: "doc.on.clipboard")
                     }
                     Text("아이 기기에서 받은 보호자 연결 코드를 붙여넣어요. 공유 메시지 전체를 붙여넣어도 코드만 자동 정리됩니다.")
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.graySecondary)
+                    Text("초대 링크를 누르면 이 화면을 거치지 않고 자동 연결됩니다. 링크가 열리지 않을 때만 코드를 붙여넣어 주세요.")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
                     if let validationMessage = service.inviteCodeValidationMessage(inviteCode),

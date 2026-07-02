@@ -841,6 +841,97 @@ struct SharingPermission: Codable, Hashable {
     }
 }
 
+enum AppInviteDestination: Equatable {
+    case connectChild(inviteCode: String)
+    case openChildInvite
+}
+
+enum AppInviteLink {
+    static let primaryScheme = "nyamnyam"
+
+    private static let acceptedSchemes: Set<String> = [
+        "nyamnyam",
+        "naymnaym",
+        "naymnaymlevelup"
+    ]
+
+    static func parentConnectionURL(inviteCode: String) -> URL {
+        var components = URLComponents()
+        components.scheme = primaryScheme
+        components.host = "invite"
+        components.queryItems = [
+            URLQueryItem(name: "code", value: inviteCode)
+        ]
+        return components.url ?? URL(string: "\(primaryScheme)://invite?code=\(inviteCode)")!
+    }
+
+    static func parentConnectionURLString(inviteCode: String) -> String {
+        parentConnectionURL(inviteCode: inviteCode).absoluteString
+    }
+
+    static var childInviteRequestURL: URL {
+        URL(string: "\(primaryScheme)://parent-invite")!
+    }
+
+    static var childInviteRequestShareMessage: String {
+        """
+        냠냠레벨업 보호자 연결을 시작해 주세요.
+        아이 기기에서 아래 링크를 열면 보호자 초대 화면으로 이동해요.
+        \(childInviteRequestURL.absoluteString)
+        """
+    }
+
+    static func destination(from url: URL) -> AppInviteDestination? {
+        let lowercasedScheme = url.scheme?.lowercased()
+        if let lowercasedScheme, acceptedSchemes.contains(lowercasedScheme) {
+            let route = inviteRoute(from: url)
+            if ["invite", "connect", "connect-child", "parent-connect"].contains(route),
+               let inviteCode = inviteCode(from: url) {
+                return .connectChild(inviteCode: inviteCode)
+            }
+            if ["parent-invite", "invite-parent", "request-invite", "child-invite"].contains(route) {
+                return .openChildInvite
+            }
+        }
+
+        guard lowercasedScheme == "https",
+              url.host?.lowercased() == "h19h29-design.github.io" else {
+            return nil
+        }
+
+        let path = url.path.lowercased()
+        if path.contains("/naymnaym/invite"),
+           let inviteCode = inviteCode(from: url) {
+            return .connectChild(inviteCode: inviteCode)
+        }
+        if path.contains("/naymnaym/parent-invite") || path.contains("/naymnaym/child-invite") {
+            return .openChildInvite
+        }
+        return nil
+    }
+
+    private static func inviteRoute(from url: URL) -> String {
+        if let host = url.host, !host.isEmpty {
+            return host.lowercased()
+        }
+        return url.pathComponents
+            .first(where: { $0 != "/" })?
+            .lowercased() ?? ""
+    }
+
+    private static func inviteCode(from url: URL) -> String? {
+        let service = CloudKitParentLinkService()
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let queryCode = components?.queryItems?.first { $0.name.lowercased() == "code" }?.value
+        let pathCode = url.pathComponents.first { $0.uppercased().contains("NYAM") }
+        let rawCode = queryCode ?? pathCode
+        guard let rawCode else { return nil }
+        let normalized = service.normalizeInviteCode(rawCode)
+        guard service.isValidInviteCode(normalized) else { return nil }
+        return normalized
+    }
+}
+
 struct ChildLink: Codable, Hashable, Identifiable {
     var id: UUID
     var childNickname: String
@@ -913,8 +1004,11 @@ struct ChildLink: Codable, Hashable, Identifiable {
 
     var parentInviteShareMessage: String {
         """
-        냠냠레벨업 보호자 연결 코드: \(inviteCode)
-        앱에서 부모 모드 > 아이 연결하기에 붙여넣어 주세요.
+        냠냠레벨업 보호자 연결 링크
+        \(AppInviteLink.parentConnectionURLString(inviteCode: inviteCode))
+
+        링크가 열리지 않으면 아래 코드를 부모 모드 > 아이 연결하기에 붙여넣어 주세요.
+        코드: \(inviteCode)
         공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐이에요.
         """
     }
