@@ -932,6 +932,11 @@ enum AppInviteLink {
     }
 }
 
+struct AppInviteShareItem: Identifiable {
+    let id = UUID()
+    var message: String
+}
+
 struct ChildLink: Codable, Hashable, Identifiable {
     var id: UUID
     var childNickname: String

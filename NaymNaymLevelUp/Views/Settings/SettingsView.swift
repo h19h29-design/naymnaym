@@ -191,6 +191,7 @@ struct ParentConnectionGuideView: View {
     @State private var shareChallenge = true
     @State private var shareAllergy = true
     @State private var didCopyInviteCode = false
+    @State private var inviteShareItem: AppInviteShareItem?
 
     private let service = CloudKitParentLinkService()
 
@@ -261,7 +262,9 @@ struct ParentConnectionGuideView: View {
                                         UIPasteboard.general.string = AppInviteLink.parentConnectionURLString(inviteCode: link.inviteCode)
                                         didCopyInviteCode = true
                                     }
-                                    ShareLink(item: link.parentInviteShareMessage) {
+                                    Button {
+                                        inviteShareItem = AppInviteShareItem(message: link.parentInviteShareMessage)
+                                    } label: {
                                         Label("링크 공유", systemImage: "square.and.arrow.up")
                                             .font(.system(.subheadline, design: .rounded).weight(.semibold))
                                             .frame(maxWidth: .infinity)
@@ -274,6 +277,7 @@ struct ParentConnectionGuideView: View {
                                                     .stroke(AppColors.indigo.opacity(0.22), lineWidth: 1)
                                             )
                                     }
+                                    .accessibilityLabel("초대 링크 공유하기")
                                 }
                             }
                             Text("등록 완료 전에는 부모 기기에서 이 코드를 찾을 수 없어요. 등록이 끝난 뒤 링크를 공유하면 부모 기기에서 앱이 열리고 자동 연결됩니다.")
@@ -377,6 +381,9 @@ struct ParentConnectionGuideView: View {
             }
             .navigationTitle("보호자 연결")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $inviteShareItem) { item in
+                ActivityView(activityItems: [item.message])
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { dismiss() }

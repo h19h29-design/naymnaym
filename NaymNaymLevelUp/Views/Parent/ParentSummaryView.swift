@@ -4,6 +4,7 @@ struct ParentSummaryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showingInviteSheet = false
     @State private var showingChildInviteSheet = false
+    @State private var inviteShareItem: AppInviteShareItem?
 
     var body: some View {
         NavigationStack {
@@ -43,6 +44,9 @@ struct ParentSummaryView: View {
             .navigationTitle(appState.currentMode == .parent ? "보호자 요약" : "보호자 초대")
             .navigationBarTitleDisplayMode(.inline)
             .pageBackground(theme: appState.currentTheme)
+            .sheet(item: $inviteShareItem) { item in
+                ActivityView(activityItems: [item.message])
+            }
             .task {
                 if appState.currentMode == .parent {
                     await appState.refreshParentSharedData()
@@ -154,7 +158,9 @@ struct ParentSummaryView: View {
                     }
                     .accessibilityLabel("아이 연결하기")
                 }
-                ShareLink(item: AppInviteLink.childInviteRequestShareMessage) {
+                Button {
+                    inviteShareItem = AppInviteShareItem(message: AppInviteLink.childInviteRequestShareMessage)
+                } label: {
                     Label("아이에게 초대 요청 링크 보내기", systemImage: "paperplane.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(AppColors.indigo)
@@ -163,6 +169,7 @@ struct ParentSummaryView: View {
                         .background(AppColors.lavender.opacity(0.55))
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                .accessibilityLabel("아이에게 초대 요청 링크 공유하기")
                 Button {
                     Task { await appState.refreshParentSharedData() }
                 } label: {
@@ -220,7 +227,9 @@ struct ParentSummaryView: View {
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.graySecondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        ShareLink(item: AppInviteLink.childInviteRequestShareMessage) {
+                        Button {
+                            inviteShareItem = AppInviteShareItem(message: AppInviteLink.childInviteRequestShareMessage)
+                        } label: {
                             Label("아이에게 초대 요청 링크 보내기", systemImage: "paperplane.fill")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(AppColors.indigo)
@@ -229,6 +238,7 @@ struct ParentSummaryView: View {
                                 .background(AppColors.lavender.opacity(0.55))
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
+                        .accessibilityLabel("아이에게 초대 요청 링크 공유하기")
                         PrimaryButton("아이 연결하기", systemImage: "link") {
                             showingInviteSheet = true
                         }
