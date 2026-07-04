@@ -16,3 +16,10 @@ marketing-site/dist/**/*.map
 *.dSYM
 .DS_Store
 .xcodebuildmcp/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/*.jks
+android/*.keystore
+android/keystore.properties

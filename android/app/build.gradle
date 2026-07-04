@@ -1,0 +1,64 @@
+plugins {
+    id "com.android.application"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
+def quoteBuildConfig = { value ->
+    def safeValue = (value ?: "").toString()
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+    return "\"${safeValue}\""
+}
+
+android {
+    namespace "com.h19h29.naymnaymlevelup"
+    compileSdk 35
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        applicationId "com.h19h29.naymnaymlevelup"
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "1.0-android-test"
+
+        buildConfigField "String", "NEIS_API_KEY", quoteBuildConfig(localProperties.getProperty("NEIS_API_KEY", ""))
+        buildConfigField "String", "PARENT_SYNC_API_BASE_URL", quoteBuildConfig(localProperties.getProperty(
+            "PARENT_SYNC_API_BASE_URL",
+            "https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/parent-sync"
+        ))
+    }
+
+    signingConfigs {
+        release {
+            def storeFilePath = localProperties.getProperty("ANDROID_KEYSTORE_FILE", "")
+            if (storeFilePath) {
+                storeFile rootProject.file(storeFilePath)
+                storePassword localProperties.getProperty("ANDROID_KEYSTORE_PASSWORD", "")
+                keyAlias localProperties.getProperty("ANDROID_KEY_ALIAS", "naymnaym-upload")
+                keyPassword localProperties.getProperty("ANDROID_KEY_PASSWORD", "")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled false
+            if (localProperties.getProperty("ANDROID_KEYSTORE_FILE", "")) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
