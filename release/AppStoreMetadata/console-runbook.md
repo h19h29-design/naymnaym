@@ -1,21 +1,21 @@
 # App Store Connect / CloudKit 콘솔 런북
 
-이 문서는 build 20 후보 기준으로 앱 소유자가 App Store Connect, Supabase, CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다. build 20은 부모 급식 결과 알림과 로컬 전용 사진 정책을 포함한다.
+이 문서는 build 23 후보 기준으로 앱 소유자가 App Store Connect, Supabase, CloudKit Dashboard에서 직접 확인해야 하는 항목을 코드 기준으로 정리한 실행 순서다. build 14는 업로드 자체는 성공했지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트 또는 출시 후보로 연결하지 않는다. build 23은 부모 급식 결과 알림, 로컬 전용 사진 정책, Android 심사용 개인정보/지원/데이터 삭제 안내 기준을 포함한다.
 
 ## 현재 배포 후보
 
 - 앱 이름: 냠냠레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.0`
-- 최신 업로드 빌드: `20`
-- 현재 제출 후보 빌드: `20`
+- 최신 업로드 빌드: `23`
+- 현재 제출 후보 빌드: `23`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
 - 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
 - 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
-- TestFlight 업로드 상태: build 20 CLI 업로드 후 App Store Connect 처리 완료와 `테스트 중` 상태를 확인한다.
-- TestFlight 그룹 상태: build 20을 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결한다.
+- TestFlight 업로드 상태: build 23 CLI 업로드 후 App Store Connect 처리 완료와 `테스트 중` 상태를 확인한다.
+- TestFlight 그룹 상태: build 23을 내부 그룹 `윈드`와 외부 그룹 `패밀리`에 연결한다.
 - TestFlight 공개 링크: `https://testflight.apple.com/join/3A3rKarB`
 
 ## build 15 검증 결과
@@ -37,8 +37,8 @@ build 15 IPA를 직접 확인한 결과, embedded provisioning profile은 iCloud
 5. 접근을 허용한 뒤 같은 터미널에서 아래 순서로 다시 실행한다.
 
 ```sh
-scripts/release-testflight-build.sh 20
-UPLOAD=1 scripts/release-testflight-build.sh 20
+scripts/release-testflight-build.sh 23
+UPLOAD=1 scripts/release-testflight-build.sh 23
 ```
 
 ## TestFlight 공개 상태
@@ -66,7 +66,7 @@ ASC_PRIVATE_KEY_PATH=/path/to/AuthKey_YOUR_KEY_ID.p8 \
 scripts/check-app-store-build-status.sh
 ```
 
-기본 조회 대상은 bundle id `com.h19h29.naymnaymlevelup`, version `1.0`, build `15`다. 최신 후보를 확인할 때는 `ASC_BUILD=20`을 지정한다.
+기본 조회 대상은 bundle id `com.h19h29.naymnaymlevelup`, version `1.0`, build `15`다. 최신 후보를 확인할 때는 `ASC_BUILD=23`을 지정한다.
 
 ## 남은 계정/콘솔 작업
 
@@ -92,7 +92,7 @@ CloudKit Dashboard에서는 `release/CloudKit/schema-contract.json` 기준으로
 
 ## App Privacy 답변 기준
 
-최종 답변은 앱 소유자가 확인해야 한다. 현재 build 20 업로드 후보 코드와 `PrivacyInfo.xcprivacy` 기준은 아래와 같다.
+최종 답변은 앱 소유자가 확인해야 한다. 현재 build 23 업로드 후보 코드와 `PrivacyInfo.xcprivacy` 기준은 아래와 같다.
 
 - Tracking: 아니요
 - Contact Info: 수집 안 함
@@ -188,7 +188,7 @@ Container:
 
 ## CloudKit 운영 스모크 테스트
 
-아래는 TestFlight build 20 이상 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
+아래는 TestFlight build 23 이상 설치 후 실제 기기 또는 시뮬레이터에서 확인한다.
 
 1. 아이 모드에서 보호자 연결 초대 코드를 생성한다.
 2. `parent-sync`에 `registerInvite`가 성공하고 서버에 `nyam_parent_links` row가 생성되는지 확인한다.

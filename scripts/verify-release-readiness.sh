@@ -4,10 +4,11 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-20}"
+RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-23}"
 RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${RELEASE_BUILD_NUMBER}-signed-upload.log}"
 RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${RELEASE_BUILD_NUMBER}Signed}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
+export RELEASE_BUILD_NUMBER
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -238,6 +239,8 @@ require_file "NaymNaymLevelUp/PrivacyInfo.xcprivacy"
 require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
 require_file "release/AppStoreMetadata/app-store-connect-values.json"
+require_file "release/GooglePlayMetadata/play-console-values.md"
+require_file "release/GooglePlayMetadata/closed-testing-plan.md"
 require_file "release/CloudKit/schema-contract.json"
 require_file "scripts/check-app-store-build-status.sh"
 require_file "supabase/functions/parent-sync/index.ts"
@@ -370,6 +373,15 @@ require_pattern "THIRD_PARTY_NOTICES.md" "lottie-ios" "Third-party notices inclu
 require_pattern "THIRD_PARTY_NOTICES.md" "Apache License 2\\.0" "Third-party notices include lottie-ios license"
 require_pattern "THIRD_PARTY_NOTICES.md" "first-party Lottie JSON" "Third-party notices identify bundled mascot JSON as first-party"
 require_pattern "NaymNaymLevelUp/Resources/Animations/README.md" "mascot_idle_loop\\.json" "Animation README documents idle loop JSON"
+require_pattern "android/app/build.gradle" "versionCode 2" "Android versionCode is bumped for Play test upload"
+require_pattern "android/app/build.gradle" "versionName \"1\\.0-android-test2\"" "Android versionName is updated for Play test upload"
+require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "개인정보 · 지원 · 데이터 관리" "Android app exposes privacy, support, and data management"
+require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "한 입 도전 잠금" "Android allergy items lock one-bite challenge"
+require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "sharePhotos\", false" "Android parent sharing excludes photos"
+require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "clearLocalData" "Android app has local data deletion"
+require_absent_pattern "android/app/src/main/AndroidManifest.xml" "POST_NOTIFICATIONS|CAMERA|READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|READ_CONTACTS" "Android test app keeps sensitive permissions out of the manifest"
+require_pattern "release/GooglePlayMetadata/play-console-values.md" "Data Safety 입력 초안" "Google Play metadata includes Data Safety draft"
+require_pattern "release/GooglePlayMetadata/closed-testing-plan.md" "12명 이상 테스터가 14일 연속 opt-in" "Google Play closed testing plan documents 12 tester requirement"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
 require_empty_plist_array "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTrackingDomains"
@@ -486,10 +498,10 @@ do
   check_url "$url"
 done
 
-require_url_pattern "https://h19h29-design.github.io/naymnaym/" "무료 iPhone 앱" "Published landing page shows release-ready app badge"
+require_url_pattern "https://h19h29-design.github.io/naymnaym/" "무료 급식 식습관 코칭 앱" "Published landing page shows release-ready app badge"
 require_url_pattern "https://h19h29-design.github.io/naymnaym/" "데이터와 안전 기준" "Published landing page shows data and safety section"
 require_url_absent_pattern "https://h19h29-design.github.io/naymnaym/" "준비중|처리 확인 중|제출 전 검토|출시 준비 상태" "Published landing page has no temporary release-status copy"
-require_url_pattern "https://h19h29-design.github.io/naymnaym/support.html" "아이폰에서" "Published support page uses polished iPhone copy"
+require_url_pattern "https://h19h29-design.github.io/naymnaym/support.html" "앱에서" "Published support page uses polished app copy"
 require_url_absent_pattern "https://h19h29-design.github.io/naymnaym/support.html" "아이 폰|준비중|처리 확인 중" "Published support page has no stale temporary copy"
 
 pass "release readiness checks completed"

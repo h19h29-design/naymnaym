@@ -13,10 +13,10 @@
 - 기본 언어: 한국어
 - 번들 ID: `com.h19h29.naymnaymlevelup`
 - 버전: 1.0
-- 빌드: 20
+- 빌드: 23
 - 저작권: © 2026 h19h29-design. All rights reserved.
 
-주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. 현재 제출 후보는 build 20이며, 부모 알림과 로컬 전용 사진 정책을 반영한 빌드입니다.
+주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. 현재 제출 후보는 build 23이며, Android 심사용 개인정보/지원/데이터 삭제 안내와 알레르기 잠금 기준을 함께 반영한 빌드입니다.
 
 ## 키워드
 
@@ -60,6 +60,7 @@
 - 부모 초대코드 기반 서버 연결 안정화
 - 아이가 급식 결과를 올리면 부모에게 알림 전송
 - 개인정보 안내와 지원 문서 정리
+- Android 테스트 앱 개인정보/지원/데이터 삭제 안내 보강
 
 ## 심사용 설명
 

@@ -1,6 +1,7 @@
 package com.h19h29.naymnaymlevelup;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -59,6 +60,9 @@ public class MainActivity extends Activity {
     private static final int TEXT = Color.rgb(45, 38, 30);
     private static final int MUTED = Color.rgb(112, 107, 97);
     private static final int WARNING = Color.rgb(230, 73, 58);
+    private static final String PRIVACY_URL = "https://h19h29-design.github.io/naymnaym/privacy.html";
+    private static final String SUPPORT_URL = "https://h19h29-design.github.io/naymnaym/support.html";
+    private static final String DATA_SAFETY_URL = "https://h19h29-design.github.io/naymnaym/data-safety.html";
     private static final String ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -161,6 +165,7 @@ public class MainActivity extends Activity {
         actions.addView(secondaryButton("학교 검색/등록", v -> renderSchoolSearch()));
         actions.addView(secondaryButton("체험 모드", v -> loadTodayMeal(true)));
         actions.addView(secondaryButton("보호자 초대/연결", v -> renderInvite()));
+        actions.addView(secondaryButton("개인정보 · 지원 · 데이터 관리", v -> renderPrivacyAndSupport()));
 
         if (selectedSchool == null) {
             content.addView(card("학교를 등록하면 시작할 수 있어요", "학교를 선택하면 오늘 급식과 한 입 미션을 확인할 수 있어요.", false));
@@ -358,9 +363,13 @@ public class MainActivity extends Activity {
             LinearLayout box = cardContainer();
             boolean warning = hasAllergyMarker(menu);
             box.addView(text(cleanMenu(menu), 20, warning ? WARNING : TEXT, Typeface.BOLD));
-            box.addView(text(warning ? "알레르기 번호가 있는 메뉴예요. 먼저 확인해 주세요." : "오늘의 한 입 미션 후보", 13, warning ? WARNING : MUTED, Typeface.NORMAL));
-            Button challenge = primaryButton(warning ? "안전하게 확인했어요" : "한 입 도전", v -> recordChallenge(cleanMenu(menu), warning));
-            box.addView(challenge);
+            box.addView(text(warning ? "알레르기 번호가 있는 메뉴예요. 학교 안내와 보호자 판단이 먼저예요." : "오늘의 한 입 미션 후보", 13, warning ? WARNING : MUTED, Typeface.NORMAL));
+            if (warning) {
+                box.addView(disabledButton("한 입 도전 잠금"));
+                box.addView(secondaryButton("안전하게 확인했어요", v -> recordChallenge(cleanMenu(menu), true)));
+            } else {
+                box.addView(primaryButton("한 입 도전", v -> recordChallenge(cleanMenu(menu), false)));
+            }
             box.addView(secondaryButton("먹은 정도 기록", v -> recordMeal(cleanMenu(menu))));
             content.addView(box);
         }
@@ -392,12 +401,52 @@ public class MainActivity extends Activity {
             saveChildLink(childLink);
         }
         content.addView(card("보호자 연결 링크", "코드: " + childLink.inviteCode + "\n링크가 열리지 않으면 이 코드를 붙여넣으면 됩니다.", false));
+        content.addView(card("공유 범위", "공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐입니다. 급식판 사진, 친구 얼굴, 반/번호, 이름표는 서버나 부모 화면에 올리지 않습니다.", false));
         content.addView(primaryButton("초대 코드 서버 등록", v -> registerInvite()));
         content.addView(primaryButton("공유하기", v -> shareText(parentInviteShareMessage())));
         content.addView(secondaryButton("링크 복사", v -> copyText("초대 링크", parentInviteUrl())));
         content.addView(card("부모에서 아이에게 요청하기", "부모 기기에서 아래 요청 링크를 공유하면 아이 기기에서 이 화면이 열립니다.", false));
         content.addView(secondaryButton("부모 요청 링크 공유", v -> shareText(parentInviteRequestMessage())));
         content.addView(secondaryButton("뒤로", v -> renderHome()));
+    }
+
+    private void renderPrivacyAndSupport() {
+        resetContent("개인정보와 지원");
+        content.addView(card("심사 기준 요약", "회원가입, 광고, 결제, 위치 권한, 연락처 권한을 사용하지 않습니다. 학교 코드와 날짜는 NEIS 급식 조회에만 사용합니다.", false));
+        content.addView(card("사진과 부모 공유", "급식판 사진은 Android 테스트 앱에서도 부모에게 공유하지 않습니다. 부모 공유는 초대 코드로 연결한 뒤 먹은 정도, 한 입 도전 기록, 알레르기 주의만 사용합니다.", false));
+        content.addView(card("알레르기 안내", "알레르기 정보와 영양 안내는 교육용 참고 정보입니다. 앱은 안전을 보장하지 않으며 학교 안내와 보호자 판단이 항상 우선입니다.", true));
+        content.addView(primaryButton("개인정보 처리방침 열기", v -> openUrl(PRIVACY_URL)));
+        content.addView(secondaryButton("데이터 안전 안내 열기", v -> openUrl(DATA_SAFETY_URL)));
+        content.addView(secondaryButton("지원 안내 열기", v -> openUrl(SUPPORT_URL)));
+        content.addView(secondaryButton("데이터 관리", v -> renderDataManagement()));
+        content.addView(secondaryButton("홈", v -> renderHome()));
+        setStatus("심사용 개인정보, 지원, 삭제 안내를 확인할 수 있어요.");
+    }
+
+    private void renderDataManagement() {
+        resetContent("데이터 관리");
+        content.addView(card("삭제 전 확인", "삭제한 데이터는 되돌릴 수 없습니다. 기기 내부의 학교, 체험 모드, 보호자 초대 코드, 기록 상태가 삭제됩니다.", true));
+        content.addView(dangerButton("이 기기의 앱 데이터 삭제", v -> confirmClearLocalData()));
+        content.addView(secondaryButton("뒤로", v -> renderPrivacyAndSupport()));
+        content.addView(secondaryButton("홈", v -> renderHome()));
+    }
+
+    private void confirmClearLocalData() {
+        new AlertDialog.Builder(this)
+            .setTitle("이 기기의 앱 데이터를 삭제할까요?")
+            .setMessage("학교, 체험 모드, 보호자 초대 코드와 로컬 기록 상태가 삭제됩니다. 삭제한 데이터는 되돌릴 수 없습니다.")
+            .setNegativeButton("취소", null)
+            .setPositiveButton("삭제", (dialog, which) -> clearLocalData())
+            .show();
+    }
+
+    private void clearLocalData() {
+        prefs.edit().clear().apply();
+        selectedSchool = null;
+        demoMode = false;
+        childLink = null;
+        renderHome();
+        setStatus("이 기기의 앱 데이터를 삭제했어요.");
     }
 
     private void registerInvite() {
@@ -587,6 +636,12 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    private Button dangerButton(String title, View.OnClickListener listener) {
+        Button button = primaryButton(title, listener);
+        button.setBackgroundColor(WARNING);
+        return button;
+    }
+
     private Button secondaryButton(String title, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(title);
@@ -598,6 +653,14 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams params = matchWrap();
         params.setMargins(0, dp(8), 0, dp(4));
         button.setLayoutParams(params);
+        return button;
+    }
+
+    private Button disabledButton(String title) {
+        Button button = secondaryButton(title, null);
+        button.setEnabled(false);
+        button.setTextColor(MUTED);
+        button.setBackgroundColor(Color.rgb(238, 238, 232));
         return button;
     }
 
@@ -768,6 +831,10 @@ public class MainActivity extends Activity {
         share.setType("text/plain");
         share.putExtra(Intent.EXTRA_TEXT, text);
         startActivity(Intent.createChooser(share, "공유하기"));
+    }
+
+    private void openUrl(String value) {
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(value)));
     }
 
     private void copyText(String label, String text) {
