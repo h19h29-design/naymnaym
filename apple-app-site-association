@@ -5,6 +5,9 @@
       {
         "appID": "47SNWAZN3G.com.h19h29.naymnaymlevelup",
         "paths": [
+          "/invite*",
+          "/parent-invite*",
+          "/child-invite*",
           "/naymnaym/invite*",
           "/naymnaym/parent-invite*",
           "/naymnaym/child-invite*"
