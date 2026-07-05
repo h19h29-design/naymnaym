@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "47SNWAZN3G.com.h19h29.naymnaymlevelup",
+        "paths": [
+          "/naymnaym/invite*",
+          "/naymnaym/parent-invite*",
+          "/naymnaym/child-invite*"
+        ]
+      }
+    ]
+  }
+}
