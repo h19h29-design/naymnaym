@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.h19h29.naymnaymlevelup",
+      "sha256_cert_fingerprints": [
+        "8B:84:DC:D4:34:79:96:2D:97:50:FA:9A:03:93:B6:D4:13:81:8C:19:C0:AB:98:4D:1C:AE:CB:79:1C:5D:B9:04"
+      ]
+    }
+  }
+]

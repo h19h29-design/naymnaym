@@ -848,6 +848,8 @@ enum AppInviteDestination: Equatable {
 
 enum AppInviteLink {
     static let primaryScheme = "nyamnyam"
+    static let webHost = "h19h29-design.github.io"
+    static let webBasePath = "/naymnaym"
 
     private static let acceptedSchemes: Set<String> = [
         "nyamnyam",
@@ -855,7 +857,7 @@ enum AppInviteLink {
         "naymnaymlevelup"
     ]
 
-    static func parentConnectionURL(inviteCode: String) -> URL {
+    static func appSchemeParentConnectionURL(inviteCode: String) -> URL {
         var components = URLComponents()
         components.scheme = primaryScheme
         components.host = "invite"
@@ -865,12 +867,27 @@ enum AppInviteLink {
         return components.url ?? URL(string: "\(primaryScheme)://invite?code=\(inviteCode)")!
     }
 
+    static func parentConnectionURL(inviteCode: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = webHost
+        components.path = "\(webBasePath)/invite"
+        components.queryItems = [
+            URLQueryItem(name: "code", value: inviteCode)
+        ]
+        return components.url ?? appSchemeParentConnectionURL(inviteCode: inviteCode)
+    }
+
     static func parentConnectionURLString(inviteCode: String) -> String {
         parentConnectionURL(inviteCode: inviteCode).absoluteString
     }
 
-    static var childInviteRequestURL: URL {
+    static var appSchemeChildInviteRequestURL: URL {
         URL(string: "\(primaryScheme)://parent-invite")!
+    }
+
+    static var childInviteRequestURL: URL {
+        URL(string: "https://\(webHost)\(webBasePath)/parent-invite") ?? appSchemeChildInviteRequestURL
     }
 
     static var childInviteRequestShareMessage: String {
@@ -878,6 +895,9 @@ enum AppInviteLink {
         냠냠레벨업 보호자 연결을 시작해 주세요.
         아이 기기에서 아래 링크를 열면 보호자 초대 화면으로 이동해요.
         \(childInviteRequestURL.absoluteString)
+
+        링크가 열리지 않으면 아래 주소를 Safari에 붙여넣어 주세요.
+        \(appSchemeChildInviteRequestURL.absoluteString)
         """
     }
 
@@ -895,7 +915,7 @@ enum AppInviteLink {
         }
 
         guard lowercasedScheme == "https",
-              url.host?.lowercased() == "h19h29-design.github.io" else {
+              url.host?.lowercased() == webHost else {
             return nil
         }
 
@@ -1014,6 +1034,10 @@ struct ChildLink: Codable, Hashable, Identifiable {
 
         링크가 열리지 않으면 아래 코드를 부모 모드 > 아이 연결하기에 붙여넣어 주세요.
         코드: \(inviteCode)
+
+        앱이 설치되어 있는데 웹 링크가 열리면 아래 주소를 Safari에 붙여넣어 주세요.
+        \(AppInviteLink.appSchemeParentConnectionURL(inviteCode: inviteCode).absoluteString)
+
         공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐이에요.
         """
     }

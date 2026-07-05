@@ -63,6 +63,9 @@ public class MainActivity extends Activity {
     private static final String PRIVACY_URL = "https://h19h29-design.github.io/naymnaym/privacy.html";
     private static final String SUPPORT_URL = "https://h19h29-design.github.io/naymnaym/support.html";
     private static final String DATA_SAFETY_URL = "https://h19h29-design.github.io/naymnaym/data-safety.html";
+    private static final String WEB_INVITE_HOST = "h19h29-design.github.io";
+    private static final String WEB_INVITE_BASE = "https://h19h29-design.github.io/naymnaym";
+    private static final String APP_SCHEME = "nyamnyam";
     private static final String ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -97,8 +100,7 @@ public class MainActivity extends Activity {
     private void handleDeepLink(Intent intent) {
         Uri uri = intent == null ? null : intent.getData();
         if (uri == null) return;
-        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-        if ("invite".equals(host)) {
+        if (isParentInviteUri(uri)) {
             String inviteCode = normalizeInviteCode(uri.getQueryParameter("code"));
             if (isValidInviteCode(inviteCode)) {
                 setStatus("초대 링크로 아이 연결을 시작했어요.");
@@ -106,10 +108,38 @@ public class MainActivity extends Activity {
             } else {
                 setStatus("초대 링크의 코드 형식을 확인해 주세요.");
             }
-        } else if ("parent-invite".equals(host) || "child-invite".equals(host)) {
+        } else if (isChildInviteRequestUri(uri)) {
             setStatus("보호자 초대 화면을 열었어요. 링크를 만들고 공유해 주세요.");
             mainHandler.postDelayed(this::renderInvite, 250);
         }
+    }
+
+    private boolean isParentInviteUri(Uri uri) {
+        String scheme = safeLower(uri.getScheme());
+        String host = safeLower(uri.getHost());
+        String path = safeLower(uri.getPath());
+        if (APP_SCHEME.equals(scheme) || "naymnaym".equals(scheme) || "naymnaymlevelup".equals(scheme)) {
+            return "invite".equals(host) || "connect".equals(host) || "connect-child".equals(host) || "parent-connect".equals(host);
+        }
+        return "https".equals(scheme)
+            && WEB_INVITE_HOST.equals(host)
+            && path.startsWith("/naymnaym/invite");
+    }
+
+    private boolean isChildInviteRequestUri(Uri uri) {
+        String scheme = safeLower(uri.getScheme());
+        String host = safeLower(uri.getHost());
+        String path = safeLower(uri.getPath());
+        if (APP_SCHEME.equals(scheme) || "naymnaym".equals(scheme) || "naymnaymlevelup".equals(scheme)) {
+            return "parent-invite".equals(host) || "child-invite".equals(host);
+        }
+        return "https".equals(scheme)
+            && WEB_INVITE_HOST.equals(host)
+            && (path.startsWith("/naymnaym/parent-invite") || path.startsWith("/naymnaym/child-invite"));
+    }
+
+    private String safeLower(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
     }
 
     private void renderHome() {
@@ -809,7 +839,11 @@ public class MainActivity extends Activity {
     }
 
     private String parentInviteUrl() {
-        return "nyamnyam://invite?code=" + (childLink == null ? "" : childLink.inviteCode);
+        return WEB_INVITE_BASE + "/invite?code=" + (childLink == null ? "" : childLink.inviteCode);
+    }
+
+    private String appSchemeParentInviteUrl() {
+        return APP_SCHEME + "://invite?code=" + (childLink == null ? "" : childLink.inviteCode);
     }
 
     private String parentInviteShareMessage() {
@@ -817,13 +851,17 @@ public class MainActivity extends Activity {
             + parentInviteUrl()
             + "\n\n링크가 열리지 않으면 아래 코드를 부모 모드 > 아이 연결하기에 붙여넣어 주세요.\n"
             + "코드: " + (childLink == null ? "" : childLink.inviteCode)
+            + "\n\n앱이 설치되어 있는데 웹 링크가 열리면 아래 주소를 브라우저에 붙여넣어 주세요.\n"
+            + appSchemeParentInviteUrl()
             + "\n공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐이에요.";
     }
 
     private String parentInviteRequestMessage() {
         return "냠냠레벨업 보호자 연결을 시작해 주세요.\n"
             + "아이 기기에서 아래 링크를 열면 보호자 초대 화면으로 이동해요.\n"
-            + "nyamnyam://parent-invite";
+            + WEB_INVITE_BASE + "/parent-invite"
+            + "\n\n링크가 열리지 않으면 아래 주소를 브라우저에 붙여넣어 주세요.\n"
+            + APP_SCHEME + "://parent-invite";
     }
 
     private void shareText(String text) {

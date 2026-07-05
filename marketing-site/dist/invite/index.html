@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>냠냠레벨업 보호자 연결</title>
+  <link rel="stylesheet" href="../assets/site.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, #fff9e8 0%, #eef9df 100%);
+      color: #2d261e;
+      margin: 0;
+      padding: 24px;
+    }
+    .invite-card {
+      width: min(100%, 460px);
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(76, 175, 80, 0.18);
+      border-radius: 28px;
+      box-shadow: 0 18px 50px rgba(40, 92, 38, 0.14);
+      padding: 28px 24px;
+      text-align: center;
+    }
+    .invite-card img {
+      width: 88px;
+      height: 88px;
+      object-fit: contain;
+      margin-bottom: 12px;
+    }
+    .invite-card h1 {
+      margin: 6px 0 8px;
+      font-size: clamp(26px, 7vw, 34px);
+      letter-spacing: 0;
+      color: #238036;
+    }
+    .invite-card p {
+      margin: 8px 0;
+      line-height: 1.58;
+      font-size: 16px;
+    }
+    .code {
+      margin: 18px auto;
+      padding: 13px 14px;
+      border-radius: 16px;
+      background: #f7fce9;
+      border: 1px solid #d8efbb;
+      font-weight: 800;
+      color: #1f6f2f;
+      word-break: break-all;
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .button {
+      border: 0;
+      border-radius: 18px;
+      padding: 15px 18px;
+      font-size: 17px;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .primary {
+      color: #fff;
+      background: linear-gradient(135deg, #6ac443, #238036);
+      box-shadow: 0 10px 20px rgba(35, 128, 54, 0.24);
+    }
+    .secondary {
+      color: #238036;
+      background: #fff;
+      border: 1px solid #bfe2a1;
+    }
+    .hint {
+      color: #706b61;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <main class="invite-card">
+    <img src="../assets/mascot-thumb.png" alt="냠냠레벨업 캐릭터">
+    <h1>보호자 연결</h1>
+    <p>앱이 설치되어 있으면 아래 버튼으로 냠냠레벨업을 열고 초대 코드를 자동 등록할 수 있어요.</p>
+    <div class="code" id="inviteCode">초대 코드 확인 중</div>
+    <div class="actions">
+      <a class="button primary" id="openApp" href="#">앱에서 초대 등록하기</a>
+      <button class="button secondary" id="copyCode" type="button">초대 코드 복사</button>
+    </div>
+    <p class="hint">앱이 열리지 않으면 앱을 설치한 뒤 다시 링크를 누르거나, 부모 모드 &gt; 아이 연결하기에 코드를 붙여넣어 주세요.</p>
+  </main>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const rawCode = params.get("code") || "";
+    const normalizedCode = rawCode.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^(NYAM)(.{4})(.{4})(.{4}).*$/, "$1-$2-$3-$4");
+    const valid = /^NYAM-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$/.test(normalizedCode);
+    const code = valid ? normalizedCode : rawCode;
+    const appUrl = `nyamnyam://invite?code=${encodeURIComponent(code)}`;
+    document.getElementById("inviteCode").textContent = valid ? code : "초대 코드가 올바르지 않아요";
+    const openApp = document.getElementById("openApp");
+    openApp.href = valid ? appUrl : "../support.html";
+    openApp.addEventListener("click", (event) => {
+      if (!valid) {
+        event.preventDefault();
+        return;
+      }
+      window.location.href = appUrl;
+    });
+    document.getElementById("copyCode").addEventListener("click", async () => {
+      if (!valid) return;
+      await navigator.clipboard.writeText(code);
+      document.getElementById("copyCode").textContent = "복사했어요";
+    });
+    if (valid) {
+      window.setTimeout(() => {
+        window.location.href = appUrl;
+      }, 350);
+    }
+  </script>
+</body>
+</html>
