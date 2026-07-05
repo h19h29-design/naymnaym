@@ -717,9 +717,9 @@ private struct DataSourcesView: View {
 }
 
 private enum AppExternalLinks {
-    static let privacyPolicy = URL(string: "https://h19h29-design.github.io/naymnaym/privacy.html")!
-    static let support = URL(string: "https://h19h29-design.github.io/naymnaym/support.html")!
-    static let dataSafety = URL(string: "https://h19h29-design.github.io/naymnaym/data-safety.html")!
+    static let privacyPolicy = URL(string: "https://nyam.h19h19.com/privacy.html")!
+    static let support = URL(string: "https://nyam.h19h19.com/support.html")!
+    static let dataSafety = URL(string: "https://nyam.h19h19.com/data-safety.html")!
 }
 
 private struct AppInfoView: View {

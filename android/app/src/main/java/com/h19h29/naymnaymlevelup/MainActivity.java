@@ -60,11 +60,13 @@ public class MainActivity extends Activity {
     private static final int TEXT = Color.rgb(45, 38, 30);
     private static final int MUTED = Color.rgb(112, 107, 97);
     private static final int WARNING = Color.rgb(230, 73, 58);
-    private static final String PRIVACY_URL = "https://h19h29-design.github.io/naymnaym/privacy.html";
-    private static final String SUPPORT_URL = "https://h19h29-design.github.io/naymnaym/support.html";
-    private static final String DATA_SAFETY_URL = "https://h19h29-design.github.io/naymnaym/data-safety.html";
-    private static final String WEB_INVITE_HOST = "h19h29-design.github.io";
-    private static final String WEB_INVITE_BASE = "https://h19h29-design.github.io/naymnaym";
+    private static final String PRIVACY_URL = "https://nyam.h19h19.com/privacy.html";
+    private static final String SUPPORT_URL = "https://nyam.h19h19.com/support.html";
+    private static final String DATA_SAFETY_URL = "https://nyam.h19h19.com/data-safety.html";
+    private static final String WEB_INVITE_HOST = "nyam.h19h19.com";
+    private static final String WEB_INVITE_BASE = "https://nyam.h19h19.com";
+    private static final String LEGACY_WEB_INVITE_HOST = "h19h29-design.github.io";
+    private static final String LEGACY_WEB_INVITE_BASE_PATH = "/naymnaym";
     private static final String APP_SCHEME = "nyamnyam";
     private static final String ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -122,8 +124,8 @@ public class MainActivity extends Activity {
             return "invite".equals(host) || "connect".equals(host) || "connect-child".equals(host) || "parent-connect".equals(host);
         }
         return "https".equals(scheme)
-            && WEB_INVITE_HOST.equals(host)
-            && path.startsWith("/naymnaym/invite");
+            && ((WEB_INVITE_HOST.equals(host) && path.startsWith("/invite"))
+            || (LEGACY_WEB_INVITE_HOST.equals(host) && path.startsWith(LEGACY_WEB_INVITE_BASE_PATH + "/invite")));
     }
 
     private boolean isChildInviteRequestUri(Uri uri) {
@@ -134,8 +136,8 @@ public class MainActivity extends Activity {
             return "parent-invite".equals(host) || "child-invite".equals(host);
         }
         return "https".equals(scheme)
-            && WEB_INVITE_HOST.equals(host)
-            && (path.startsWith("/naymnaym/parent-invite") || path.startsWith("/naymnaym/child-invite"));
+            && ((WEB_INVITE_HOST.equals(host) && (path.startsWith("/parent-invite") || path.startsWith("/child-invite")))
+            || (LEGACY_WEB_INVITE_HOST.equals(host) && (path.startsWith(LEGACY_WEB_INVITE_BASE_PATH + "/parent-invite") || path.startsWith(LEGACY_WEB_INVITE_BASE_PATH + "/child-invite"))));
     }
 
     private String safeLower(String value) {

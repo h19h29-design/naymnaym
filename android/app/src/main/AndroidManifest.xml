@@ -29,8 +29,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:host="h19h29-design.github.io"
-                    android:pathPrefix="/naymnaym/invite"
+                    android:host="nyam.h19h19.com"
+                    android:pathPrefix="/invite"
                     android:scheme="https" />
             </intent-filter>
             <intent-filter android:autoVerify="true">
@@ -38,12 +38,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:host="h19h29-design.github.io"
-                    android:pathPrefix="/naymnaym/parent-invite"
+                    android:host="nyam.h19h19.com"
+                    android:pathPrefix="/parent-invite"
                     android:scheme="https" />
                 <data
-                    android:host="h19h29-design.github.io"
-                    android:pathPrefix="/naymnaym/child-invite"
+                    android:host="nyam.h19h19.com"
+                    android:pathPrefix="/child-invite"
                     android:scheme="https" />
             </intent-filter>
         </activity>

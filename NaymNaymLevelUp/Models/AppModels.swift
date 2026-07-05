@@ -848,8 +848,10 @@ enum AppInviteDestination: Equatable {
 
 enum AppInviteLink {
     static let primaryScheme = "nyamnyam"
-    static let webHost = "h19h29-design.github.io"
-    static let webBasePath = "/naymnaym"
+    static let webHost = "nyam.h19h19.com"
+    static let webBasePath = ""
+    private static let legacyWebHost = "h19h29-design.github.io"
+    private static let legacyWebBasePath = "/naymnaym"
 
     private static let acceptedSchemes: Set<String> = [
         "nyamnyam",
@@ -871,7 +873,7 @@ enum AppInviteLink {
         var components = URLComponents()
         components.scheme = "https"
         components.host = webHost
-        components.path = "\(webBasePath)/invite"
+        components.path = webPath("invite")
         components.queryItems = [
             URLQueryItem(name: "code", value: inviteCode)
         ]
@@ -887,7 +889,7 @@ enum AppInviteLink {
     }
 
     static var childInviteRequestURL: URL {
-        URL(string: "https://\(webHost)\(webBasePath)/parent-invite") ?? appSchemeChildInviteRequestURL
+        URL(string: "https://\(webHost)\(webPath("parent-invite"))") ?? appSchemeChildInviteRequestURL
     }
 
     static var childInviteRequestShareMessage: String {
@@ -914,20 +916,40 @@ enum AppInviteLink {
             }
         }
 
-        guard lowercasedScheme == "https",
-              url.host?.lowercased() == webHost else {
+        guard lowercasedScheme == "https" else {
             return nil
         }
 
+        let host = url.host?.lowercased() ?? ""
         let path = url.path.lowercased()
-        if path.contains("/naymnaym/invite"),
-           let inviteCode = inviteCode(from: url) {
-            return .connectChild(inviteCode: inviteCode)
-        }
-        if path.contains("/naymnaym/parent-invite") || path.contains("/naymnaym/child-invite") {
-            return .openChildInvite
+        if host == webHost {
+            if path.hasPrefix(webPath("invite")),
+               let inviteCode = inviteCode(from: url) {
+                return .connectChild(inviteCode: inviteCode)
+            }
+            if path.hasPrefix(webPath("parent-invite")) || path.hasPrefix(webPath("child-invite")) {
+                return .openChildInvite
+            }
+        } else if host == legacyWebHost {
+            if path.hasPrefix(legacyWebPath("invite")),
+               let inviteCode = inviteCode(from: url) {
+                return .connectChild(inviteCode: inviteCode)
+            }
+            if path.hasPrefix(legacyWebPath("parent-invite")) || path.hasPrefix(legacyWebPath("child-invite")) {
+                return .openChildInvite
+            }
         }
         return nil
+    }
+
+    private static func webPath(_ route: String) -> String {
+        let prefix = webBasePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return prefix.isEmpty ? "/\(route)" : "/\(prefix)/\(route)"
+    }
+
+    private static func legacyWebPath(_ route: String) -> String {
+        let prefix = legacyWebBasePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return prefix.isEmpty ? "/\(route)" : "/\(prefix)/\(route)"
     }
 
     private static func inviteRoute(from url: URL) -> String {

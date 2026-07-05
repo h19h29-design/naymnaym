@@ -27,8 +27,8 @@ android {
         applicationId "com.h19h29.naymnaymlevelup"
         minSdk 23
         targetSdk 35
-        versionCode 2
-        versionName "1.0-android-test2"
+        versionCode 3
+        versionName "1.0-android-test3"
 
         buildConfigField "String", "NEIS_API_KEY", quoteBuildConfig(localProperties.getProperty("NEIS_API_KEY", ""))
         buildConfigField "String", "PARENT_SYNC_API_BASE_URL", quoteBuildConfig(localProperties.getProperty(
