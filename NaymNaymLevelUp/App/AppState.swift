@@ -279,9 +279,13 @@ final class AppState: ObservableObject {
         let todayKey = DateUtils.apiString(from: date)
         todayMeal = monthlyMeals.first(where: { $0.date == todayKey })
 
-        if todayMeal == nil, monthResult.status == .live {
-            mealStatus = .noMeal
-            mealMessage = "오늘은 급식 정보가 없어요. 방학, 재량휴업일, 급식 미운영일일 수 있어요."
+        if todayMeal == nil {
+            if monthResult.status == .demo {
+                todayMeal = sampleProvider.sampleMeal(for: date)
+            } else if monthResult.status == .live {
+                mealStatus = .noMeal
+                mealMessage = "오늘은 급식 정보가 없어요. 방학, 재량휴업일, 급식 미운영일일 수 있어요."
+            }
         }
     }
 
@@ -439,7 +443,7 @@ final class AppState: ObservableObject {
             menuName: item.name,
             action: action,
             gainedExp: outcome.gainedExp,
-            badgeName: outcome.gainedExp > 0 ? outcome.badgeName : nil,
+            badgeName: outcome.earnedBadgeName,
             nutrients: item.nutrients.isEmpty ? NutritionEstimator.estimateNutrients(for: item) : item.nutrients,
             eatingStatus: eatingStatus,
             difficultyReasons: difficultyReasons,
@@ -455,7 +459,7 @@ final class AppState: ObservableObject {
         records.insert(record, at: 0)
         progressStore.save(progress)
         challengeStore.save(records)
-        return outcome.gainedExp > 0 ? outcome : nil
+        return outcome
     }
 
     private func challengeAction(for status: EatingStatus) -> ChallengeRecord.Action {

@@ -39,6 +39,7 @@ final class ProgressLevelTests: XCTestCase {
         let outcome = progress.applyChallenge(for: item)
 
         XCTAssertGreaterThan(outcome.gainedExp, 0)
+        XCTAssertEqual(outcome.earnedBadgeName, "단백질 파워")
         XCTAssertEqual(progress.challengeExp, 18)
         XCTAssertTrue(progress.badges.contains("단백질 파워"))
         XCTAssertEqual(progress.currentSkinId, CharacterSkin.skin(for: progress.level).id)
@@ -184,6 +185,50 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(CharacterSkin.skin(for: 1, mode: .elementary).name, "냠냠 새싹")
     }
 
+    func testCharacterSkinUnlockRequiresItsLevel() {
+        XCTAssertTrue(CharacterSkin.all[0].isUnlocked(at: 1))
+        XCTAssertFalse(CharacterSkin.all[1].isUnlocked(at: 1))
+        XCTAssertTrue(CharacterSkin.all[1].isUnlocked(at: 2))
+    }
+
+    func testExistingBadgeIsNotReportedAsNewlyEarned() {
+        let item = MealItem(name: "닭갈비", allergyCodes: [], nutrients: ["단백질"], tags: [], sourceRawText: "닭갈비")
+        var progress = PlayerProgress(badges: ["단백질 파워"])
+
+        let outcome = progress.applyChallenge(for: item)
+
+        XCTAssertNil(outcome.earnedBadgeName)
+        XCTAssertEqual(progress.badges.filter { $0 == "단백질 파워" }.count, 1)
+        XCTAssertFalse(ShareCardKind.available(for: outcome).contains(.badgeEarned))
+    }
+
+    @MainActor
+    func testDailyCapStillReturnsSavedRecordOutcome() {
+        ChallengeStore(defaults: defaults).save([
+            ChallengeRecord(
+                date: "20260620",
+                menuName: "오늘 기록",
+                action: .oneBite,
+                gainedExp: 100,
+                badgeName: "한 입 도전자",
+                nutrients: [],
+                eatingStatus: .oneBite,
+                xpBreakdown: XPBreakdown(record: 50, challenge: 50),
+                baseExp: 50,
+                bonusExp: 50
+            )
+        ])
+        let appState = makeAppState()
+        let item = MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥")
+
+        let outcome = appState.recordMealInteraction(item: item, date: "20260620", status: .finished)
+
+        XCTAssertNotNil(outcome)
+        XCTAssertEqual(outcome?.gainedExp, 0)
+        XCTAssertEqual(appState.records.first?.menuName, "현미밥")
+        XCTAssertNil(appState.records.first?.badgeName)
+    }
+
     func testEatingStatusAndMealDataStatePolicies() {
         XCTAssertEqual(EatingStatus.allergyAvoided.title, "알레르기/주의로 먹지 않았어요")
         XCTAssertTrue(MealDataState.demo.usesSample)
@@ -200,7 +245,8 @@ final class ProgressLevelTests: XCTestCase {
             oldLevel: 1,
             newLevel: 2,
             skin: CharacterSkin.skin(for: 2),
-            xpBreakdown: XPBreakdown(challenge: 43)
+            xpBreakdown: XPBreakdown(challenge: 43),
+            earnedBadgeName: "초록 용사"
         )
 
         let lines = ShareCardKind.available(for: outcome).flatMap { ShareCardRenderer.textLines(kind: $0, outcome: outcome) }

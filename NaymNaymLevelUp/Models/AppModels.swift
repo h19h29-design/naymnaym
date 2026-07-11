@@ -1220,8 +1220,12 @@ struct PlayerProgress: Codable, Hashable {
         if status == .oneBite {
             totalChallenges += 1
         }
+        let earnedBadgeName: String?
         if gained > 0, !badges.contains(badge) {
             badges.append(badge)
+            earnedBadgeName = badge
+        } else {
+            earnedBadgeName = nil
         }
 
         level = Self.level(forExp: exp)
@@ -1238,7 +1242,8 @@ struct PlayerProgress: Codable, Hashable {
             xpBreakdown: breakdown,
             baseExp: grant.base.total,
             bonusExp: grant.bonus.total,
-            xpNotes: grant.notes
+            xpNotes: grant.notes,
+            earnedBadgeName: earnedBadgeName
         )
     }
 
@@ -1359,6 +1364,10 @@ struct CharacterSkin: Codable, Hashable, Identifiable {
         let candidates = skins(for: mode)
         return candidates.last(where: { level >= $0.levelRequired }) ?? candidates[0]
     }
+
+    func isUnlocked(at level: Int) -> Bool {
+        level >= levelRequired
+    }
 }
 
 struct ChallengeOutcome: Hashable, Identifiable {
@@ -1374,6 +1383,7 @@ struct ChallengeOutcome: Hashable, Identifiable {
     var baseExp: Int = 0
     var bonusExp: Int = 0
     var xpNotes: [String] = []
+    var earnedBadgeName: String? = nil
 
     var didLevelUp: Bool {
         newLevel > oldLevel

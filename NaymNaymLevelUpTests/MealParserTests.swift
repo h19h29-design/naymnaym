@@ -301,6 +301,38 @@ final class MealServiceTests: XCTestCase {
         XCTAssertFalse(appState.monthlyMeals.first?.isSample ?? true)
     }
 
+    @MainActor
+    func testDemoModeProvidesSampleMealForWeekendToday() async throws {
+        let suiteName = "AppStateWeekendDemoTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: photoDirectory)
+        }
+
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: ChildShareLinkStore(defaults: defaults),
+            localPhotoStore: LocalPhotoStore(directoryURL: photoDirectory),
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            automaticallyPublishesParentSharedData: false
+        )
+        appState.startDemoMode(mode: .elementary)
+
+        let saturday = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20260711"))
+        await appState.loadMeals(for: saturday)
+
+        XCTAssertEqual(appState.mealStatus, .demo)
+        XCTAssertEqual(appState.todayMeal?.date, "20260711")
+        XCTAssertTrue(appState.todayMeal?.isSample == true)
+    }
+
     private var actualSchool: School {
         School(
             name: "등촌고등학교",

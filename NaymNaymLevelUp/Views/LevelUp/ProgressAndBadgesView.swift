@@ -56,17 +56,7 @@ struct ProgressAndBadgesView: View {
                     .font(AppTypography.headline)
                 HStack(spacing: 10) {
                     ForEach(CharacterSkin.skins(for: appState.currentMode).prefix(4)) { skin in
-                        VStack(spacing: 6) {
-                            CharacterAvatar(skin: skin, size: 58)
-                            Text("Lv.\(skin.levelRequired)")
-                                .font(.caption2.weight(.bold))
-                            Text(skin.name)
-                                .font(.caption2)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.7)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
+                        skinPreview(skin)
                     }
                 }
             }
@@ -144,6 +134,39 @@ struct ProgressAndBadgesView: View {
         .padding(.vertical, 8)
         .background(color.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func skinPreview(_ skin: CharacterSkin) -> some View {
+        let isUnlocked = skin.isUnlocked(at: appState.progress.level)
+        return VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                CharacterAvatar(skin: skin, size: 58)
+                    .saturation(isUnlocked ? 1 : 0)
+                    .opacity(isUnlocked ? 1 : 0.4)
+                if !isUnlocked {
+                    Image(systemName: "lock.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.white)
+                        .padding(5)
+                        .background(AppColors.graySecondary)
+                        .clipShape(Circle())
+                }
+            }
+            Text(isUnlocked ? "Lv.\(skin.levelRequired)" : "Lv.\(skin.levelRequired) 필요")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(isUnlocked ? AppColors.textDark : AppColors.graySecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(skin.name)
+                .font(.caption2)
+                .foregroundStyle(isUnlocked ? AppColors.textDark : AppColors.graySecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isUnlocked ? "\(skin.name), 사용 가능" : "\(skin.name), 레벨 \(skin.levelRequired)에 잠금 해제")
     }
 
     private func recordColor(for action: ChallengeRecord.Action) -> Color {

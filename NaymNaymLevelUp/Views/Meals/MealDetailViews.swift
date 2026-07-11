@@ -80,8 +80,15 @@ struct LevelUpResultView: View {
                                 .font(.system(.title, design: .rounded).weight(.heavy))
                                 .foregroundStyle(AppColors.primaryGreen)
                                 .multilineTextAlignment(.center)
-                            Text("총 XP +\(outcome.gainedExp)")
-                                .font(AppTypography.headline)
+                            if outcome.gainedExp > 0 {
+                                Text("총 XP +\(outcome.gainedExp)")
+                                    .font(AppTypography.headline)
+                            } else {
+                                Text("기록 완료 · 오늘 XP 상한에 도달했어요")
+                                    .font(AppTypography.body.weight(.semibold))
+                                    .foregroundStyle(AppColors.graySecondary)
+                                    .multilineTextAlignment(.center)
+                            }
                             if !outcome.xpBreakdown.summaryText.isEmpty {
                                 Text(outcome.xpBreakdown.summaryText)
                                     .font(AppTypography.body.weight(.semibold))
@@ -93,9 +100,11 @@ struct LevelUpResultView: View {
                                     .font(AppTypography.caption.weight(.bold))
                                     .foregroundStyle(AppColors.orange)
                             }
-                            Text("\(outcome.badgeName) 뱃지 획득!")
-                                .font(AppTypography.body.weight(.semibold))
-                                .fixedSize(horizontal: false, vertical: true)
+                            if let earnedBadgeName = outcome.earnedBadgeName {
+                                Text("\(earnedBadgeName) 뱃지 획득!")
+                                    .font(AppTypography.body.weight(.semibold))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             if !outcome.xpNotes.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
                                     ForEach(outcome.xpNotes.prefix(3), id: \.self) { note in
@@ -232,7 +241,7 @@ enum ShareCardKind: String, CaseIterable, Identifiable {
         if outcome.didLevelUp {
             kinds.append(.levelUp)
         }
-        if !outcome.badgeName.isEmpty {
+        if outcome.earnedBadgeName != nil {
             kinds.append(.badgeEarned)
         }
         return kinds
@@ -294,7 +303,7 @@ enum ShareCardRenderer {
         case .badgeEarned:
             return [
                 "뱃지 획득!",
-                "\(outcome.badgeName) 뱃지를 모았어요.",
+                "\(outcome.earnedBadgeName ?? outcome.badgeName) 뱃지를 모았어요.",
                 "작은 도전이 쌓이고 있어요."
             ]
         }
