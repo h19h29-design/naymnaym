@@ -33,6 +33,12 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(PlayerProgress.level(forExp: 1000), 7)
     }
 
+    func testGrowthCharacterAssetsClampLevelsAndResolveEveryStage() {
+        XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 0), 0)
+        XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 4), 3)
+        XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 99), 6)
+    }
+
     func testChallengeAddsExpBadgeAndSkin() {
         var progress = PlayerProgress()
         let item = MealItem(name: "닭갈비", allergyCodes: [15], nutrients: ["단백질"], tags: ["튼튼 파워"], sourceRawText: "닭갈비(15)")
