@@ -219,6 +219,7 @@ struct ServerParentLinkService {
     var session: URLSession
     private let registerParentLinkHandler: ((ChildLink) async throws -> ChildLink)?
     private let fetchParentLinkHandler: ((String) async throws -> ChildLink)?
+    private let fetchConnectionStatusHandler: ((ChildLink) async throws -> Date?)?
     private let fetchSharedSnapshotHandler: ((ChildLink) async throws -> CloudChildShareSnapshot)?
     private let publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)?
     private let registerParentDeviceHandler: ((ChildLink, String, String) async throws -> Void)?
@@ -228,6 +229,7 @@ struct ServerParentLinkService {
         session: URLSession = .shared,
         registerParentLinkHandler: ((ChildLink) async throws -> ChildLink)? = nil,
         fetchParentLinkHandler: ((String) async throws -> ChildLink)? = nil,
+        fetchConnectionStatusHandler: ((ChildLink) async throws -> Date?)? = nil,
         fetchSharedSnapshotHandler: ((ChildLink) async throws -> CloudChildShareSnapshot)? = nil,
         publishSharedSnapshotHandler: ((ChildLink, [MealRecord], [ChallengeRecord]) async throws -> Void)? = nil,
         registerParentDeviceHandler: ((ChildLink, String, String) async throws -> Void)? = nil
@@ -236,6 +238,7 @@ struct ServerParentLinkService {
         self.session = session
         self.registerParentLinkHandler = registerParentLinkHandler
         self.fetchParentLinkHandler = fetchParentLinkHandler
+        self.fetchConnectionStatusHandler = fetchConnectionStatusHandler
         self.fetchSharedSnapshotHandler = fetchSharedSnapshotHandler
         self.publishSharedSnapshotHandler = publishSharedSnapshotHandler
         self.registerParentDeviceHandler = registerParentDeviceHandler
@@ -279,6 +282,23 @@ struct ServerParentLinkService {
             payload: ParentSyncInviteCodePayload(inviteCode: inviteCode)
         )
         return response.link.childLink(inviteSecret: nil)
+    }
+
+    func fetchConnectionStatus(childLink: ChildLink) async throws -> Date? {
+        if let fetchConnectionStatusHandler {
+            return try await fetchConnectionStatusHandler(childLink)
+        }
+        guard let inviteSecret = childLink.inviteSecret, !inviteSecret.isEmpty else {
+            throw ParentSyncServiceError.missingUploadSecret
+        }
+        let response: ParentSyncConnectionStatusResponse = try await post(
+            action: "checkConnectionStatus",
+            payload: ParentSyncConnectionStatusPayload(
+                childLinkId: childLink.id.uuidString,
+                inviteSecret: inviteSecret
+            )
+        )
+        return response.connectedAt
     }
 
     func fetchSharedSnapshot(childLink: ChildLink) async throws -> CloudChildShareSnapshot {
@@ -398,6 +418,11 @@ private struct ParentSyncInviteCodePayload: Encodable {
     var inviteCode: String
 }
 
+private struct ParentSyncConnectionStatusPayload: Encodable {
+    var childLinkId: String
+    var inviteSecret: String
+}
+
 private struct ParentSyncSnapshotFetchPayload: Encodable {
     var childLinkId: String
     var inviteCode: String
@@ -426,6 +451,10 @@ private struct ParentSyncLinkAndSnapshotResponse: Decodable {
     var snapshot: ParentSyncSnapshotDTO?
 }
 
+private struct ParentSyncConnectionStatusResponse: Decodable {
+    var connectedAt: Date?
+}
+
 private struct ParentSyncSnapshotResponse: Decodable {
     var snapshot: ParentSyncSnapshotDTO
 }
@@ -442,6 +471,7 @@ private struct ParentSyncChildLinkDTO: Codable {
     var permissions: SharingPermission
     var createdAt: Date
     var registeredAt: Date?
+    var connectedAt: Date?
 
     init(_ childLink: ChildLink) {
         id = childLink.id.uuidString
@@ -456,6 +486,7 @@ private struct ParentSyncChildLinkDTO: Codable {
         permissions.sharePhotos = false
         createdAt = childLink.createdAt
         registeredAt = childLink.registeredAt
+        connectedAt = childLink.parentConnectedAt
     }
 
     func childLink(inviteSecret: String?) -> ChildLink {
@@ -473,7 +504,8 @@ private struct ParentSyncChildLinkDTO: Codable {
             inviteSecret: inviteSecret,
             permissions: sanitizedPermissions,
             createdAt: createdAt,
-            registeredAt: registeredAt ?? Date()
+            registeredAt: registeredAt ?? Date(),
+            parentConnectedAt: connectedAt
         )
     }
 }

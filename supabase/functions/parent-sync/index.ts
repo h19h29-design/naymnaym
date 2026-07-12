@@ -19,6 +19,7 @@ type ChildLinkDTO = {
   permissions: SharingPermission;
   createdAt: string;
   registeredAt?: string | null;
+  connectedAt?: string | null;
 };
 
 type MealRecordDTO = {
@@ -93,6 +94,8 @@ Deno.serve(async (req: Request) => {
         return await registerInvite(payload);
       case "connectInvite":
         return await connectInvite(payload);
+      case "checkConnectionStatus":
+        return await checkConnectionStatus(payload);
       case "fetchSnapshot":
         return await fetchSnapshot(payload);
       case "publishSnapshot":
@@ -102,8 +105,8 @@ Deno.serve(async (req: Request) => {
       default:
         return json({ ok: false, code: "unknown_action", error: "지원하지 않는 요청이에요." }, 400);
     }
-  } catch (error) {
-    console.error("parent-sync error", error);
+  } catch {
+    console.error("parent-sync request failed");
     return json({ ok: false, code: "server_error", error: "부모 연결 서버 처리 중 오류가 발생했어요." }, 500);
   }
 });
@@ -174,8 +177,49 @@ async function connectInvite(payload: Record<string, unknown>): Promise<Response
     return json({ ok: false, code: "invite_code_not_found", error: "초대 코드를 찾지 못했어요." }, 404);
   }
 
-  const snapshot = await loadSnapshot(link.child_link_id);
-  return json({ ok: true, data: { link: rowToLink(link), snapshot } });
+  const connectedAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("nyam_parent_links")
+    .update({ connected_at: connectedAt, updated_at: connectedAt })
+    .eq("child_link_id", link.child_link_id)
+    .is("connected_at", null);
+  if (error) {
+    return json({ ok: false, code: "db_error", error: "부모 연결 확인을 저장하지 못했어요." }, 500);
+  }
+
+  const { data: resolvedLink, error: reloadError } = await supabase
+    .from("nyam_parent_links")
+    .select("*")
+    .eq("child_link_id", link.child_link_id)
+    .single();
+  if (reloadError) {
+    return json({ ok: false, code: "db_error", error: "부모 연결 확인을 불러오지 못했어요." }, 500);
+  }
+
+  const snapshot = await loadSnapshot(resolvedLink.child_link_id);
+  return json({ ok: true, data: { link: rowToLink(resolvedLink), snapshot } });
+}
+
+async function checkConnectionStatus(payload: Record<string, unknown>): Promise<Response> {
+  const childLinkId = asString(payload.childLinkId);
+  const inviteSecret = asString(payload.inviteSecret);
+  if (!isValidUUID(childLinkId) || inviteSecret.length < 32) {
+    return json({ ok: false, code: "invalid_status_check", error: "부모 연결 확인 정보가 올바르지 않아요." }, 400);
+  }
+
+  const { data: link, error } = await supabase
+    .from("nyam_parent_links")
+    .select("invite_secret_hash, connected_at")
+    .eq("child_link_id", childLinkId)
+    .maybeSingle();
+  if (error) {
+    return json({ ok: false, code: "db_error", error: "부모 연결 상태를 확인하지 못했어요." }, 500);
+  }
+  if (!link || link.invite_secret_hash !== await sha256(inviteSecret)) {
+    return json({ ok: false, code: "status_check_forbidden", error: "아이 기기에서만 연결 상태를 확인할 수 있어요." }, 403);
+  }
+
+  return json({ ok: true, data: { connectedAt: link.connected_at } });
 }
 
 async function fetchSnapshot(payload: Record<string, unknown>): Promise<Response> {
@@ -378,6 +422,7 @@ function rowToLink(row: Record<string, unknown>): ChildLinkDTO {
     },
     createdAt: asString(row.created_at),
     registeredAt: asString(row.registered_at),
+    connectedAt: row.connected_at ? asString(row.connected_at) : null,
   };
 }
 

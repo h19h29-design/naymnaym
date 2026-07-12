@@ -93,6 +93,22 @@ final class AppState: ObservableObject {
         profile != nil
     }
 
+    var parentConnectionState: ParentConnectionState {
+        ParentConnectionState.resolve(link: childShareLink, syncError: parentSyncError)
+    }
+
+    func refreshChildConnectionStatus() async {
+        guard var link = childShareLink else { return }
+        do {
+            link.parentConnectedAt = try await serverParentLinkService.fetchConnectionStatus(childLink: link)
+            childShareLink = link
+            childShareLinkStore.save(link)
+            parentSyncError = nil
+        } catch {
+            parentSyncError = error.localizedDescription
+        }
+    }
+
     func startDraft() {
         draftNickname = profile?.nickname ?? ""
         draftSchool = profile?.school

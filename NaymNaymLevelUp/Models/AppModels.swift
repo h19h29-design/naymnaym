@@ -979,6 +979,19 @@ struct AppInviteShareItem: Identifiable {
     var message: String
 }
 
+enum ParentConnectionState: Equatable {
+    case notLinked
+    case invitePending
+    case connected
+    case syncError
+
+    static func resolve(link: ChildLink?, syncError: String?) -> ParentConnectionState {
+        if syncError != nil { return .syncError }
+        guard let link else { return .notLinked }
+        return link.parentConnectedAt == nil ? .invitePending : .connected
+    }
+}
+
 struct ChildLink: Codable, Hashable, Identifiable {
     var id: UUID
     var childNickname: String
@@ -992,6 +1005,7 @@ struct ChildLink: Codable, Hashable, Identifiable {
     var permissions: SharingPermission
     var createdAt: Date
     var registeredAt: Date?
+    var parentConnectedAt: Date?
     var registrationErrorMessage: String?
 
     init(
@@ -1007,6 +1021,7 @@ struct ChildLink: Codable, Hashable, Identifiable {
         permissions: SharingPermission = .defaultChildSafe,
         createdAt: Date = Date(),
         registeredAt: Date? = nil,
+        parentConnectedAt: Date? = nil,
         registrationErrorMessage: String? = nil
     ) {
         self.id = id
@@ -1021,6 +1036,7 @@ struct ChildLink: Codable, Hashable, Identifiable {
         self.permissions = permissions
         self.createdAt = createdAt
         self.registeredAt = registeredAt
+        self.parentConnectedAt = parentConnectedAt
         self.registrationErrorMessage = registrationErrorMessage
     }
 

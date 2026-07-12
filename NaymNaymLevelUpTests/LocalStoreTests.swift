@@ -107,6 +107,65 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(store.load().childLinks.first?.mode, .high)
     }
 
+    func testChildConnectionStateDistinguishesInviteFromActualConnection() {
+        let pending = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary, registeredAt: Date())
+        var connected = pending
+        connected.parentConnectedAt = Date()
+
+        XCTAssertEqual(ParentConnectionState.resolve(link: nil, syncError: nil), .notLinked)
+        XCTAssertEqual(ParentConnectionState.resolve(link: pending, syncError: nil), .invitePending)
+        XCTAssertEqual(ParentConnectionState.resolve(link: connected, syncError: nil), .connected)
+        XCTAssertEqual(ParentConnectionState.resolve(link: connected, syncError: "network"), .syncError)
+    }
+
+    func testLegacyChildLinkDefaultsParentConnectionReceiptToNil() throws {
+        let link = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(link)) as? [String: Any])
+        object.removeValue(forKey: "parentConnectedAt")
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(ChildLink.self, from: JSONSerialization.data(withJSONObject: object))
+
+        XCTAssertNil(decoded.parentConnectedAt)
+    }
+
+    @MainActor
+    func testRefreshChildConnectionStatusPersistsServerReceipt() async {
+        let connectedAt = Date(timeIntervalSince1970: 1_788_000_000)
+        let store = ChildShareLinkStore(defaults: defaults)
+        let pending = ChildLink(
+            childNickname: "지우",
+            schoolName: "냠냠초",
+            mode: .elementary,
+            inviteSecret: String(repeating: "s", count: 64),
+            registeredAt: Date()
+        )
+        store.save(pending)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: store,
+            serverParentLinkService: ServerParentLinkService(
+                fetchConnectionStatusHandler: { _ in connectedAt }
+            ),
+            automaticallyPublishesParentSharedData: false
+        )
+
+        await appState.refreshChildConnectionStatus()
+
+        XCTAssertEqual(appState.childShareLink?.parentConnectedAt, connectedAt)
+        XCTAssertEqual(store.load()?.parentConnectedAt, connectedAt)
+        XCTAssertEqual(appState.parentConnectionState, .connected)
+        XCTAssertNil(appState.parentSyncError)
+    }
+
     func testParentPushDeviceTokenStoreSavesAndClearsToken() {
         let store = ParentPushDeviceTokenStore(defaults: defaults)
 
