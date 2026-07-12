@@ -79,6 +79,7 @@ public class MainActivity extends Activity {
     private School selectedSchool;
     private boolean demoMode;
     private ChildLink childLink;
+    private boolean refreshingConnectionStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -198,6 +199,9 @@ public class MainActivity extends Activity {
         actions.addView(secondaryButton("체험 모드", v -> loadTodayMeal(true)));
         actions.addView(secondaryButton("보호자 초대/연결", v -> renderInvite()));
         actions.addView(secondaryButton("개인정보 · 지원 · 데이터 관리", v -> renderPrivacyAndSupport()));
+
+        content.addView(parentConnectionCard());
+        refreshChildConnectionStatus(false);
 
         if (selectedSchool == null) {
             content.addView(card("학교를 등록하면 시작할 수 있어요", "학교를 선택하면 오늘 급식과 한 입 미션을 확인할 수 있어요.", false));
@@ -432,11 +436,19 @@ public class MainActivity extends Activity {
             childLink = makeChildLink();
             saveChildLink(childLink);
         }
+        if (childLink.parentConnectedAt != null && !childLink.parentConnectedAt.isEmpty()) {
+            content.addView(card("보호자 연결", "보호자와 연결되었습니다", false));
+            content.addView(secondaryButton("연결 상태 새로고침", v -> refreshChildConnectionStatus(true)));
+            content.addView(secondaryButton("뒤로", v -> renderHome()));
+            return;
+        }
+        content.addView(parentConnectionCard());
         content.addView(card("보호자 연결 링크", "코드: " + childLink.inviteCode + "\n링크가 열리지 않으면 이 코드를 붙여넣으면 됩니다.", false));
         content.addView(card("공유 범위", "공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐입니다. 급식판 사진, 친구 얼굴, 반/번호, 이름표는 서버나 부모 화면에 올리지 않습니다.", false));
         content.addView(primaryButton("초대 코드 서버 등록", v -> registerInvite()));
         content.addView(primaryButton("공유하기", v -> shareText(parentInviteShareMessage())));
         content.addView(secondaryButton("링크 복사", v -> copyText("초대 링크", parentInviteUrl())));
+        content.addView(secondaryButton("연결 상태 새로고침", v -> refreshChildConnectionStatus(true)));
         content.addView(card("부모에서 아이에게 요청하기", "부모 기기에서 아래 요청 링크를 공유하면 아이 기기에서 이 화면이 열립니다.", false));
         content.addView(secondaryButton("부모 요청 링크 공유", v -> shareText(parentInviteRequestMessage())));
         content.addView(secondaryButton("뒤로", v -> renderHome()));
@@ -522,14 +534,65 @@ public class MainActivity extends Activity {
                 String schoolName = link.optString("schoolName", "학교");
                 mainHandler.post(() -> {
                     resetContent("보호자 연결 완료");
-                    content.addView(card(childName + " 연결 완료", schoolName + "의 공유 기록을 확인할 수 있어요.", false));
+                    content.addView(card(childName + "와 연결되었습니다", schoolName + "의 공유 기록을 확인할 수 있어요.", false));
                     content.addView(secondaryButton("홈", v -> renderHome()));
-                    setStatus("부모 연결 완료");
+                    setStatus("아이와 보호자 연결이 완료됐어요.");
                 });
             } catch (Exception error) {
                 mainHandler.post(() -> {
                     renderHome();
                     setStatus("아이 연결 실패: " + userSafeMessage(error));
+                });
+            }
+        });
+    }
+
+    private LinearLayout parentConnectionCard() {
+        if (childLink == null) {
+            return card("보호자 연결", "아직 보호자와 연결되지 않았어요", false);
+        }
+        if (childLink.parentConnectedAt != null && !childLink.parentConnectedAt.isEmpty()) {
+            return card("보호자 연결", "보호자와 연결되었습니다", false);
+        }
+        if (childLink.registeredAt == null || childLink.registeredAt.isEmpty()) {
+            return card("보호자 연결", "아직 보호자와 연결되지 않았어요\n초대 코드를 등록하고 보호자에게 링크를 공유해 주세요.", false);
+        }
+        return card("보호자 연결 대기 중", "아직 보호자와 연결되지 않았어요\n보호자가 초대 링크를 열면 자동으로 연결됩니다.", false);
+    }
+
+    private void refreshChildConnectionStatus(boolean showResult) {
+        if (refreshingConnectionStatus || childLink == null || childLink.registeredAt == null
+            || childLink.inviteSecret == null || childLink.inviteSecret.isEmpty()) {
+            if (showResult) setStatus("초대 코드를 먼저 서버에 등록해 주세요.");
+            return;
+        }
+        refreshingConnectionStatus = true;
+        executor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject()
+                    .put("childLinkId", childLink.id)
+                    .put("inviteSecret", childLink.inviteSecret);
+                JSONObject response = postParentSync("checkConnectionStatus", payload);
+                if (!response.optBoolean("ok")) throw new IllegalStateException(response.optString("error"));
+                String connectedAt = response.getJSONObject("data").optString("connectedAt", "");
+                boolean changed = !connectedAt.equals(childLink.parentConnectedAt == null ? "" : childLink.parentConnectedAt);
+                childLink.parentConnectedAt = connectedAt.isEmpty() ? null : connectedAt;
+                saveChildLink(childLink);
+                mainHandler.post(() -> {
+                    refreshingConnectionStatus = false;
+                    if (changed) {
+                        renderHome();
+                    }
+                    if (showResult) {
+                        setStatus(childLink.parentConnectedAt == null
+                            ? "아직 보호자와 연결되지 않았어요"
+                            : "보호자와 연결되었습니다");
+                    }
+                });
+            } catch (Exception error) {
+                mainHandler.post(() -> {
+                    refreshingConnectionStatus = false;
+                    if (showResult) setStatus("연결 상태 확인 실패: " + userSafeMessage(error));
                 });
             }
         });
@@ -608,7 +671,8 @@ public class MainActivity extends Activity {
             .put("inviteCode", link.inviteCode)
             .put("permissions", permissions)
             .put("createdAt", isoNow())
-            .put("registeredAt", link.registeredAt == null ? JSONObject.NULL : link.registeredAt);
+            .put("registeredAt", link.registeredAt == null ? JSONObject.NULL : link.registeredAt)
+            .put("connectedAt", link.parentConnectedAt == null ? JSONObject.NULL : link.parentConnectedAt);
     }
 
     private void resetContent(String title) {
@@ -793,6 +857,7 @@ public class MainActivity extends Activity {
         link.inviteCode = prefs.getString("inviteCode", "");
         link.inviteSecret = prefs.getString("inviteSecret", "");
         link.registeredAt = prefs.getString("registeredAt", null);
+        link.parentConnectedAt = prefs.getString("parentConnectedAt", null);
         return link;
     }
 
@@ -810,6 +875,7 @@ public class MainActivity extends Activity {
             .putString("inviteCode", link.inviteCode)
             .putString("inviteSecret", link.inviteSecret)
             .putString("registeredAt", link.registeredAt)
+            .putString("parentConnectedAt", link.parentConnectedAt)
             .apply();
     }
 
@@ -992,5 +1058,6 @@ public class MainActivity extends Activity {
         String inviteCode;
         String inviteSecret;
         String registeredAt;
+        String parentConnectedAt;
     }
 }
