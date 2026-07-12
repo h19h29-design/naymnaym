@@ -47,6 +47,8 @@
 		C20000000000000000000038 /* Animations in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000043 /* Animations */; };
 		C20000000000000000000039 /* MascotAnimationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000044 /* MascotAnimationStateTests.swift */; };
 		C20000000000000000000040 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = C11000000000000000000002 /* Lottie */; };
+		C20000000000000000000041 /* GrowthCharacterAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000045 /* GrowthCharacterAssets.swift */; };
+		C20000000000000000000042 /* GrowthCharacterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000046 /* GrowthCharacterView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -104,6 +106,8 @@
 		C10000000000000000000042 /* LottieMascotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem/Components/LottieMascotView.swift; sourceTree = "<group>"; };
 		C10000000000000000000043 /* Animations */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/Animations; sourceTree = "<group>"; };
 		C10000000000000000000044 /* MascotAnimationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotAnimationStateTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000045 /* GrowthCharacterAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/GrowthCharacterAssets.swift; sourceTree = "<group>"; };
+		C10000000000000000000046 /* GrowthCharacterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem/Components/GrowthCharacterView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,9 +148,11 @@
 				C10000000000000000000038 /* NaymNaymLevelUp.entitlements */,
 				C10000000000000000000039 /* PrivacyInfo.xcprivacy */,
 				C10000000000000000000004 /* AppModels.swift */,
+				C10000000000000000000045 /* GrowthCharacterAssets.swift */,
 				C10000000000000000000036 /* Base.xcconfig */,
 				C10000000000000000000005 /* DesignSystem.swift */,
 				C10000000000000000000042 /* LottieMascotView.swift */,
+				C10000000000000000000046 /* GrowthCharacterView.swift */,
 				C10000000000000000000006 /* LocalStores.swift */,
 				C10000000000000000000007 /* NEISClient.swift */,
 				C10000000000000000000008 /* SchoolSearchService.swift */,
@@ -321,6 +327,7 @@
 				C20000000000000000000002 /* RootView.swift in Sources */,
 				C20000000000000000000003 /* AppState.swift in Sources */,
 				C20000000000000000000004 /* AppModels.swift in Sources */,
+				C20000000000000000000041 /* GrowthCharacterAssets.swift in Sources */,
 				C20000000000000000000005 /* DesignSystem.swift in Sources */,
 				C20000000000000000000006 /* LocalStores.swift in Sources */,
 				C20000000000000000000007 /* NEISClient.swift in Sources */,
@@ -334,6 +341,7 @@
 				C20000000000000000000036 /* MascotAnimationState.swift in Sources */,
 				C20000000000000000000015 /* OnboardingFlowView.swift in Sources */,
 				C20000000000000000000035 /* IntroExperienceView.swift in Sources */,
+				C20000000000000000000042 /* GrowthCharacterView.swift in Sources */,
 				C20000000000000000000037 /* LottieMascotView.swift in Sources */,
 				C20000000000000000000016 /* ProfileSetupView.swift in Sources */,
 				C20000000000000000000017 /* SchoolSearchView.swift in Sources */,

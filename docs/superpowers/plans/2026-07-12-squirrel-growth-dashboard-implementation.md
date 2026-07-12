@@ -83,11 +83,12 @@ Expected: all `LocalStoreTests` pass.
 - Create: `NaymNaymLevelUp/Models/GrowthCharacterAssets.swift`
 - Create: `NaymNaymLevelUp/DesignSystem/Components/GrowthCharacterView.swift`
 - Modify: `NaymNaymLevelUp/Models/AppModels.swift`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Growth_Atlas.imageset`
+- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Growth_Level_1.imageset` through `Squirrel_Growth_Level_7.imageset`
 - Test: `NaymNaymLevelUpTests/ProgressLevelTests.swift`
 
 **Interfaces:**
 - Produces: `GrowthCharacterAssets.atlasCell(for level: Int) -> Int`
+- Produces: `GrowthCharacterAssets.imageName(for level: Int) -> String`
 - Produces: `GrowthCharacterAssets.stageTitle(for level: Int) -> String`
 - Produces: `GrowthCharacterView(level:size:pose:)`
 
@@ -107,15 +108,15 @@ Expected: compile failure because `GrowthCharacterAssets` does not exist.
 
 - [ ] **Step 3: Produce the seven consistent squirrel raster assets**
 
-Use the approved reference for face, fur, sprout, proportions, palette, and rendering. Generate one purpose-built 4×2 growth atlas with seven equal cells and one empty cell. The atlas must have a transparent background and enough resolution for each cell to support a 300pt hero rendering. This is a dedicated app asset, not a crop of the supplied screenshot.
+Use the approved reference for face, fur, sprout, proportions, palette, and rendering. Generate seven purpose-built square growth assets at sufficient resolution for a 300pt hero. Each image must contain the complete character with consistent framing and a uniform cream background. These are dedicated app assets, not crops of the supplied screenshot.
 
 - [ ] **Step 4: Implement the resolver and image-backed SwiftUI view**
 
-The view uses `Image("Squirrel_Growth_Atlas")`, scales the 4×2 atlas to the requested cell, clips exactly one cell using `GrowthCharacterAssets.atlasCell(for:)`, keeps a stable aspect ratio, and provides accessibility text. It must not contain a SwiftUI-drawn mascot.
+The view resolves `Image(GrowthCharacterAssets.imageName(for: level))`, scales the complete square character image to fit without cropping, keeps a stable aspect ratio, and provides accessibility text. It must not contain a SwiftUI-drawn mascot.
 
 - [ ] **Step 5: Run focused tests and verify GREEN**
 
-Expected: all `ProgressLevelTests` pass and the atlas asset resolves in the built bundle.
+Expected: all `ProgressLevelTests` pass and all seven level assets resolve in the built bundle.
 
 ---
 
