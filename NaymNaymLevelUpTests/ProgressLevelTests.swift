@@ -58,6 +58,53 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(GrowthCharacterAssets.imageName(for: 99), "Squirrel_Growth_Level_7")
     }
 
+    func testGrowthHomeActivityStreakUsesOnlyConsecutiveRecordedDates() throws {
+        let today = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20260712"))
+        let records = [
+            ChallengeRecord(date: "20260712", menuName: "현미밥", action: .alreadyEats, gainedExp: 0, badgeName: nil, nutrients: []),
+            ChallengeRecord(date: "20260711", menuName: "시금치나물", action: .oneBite, gainedExp: 18, badgeName: nil, nutrients: []),
+            ChallengeRecord(date: "20260710", menuName: "된장국", action: .alreadyEats, gainedExp: 0, badgeName: nil, nutrients: [])
+        ]
+
+        XCTAssertEqual(
+            GrowthHomePresentation.activityStreak(challengeRecords: records, mealRecords: [], asOf: today),
+            3
+        )
+        XCTAssertEqual(
+            GrowthHomePresentation.activityStreak(challengeRecords: [], mealRecords: [], asOf: today),
+            0
+        )
+    }
+
+    func testGrowthHomeMissionUsesActualSafeUnrecordedMealItem() {
+        let rice = MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥")
+        let spinach = MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["비타민"], tags: [], sourceRawText: "시금치나물")
+        let egg = MealItem(name: "달걀찜", allergyCodes: [1], nutrients: ["단백질"], tags: [], sourceRawText: "달걀찜(1)")
+        let meal = MealDay(
+            date: "20260712",
+            menuItems: [rice, spinach, egg],
+            calorie: "650 kcal",
+            nutrition: .empty,
+            isSample: false,
+            notice: nil
+        )
+        let mealRecords = [
+            MealRecord(date: meal.date, menuName: rice.name, eatingStatus: .finished)
+        ]
+
+        let mission = GrowthHomePresentation.mission(
+            meal: meal,
+            challengeRecords: [],
+            mealRecords: mealRecords,
+            allergyRiskItemIDs: [egg.id]
+        )
+
+        XCTAssertEqual(mission.title, "시금치나물 한 입 도전")
+        XCTAssertEqual(mission.progressText, "오늘 기록 1/3")
+        XCTAssertEqual(mission.completedCount, 1)
+        XCTAssertEqual(mission.totalCount, 3)
+    }
+
     func testChallengeAddsExpBadgeAndSkin() {
         var progress = PlayerProgress()
         let item = MealItem(name: "닭갈비", allergyCodes: [15], nutrients: ["단백질"], tags: ["튼튼 파워"], sourceRawText: "닭갈비(15)")

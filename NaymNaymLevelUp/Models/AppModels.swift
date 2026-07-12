@@ -990,6 +990,32 @@ enum ParentConnectionState: Equatable {
         guard let link else { return .notLinked }
         return link.parentConnectedAt == nil ? .invitePending : .connected
     }
+
+    var childMessage: String {
+        switch self {
+        case .notLinked:
+            return "아직 보호자와 연결되지 않았어요"
+        case .invitePending:
+            return "보호자 초대를 기다리고 있어요"
+        case .connected:
+            return "보호자와 연결되었습니다"
+        case .syncError:
+            return "연결 상태를 확인하지 못했어요"
+        }
+    }
+
+    func parentMessage(childName: String) -> String {
+        switch self {
+        case .connected:
+            return "\(childName)와 연결되었습니다"
+        case .notLinked:
+            return "아직 연결된 아이가 없어요"
+        case .invitePending:
+            return "\(childName)의 연결을 기다리고 있어요"
+        case .syncError:
+            return "\(childName)의 연결 상태를 확인하지 못했어요"
+        }
+    }
 }
 
 struct ChildLink: Codable, Hashable, Identifiable {

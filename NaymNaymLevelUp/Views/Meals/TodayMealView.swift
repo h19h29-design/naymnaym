@@ -14,8 +14,13 @@ struct TodayMealView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    header
-                    parentInvitePrompt
+                    GrowthHomeHeader(
+                        progress: appState.progress,
+                        nickname: appState.profile?.nickname ?? "냠냠이",
+                        activityStreak: activityStreak,
+                        mission: growthMission
+                    )
+                    parentConnectionStatus
 
                     if appState.isLoadingMeals {
                         ProgressView("급식 정보를 불러오는 중")
@@ -65,6 +70,10 @@ struct TodayMealView: View {
             .pageBackground(theme: appState.currentTheme)
             .refreshable {
                 await appState.loadMeals()
+                await refreshConnectionStatus()
+            }
+            .task {
+                await refreshConnectionStatus()
             }
             .sheet(item: $selectedItem) { item in
                 MealLossDetailView(item: item, isChallengeLocked: appState.isAllergyRisk(item)) {
@@ -92,62 +101,52 @@ struct TodayMealView: View {
         }
     }
 
-    private var header: some View {
-        RoundedCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center) {
-                    CharacterAvatar(skin: appState.progress.currentSkin, size: 70)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(DateUtils.displayDateFormatter.string(from: Date()))
-                            .font(AppTypography.headline)
-                        Text(appState.profile?.schoolName ?? "학교 선택 전")
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColors.graySecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
+    @ViewBuilder
+    private var parentConnectionStatus: some View {
+        if appState.currentMode != .parent {
+            ParentConnectionStatusView(state: displayedParentConnectionState) {
+                if appState.childShareLink?.parentConnectedAt != nil || displayedParentConnectionState == .syncError {
+                    Task { await refreshConnectionStatus() }
+                } else {
+                    showingParentInvite = true
                 }
-                Text("안 먹고 싶은 반찬을 누르면 놓칠 수 있는 영양소를 쉽게 알려줘요.")
-                    .font(AppTypography.body)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    @ViewBuilder
-    private var parentInvitePrompt: some View {
-        if appState.currentMode != .parent {
-            let isReady = appState.childShareLink?.isCloudRegistered == true
-            RoundedCard {
-                HStack(alignment: .center, spacing: 12) {
-                    Image(systemName: isReady ? "checkmark.shield.fill" : "person.crop.circle.badge.plus")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(isReady ? AppColors.successGreen : AppColors.indigo)
-                        .frame(width: 42, height: 42)
-                        .background((isReady ? AppColors.successGreen : AppColors.indigo).opacity(0.12))
-                        .clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(isReady ? "보호자 초대 준비 완료" : "보호자 초대하기")
-                            .font(AppTypography.headline)
-                        Text(isReady ? "초대 코드를 부모에게 보내면 기록 공유를 시작할 수 있어요." : "부모가 기록을 보려면 먼저 초대 코드를 등록해야 해요.")
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColors.graySecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                    Button {
-                        showingParentInvite = true
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppColors.indigo)
-                            .frame(width: 34, height: 34)
-                            .background(AppColors.lavender.opacity(0.8))
-                            .clipShape(Circle())
-                    }
-                    .accessibilityLabel(isReady ? "초대 코드 보내기" : "초대 코드 만들기")
-                }
-            }
+    private var displayedParentConnectionState: ParentConnectionState {
+        ParentConnectionState.resolve(
+            link: appState.childShareLink,
+            syncError: appState.childShareLink == nil ? nil : appState.parentSyncError
+        )
+    }
+
+    private var activityStreak: Int {
+        GrowthHomePresentation.activityStreak(
+            challengeRecords: appState.records,
+            mealRecords: appState.mealRecords
+        )
+    }
+
+    private var growthMission: GrowthHomeMission {
+        let riskItemIDs = Set(
+            (appState.todayMeal?.menuItems ?? [])
+                .filter { appState.isAllergyRisk($0) }
+                .map(\.id)
+        )
+        return GrowthHomePresentation.mission(
+            meal: appState.todayMeal,
+            challengeRecords: appState.records,
+            mealRecords: appState.mealRecords,
+            allergyRiskItemIDs: riskItemIDs
+        )
+    }
+
+    private func refreshConnectionStatus() async {
+        guard appState.currentMode != .parent else { return }
+        await appState.refreshChildConnectionStatus()
+        if appState.childShareLink?.parentConnectedAt != nil {
+            appState.parentSyncMessage = nil
         }
     }
 

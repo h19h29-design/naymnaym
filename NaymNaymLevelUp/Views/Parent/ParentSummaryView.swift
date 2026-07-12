@@ -34,8 +34,14 @@ struct ParentSummaryView: View {
                             }
                         }
                     } else {
-                        childInviteHeader
-                        childInviteSteps
+                        if isChildActuallyConnected {
+                            ParentConnectionStatusView(state: appState.parentConnectionState) {
+                                Task { await appState.refreshChildConnectionStatus() }
+                            }
+                        } else {
+                            childInviteHeader
+                            childInviteSteps
+                        }
                         parentPrivacyCard
                     }
                 }
@@ -47,9 +53,17 @@ struct ParentSummaryView: View {
             .sheet(item: $inviteShareItem) { item in
                 ActivityView(activityItems: [item.message])
             }
+            .sheet(isPresented: $showingChildInviteSheet) {
+                ParentConnectionGuideView()
+            }
             .task {
                 if appState.currentMode == .parent {
                     await appState.refreshParentSharedData()
+                } else {
+                    await appState.refreshChildConnectionStatus()
+                    if isChildActuallyConnected {
+                        appState.parentSyncMessage = nil
+                    }
                 }
             }
         }
@@ -77,9 +91,10 @@ struct ParentSummaryView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingChildInviteSheet) {
-            ParentConnectionGuideView()
-        }
+    }
+
+    private var isChildActuallyConnected: Bool {
+        appState.childShareLink?.parentConnectedAt != nil
     }
 
     private var childInviteDescription: String {
@@ -138,11 +153,14 @@ struct ParentSummaryView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("우리 아이들")
+                        Text(appState.parentProfile.childLinks.isEmpty ? "우리 아이들" : "연결된 아이")
                             .font(AppTypography.title)
-                        Text("초대 링크를 누르면 자동 연결되고, 링크가 안 열리면 코드 붙여넣기로 연결할 수 있어요.")
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColors.graySecondary)
+                        if appState.parentProfile.childLinks.isEmpty {
+                            Text("초대 링크를 누르거나 받은 코드를 붙여넣어 아이를 연결할 수 있어요.")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.graySecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     Spacer()
                     Button {
@@ -158,18 +176,28 @@ struct ParentSummaryView: View {
                     }
                     .accessibilityLabel("아이 연결하기")
                 }
-                Button {
-                    inviteShareItem = AppInviteShareItem(message: AppInviteLink.childInviteRequestShareMessage)
-                } label: {
-                    Label("아이에게 초대 요청 링크 보내기", systemImage: "paperplane.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppColors.indigo)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(AppColors.lavender.opacity(0.55))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                if appState.parentProfile.childLinks.isEmpty {
+                    Button {
+                        inviteShareItem = AppInviteShareItem(message: AppInviteLink.childInviteRequestShareMessage)
+                    } label: {
+                        Label("아이에게 초대 요청 링크 보내기", systemImage: "paperplane.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppColors.indigo)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(AppColors.lavender.opacity(0.55))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .accessibilityLabel("아이에게 초대 요청 링크 공유하기")
+                } else {
+                    ForEach(appState.parentProfile.childLinks) { child in
+                        ParentConnectionStatusView(state: .connected, connectedName: child.childNickname) {
+                            Task { await appState.refreshParentSharedData() }
+                        }
+                    }
                 }
-                .accessibilityLabel("아이에게 초대 요청 링크 공유하기")
+
                 Button {
                     Task { await appState.refreshParentSharedData() }
                 } label: {
@@ -196,7 +224,13 @@ struct ParentSummaryView: View {
                 }
 #endif
 
-                if let message = appState.parentSyncMessage {
+                if let error = appState.parentSyncError {
+                    Text(error)
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColors.warningRed)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if appState.parentProfile.childLinks.isEmpty,
+                          let message = appState.parentSyncMessage {
                     Text(message)
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)

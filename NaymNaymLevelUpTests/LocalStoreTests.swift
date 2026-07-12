@@ -118,6 +118,14 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(ParentConnectionState.resolve(link: connected, syncError: "network"), .syncError)
     }
 
+    func testParentConnectionStateUsesTruthfulChildAndParentCopy() {
+        XCTAssertEqual(ParentConnectionState.notLinked.childMessage, "아직 보호자와 연결되지 않았어요")
+        XCTAssertEqual(ParentConnectionState.invitePending.childMessage, "보호자 초대를 기다리고 있어요")
+        XCTAssertEqual(ParentConnectionState.connected.childMessage, "보호자와 연결되었습니다")
+        XCTAssertEqual(ParentConnectionState.syncError.childMessage, "연결 상태를 확인하지 못했어요")
+        XCTAssertEqual(ParentConnectionState.connected.parentMessage(childName: "지우"), "지우와 연결되었습니다")
+    }
+
     func testLegacyChildLinkDefaultsParentConnectionReceiptToNil() throws {
         let link = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary)
         let encoder = JSONEncoder()
