@@ -368,16 +368,16 @@ struct IntroExperienceView: View {
 
     private func characterSize(for size: CGSize) -> CGFloat {
         if isSmallHeight(size.height) {
-            return min(178, max(164, size.width * 0.52))
+            return min(210, max(184, size.width * 0.60))
         }
-        return min(isCompactHeight(size.height) ? 210 : 242, max(180, size.width * 0.62))
+        return min(isCompactHeight(size.height) ? 252 : 286, max(210, size.width * 0.72))
     }
 
     private func characterStageHeight(for size: CGSize) -> CGFloat {
         if isSmallHeight(size.height) {
-            return 184
+            return 218
         }
-        return isCompactHeight(size.height) ? 222 : 270
+        return isCompactHeight(size.height) ? 264 : 310
     }
 
     private func layoutSpacing(for height: CGFloat) -> CGFloat {
@@ -735,11 +735,12 @@ private struct IntroBackground: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            if AssetCatalog.hasImage("bg_soft_mint") {
-                Image("bg_soft_mint")
+            if AssetCatalog.hasImage("Squirrel_Intro_Background") {
+                Image("Squirrel_Intro_Background")
                     .resizable()
                     .scaledToFill()
                     .ignoresSafeArea()
+                    .accessibilityHidden(true)
             } else {
                 LinearGradient(
                     colors: [style.mint, style.cream, Color(hex: "#E7F8C8")],
@@ -749,19 +750,8 @@ private struct IntroBackground: View {
                 .ignoresSafeArea()
             }
 
-            RadialGradient(
-                colors: [Color.white.opacity(0.70), Color.white.opacity(0)],
-                center: .top,
-                startRadius: 12,
-                endRadius: 320
-            )
+            Color.white.opacity(0.08)
             .ignoresSafeArea()
-
-            RoundedRectangle(cornerRadius: 130, style: .continuous)
-                .fill(Color(hex: "#BFEF8D").opacity(0.45))
-                .frame(height: 118)
-                .offset(y: 58)
-                .ignoresSafeArea()
         }
     }
 }
@@ -860,7 +850,12 @@ private struct IntroGrowthCharacterHero: View {
     }
 
     private var character: some View {
-        GrowthCharacterView(level: level, size: size, pose: pose)
+        GrowthCharacterView(
+            level: level,
+            size: size,
+            pose: pose,
+            blendsCreamBackground: true
+        )
             .overlay {
                 if showsWarning {
                     RoundedRectangle(cornerRadius: size * 0.08, style: .continuous)

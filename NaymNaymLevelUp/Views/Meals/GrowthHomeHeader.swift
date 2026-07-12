@@ -253,20 +253,44 @@ struct GrowthHomeHeader: View {
         Group {
             if usesAccessibilityLayout {
                 VStack(alignment: .leading, spacing: 10) {
-                    GrowthCharacterView(level: progress.level, size: 112)
+                    heroCharacter(size: 196)
                         .frame(maxWidth: .infinity)
+                        .frame(height: 198, alignment: .bottom)
                     growthDetails
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
+                        .background(Color.white.opacity(0.82))
                 }
             } else {
-                HStack(alignment: .center, spacing: 10) {
-                    GrowthCharacterView(level: progress.level, size: 126)
-                        .frame(width: 126, height: 126)
+                HStack(alignment: .bottom, spacing: 4) {
+                    heroCharacter(size: 210)
+                        .frame(width: 198, height: 208, alignment: .bottom)
                     growthDetails
+                        .padding(.vertical, 16)
+                        .padding(.horizontal, 12)
+                        .background(Color.white.opacity(0.82))
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background {
+            Image("Squirrel_Home_Background")
+                .resizable()
+                .scaledToFill()
+                .overlay(Color.white.opacity(0.10))
+                .accessibilityHidden(true)
+        }
+        .clipped()
+    }
+
+    private func heroCharacter(size: CGFloat) -> some View {
+        GrowthCharacterView(
+            level: progress.level,
+            size: size,
+            pose: .wave,
+            blendsCreamBackground: true
+        )
+        .shadow(color: Palette.forest.opacity(0.18), radius: 10, y: 7)
     }
 
     @ViewBuilder
@@ -327,6 +351,7 @@ struct GrowthHomeHeader: View {
             metrics
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .shadow(color: Color.white.opacity(0.9), radius: 2)
     }
 
     @ViewBuilder

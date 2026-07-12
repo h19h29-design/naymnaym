@@ -4,16 +4,25 @@ struct GrowthCharacterView: View {
     let level: Int
     let size: CGFloat
     let pose: GrowthCharacterPose
+    let blendsCreamBackground: Bool
 
-    init(level: Int, size: CGFloat, pose: GrowthCharacterPose = .idle) {
+    init(
+        level: Int,
+        size: CGFloat,
+        pose: GrowthCharacterPose = .idle,
+        blendsCreamBackground: Bool = false
+    ) {
         self.level = level
         self.size = size
         self.pose = pose
+        self.blendsCreamBackground = blendsCreamBackground
     }
 
     var body: some View {
         ZStack {
-            Color.growthCharacterCream
+            if !blendsCreamBackground {
+                Color.growthCharacterCream
+            }
 
             Image(GrowthCharacterAssets.imageName(for: level))
                 .resizable()

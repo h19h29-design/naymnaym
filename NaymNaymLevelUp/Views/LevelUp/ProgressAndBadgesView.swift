@@ -282,11 +282,11 @@ struct ProgressAndBadgesView: View {
                     .foregroundStyle(GrowthPalette.text)
 
                 GeometryReader { proxy in
-                    let characterSize = min(proxy.size.width, 280)
+                    let characterSize = min(proxy.size.width, 150)
                     GrowthCharacterView(level: presentation.currentLevel, size: characterSize, pose: .celebrate)
                         .frame(maxWidth: .infinity)
                 }
-                .frame(height: 280)
+                .frame(height: 150)
             }
             .growthSurface(background: GrowthPalette.cream)
 
