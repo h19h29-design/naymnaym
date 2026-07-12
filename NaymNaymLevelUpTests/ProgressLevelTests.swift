@@ -79,10 +79,9 @@ final class ProgressLevelTests: XCTestCase {
     func testGrowthHomeMissionUsesActualSafeUnrecordedMealItem() {
         let rice = MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥")
         let spinach = MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["비타민"], tags: [], sourceRawText: "시금치나물")
-        let egg = MealItem(name: "달걀찜", allergyCodes: [1], nutrients: ["단백질"], tags: [], sourceRawText: "달걀찜(1)")
         let meal = MealDay(
             date: "20260712",
-            menuItems: [rice, spinach, egg],
+            menuItems: [rice, spinach],
             calorie: "650 kcal",
             nutrition: .empty,
             isSample: false,
@@ -94,15 +93,158 @@ final class ProgressLevelTests: XCTestCase {
 
         let mission = GrowthHomePresentation.mission(
             meal: meal,
+            mealState: .live,
+            isLoading: false,
+            message: nil,
+            challengeRecords: [],
+            mealRecords: mealRecords,
+            allergyRiskItemIDs: []
+        )
+
+        XCTAssertEqual(mission.title, "시금치나물 한 입 도전")
+        XCTAssertEqual(mission.progressText, "오늘 기록 1/2")
+        XCTAssertEqual(mission.completedCount, 1)
+        XCTAssertEqual(mission.totalCount, 2)
+    }
+
+    func testGrowthHomeMissionUsesAuthoritativeMealStateCopy() {
+        let loading = GrowthHomePresentation.mission(
+            meal: nil,
+            mealState: .noMeal,
+            isLoading: true,
+            message: "이전 급식 오류 메시지",
+            challengeRecords: [],
+            mealRecords: [],
+            allergyRiskItemIDs: []
+        )
+        XCTAssertEqual(loading.title, "오늘 급식을 불러오는 중이에요")
+        XCTAssertEqual(loading.detail, "학교 급식 정보를 확인하고 있어요.")
+
+        let noMeal = GrowthHomePresentation.mission(
+            meal: nil,
+            mealState: .noMeal,
+            isLoading: false,
+            message: "오늘은 급식이 제공되지 않아요.",
+            challengeRecords: [],
+            mealRecords: [],
+            allergyRiskItemIDs: []
+        )
+        XCTAssertEqual(noMeal.title, "오늘은 등록된 급식이 없어요")
+        XCTAssertEqual(noMeal.detail, "오늘은 급식이 제공되지 않아요.")
+
+        XCTAssertEqual(
+            GrowthHomePresentation.mission(
+                meal: nil,
+                mealState: .error,
+                isLoading: false,
+                message: nil,
+                challengeRecords: [],
+                mealRecords: [],
+                allergyRiskItemIDs: []
+            ).title,
+            "급식 정보를 불러오지 못했어요"
+        )
+        XCTAssertEqual(
+            GrowthHomePresentation.mission(
+                meal: nil,
+                mealState: .missingAPIKey,
+                isLoading: false,
+                message: nil,
+                challengeRecords: [],
+                mealRecords: [],
+                allergyRiskItemIDs: []
+            ).title,
+            "급식 API 설정을 확인해 주세요"
+        )
+        XCTAssertEqual(
+            GrowthHomePresentation.mission(
+                meal: nil,
+                mealState: .sampleSchool,
+                isLoading: false,
+                message: nil,
+                challengeRecords: [],
+                mealRecords: [],
+                allergyRiskItemIDs: []
+            ).title,
+            "실제 학교를 선택해 주세요"
+        )
+        XCTAssertEqual(
+            GrowthHomePresentation.mission(
+                meal: nil,
+                mealState: .demo,
+                isLoading: false,
+                message: nil,
+                challengeRecords: [],
+                mealRecords: [],
+                allergyRiskItemIDs: []
+            ).title,
+            "체험 급식이 준비되지 않았어요"
+        )
+        XCTAssertEqual(
+            GrowthHomePresentation.mission(
+                meal: nil,
+                mealState: .live,
+                isLoading: false,
+                message: nil,
+                challengeRecords: [],
+                mealRecords: [],
+                allergyRiskItemIDs: []
+            ).title,
+            "오늘 급식 정보를 확인하지 못했어요"
+        )
+
+        let demoItem = MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["비타민"], tags: [], sourceRawText: "시금치나물")
+        let demoMeal = MealDay(
+            date: "20260712",
+            menuItems: [demoItem],
+            calorie: "650 kcal",
+            nutrition: .empty,
+            isSample: true,
+            notice: nil
+        )
+        let demoMission = GrowthHomePresentation.mission(
+            meal: demoMeal,
+            mealState: .demo,
+            isLoading: false,
+            message: nil,
+            challengeRecords: [],
+            mealRecords: [],
+            allergyRiskItemIDs: []
+        )
+        XCTAssertEqual(demoMission.title, "시금치나물 한 입 도전")
+        XCTAssertEqual(demoMission.detail, "체험 급식 미션이에요. 작은 한 입을 기록하면 기본 18 XP를 얻어요.")
+    }
+
+    func testGrowthHomeMissionPrioritizesUnrecordedAllergyRisk() {
+        let rice = MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥")
+        let egg = MealItem(name: "달걀찜", allergyCodes: [1], nutrients: ["단백질"], tags: [], sourceRawText: "달걀찜(1)")
+        let meal = MealDay(
+            date: "20260712",
+            menuItems: [rice, egg],
+            calorie: "650 kcal",
+            nutrition: .empty,
+            isSample: false,
+            notice: nil
+        )
+        let mealRecords = [
+            MealRecord(date: meal.date, menuName: rice.name, eatingStatus: .finished)
+        ]
+
+        let mission = GrowthHomePresentation.mission(
+            meal: meal,
+            mealState: .live,
+            isLoading: false,
+            message: nil,
             challengeRecords: [],
             mealRecords: mealRecords,
             allergyRiskItemIDs: [egg.id]
         )
 
-        XCTAssertEqual(mission.title, "시금치나물 한 입 도전")
-        XCTAssertEqual(mission.progressText, "오늘 기록 1/3")
+        XCTAssertEqual(mission.title, "알레르기 주의 메뉴를 먼저 확인해요")
+        XCTAssertEqual(mission.progressText, "오늘 기록 1/2")
         XCTAssertEqual(mission.completedCount, 1)
-        XCTAssertEqual(mission.totalCount, 3)
+        XCTAssertEqual(mission.totalCount, 2)
+        XCTAssertNotEqual(mission.title, "오늘 급식 기록을 모두 남겼어요")
     }
 
     func testChallengeAddsExpBadgeAndSkin() {

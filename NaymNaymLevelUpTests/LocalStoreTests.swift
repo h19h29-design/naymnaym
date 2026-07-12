@@ -126,6 +126,20 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(ParentConnectionState.connected.parentMessage(childName: "지우"), "지우와 연결되었습니다")
     }
 
+    func testParentConnectionPresentationSuppressesInviteAfterActualConnection() {
+        let pending = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary, registeredAt: Date())
+        var connected = pending
+        connected.parentConnectedAt = Date()
+
+        XCTAssertTrue(ParentConnectionPresentation.showsInviteAction(link: nil, state: .notLinked))
+        XCTAssertTrue(ParentConnectionPresentation.showsInviteAction(link: pending, state: .invitePending))
+        XCTAssertFalse(ParentConnectionPresentation.showsInviteAction(link: pending, state: .syncError))
+        XCTAssertFalse(ParentConnectionPresentation.showsInviteAction(link: connected, state: .connected))
+        XCTAssertFalse(ParentConnectionPresentation.showsInviteAction(link: connected, state: .syncError))
+        XCTAssertTrue(ParentConnectionPresentation.showsConnectedStatusOnly(link: connected))
+        XCTAssertFalse(ParentConnectionPresentation.showsConnectedStatusOnly(link: pending))
+    }
+
     func testLegacyChildLinkDefaultsParentConnectionReceiptToNil() throws {
         let link = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary)
         let encoder = JSONEncoder()

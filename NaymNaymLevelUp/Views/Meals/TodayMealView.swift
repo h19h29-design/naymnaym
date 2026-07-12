@@ -105,10 +105,13 @@ struct TodayMealView: View {
     private var parentConnectionStatus: some View {
         if appState.currentMode != .parent {
             ParentConnectionStatusView(state: displayedParentConnectionState) {
-                if appState.childShareLink?.parentConnectedAt != nil || displayedParentConnectionState == .syncError {
-                    Task { await refreshConnectionStatus() }
-                } else {
+                if ParentConnectionPresentation.showsInviteAction(
+                    link: appState.childShareLink,
+                    state: displayedParentConnectionState
+                ) {
                     showingParentInvite = true
+                } else {
+                    Task { await refreshConnectionStatus() }
                 }
             }
         }
@@ -136,6 +139,9 @@ struct TodayMealView: View {
         )
         return GrowthHomePresentation.mission(
             meal: appState.todayMeal,
+            mealState: appState.mealStatus,
+            isLoading: appState.isLoadingMeals,
+            message: appState.mealMessage,
             challengeRecords: appState.records,
             mealRecords: appState.mealRecords,
             allergyRiskItemIDs: riskItemIDs
@@ -145,7 +151,7 @@ struct TodayMealView: View {
     private func refreshConnectionStatus() async {
         guard appState.currentMode != .parent else { return }
         await appState.refreshChildConnectionStatus()
-        if appState.childShareLink?.parentConnectedAt != nil {
+        if ParentConnectionPresentation.showsConnectedStatusOnly(link: appState.childShareLink) {
             appState.parentSyncMessage = nil
         }
     }

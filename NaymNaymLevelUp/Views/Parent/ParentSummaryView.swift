@@ -94,7 +94,7 @@ struct ParentSummaryView: View {
     }
 
     private var isChildActuallyConnected: Bool {
-        appState.childShareLink?.parentConnectedAt != nil
+        ParentConnectionPresentation.showsConnectedStatusOnly(link: appState.childShareLink)
     }
 
     private var childInviteDescription: String {

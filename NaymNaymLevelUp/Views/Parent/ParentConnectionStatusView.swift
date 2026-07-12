@@ -1,5 +1,16 @@
 import SwiftUI
 
+enum ParentConnectionPresentation {
+    static func showsInviteAction(link: ChildLink?, state: ParentConnectionState) -> Bool {
+        guard !showsConnectedStatusOnly(link: link) else { return false }
+        return state == .notLinked || state == .invitePending
+    }
+
+    static func showsConnectedStatusOnly(link: ChildLink?) -> Bool {
+        link?.parentConnectedAt != nil
+    }
+}
+
 struct ParentConnectionStatusView: View {
     let state: ParentConnectionState
     let connectedName: String?
@@ -22,8 +33,8 @@ struct ParentConnectionStatusView: View {
                     .font(.caption.weight(.bold))
                 Text(message)
                     .font(.caption.weight(.semibold))
-                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.bold))
