@@ -156,18 +156,24 @@ enum IntroMissionTextFactory {
     }
 }
 
+enum IntroCharacterPresentation {
+    static func atlasCell(level: Int?) -> Int {
+        GrowthCharacterAssets.atlasCell(for: level ?? 1)
+    }
+}
+
 struct IntroExperienceView: View {
     @EnvironmentObject private var appState: AppState
 
     var kind: IntroExperienceKind
+    var characterLevel: Int? = nil
     var primaryTitle: String
     var primarySubtitle: String
     var onPrimary: () -> Void
     var onDemo: () -> Void
     var onParent: () -> Void
 
-    @State private var phase: MascotIntroPhase = .hidden
-    @State private var mascotAnimationState: MascotAnimationState = .intro
+    @State private var phase: IntroCharacterPhase = .hidden
     @State private var particlesAreMoving = false
     @State private var hasPlayedIntro = false
     @State private var introSequenceCompleted = false
@@ -192,6 +198,10 @@ struct IntroExperienceView: View {
         introSequenceCompleted
     }
 
+    private var currentCharacterLevel: Int {
+        IntroCharacterPresentation.atlasCell(level: characterLevel ?? appState.progress.level) + 1
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView(showsIndicators: false) {
@@ -209,19 +219,15 @@ struct IntroExperienceView: View {
 
                     ZStack {
                         ParticleField(isMoving: particlesAreMoving, compact: isCompactHeight(proxy.size.height))
-                        LottieMascotView(
-                            state: mascotAnimationState,
-                            onComplete: handleMascotAnimationComplete
-                        ) {
-                            AnimatedMascotView(
-                                phase: phase,
-                                size: mascotSize(for: proxy.size),
-                                style: style
-                            )
-                        }
+                        IntroGrowthCharacterHero(
+                            level: currentCharacterLevel,
+                            phase: phase,
+                            size: characterSize(for: proxy.size),
+                            settledPose: growthPose(for: mission.mascotState)
+                        )
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: mascotStageHeight(for: proxy.size))
+                    .frame(height: characterStageHeight(for: proxy.size))
                     .padding(.top, isCompactHeight(proxy.size.height) ? -4 : 0)
 
                     MissionCard(
@@ -257,34 +263,18 @@ struct IntroExperienceView: View {
         .task {
             guard !hasPlayedIntro else { return }
             hasPlayedIntro = true
-            mascotAnimationState = .intro
             particlesAreMoving = true
-
-            if LottieAnimationCatalog.isAnimationBundled(MascotAnimationState.intro.animationName) {
-                phase = .settled
-                await completeLottieIntroAfterTimeoutIfNeeded()
-            } else {
-                await playFallbackIntro()
-            }
-        }
-        .onChange(of: mission) { newMission in
-            guard introSequenceCompleted, mascotAnimationState != .intro else { return }
-            withAnimation(.easeOut(duration: 0.22)) {
-                mascotAnimationState = newMission.mascotState
-            }
+            await playCharacterIntro()
         }
         .accessibilityElement(children: .contain)
     }
 
-    private func playFallbackIntro() async {
-        let sequence: [(MascotIntroPhase, UInt64)] = [
-            (.peek, 340_000_000),
-            (.rise, 520_000_000),
-            (.bounce, 420_000_000),
-            (.wink, 410_000_000),
-            (.wave, 530_000_000),
-            (.jump, 500_000_000),
-            (.land, 250_000_000),
+    private func playCharacterIntro() async {
+        let sequence: [(IntroCharacterPhase, UInt64)] = [
+            (.rise, 650_000_000),
+            (.bounce, 450_000_000),
+            (.wave, 650_000_000),
+            (.jump, 550_000_000),
             (.settled, 0)
         ]
 
@@ -293,36 +283,32 @@ struct IntroExperienceView: View {
                 phase = nextPhase
             }
             if delay > 0 {
-                try? await Task.sleep(nanoseconds: delay)
+                do {
+                    try await Task.sleep(nanoseconds: delay)
+                } catch {
+                    return
+                }
             }
         }
 
         completeIntroSequence()
     }
 
-    private func completeLottieIntroAfterTimeoutIfNeeded() async {
-        try? await Task.sleep(nanoseconds: 4_200_000_000)
-        guard !Task.isCancelled, mascotAnimationState == .intro, !introSequenceCompleted else { return }
-        completeIntroSequence()
-    }
-
-    private func handleMascotAnimationComplete() {
-        if mascotAnimationState == .intro {
-            completeIntroSequence()
-            return
-        }
-
-        guard let nextState = mascotAnimationState.stateAfterCompletion else { return }
-        withAnimation(.easeOut(duration: 0.22)) {
-            mascotAnimationState = nextState
-        }
-    }
-
     private func completeIntroSequence() {
         withAnimation(.easeOut(duration: 0.22)) {
             phase = .settled
             introSequenceCompleted = true
-            mascotAnimationState = mission.mascotState
+        }
+    }
+
+    private func growthPose(for state: MascotAnimationState) -> GrowthCharacterPose {
+        switch state {
+        case .wave:
+            return .wave
+        case .success, .levelup:
+            return .celebrate
+        case .intro, .idle, .allergyWarning, .fallback:
+            return .idle
         }
     }
 
@@ -334,14 +320,14 @@ struct IntroExperienceView: View {
         height < 720
     }
 
-    private func mascotSize(for size: CGSize) -> CGFloat {
+    private func characterSize(for size: CGSize) -> CGFloat {
         if isSmallHeight(size.height) {
             return min(178, max(164, size.width * 0.52))
         }
         return min(isCompactHeight(size.height) ? 210 : 242, max(180, size.width * 0.62))
     }
 
-    private func mascotStageHeight(for size: CGSize) -> CGFloat {
+    private func characterStageHeight(for size: CGSize) -> CGFloat {
         if isSmallHeight(size.height) {
             return 184
         }
@@ -356,35 +342,26 @@ struct IntroExperienceView: View {
     }
 }
 
-private enum MascotIntroPhase {
+private enum IntroCharacterPhase {
     case hidden
-    case peek
     case rise
     case bounce
-    case wink
     case wave
     case jump
-    case land
     case settled
 
     var animation: Animation {
         switch self {
         case .hidden:
             return .easeOut(duration: 0.01)
-        case .peek:
-            return .easeOut(duration: 0.18)
         case .rise:
             return .spring(response: 0.55, dampingFraction: 0.72)
         case .bounce:
             return .spring(response: 0.32, dampingFraction: 0.52)
-        case .wink:
-            return .easeInOut(duration: 0.24)
         case .wave:
             return .easeInOut(duration: 0.30)
         case .jump:
             return .spring(response: 0.34, dampingFraction: 0.56)
-        case .land:
-            return .spring(response: 0.26, dampingFraction: 0.54)
         case .settled:
             return .spring(response: 0.42, dampingFraction: 0.80)
         }
@@ -805,10 +782,11 @@ private struct ParticleSpec: Identifiable {
     var delay: Double
 }
 
-private struct AnimatedMascotView: View {
-    var phase: MascotIntroPhase
+private struct IntroGrowthCharacterHero: View {
+    var level: Int
+    var phase: IntroCharacterPhase
     var size: CGFloat
-    var style: IntroStyle
+    var settledPose: GrowthCharacterPose
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -818,74 +796,35 @@ private struct AnimatedMascotView: View {
                 .blur(radius: 3)
                 .offset(y: size * 0.01)
 
-            mascotImage
-                .frame(width: size, height: size)
-                .scaleEffect(x: phase == .land ? 1.05 : imageScale, y: phase == .land ? 0.94 : imageScale, anchor: .bottom)
+            GrowthCharacterView(level: level, size: size, pose: pose)
+                .scaleEffect(scale, anchor: .bottom)
                 .rotationEffect(.degrees(rotation))
                 .offset(y: verticalOffset)
-                .opacity(imageOpacity)
+                .opacity(opacity)
         }
         .frame(width: size * 1.34, height: size * 1.18, alignment: .bottom)
-        .clipped()
-        .accessibilityLabel("냠냠이 캐릭터가 인사하고 있어요.")
-    }
-
-    @ViewBuilder
-    private var mascotImage: some View {
-        if AssetCatalog.hasImage(assetName) {
-            Image(assetName)
-                .resizable()
-                .scaledToFit()
-                .shadow(color: style.primary.opacity(0.22), radius: 14, x: 0, y: 10)
-        } else {
-            RequiredAssetPlaceholder(
-                assetName: assetName,
-                recommendedSize: "캐릭터 투명 PNG/WebP, 900x900px 권장"
-            )
-        }
-    }
-
-    private var assetName: String {
-        switch phase {
-        case .hidden:
-            return "mascot_onboarding"
-        case .wink:
-            return "mascot_wave_1"
-        case .wave:
-            return "mascot_wave_2"
-        case .jump:
-            return "mascot_jump"
-        default:
-            return "mascot_onboarding"
-        }
     }
 
     private var verticalOffset: CGFloat {
         switch phase {
         case .hidden:
-            return size * 0.70
-        case .peek:
-            return size * 0.62
+            return size * 0.72
         case .rise:
             return size * 0.08
         case .bounce:
             return -size * 0.04
-        case .wink:
-            return -size * 0.02
         case .wave:
             return -size * 0.02
         case .jump:
             return -size * 0.20
-        case .land:
-            return size * 0.03
         case .settled:
             return 0
         }
     }
 
-    private var imageScale: CGFloat {
+    private var scale: CGFloat {
         switch phase {
-        case .hidden, .peek:
+        case .hidden:
             return 0.92
         case .bounce:
             return 1.04
@@ -896,20 +835,31 @@ private struct AnimatedMascotView: View {
         }
     }
 
-    private var imageOpacity: Double {
+    private var opacity: Double {
         phase == .hidden ? 0 : 1
     }
 
     private var rotation: Double {
         switch phase {
         case .wave:
-            return -3.5
+            return -5
         case .jump:
-            return 2.5
-        case .land:
-            return -1
+            return 3
         default:
             return 0
+        }
+    }
+
+    private var pose: GrowthCharacterPose {
+        switch phase {
+        case .wave:
+            return .wave
+        case .jump:
+            return .celebrate
+        case .settled:
+            return settledPose
+        case .hidden, .rise, .bounce:
+            return .idle
         }
     }
 }

@@ -2,6 +2,11 @@ import XCTest
 @testable import NaymNaymLevelUp
 
 final class MealParserTests: XCTestCase {
+    func testIntroCharacterPresentationUsesCurrentProgressLevel() {
+        XCTAssertEqual(IntroCharacterPresentation.atlasCell(level: 5), 4)
+        XCTAssertEqual(IntroCharacterPresentation.atlasCell(level: nil), 0)
+    }
+
     func testParseMealItemsSplitsHtmlLineBreaksAndAllergies() {
         let items = MealParser.parseMealItems(rawDishName: "현미밥<br/>닭갈비(5.6.15)<br/>우유(2)")
 

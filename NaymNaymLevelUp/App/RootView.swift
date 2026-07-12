@@ -18,6 +18,7 @@ struct RootView: View {
                 } else if shouldShowIntro {
                     IntroExperienceView(
                         kind: .daily,
+                        characterLevel: appState.progress.level,
                         primaryTitle: "오늘 급식 보러가기",
                         primarySubtitle: "실제 급식과 한 입 미션 확인",
                         onPrimary: {
