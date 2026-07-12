@@ -58,6 +58,19 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(GrowthCharacterAssets.imageName(for: 99), "Squirrel_Growth_Level_7")
     }
 
+    func testGrowthProgressPresentationResolvesNextStageAndRemainingXP() {
+        let levelOne = GrowthProgressPresentation(progress: PlayerProgress(recordExp: 30))
+        XCTAssertEqual(levelOne.currentLevel, 1)
+        XCTAssertEqual(levelOne.nextLevel, 2)
+        XCTAssertEqual(levelOne.remainingXP, 50)
+        XCTAssertFalse(levelOne.isStageUnlocked(2))
+
+        let maxLevel = GrowthProgressPresentation(progress: PlayerProgress(recordExp: 1_000))
+        XCTAssertEqual(maxLevel.currentLevel, 7)
+        XCTAssertNil(maxLevel.nextLevel)
+        XCTAssertEqual(maxLevel.remainingXP, 0)
+    }
+
     func testGrowthHomeActivityStreakUsesOnlyConsecutiveRecordedDates() throws {
         let today = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20260712"))
         let records = [
