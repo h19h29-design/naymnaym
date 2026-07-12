@@ -33,6 +33,16 @@ struct GrowthProgressPresentation {
     }
 }
 
+struct GrowthLevelMarkPresentation {
+    let level: Int
+    let diameter: CGFloat = 54
+    let glyphPointSize: CGFloat = 17
+
+    var glyph: String {
+        "L\(GrowthCharacterAssets.atlasCell(for: level) + 1)"
+    }
+}
+
 struct ProgressAndBadgesView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -110,13 +120,17 @@ struct ProgressAndBadgesView: View {
     }
 
     private var levelMark: some View {
-        ZStack {
+        let mark = GrowthLevelMarkPresentation(level: presentation.currentLevel)
+
+        return ZStack {
             Circle()
                 .fill(GrowthPalette.forest)
-                .frame(width: 54, height: 54)
-            Text("L\(presentation.currentLevel)")
-                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .frame(width: mark.diameter, height: mark.diameter)
+            Text(mark.glyph)
+                .font(.system(size: mark.glyphPointSize, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.white)
+                .lineLimit(1)
+                .frame(width: mark.diameter, height: mark.diameter)
         }
         .accessibilityHidden(true)
     }

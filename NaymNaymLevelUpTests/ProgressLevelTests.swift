@@ -71,6 +71,57 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(maxLevel.remainingXP, 0)
     }
 
+    func testGrowthProgressPresentationCalculatesFractionWithinCurrentThreshold() {
+        XCTAssertEqual(
+            GrowthProgressPresentation(progress: PlayerProgress(recordExp: 30)).progressFraction,
+            0.375,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            GrowthProgressPresentation(progress: PlayerProgress(recordExp: 130)).progressFraction,
+            0.5,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            GrowthProgressPresentation(progress: PlayerProgress(recordExp: 1_000)).progressFraction,
+            1,
+            accuracy: 0.000_001
+        )
+    }
+
+    func testGrowthProgressPresentationResetsAtEveryExactThreshold() {
+        for (index, threshold) in PlayerProgress.levelThresholds.enumerated() {
+            let presentation = GrowthProgressPresentation(progress: PlayerProgress(recordExp: threshold))
+            let expectedLevel = index + 1
+
+            XCTAssertEqual(presentation.currentLevel, expectedLevel, "threshold: \(threshold)")
+            XCTAssertEqual(
+                presentation.progressFraction,
+                expectedLevel == PlayerProgress.levelThresholds.count ? 1 : 0,
+                accuracy: 0.000_001,
+                "threshold: \(threshold)"
+            )
+            XCTAssertEqual(
+                presentation.nextLevel,
+                expectedLevel == PlayerProgress.levelThresholds.count ? nil : expectedLevel + 1,
+                "threshold: \(threshold)"
+            )
+            let expectedRemaining = expectedLevel == PlayerProgress.levelThresholds.count
+                ? 0
+                : PlayerProgress.levelThresholds[index + 1] - threshold
+            XCTAssertEqual(presentation.remainingXP, expectedRemaining, "threshold: \(threshold)")
+        }
+    }
+
+    func testGrowthLevelMarkUsesStableNonDynamicTypeMetrics() {
+        let mark = GrowthLevelMarkPresentation(level: 1)
+
+        XCTAssertEqual(mark.glyph, "L1")
+        XCTAssertEqual(mark.diameter, 54)
+        XCTAssertEqual(mark.glyphPointSize, 17)
+        XCTAssertLessThan(mark.glyphPointSize, mark.diameter / 2)
+    }
+
     func testGrowthHomeActivityStreakUsesOnlyConsecutiveRecordedDates() throws {
         let today = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20260712"))
         let records = [
