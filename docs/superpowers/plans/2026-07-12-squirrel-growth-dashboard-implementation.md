@@ -83,17 +83,11 @@ Expected: all `LocalStoreTests` pass.
 - Create: `NaymNaymLevelUp/Models/GrowthCharacterAssets.swift`
 - Create: `NaymNaymLevelUp/DesignSystem/Components/GrowthCharacterView.swift`
 - Modify: `NaymNaymLevelUp/Models/AppModels.swift`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_1.imageset`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_2.imageset`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_3.imageset`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_4.imageset`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_5.imageset`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_6.imageset`
-- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Level_7.imageset`
+- Add: `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Growth_Atlas.imageset`
 - Test: `NaymNaymLevelUpTests/ProgressLevelTests.swift`
 
 **Interfaces:**
-- Produces: `GrowthCharacterAssets.imageName(for level: Int) -> String`
+- Produces: `GrowthCharacterAssets.atlasCell(for level: Int) -> Int`
 - Produces: `GrowthCharacterAssets.stageTitle(for level: Int) -> String`
 - Produces: `GrowthCharacterView(level:size:pose:)`
 
@@ -101,9 +95,9 @@ Expected: all `LocalStoreTests` pass.
 
 ```swift
 func testGrowthCharacterAssetsClampLevelsAndResolveEveryStage() {
-    XCTAssertEqual(GrowthCharacterAssets.imageName(for: 0), "Squirrel_Level_1")
-    XCTAssertEqual(GrowthCharacterAssets.imageName(for: 4), "Squirrel_Level_4")
-    XCTAssertEqual(GrowthCharacterAssets.imageName(for: 99), "Squirrel_Level_7")
+    XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 0), 0)
+    XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 4), 3)
+    XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 99), 6)
 }
 ```
 
@@ -113,15 +107,15 @@ Expected: compile failure because `GrowthCharacterAssets` does not exist.
 
 - [ ] **Step 3: Produce the seven consistent squirrel raster assets**
 
-Use the approved reference for face, fur, sprout, proportions, palette, and rendering. Every PNG must have a transparent background and enough resolution for a 300pt hero rendering.
+Use the approved reference for face, fur, sprout, proportions, palette, and rendering. Generate one purpose-built 4×2 growth atlas with seven equal cells and one empty cell. The atlas must have a transparent background and enough resolution for each cell to support a 300pt hero rendering. This is a dedicated app asset, not a crop of the supplied screenshot.
 
 - [ ] **Step 4: Implement the resolver and image-backed SwiftUI view**
 
-The view uses `Image(GrowthCharacterAssets.imageName(for: level))`, `scaledToFit`, a stable aspect ratio, and accessibility text. It must not contain a SwiftUI-drawn mascot.
+The view uses `Image("Squirrel_Growth_Atlas")`, scales the 4×2 atlas to the requested cell, clips exactly one cell using `GrowthCharacterAssets.atlasCell(for:)`, keeps a stable aspect ratio, and provides accessibility text. It must not contain a SwiftUI-drawn mascot.
 
 - [ ] **Step 5: Run focused tests and verify GREEN**
 
-Expected: all `ProgressLevelTests` pass and all seven asset names resolve in the built bundle.
+Expected: all `ProgressLevelTests` pass and the atlas asset resolves in the built bundle.
 
 ---
 
@@ -163,8 +157,8 @@ Confirm character scale, first-viewport priorities, text wrapping, card spacing,
 
 ```swift
 func testIntroCharacterPresentationUsesCurrentProgressLevel() {
-    XCTAssertEqual(IntroCharacterPresentation.imageName(level: 5), "Squirrel_Level_5")
-    XCTAssertEqual(IntroCharacterPresentation.imageName(level: nil), "Squirrel_Level_1")
+    XCTAssertEqual(IntroCharacterPresentation.atlasCell(level: 5), 4)
+    XCTAssertEqual(IntroCharacterPresentation.atlasCell(level: nil), 0)
 }
 ```
 
