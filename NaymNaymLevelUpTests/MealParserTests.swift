@@ -7,6 +7,21 @@ final class MealParserTests: XCTestCase {
         XCTAssertEqual(IntroCharacterPresentation.atlasCell(level: nil), 0)
     }
 
+    func testIntroCharacterPresentationKeepsAllergyWarningPersistent() {
+        XCTAssertTrue(IntroCharacterPresentation.isPersistentWarning(.allergyWarning))
+        XCTAssertEqual(IntroCharacterPresentation.pose(for: .allergyWarning), .idle)
+        XCTAssertNil(IntroCharacterPresentation.stateAfterCompletion(.allergyWarning))
+    }
+
+    func testIntroCharacterPresentationReturnsPlayOnceStatesToIdle() {
+        XCTAssertEqual(IntroCharacterPresentation.pose(for: .wave), .wave)
+        XCTAssertEqual(IntroCharacterPresentation.pose(for: .success), .celebrate)
+        XCTAssertEqual(IntroCharacterPresentation.pose(for: .levelup), .celebrate)
+        XCTAssertEqual(IntroCharacterPresentation.stateAfterCompletion(.wave), .idle)
+        XCTAssertEqual(IntroCharacterPresentation.stateAfterCompletion(.success), .idle)
+        XCTAssertEqual(IntroCharacterPresentation.stateAfterCompletion(.levelup), .idle)
+    }
+
     func testParseMealItemsSplitsHtmlLineBreaksAndAllergies() {
         let items = MealParser.parseMealItems(rawDishName: "현미밥<br/>닭갈비(5.6.15)<br/>우유(2)")
 

@@ -157,8 +157,29 @@ enum IntroMissionTextFactory {
 }
 
 enum IntroCharacterPresentation {
+    static let playOnceDurationNanoseconds: UInt64 = 650_000_000
+
     static func atlasCell(level: Int?) -> Int {
         GrowthCharacterAssets.atlasCell(for: level ?? 1)
+    }
+
+    static func pose(for state: MascotAnimationState) -> GrowthCharacterPose {
+        switch state {
+        case .wave:
+            return .wave
+        case .success, .levelup:
+            return .celebrate
+        case .intro, .idle, .allergyWarning, .fallback:
+            return .idle
+        }
+    }
+
+    static func isPersistentWarning(_ state: MascotAnimationState) -> Bool {
+        state == .allergyWarning
+    }
+
+    static func stateAfterCompletion(_ state: MascotAnimationState) -> MascotAnimationState? {
+        state.stateAfterCompletion
     }
 }
 
@@ -177,6 +198,8 @@ struct IntroExperienceView: View {
     @State private var particlesAreMoving = false
     @State private var hasPlayedIntro = false
     @State private var introSequenceCompleted = false
+    @State private var presentedMissionState: MascotAnimationState = .idle
+    @State private var missionPresentationGeneration = 0
 
     private var style: IntroStyle {
         IntroStyle(mode: appState.currentMode)
@@ -223,7 +246,7 @@ struct IntroExperienceView: View {
                             level: currentCharacterLevel,
                             phase: phase,
                             size: characterSize(for: proxy.size),
-                            settledPose: growthPose(for: mission.mascotState)
+                            presentationState: presentedMissionState
                         )
                     }
                     .frame(maxWidth: .infinity)
@@ -266,6 +289,13 @@ struct IntroExperienceView: View {
             particlesAreMoving = true
             await playCharacterIntro()
         }
+        .task(id: missionPresentationGeneration) {
+            await completePlayOnceMissionPresentation()
+        }
+        .onChange(of: mission.mascotState) { newState in
+            guard introSequenceCompleted else { return }
+            presentMissionState(newState)
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -292,6 +322,7 @@ struct IntroExperienceView: View {
         }
 
         completeIntroSequence()
+        presentMissionState(mission.mascotState)
     }
 
     private func completeIntroSequence() {
@@ -301,14 +332,29 @@ struct IntroExperienceView: View {
         }
     }
 
-    private func growthPose(for state: MascotAnimationState) -> GrowthCharacterPose {
-        switch state {
-        case .wave:
-            return .wave
-        case .success, .levelup:
-            return .celebrate
-        case .intro, .idle, .allergyWarning, .fallback:
-            return .idle
+    private func presentMissionState(_ state: MascotAnimationState) {
+        withAnimation(.easeInOut(duration: 0.28)) {
+            presentedMissionState = state
+        }
+        missionPresentationGeneration &+= 1
+    }
+
+    private func completePlayOnceMissionPresentation() async {
+        guard introSequenceCompleted else { return }
+        let state = presentedMissionState
+        guard let nextState = IntroCharacterPresentation.stateAfterCompletion(state) else { return }
+
+        do {
+            try await Task.sleep(
+                nanoseconds: IntroCharacterPresentation.playOnceDurationNanoseconds
+            )
+        } catch {
+            return
+        }
+
+        guard !Task.isCancelled, presentedMissionState == state else { return }
+        withAnimation(.easeOut(duration: 0.24)) {
+            presentedMissionState = nextState
         }
     }
 
@@ -786,7 +832,9 @@ private struct IntroGrowthCharacterHero: View {
     var level: Int
     var phase: IntroCharacterPhase
     var size: CGFloat
-    var settledPose: GrowthCharacterPose
+    var presentationState: MascotAnimationState
+
+    @State private var warningPulse = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -796,13 +844,47 @@ private struct IntroGrowthCharacterHero: View {
                 .blur(radius: 3)
                 .offset(y: size * 0.01)
 
-            GrowthCharacterView(level: level, size: size, pose: pose)
-                .scaleEffect(scale, anchor: .bottom)
-                .rotationEffect(.degrees(rotation))
-                .offset(y: verticalOffset)
+            character
+                .scaleEffect(scale * presentationScale * warningScale, anchor: .bottom)
+                .rotationEffect(.degrees(rotation + presentationRotation))
+                .offset(y: verticalOffset + presentationVerticalOffset)
                 .opacity(opacity)
         }
         .frame(width: size * 1.34, height: size * 1.18, alignment: .bottom)
+        .onAppear {
+            updateWarningPulse()
+        }
+        .onChange(of: presentationState) { _ in
+            updateWarningPulse()
+        }
+    }
+
+    private var character: some View {
+        GrowthCharacterView(level: level, size: size, pose: pose)
+            .overlay {
+                if showsWarning {
+                    RoundedRectangle(cornerRadius: size * 0.08, style: .continuous)
+                        .fill(Color.red.opacity(warningPulse ? 0.11 : 0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: size * 0.08, style: .continuous)
+                                .stroke(Color.red.opacity(warningPulse ? 0.52 : 0.30), lineWidth: 2)
+                        )
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if showsWarning {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: max(24, size * 0.15), weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .padding(max(7, size * 0.035))
+                        .background(Circle().fill(Color.red))
+                        .shadow(color: Color.red.opacity(0.25), radius: 6, y: 3)
+                        .padding(max(7, size * 0.04))
+                        .accessibilityHidden(true)
+                }
+            }
     }
 
     private var verticalOffset: CGFloat {
@@ -850,6 +932,42 @@ private struct IntroGrowthCharacterHero: View {
         }
     }
 
+    private var presentationScale: CGFloat {
+        guard phase == .settled else { return 1 }
+        switch presentationState {
+        case .wave:
+            return 1.01
+        case .success, .levelup:
+            return 1.04
+        case .intro, .idle, .allergyWarning, .fallback:
+            return 1
+        }
+    }
+
+    private var presentationRotation: Double {
+        guard phase == .settled else { return 0 }
+        return presentationState == .wave ? -5 : 0
+    }
+
+    private var presentationVerticalOffset: CGFloat {
+        guard phase == .settled else { return 0 }
+        switch presentationState {
+        case .success, .levelup:
+            return -size * 0.06
+        case .intro, .idle, .wave, .allergyWarning, .fallback:
+            return 0
+        }
+    }
+
+    private var showsWarning: Bool {
+        phase == .settled
+            && IntroCharacterPresentation.isPersistentWarning(presentationState)
+    }
+
+    private var warningScale: CGFloat {
+        showsWarning && warningPulse ? 1.018 : 1
+    }
+
     private var pose: GrowthCharacterPose {
         switch phase {
         case .wave:
@@ -857,9 +975,23 @@ private struct IntroGrowthCharacterHero: View {
         case .jump:
             return .celebrate
         case .settled:
-            return settledPose
+            return IntroCharacterPresentation.pose(for: presentationState)
         case .hidden, .rise, .bounce:
             return .idle
+        }
+    }
+
+    private func updateWarningPulse() {
+        guard showsWarning else {
+            withAnimation(.easeOut(duration: 0.16)) {
+                warningPulse = false
+            }
+            return
+        }
+
+        warningPulse = false
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            warningPulse = true
         }
     }
 }
