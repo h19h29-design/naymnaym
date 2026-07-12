@@ -34,9 +34,28 @@ final class ProgressLevelTests: XCTestCase {
     }
 
     func testGrowthCharacterAssetsClampLevelsAndResolveEveryStage() {
+        let expectedTitles = [
+            "새싹",
+            "꼬마 모험가",
+            "한입 탐험가",
+            "숲길 도전자",
+            "냠냠 용사",
+            "숲의 수호자",
+            "레전드 냠냠러"
+        ]
+
+        for level in 1...7 {
+            XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: level), level - 1)
+            XCTAssertEqual(GrowthCharacterAssets.stageTitle(for: level), expectedTitles[level - 1])
+            XCTAssertEqual(GrowthCharacterAssets.imageName(for: level), "Squirrel_Growth_Level_\(level)")
+        }
+
         XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 0), 0)
-        XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 4), 3)
+        XCTAssertEqual(GrowthCharacterAssets.stageTitle(for: 0), expectedTitles[0])
+        XCTAssertEqual(GrowthCharacterAssets.imageName(for: 0), "Squirrel_Growth_Level_1")
         XCTAssertEqual(GrowthCharacterAssets.atlasCell(for: 99), 6)
+        XCTAssertEqual(GrowthCharacterAssets.stageTitle(for: 99), expectedTitles[6])
+        XCTAssertEqual(GrowthCharacterAssets.imageName(for: 99), "Squirrel_Growth_Level_7")
     }
 
     func testChallengeAddsExpBadgeAndSkin() {

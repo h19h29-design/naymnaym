@@ -15,19 +15,15 @@ struct GrowthCharacterView: View {
         ZStack {
             Color.growthCharacterCream
 
-            Image(GrowthCharacterAssets.atlasImageName)
+            Image(GrowthCharacterAssets.imageName(for: level))
                 .resizable()
                 .interpolation(.high)
-                .frame(width: renderedSize * 4, height: renderedSize * 4)
-                .offset(x: atlasOffset.width, y: atlasOffset.height)
+                .scaledToFit()
         }
-        .frame(width: renderedSize, height: renderedSize)
-        .clipped()
-        .rotationEffect(poseRotation)
-        .scaleEffect(poseScale)
         .frame(width: renderedSize, height: renderedSize)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("레벨 \(clampedLevel), \(GrowthCharacterAssets.stageTitle(for: level)) 다람쥐")
+        .accessibilityValue(pose.accessibilityValue)
     }
 
     private var renderedSize: CGFloat {
@@ -38,20 +34,18 @@ struct GrowthCharacterView: View {
         GrowthCharacterAssets.atlasCell(for: level) + 1
     }
 
-    private var atlasOffset: CGSize {
-        let coordinates = GrowthCharacterAssets.atlasCoordinates(for: level)
-        return CGSize(
-            width: (1.5 - CGFloat(coordinates.column)) * renderedSize,
-            height: (coordinates.row == 0 ? 1 : -1) * renderedSize
-        )
-    }
+}
 
-    private var poseRotation: Angle {
-        pose == .wave ? .degrees(-1.5) : .zero
-    }
-
-    private var poseScale: CGFloat {
-        pose == .celebrate ? 1.04 : 1
+private extension GrowthCharacterPose {
+    var accessibilityValue: String {
+        switch self {
+        case .idle:
+            return "기본 자세"
+        case .wave:
+            return "손 흔드는 자세"
+        case .celebrate:
+            return "축하 자세"
+        }
     }
 }
 

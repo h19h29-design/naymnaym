@@ -1,7 +1,6 @@
 {
   "images" : [
     {
-      "filename" : "Squirrel_Growth_Atlas.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -10,6 +9,7 @@
       "scale" : "2x"
     },
     {
+      "filename" : "Squirrel_Growth_Level_7.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
