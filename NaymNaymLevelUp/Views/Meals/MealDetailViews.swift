@@ -1,22 +1,56 @@
 import SwiftUI
 import UIKit
 
-struct MealLossDetailView: View {
+struct MealDifficultyGuideView: View {
     var item: MealItem
     var isChallengeLocked: Bool = false
-    var onChallenge: () -> Void
+    var onSave: (EatingStatus, [DifficultyReason]) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedStatus: EatingStatus
+    @State private var selectedReasons: Set<DifficultyReason> = []
+
+    init(
+        item: MealItem,
+        isChallengeLocked: Bool = false,
+        onSave: @escaping (EatingStatus, [DifficultyReason]) -> Void
+    ) {
+        self.item = item
+        self.isChallengeLocked = isChallengeLocked
+        self.onSave = onSave
+        _selectedStatus = State(initialValue: isChallengeLocked ? .allergyAvoided : .difficultToday)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if isChallengeLocked {
+                        RoundedCard {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(AppColors.warningRed)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("안전 확인이 먼저예요")
+                                        .font(AppTypography.headline)
+                                    Text("알레르기/주의 메뉴는 먹지 않아도 괜찮아요. 안전하게 피한 기록은 안전 XP로 인정돼요.")
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColors.graySecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+
                     RoundedCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(item.name)
                                 .font(AppTypography.title)
                                 .fixedSize(horizontal: false, vertical: true)
+                            Label("이 메뉴에는 이런 힘이 있어요", systemImage: "sparkles")
+                                .font(AppTypography.caption.weight(.bold))
+                                .foregroundStyle(AppColors.primaryGreen)
                             Text(NutritionEstimator.makeStudentExplanation(for: item))
                                 .font(AppTypography.body)
                                 .foregroundStyle(AppColors.textDark)
@@ -26,7 +60,7 @@ struct MealLossDetailView: View {
 
                     RoundedCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("게임 스탯 변화")
+                            Text("먹어 보면 성장하는 힘")
                                 .font(AppTypography.headline)
                             ForEach(NutritionEstimator.makeGameStats(for: item)) { stat in
                                 StatBar(title: stat.name, value: stat.value, color: AppColors.primaryGreen)
@@ -34,29 +68,163 @@ struct MealLossDetailView: View {
                         }
                     }
 
-                    if isChallengeLocked {
+                    if !isChallengeLocked {
                         RoundedCard {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "lock.shield.fill")
-                                    .foregroundStyle(Color.red)
-                                Text("알레르기/주의 메뉴는 한 입 도전보다 안전 확인이 먼저예요. 먹지 않아도 안전 XP로 기록돼요.")
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("작은 도전도 멋진 도전이에요", systemImage: "heart.fill")
+                                    .font(AppTypography.headline)
+                                    .foregroundStyle(AppColors.orange)
+                                Text("냄새만 맡아봐도 괜찮고, 오늘 어렵다고 기록해도 괜찮아요. 다음에 다시 만났을 때 한 단계 더 나아갈 수 있어요.")
                                     .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.graySecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
 
-                    PrimaryButton("한 입 도전하기", systemImage: "checkmark.seal.fill", isDisabled: isChallengeLocked) {
-                        onChallenge()
-                        dismiss()
+                    RoundedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("오늘은 어떻게 기록할까요?")
+                                .font(AppTypography.headline)
+                            ForEach(availableStatuses) { status in
+                                difficultyOption(status)
+                            }
+                        }
                     }
-                    SecondaryButton("오늘은 안 먹어요", systemImage: "moon") {
+
+                    RoundedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("어떤 점이 어려웠나요?")
+                                .font(AppTypography.headline)
+                            ForEach(DifficultyReason.allCases) { reason in
+                                Toggle(reason.title, isOn: reasonBinding(reason))
+                            }
+                        }
+                    }
+
+                    PrimaryButton("이렇게 기록하기", systemImage: "checkmark.circle.fill") {
+                        save(selectedStatus)
+                    }
+                    if !isChallengeLocked {
+                        SecondaryButton("그래도 한입도전", systemImage: "star.fill") {
+                            save(.oneBite)
+                        }
+                    }
+                    SecondaryButton("닫기", systemImage: "xmark") {
                         dismiss()
                     }
                 }
                 .padding(20)
             }
-            .navigationTitle("영양소 안내")
+            .navigationTitle("못먹겠어요")
+            .navigationBarTitleDisplayMode(.inline)
+            .pageBackground()
+        }
+    }
+
+    private var availableStatuses: [EatingStatus] {
+        if isChallengeLocked { return [.allergyAvoided] }
+        if item.allergyCodes.isEmpty { return [.smelledOnly, .difficultToday] }
+        return [.smelledOnly, .difficultToday, .allergyAvoided]
+    }
+
+    private func difficultyOption(_ status: EatingStatus) -> some View {
+        Button {
+            selectedStatus = status
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: status.systemImage)
+                    .frame(width: 24)
+                Text(status.title)
+                    .font(AppTypography.body.weight(.semibold))
+                Spacer()
+                Image(systemName: selectedStatus == status ? "checkmark.circle.fill" : "circle")
+            }
+            .foregroundStyle(selectedStatus == status ? AppColors.primaryGreen : AppColors.textDark)
+            .padding(12)
+            .background((selectedStatus == status ? AppColors.primaryGreen : AppColors.graySecondary).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reasonBinding(_ reason: DifficultyReason) -> Binding<Bool> {
+        Binding {
+            selectedReasons.contains(reason)
+        } set: { isSelected in
+            if isSelected {
+                selectedReasons.insert(reason)
+            } else {
+                selectedReasons.remove(reason)
+            }
+        }
+    }
+
+    private func save(_ status: EatingStatus) {
+        onSave(status, selectedReasons.sorted { $0.rawValue < $1.rawValue })
+        dismiss()
+    }
+}
+
+enum WholeMealPraisePresentation {
+    static func title(for outcome: MealBatchOutcome) -> String {
+        outcome.skippedAllergyMenuNames.isEmpty
+            ? "오늘 급식을 모두 잘 먹었어요!"
+            : "주의 메뉴를 제외한 오늘 급식을 잘 먹었어요!"
+    }
+
+    static func message(for outcome: MealBatchOutcome) -> String {
+        let countText = "\(outcome.recordedMenuNames.count)개 메뉴 기록 완료"
+        if outcome.skippedAllergyMenuNames.isEmpty {
+            return countText
+        }
+        return "\(countText) · 주의 메뉴 \(outcome.skippedAllergyMenuNames.count)개 제외"
+    }
+}
+
+struct WholeMealPraiseView: View {
+    let outcome: MealBatchOutcome
+    let level: Int
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 18) {
+                    GrowthCharacterView(level: level, size: 210, pose: .celebrate, blendsCreamBackground: true)
+                        .shadow(color: AppColors.primaryGreen.opacity(0.18), radius: 20, y: 12)
+
+                    Text(WholeMealPraisePresentation.title(for: outcome))
+                        .font(.system(.title2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppColors.primaryGreen)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    RoundedCard {
+                        VStack(spacing: 10) {
+                            Text(WholeMealPraisePresentation.message(for: outcome))
+                                .font(AppTypography.body.weight(.semibold))
+                                .multilineTextAlignment(.center)
+                            Text("오늘 받은 XP +\(outcome.gainedExp)")
+                                .font(AppTypography.headline)
+                                .foregroundStyle(AppColors.orange)
+                            if outcome.didLevelUp {
+                                Label("Lv.\(outcome.newLevel)로 레벨업!", systemImage: "sparkles")
+                                    .font(AppTypography.headline)
+                                    .foregroundStyle(AppColors.primaryGreen)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    PrimaryButton("칭찬 받기", systemImage: "heart.fill") {
+                        dismiss()
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("오늘의 칭찬")
             .navigationBarTitleDisplayMode(.inline)
             .pageBackground()
         }

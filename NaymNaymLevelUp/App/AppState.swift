@@ -376,6 +376,7 @@ final class AppState: ObservableObject {
                 skippedAllergyMenuNames.append(item.name)
                 continue
             }
+            recordedMenuNames.append(item.name)
 
             let matchingRecords = mealRecords.filter {
                 $0.date == meal.date && normalizedMenuName($0.menuName) == normalizedMenuName(item.name)
@@ -394,7 +395,6 @@ final class AppState: ObservableObject {
                 shareWithParent: shareWithParent,
                 publishParentSnapshot: false
             ) {
-                recordedMenuNames.append(item.name)
                 gainedExp += outcome.gainedExp
             }
         }

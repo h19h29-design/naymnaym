@@ -7,6 +7,7 @@ struct TodayMealView: View {
     @State private var selectedItem: MealItem?
     @State private var recordingItem: MealItem?
     @State private var challengeOutcome: ChallengeOutcome?
+    @State private var wholeMealOutcome: MealBatchOutcome?
     @State private var recordNotice: String?
     @State private var showingParentInvite = false
 
@@ -37,25 +38,43 @@ struct TodayMealView: View {
 
                     if let meal = appState.todayMeal {
                         nutritionSummary(meal)
+                        wholeMealAction(meal)
 
                         ForEach(meal.menuItems) { item in
-                            MealCard(item: item, isAllergyRisk: appState.isAllergyRisk(item)) {
-                                recordNotice = nil
-                                appState.recordSkipped(item, date: meal.date)
-                                selectedItem = item
-                            } onChallenge: {
-                                recordNotice = nil
-                                guard !appState.isAllergyRisk(item) else {
-                                    recordNotice = "선택한 알레르기와 관련된 메뉴예요. 보호자와 학교 안내를 꼭 확인해 주세요."
-                                    return
+                            MealCard(
+                                item: item,
+                                isAllergyRisk: appState.isAllergyRisk(item),
+                                onOneBite: {
+                                    recordNotice = nil
+                                    guard !appState.isAllergyRisk(item) else {
+                                        recordNotice = "선택한 알레르기와 관련된 메뉴예요. 보호자와 학교 안내를 꼭 확인해 주세요."
+                                        return
+                                    }
+                                    challengeOutcome = appState.recordMealInteraction(
+                                        item: item,
+                                        date: meal.date,
+                                        status: .oneBite,
+                                        shareWithParent: shouldShare(.oneBite)
+                                    )
+                                },
+                                onEnjoyed: {
+                                    let outcome = appState.recordMealInteraction(
+                                        item: item,
+                                        date: meal.date,
+                                        status: .finished,
+                                        shareWithParent: shouldShare(.finished)
+                                    )
+                                    let xpText = outcome.map { " · +\($0.gainedExp) XP" } ?? ""
+                                    recordNotice = "\(item.name)은 잘먹어요로 기록했어요\(xpText)."
+                                },
+                                onDifficult: {
+                                    recordNotice = nil
+                                    selectedItem = item
+                                },
+                                onRecord: {
+                                    recordingItem = item
                                 }
-                                challengeOutcome = appState.recordMealInteraction(item: item, date: meal.date, status: .oneBite)
-                            } onAlreadyEats: {
-                                challengeOutcome = appState.recordAlreadyEats(item, date: meal.date)
-                                recordNotice = "\(item.name)은 잘 먹는 메뉴로 기록했어요."
-                            } onRecord: {
-                                recordingItem = item
-                            }
+                            )
                         }
                     } else {
                         emptyState
@@ -76,13 +95,20 @@ struct TodayMealView: View {
                 await refreshConnectionStatus()
             }
             .sheet(item: $selectedItem) { item in
-                MealLossDetailView(item: item, isChallengeLocked: appState.isAllergyRisk(item)) {
-                    selectedItem = nil
-                    guard !appState.isAllergyRisk(item) else {
-                        recordNotice = "선택한 알레르기와 관련된 메뉴예요. 한 입 도전보다 안전 확인이 먼저예요."
-                        return
+                MealDifficultyGuideView(item: item, isChallengeLocked: appState.isAllergyRisk(item)) { status, reasons in
+                    let outcome = appState.recordMealInteraction(
+                        item: item,
+                        date: appState.todayMeal?.date ?? DateUtils.apiString(from: Date()),
+                        status: status,
+                        reasons: reasons,
+                        shareWithParent: shouldShare(status)
+                    )
+                    if status == .oneBite {
+                        challengeOutcome = outcome
+                    } else {
+                        let xpText = outcome.map { " · +\($0.gainedExp) XP" } ?? ""
+                        recordNotice = "\(item.name)을 '\(status.title)'로 기록했어요\(xpText)."
                     }
-                    challengeOutcome = appState.recordMealInteraction(item: item, date: appState.todayMeal?.date ?? DateUtils.apiString(from: Date()), status: .oneBite)
                 }
             }
             .sheet(item: $recordingItem) { item in
@@ -94,6 +120,9 @@ struct TodayMealView: View {
             }
             .sheet(item: $challengeOutcome) { outcome in
                 LevelUpResultView(outcome: outcome)
+            }
+            .sheet(item: $wholeMealOutcome) { outcome in
+                WholeMealPraiseView(outcome: outcome, level: appState.progress.level)
             }
             .sheet(isPresented: $showingParentInvite) {
                 ParentConnectionGuideView()
@@ -184,6 +213,56 @@ struct TodayMealView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func wholeMealAction(_ meal: MealDay) -> some View {
+        Button {
+            wholeMealOutcome = appState.recordAllSafeMealsFinished(
+                meal,
+                shareWithParent: shouldShare(.finished)
+            )
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "hands.clap.fill")
+                    .font(.title3)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("오늘 급식 다 잘먹었어요")
+                        .font(AppTypography.headline)
+                    Text("한 번에 오늘 메뉴를 기록하고 칭찬받아요")
+                        .font(AppTypography.caption)
+                        .opacity(0.88)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+            }
+            .foregroundStyle(.white)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [AppColors.primaryGreen, AppColors.successGreen],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(color: AppColors.primaryGreen.opacity(0.20), radius: 12, y: 7)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("알레르기 주의 메뉴는 제외하고 기록합니다")
+    }
+
+    private func shouldShare(_ status: EatingStatus) -> Bool {
+        guard let link = appState.childShareLink, link.parentConnectedAt != nil else { return false }
+        switch status {
+        case .oneBite, .smelledOnly:
+            return link.permissions.shareChallengeRecords
+        case .finished, .half, .difficultToday:
+            return link.permissions.shareEatingRecords
+        case .allergyAvoided:
+            return link.permissions.shareAllergyWarnings
         }
     }
 

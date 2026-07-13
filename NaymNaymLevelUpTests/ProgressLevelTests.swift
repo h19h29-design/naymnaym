@@ -521,6 +521,25 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertNil(MealFeedbackAction.oneBite.immediateStatus(isAllergyRisk: true))
     }
 
+    func testMealFeedbackActionTitlesAreTheThreeApprovedChoices() {
+        XCTAssertEqual(MealFeedbackAction.allCases.map(\.title), ["한입도전", "잘먹어요", "못먹겠어요"])
+    }
+
+    func testWholeMealPraiseCopyMentionsExcludedWarningMenus() {
+        let outcome = MealBatchOutcome(
+            recordedMenuNames: ["현미밥"],
+            skippedAllergyMenuNames: ["우유"],
+            gainedExp: 10,
+            oldLevel: 1,
+            newLevel: 1
+        )
+
+        XCTAssertEqual(
+            WholeMealPraisePresentation.title(for: outcome),
+            "주의 메뉴를 제외한 오늘 급식을 잘 먹었어요!"
+        )
+    }
+
     @MainActor
     func testRecordAllSafeMealsFinishedSkipsAllergyRiskAndDoesNotDuplicateXP() {
         let appState = makeAppState()

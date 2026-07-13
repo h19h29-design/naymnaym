@@ -317,9 +317,9 @@ struct CharacterAvatar: View {
 struct MealCard: View {
     var item: MealItem
     var isAllergyRisk: Bool = false
-    var onSkip: () -> Void
-    var onChallenge: () -> Void
-    var onAlreadyEats: () -> Void
+    var onOneBite: () -> Void
+    var onEnjoyed: () -> Void
+    var onDifficult: () -> Void
     var onRecord: () -> Void = {}
 
     var body: some View {
@@ -339,9 +339,17 @@ struct MealCard: View {
                         }
                     }
                     Spacer()
-                    Image(systemName: iconName)
-                        .foregroundStyle(isAllergyRisk ? AppColors.warningRed : iconColor)
-                        .font(.title3)
+                    Menu {
+                        Button(action: onRecord) {
+                            Label("사진과 상세 기록", systemImage: "camera.fill")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(isAllergyRisk ? AppColors.warningRed : iconColor)
+                            .frame(width: 36, height: 36)
+                    }
+                    .accessibilityLabel("\(item.name) 추가 기록 메뉴")
                 }
 
                 if isAllergyRisk {
@@ -367,11 +375,10 @@ struct MealCard: View {
                     }
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    SecondaryButton("안내 보기", systemImage: "info.circle", action: onSkip)
-                    PrimaryButton("한 입 도전", systemImage: "checkmark.seal.fill", isDisabled: isAllergyRisk, action: onChallenge)
-                    SecondaryButton("먹은 정도", systemImage: "list.bullet.clipboard", action: onRecord)
-                    SecondaryButton("잘 먹어요", systemImage: "hand.thumbsup", action: onAlreadyEats)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                    MealFeedbackButton(action: .oneBite, isDisabled: isAllergyRisk, handler: onOneBite)
+                    MealFeedbackButton(action: .enjoyed, handler: onEnjoyed)
+                    MealFeedbackButton(action: .difficult, handler: onDifficult)
                 }
             }
         }
@@ -389,6 +396,73 @@ struct MealCard: View {
         if item.nutrients.contains("단백질") { return AppColors.coral }
         if item.nutrients.contains("칼슘") { return AppColors.infoBlue }
         return AppColors.orange
+    }
+}
+
+private struct MealFeedbackButton: View {
+    let action: MealFeedbackAction
+    var isDisabled = false
+    let handler: () -> Void
+
+    var body: some View {
+        Button(action: handler) {
+            VStack(spacing: 6) {
+                Image(systemName: action.systemImage)
+                    .font(.headline)
+                Text(action.title)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 70)
+            .foregroundStyle(foregroundColor)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(borderColor, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(isDisabled ? "\(action.title), 알레르기 주의로 잠김" : action.title)
+    }
+
+    private var foregroundColor: Color {
+        if isDisabled { return AppColors.graySecondary }
+        switch action {
+        case .oneBite: return .white
+        case .enjoyed: return AppColors.primaryGreen
+        case .difficult: return AppColors.orange
+        }
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        if isDisabled {
+            AppColors.graySecondary.opacity(0.10)
+        } else if action == .oneBite {
+            LinearGradient(
+                colors: [AppColors.primaryGreen, AppColors.successGreen],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else if action == .enjoyed {
+            AppColors.primaryGreen.opacity(0.10)
+        } else {
+            AppColors.orange.opacity(0.10)
+        }
+    }
+
+    private var borderColor: Color {
+        if isDisabled { return AppColors.graySecondary.opacity(0.16) }
+        switch action {
+        case .oneBite: return AppColors.primaryGreen.opacity(0.28)
+        case .enjoyed: return AppColors.primaryGreen.opacity(0.22)
+        case .difficult: return AppColors.orange.opacity(0.22)
+        }
     }
 }
 

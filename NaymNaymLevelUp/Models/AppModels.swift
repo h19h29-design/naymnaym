@@ -166,6 +166,22 @@ enum MealFeedbackAction: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var title: String {
+        switch self {
+        case .oneBite: return "한입도전"
+        case .enjoyed: return "잘먹어요"
+        case .difficult: return "못먹겠어요"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .oneBite: return "star.fill"
+        case .enjoyed: return "hand.thumbsup.fill"
+        case .difficult: return "heart.text.square.fill"
+        }
+    }
+
     func immediateStatus(isAllergyRisk: Bool) -> EatingStatus? {
         switch self {
         case .oneBite:
