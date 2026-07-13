@@ -7,18 +7,18 @@
 - `PrivacyInfo.xcprivacy`에 UserDefaults required reason API 사유와 선택 부모 공유용 수집 데이터 타입을 선언했다.
 - iPhone 17, iPhone 16, iPhone SE 시뮬레이터 Debug 빌드, 설치, 실행과 XCTest 66개가 통과한다.
 - CloudKit record type/field 계약, Privacy Manifest 수집 데이터 항목, 출시 인트로 필수 에셋 번들링, 전체 데이터 삭제/도전 기록 삭제 범위를 XCTest로 고정했다.
-- build 23 Release/generic iOS signed archive/export와 IPA entitlement 검증을 진행한다.
-- TestFlight build 1.0 (23) signed archive/export를 생성한다.
-- build 23 IPA에서 embedded profile iCloud/CloudKit/APNs entitlement와 signed app iCloud/CloudKit/APNs entitlements를 확인한다.
-- build 23 CLI 업로드 후 App Store Connect 처리 완료 및 `테스트 중` 상태를 확인한다.
-- build 23을 내부 TestFlight 그룹 `윈드`와 외부 그룹 `패밀리`에 연결한다.
+- build 27 Release/generic iOS signed archive/export와 IPA entitlement 검증을 진행한다.
+- TestFlight build 1.0 (27) signed archive/export를 생성한다.
+- build 27 IPA에서 embedded profile iCloud/CloudKit/APNs entitlement와 signed app iCloud/CloudKit/APNs entitlements를 확인한다.
+- build 27 CLI 업로드 후 App Store Connect 처리 완료 및 `테스트 중` 상태를 확인한다.
+- build 27을 내부 TestFlight 그룹 `윈드`와 외부 그룹 `패밀리`에 연결한다.
 - 외부 TestFlight 공개 링크 `https://testflight.apple.com/join/3A3rKarB`가 활성화되어 있다.
 - 외부 TestFlight 베타 심사용 테스트 내용을 입력하고 제출했다.
-- App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 23 처리 상태를 콘솔 로그인 없이 조회할 수 있다.
+- App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 build 27 처리 상태를 콘솔 로그인 없이 조회할 수 있다.
 - TestFlight 그룹 연결까지 확인하려면 `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`를 실행한다.
 - 현재 릴리스 후보, TestFlight 배포 상태와 외부 blocker는 `release/ReleaseStatus/build-15-readiness.json`에 구조화되어 있고 `scripts/verify-release-readiness.sh`가 핵심 값을 검증한다.
 - build 14 IPA를 직접 검사한 결과 embedded provisioning profile은 iCloud container와 CloudKit service wildcard를 허용하지만, 실제 signed app entitlements에 iCloud/CloudKit 항목이 없으므로 build 14는 부모 CloudKit 연동을 포함한 외부 테스트/출시 후보로 사용하지 않는다.
-- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit/APNs entitlement, embedded profile CloudKit/APNs entitlement, signed IPA CloudKit/APNs entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 23 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
+- `scripts/verify-release-readiness.sh`로 plist lint, Git 제외 설정, 앱 버전/빌드/Bundle ID, 프로젝트 CloudKit/APNs entitlement, embedded profile CloudKit/APNs entitlement, signed IPA CloudKit/APNs entitlement, 권한 문구, 추적/위치 권한 부재, 외부 광고/분석/로그인/결제 SDK 부재, build 27 IPA/업로드 로그 증거, App Store 아이콘/스크린샷 규격, 공개 URL 200 응답을 확인한다.
 - `scripts/smoke-neis-live.sh`로 로컬 API 키를 출력하지 않고 NEIS `schoolInfo`와 `mealServiceDietInfo` 실제 응답을 확인한다. 기본 smoke 기준은 등촌고등학교 2026년 6월 중식이며, `NEIS_SMOKE_SCHOOL_NAME`, `NEIS_SMOKE_MEAL_MONTH`로 다른 학교/월을 확인할 수 있다.
 - 요구사항별 감사 결과는 `docs/RELEASE_READINESS_AUDIT.md`에 정리했다.
 
@@ -104,7 +104,7 @@
 
 ## 완료된 TestFlight 외부 배포
 - 냠냠레벨업 App Store Connect 앱 ID: `6781586745`
-- TestFlight build: `1.0 (23)`
+- TestFlight build: `1.0 (27)`
 - 상태: `테스트 중`
 - 내부 그룹: `윈드`
 - 외부 그룹: `패밀리`

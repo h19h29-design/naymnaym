@@ -13,10 +13,10 @@
 - 기본 언어: 한국어
 - 번들 ID: `com.h19h29.naymnaymlevelup`
 - 버전: 1.0
-- 빌드: 23
+- 빌드: 27
 - 저작권: © 2026 h19h29-design. All rights reserved.
 
-주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. 현재 제출 후보는 build 23이며, Android 심사용 개인정보/지원/데이터 삭제 안내와 알레르기 잠금 기준을 함께 반영한 빌드입니다.
+주의: build 14는 CLI 업로드까지 완료됐지만 실제 signed IPA에 iCloud/CloudKit entitlement가 없어 최종 외부 테스트/출시 후보로 선택하지 않습니다. 현재 제출 후보는 build 27이며, 급식 피드백 단순화, 보호자 연결 표시, 공유 권한과 동기화 안정성 개선을 함께 반영한 빌드입니다.
 
 ## 키워드
 

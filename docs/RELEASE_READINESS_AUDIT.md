@@ -56,7 +56,7 @@ build 14 확인:
 | 한 입 도전 성장 | 완료 | `ChallengeRecord`, EXP, badge, `PlayerProgress.currentSkin(for:)` |
 | 알레르기 주의 | 완료 | 선택 알레르기와 메뉴 allergy code 교차 시 한 입 도전 잠금 및 안전 안내 |
 | 초등/중등/고등/부모 모드 | 완료 | `UserMode`, `ThemeProfile`, 모드별 `CharacterSkin` |
-| 부모 다자녀 연결 | 코드 완료, build 23 후보 검증 중 | Supabase `parent-sync` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/도전 기록 공유/알레르기 주의 토글 분리. 아이가 공유 기록을 올리면 부모에게 급식 결과 알림 전송 가능 |
+| 부모 다자녀 연결 | 코드 완료, build 27 후보 검증 완료 | Supabase `parent-sync` 초대 코드, `childLinkId` 기반 아이별 기록 분리, 아이별 주간 변화 요약, 기록 공유/도전 기록 공유/알레르기 주의 토글 분리. 아이가 공유 기록을 올리면 부모에게 급식 결과 알림 전송 가능 |
 | 급식판 사진 | 로컬 전용 | 급식판 사진은 기기 내부 저장만 지원하며 부모 모드, Supabase 동기화, CloudKit 공유 record에 원본과 사진 ID를 올리지 않음 |
 | 데이터 삭제 범위 | 완료 | `resetChallengeRecords`는 도전/식사 기록만 지우고 프로필/부모 연결/사진 파일은 유지, `resetAllData`는 프로필/기록/XP/부모 연결/사진 디렉터리/메타데이터까지 삭제하도록 XCTest 고정 |
 | 개인정보/지원 안내 | 완료, 공개 배포 완료 | 앱 내 설정 화면, 웹 개인정보 처리방침/지원/데이터 안전 링크, `docs/PRIVACY_POLICY_DRAFT.md`, `docs/SUPPORT.md`, `marketing-site/dist/privacy.html`, `marketing-site/dist/support.html`, GitHub Pages URL 200 확인 |
