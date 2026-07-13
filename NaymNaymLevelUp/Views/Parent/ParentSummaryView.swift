@@ -110,13 +110,24 @@ struct ParentSummaryView: View {
 
     private var inviteStatusBadge: some View {
         let isReady = appState.childShareLink?.isCloudRegistered == true
-        return Label(isReady ? "등록 완료" : "등록 필요", systemImage: isReady ? "checkmark.shield.fill" : "network")
-            .font(AppTypography.caption.weight(.bold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .foregroundStyle(isReady ? AppColors.successGreen : AppColors.warningRed)
-            .background((isReady ? AppColors.successGreen : AppColors.warningRed).opacity(0.10))
-            .clipShape(Capsule())
+        let color = isReady ? AppColors.successGreen : AppColors.warningRed
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isReady ? "checkmark.shield.fill" : "link.badge.plus")
+                .font(.title2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(isReady ? "초대 링크 준비 완료" : "초대 링크 준비 필요")
+                    .font(AppTypography.headline)
+                Text(isReady ? "부모에게 링크를 보내면 바로 연결할 수 있어요." : "링크를 준비한 뒤 부모에게 공유해 주세요.")
+                    .font(AppTypography.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(color)
+        .background(color.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var childInviteSteps: some View {
@@ -160,6 +171,10 @@ struct ParentSummaryView: View {
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
                                 .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text(appState.connectionOverview.countText)
+                                .font(AppTypography.body.weight(.bold))
+                                .foregroundStyle(AppColors.successGreen)
                         }
                     }
                     Spacer()
@@ -454,7 +469,7 @@ private struct ParentInviteCodeSheet: View {
                     Label("먹은 정도, 한 입 도전, 알레르기 주의만 연결 대상입니다.", systemImage: "lock.shield")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
-                    Label("코드가 아이 기기에서 서버 등록 완료된 상태여야 연결됩니다.", systemImage: "checkmark.shield")
+                    Label("코드가 아이 기기에서 초대 링크 준비 완료된 상태여야 연결됩니다.", systemImage: "checkmark.shield")
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)
                     if let message {

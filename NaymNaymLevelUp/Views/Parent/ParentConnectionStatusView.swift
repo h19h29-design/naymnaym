@@ -9,6 +9,10 @@ enum ParentConnectionPresentation {
     static func showsConnectedStatusOnly(link: ChildLink?) -> Bool {
         link?.parentConnectedAt != nil
     }
+
+    static func showsWaitingCopy(link: ChildLink?, state: ParentConnectionState) -> Bool {
+        !showsConnectedStatusOnly(link: link) && state == .invitePending
+    }
 }
 
 struct ParentConnectionStatusView: View {
@@ -28,20 +32,27 @@ struct ParentConnectionStatusView: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 8) {
+            HStack(spacing: state == .connected ? 12 : 8) {
                 Image(systemName: iconName)
-                    .font(.caption.weight(.bold))
-                Text(message)
-                    .font(.caption.weight(.semibold))
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .font(state == .connected ? .title2.weight(.bold) : .caption.weight(.bold))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(message)
+                        .font(state == .connected ? AppTypography.headline : .caption.weight(.semibold))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if state == .connected {
+                        Text(connectedName == nil ? "연결된 보호자 1명" : "연결 완료")
+                            .font(AppTypography.caption.weight(.bold))
+                            .foregroundStyle(tint.opacity(0.86))
+                    }
+                }
                 Spacer(minLength: 4)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                Image(systemName: state == .connected ? "arrow.clockwise" : "chevron.right")
+                    .font(.caption.weight(.bold))
             }
             .foregroundStyle(tint)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.horizontal, state == .connected ? 16 : 12)
+            .padding(.vertical, state == .connected ? 15 : 9)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(tint.opacity(0.10))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

@@ -59,17 +59,26 @@ struct SettingsView: View {
                     } label: {
                         Label("알레르기 정보 수정", systemImage: "checklist")
                     }
-                    if appState.currentMode != .parent {
+                }
+
+                Section("연결 상태") {
+                    if appState.currentMode == .parent {
+                        NavigationLink {
+                            ParentSummaryView()
+                        } label: {
+                            connectionRow
+                        }
+                    } else {
                         Button {
                             showingParentConnection = true
                         } label: {
-                            Label("보호자 초대하기", systemImage: "person.2.fill")
+                            connectionRow
                         }
                     }
                     NavigationLink {
                         ParentConnectionDiagnosticsView()
                     } label: {
-                        Label("보호자 연동 상태 확인", systemImage: "stethoscope")
+                        Label("연결 상태 자세히 보기", systemImage: "checkmark.shield")
                     }
                 }
 
@@ -182,6 +191,25 @@ struct SettingsView: View {
                 .foregroundStyle(AppColors.graySecondary)
         }
     }
+
+    private var connectionRow: some View {
+        let overview = appState.connectionOverview
+        return HStack(spacing: 12) {
+            Image(systemName: overview.isConnected ? "checkmark.circle.fill" : "person.crop.circle.badge.plus")
+                .font(.title3)
+                .foregroundStyle(overview.isConnected ? AppColors.successGreen : AppColors.orange)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(overview.title)
+                    .font(AppTypography.body.weight(.semibold))
+                    .foregroundStyle(AppColors.textDark)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(overview.countText)
+                    .font(AppTypography.caption.weight(.bold))
+                    .foregroundStyle(overview.isConnected ? AppColors.successGreen : AppColors.graySecondary)
+            }
+        }
+    }
 }
 
 struct ParentConnectionGuideView: View {
@@ -216,6 +244,10 @@ struct ParentConnectionGuideView: View {
         appState.childShareLink?.isCloudRegistered == true
     }
 
+    private var isActuallyConnected: Bool {
+        appState.childShareLink?.parentConnectedAt != nil
+    }
+
     private var inviteStatusColor: Color {
         if appState.isParentSyncing { return AppColors.infoBlue }
         if isInviteReady { return AppColors.successGreen }
@@ -225,13 +257,13 @@ struct ParentConnectionGuideView: View {
 
     private var inviteStatusText: String {
         if appState.isParentSyncing {
-            return "서버에 등록하는 중이에요."
+            return "초대 링크를 준비하는 중이에요."
         }
         if isInviteReady {
-            return "등록 완료. 부모에게 보내도 됩니다."
+            return "초대 링크 준비 완료"
         }
         if hasInviteCode {
-            return "아직 부모가 연결할 수 없는 코드예요. 먼저 등록을 완료해 주세요."
+            return "아직 부모가 연결할 수 없는 코드예요. 링크 준비를 완료해 주세요."
         }
         return "초대 코드를 만들면 부모가 이 아이를 연결할 수 있어요."
     }
@@ -240,6 +272,32 @@ struct ParentConnectionGuideView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    if isActuallyConnected {
+                        RoundedCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 34))
+                                        .foregroundStyle(AppColors.successGreen)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("보호자와 연결되었습니다")
+                                            .font(AppTypography.title)
+                                            .foregroundStyle(AppColors.textDark)
+                                        Text("연결된 보호자 1명")
+                                            .font(AppTypography.body.weight(.bold))
+                                            .foregroundStyle(AppColors.successGreen)
+                                    }
+                                }
+                                Text("급식 결과와 도전 기록을 보호자와 함께 확인할 수 있어요.")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColors.graySecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                SecondaryButton("연결 상태 새로고침", systemImage: "arrow.clockwise") {
+                                    Task { await appState.refreshChildConnectionStatus() }
+                                }
+                            }
+                        }
+                    } else {
                     RoundedCard {
                         VStack(alignment: .leading, spacing: 12) {
                             Label("보호자 초대 코드", systemImage: "qrcode")
@@ -252,10 +310,30 @@ struct ParentConnectionGuideView: View {
                                 .padding(.vertical, 18)
                                 .background(AppColors.lavender.opacity(0.65))
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            Label(inviteStatusText, systemImage: isInviteReady ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
-                                .font(AppTypography.caption.weight(.semibold))
-                                .foregroundStyle(inviteStatusColor)
-                                .fixedSize(horizontal: false, vertical: true)
+                            if isInviteReady {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: "checkmark.shield.fill")
+                                        .font(.title2)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("초대 링크 준비 완료")
+                                            .font(AppTypography.headline)
+                                        Text("부모에게 링크를 보내면 앱에서 바로 연결할 수 있어요.")
+                                            .font(AppTypography.caption)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    Spacer()
+                                }
+                                .foregroundStyle(AppColors.successGreen)
+                                .padding(14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(AppColors.successGreen.opacity(0.11))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            } else {
+                                Label(inviteStatusText, systemImage: "exclamationmark.triangle.fill")
+                                    .font(AppTypography.caption.weight(.semibold))
+                                    .foregroundStyle(inviteStatusColor)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             if let link = appState.childShareLink, isInviteReady {
                                 HStack(spacing: 10) {
                                     SecondaryButton(didCopyInviteCode ? "링크 복사 완료" : "링크 복사", systemImage: didCopyInviteCode ? "checkmark" : "link") {
@@ -280,19 +358,19 @@ struct ParentConnectionGuideView: View {
                                     .accessibilityLabel("초대 링크 공유하기")
                                 }
                             }
-                            Text("등록 완료 전에는 부모 기기에서 이 코드를 찾을 수 없어요. 등록이 끝난 뒤 링크를 공유하면 부모 기기에서 앱이 열리고 자동 연결됩니다.")
+                            Text("준비 완료 전에는 부모 기기에서 이 코드를 찾을 수 없어요. 준비가 끝난 뒤 링크를 공유하면 부모 기기에서 앱이 열리고 자동 연결됩니다.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             PrimaryButton(
-                                appState.childShareLink == nil ? "초대 코드 만들기" : "초대 코드 등록하기",
-                                systemImage: "network",
+                                appState.childShareLink == nil ? "초대 링크 만들기" : "초대 링크 준비하기",
+                                systemImage: "link.badge.plus",
                                 isDisabled: appState.isParentSyncing
                             ) {
                                 Task { await appState.activateParentSharing(permissions: permissions) }
                             }
                             if hasInviteCode {
-                                SecondaryButton("등록 상태 확인", systemImage: "checkmark.shield") {
+                                SecondaryButton("준비 상태 확인", systemImage: "checkmark.shield") {
                                     Task { await appState.verifyParentInviteRegistration() }
                                 }
                             }
@@ -332,21 +410,14 @@ struct ParentConnectionGuideView: View {
                             Label("먹은 정도, 한 입 도전, 알레르기 주의만 보여요.", systemImage: "lock.shield.fill")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.textDark)
-                            DisclosureGroup("고급 설정 항목") {
-                                Label("초대 코드는 서버에 등록되고 부모는 코드로 읽기만 합니다.", systemImage: "checkmark.circle.fill")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.textDark)
-                                Label("아이 기기 업로드 키는 공유 메시지에 포함하지 않습니다.", systemImage: "checkmark.circle.fill")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.textDark)
-                                Label("부모 급식 메뉴는 아이 학교 코드로 NEIS API를 다시 조회합니다.", systemImage: "checkmark.circle.fill")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.textDark)
-                                Label("부모 알림은 부모 기기에서 허용한 경우에만 전송됩니다.", systemImage: "bell.badge.fill")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColors.textDark)
-                            }
+                            Label("초대 메시지에는 연결에 필요한 코드만 포함돼요.", systemImage: "lock.shield.fill")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.textDark)
+                            Label("부모 알림은 부모 기기에서 허용한 경우에만 전송돼요.", systemImage: "bell.badge.fill")
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.textDark)
                         }
+                    }
                     }
 
                     NavigationLink {
@@ -408,18 +479,17 @@ private struct ParentConnectionDiagnosticsView: View {
         List {
             Section("아이 기기 공유 상태") {
                 diagnosticsRow(
-                    title: "childShareLink",
+                    title: "아이 공유 준비",
                     value: diagnostics.hasChildShareLink ? "있음" : "없음",
                     systemImage: diagnostics.hasChildShareLink ? "checkmark.circle.fill" : "xmark.circle"
                 )
-                diagnosticsRow(title: "inviteCode", value: diagnostics.inviteCode, systemImage: "number")
+                diagnosticsRow(title: "초대 코드", value: diagnostics.inviteCode, systemImage: "number")
                 diagnosticsRow(title: "공유 권한", value: diagnostics.permissionSummary, systemImage: "slider.horizontal.3")
                 diagnosticsRow(title: "공유된 기록", value: "\(diagnostics.sharedRecordCount)개", systemImage: "list.bullet.clipboard")
             }
 
             Section("부모 모드 연결 상태") {
                 diagnosticsRow(title: "연결된 아이", value: "\(diagnostics.parentChildLinkCount)명", systemImage: "person.2.fill")
-                diagnosticsRow(title: "서버 설정", value: diagnostics.iCloudCapabilityMessage, systemImage: "network")
             }
 
             Section("최근 동기화") {
@@ -591,7 +661,7 @@ private struct PrivacyPolicyGuideView: View {
                                 .font(AppTypography.headline)
                             privacy("급식 조회를 위해 선택한 학교 코드와 날짜가 NEIS 공공데이터 API 요청에 사용될 수 있습니다.")
                             privacy("부모 연동 시 선택한 기록만 공유 대상이며 공개 피드나 친구 공유는 없습니다.")
-                            privacy("부모 연결은 Supabase 기반 서버로 초대 코드와 선택 공유 기록을 동기화합니다.")
+                            privacy("부모 연결은 초대 코드와 사용자가 선택한 공유 기록만 동기화합니다.")
                             privacy("부모가 알림을 허용하면 아이가 급식 결과를 올렸을 때 푸시 알림을 받을 수 있습니다.")
                         }
                     }
@@ -731,7 +801,7 @@ private struct AppInfoView: View {
                 Text("인앱결제 없음")
                 Text("회원가입 없음")
                 Text("기본 로컬 저장")
-                Text("부모 공유 시 서버 동기화 사용")
+                Text("부모 연결 후 선택한 기록만 공유")
             }
             Section("주의사항") {
                 Text("영양소 안내는 의학 진단이 아니라 교육용 참고 정보입니다.")

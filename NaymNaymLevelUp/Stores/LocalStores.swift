@@ -201,13 +201,13 @@ enum ParentSyncServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "부모 연결 서버 주소가 설정되지 않았어요."
+            return "보호자 연결 기능이 준비되지 않았어요. 앱을 업데이트한 뒤 다시 시도해 주세요."
         case .inviteCodeNotFound:
             return "초대 코드를 찾지 못했어요."
         case .missingUploadSecret:
-            return "아이 기기 업로드 키가 없어 공유 기록을 저장하지 못했어요."
+            return "연결 정보를 확인할 수 없어 공유 기록을 저장하지 못했어요. 초대 링크를 다시 준비해 주세요."
         case .invalidResponse:
-            return "부모 연결 서버 응답을 읽지 못했어요."
+            return "보호자 연결 정보를 확인하지 못했어요. 잠시 후 다시 시도해 주세요."
         case .server(let message):
             return message
         }

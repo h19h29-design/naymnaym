@@ -97,6 +97,12 @@ final class AppState: ObservableObject {
         ParentConnectionState.resolve(link: childShareLink, syncError: parentSyncError)
     }
 
+    var connectionOverview: ConnectionOverview {
+        currentMode == .parent
+            ? .parent(childLinks: parentProfile.childLinks)
+            : .child(link: childShareLink)
+    }
+
     func refreshChildConnectionStatus() async {
         guard var link = childShareLink else { return }
         do {
@@ -940,7 +946,6 @@ final class AppState: ObservableObject {
             hasChildShareLink: childShareLink != nil,
             inviteCode: childShareLink?.inviteCode ?? "생성되지 않음",
             parentChildLinkCount: parentProfile.childLinks.count,
-            iCloudCapabilityMessage: "Supabase Edge Function parent-sync 서버 사용",
             lastSyncMessage: parentSyncMessage ?? "아직 동기화 기록이 없어요.",
             lastSyncError: parentSyncError ?? "최근 오류 없음",
             permissions: childShareLink?.permissions ?? .defaultChildSafe,

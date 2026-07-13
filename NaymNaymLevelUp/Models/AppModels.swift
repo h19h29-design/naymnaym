@@ -1082,6 +1082,55 @@ enum ParentConnectionState: Equatable {
     }
 }
 
+enum ConnectionOverviewRole: Equatable {
+    case child
+    case parent
+}
+
+struct ConnectionOverview: Equatable {
+    var role: ConnectionOverviewRole
+    var connectedCount: Int
+    var title: String
+    var message: String
+
+    var isConnected: Bool {
+        connectedCount > 0
+    }
+
+    var countText: String {
+        switch role {
+        case .child:
+            return "연결된 보호자 \(connectedCount)명"
+        case .parent:
+            return "연결된 아이 \(connectedCount)명"
+        }
+    }
+
+    static func child(link: ChildLink?) -> ConnectionOverview {
+        let count = link?.parentConnectedAt == nil ? 0 : 1
+        return ConnectionOverview(
+            role: .child,
+            connectedCount: count,
+            title: count == 1 ? "보호자와 연결되었습니다" : "아직 보호자와 연결되지 않았어요",
+            message: count == 1
+                ? "급식 결과를 보호자와 함께 확인할 수 있어요."
+                : "초대 링크를 보내면 보호자와 연결할 수 있어요."
+        )
+    }
+
+    static func parent(childLinks: [ChildLink]) -> ConnectionOverview {
+        let count = childLinks.count
+        return ConnectionOverview(
+            role: .parent,
+            connectedCount: count,
+            title: count > 0 ? "아이와 연결되었습니다" : "아직 연결된 아이가 없어요",
+            message: count > 0
+                ? "연결된 아이의 급식 결과와 변화를 확인할 수 있어요."
+                : "아이에게 초대 요청을 보내거나 초대 코드를 입력해 주세요."
+        )
+    }
+}
+
 struct ChildLink: Codable, Hashable, Identifiable {
     var id: UUID
     var childNickname: String
@@ -1198,7 +1247,6 @@ struct ParentConnectionDiagnostics: Codable, Hashable {
     var hasChildShareLink: Bool
     var inviteCode: String
     var parentChildLinkCount: Int
-    var iCloudCapabilityMessage: String
     var lastSyncMessage: String
     var lastSyncError: String
     var permissions: SharingPermission
