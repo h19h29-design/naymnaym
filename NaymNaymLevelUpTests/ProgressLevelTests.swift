@@ -541,6 +541,149 @@ final class ProgressLevelTests: XCTestCase {
     }
 
     @MainActor
+    func testRepeatedIndividualMealActionAwardsXpOnlyOnce() {
+        let appState = makeAppState()
+        let item = MealItem(
+            name: "시금치나물",
+            allergyCodes: [],
+            nutrients: ["식이섬유"],
+            tags: ["채소"],
+            sourceRawText: "시금치나물"
+        )
+
+        let first = appState.recordMealInteraction(item: item, date: "20260713", status: .oneBite)
+        let repeated = appState.recordMealInteraction(item: item, date: "20260713", status: .oneBite)
+
+        XCTAssertGreaterThan(first?.gainedExp ?? 0, 0)
+        XCTAssertEqual(repeated?.gainedExp, 0)
+        XCTAssertEqual(appState.mealRecords.filter { $0.date == "20260713" && $0.menuName == item.name && $0.eatingStatus == .oneBite }.count, 1)
+        XCTAssertEqual(appState.records.filter { $0.date == "20260713" && $0.menuName == item.name && $0.eatingStatus == .oneBite }.count, 1)
+    }
+
+    @MainActor
+    func testStatusTransitionCannotRestorePreviouslyAwardedOneBiteXp() {
+        let appState = makeAppState()
+        let item = MealItem(
+            name: "시금치나물",
+            allergyCodes: [],
+            nutrients: ["식이섬유"],
+            tags: ["채소"],
+            sourceRawText: "시금치나물"
+        )
+        let meal = MealDay(
+            date: "20260713",
+            menuItems: [item],
+            calorie: "100 Kcal",
+            nutrition: .empty,
+            isSample: false,
+            notice: nil
+        )
+
+        let first = appState.recordMealInteraction(item: item, date: meal.date, status: .oneBite)
+        _ = appState.recordAllSafeMealsFinished(meal)
+        let repeatedAfterTransition = appState.recordMealInteraction(item: item, date: meal.date, status: .oneBite)
+
+        XCTAssertGreaterThan(first?.gainedExp ?? 0, 0)
+        XCTAssertEqual(repeatedAfterTransition?.gainedExp, 0)
+        XCTAssertEqual(appState.records.filter { $0.date == meal.date && $0.menuName == item.name && $0.eatingStatus == .oneBite }.count, 1)
+    }
+
+    @MainActor
+    func testLegacyChallengeWithoutEatingStatusStillBlocksDuplicateXp() {
+        let appState = makeAppState()
+        let item = MealItem(
+            name: "시금치나물",
+            allergyCodes: [],
+            nutrients: ["식이섬유"],
+            tags: ["채소"],
+            sourceRawText: "시금치나물"
+        )
+        appState.records = [
+            ChallengeRecord(
+                date: "20260713",
+                menuName: item.name,
+                action: .oneBite,
+                gainedExp: 18,
+                badgeName: nil,
+                nutrients: item.nutrients
+            )
+        ]
+
+        let repeated = appState.recordMealInteraction(item: item, date: "20260713", status: .oneBite)
+
+        XCTAssertEqual(repeated?.gainedExp, 0)
+        XCTAssertEqual(appState.records.count, 1)
+        XCTAssertEqual(appState.mealRecords.first?.eatingStatus, .oneBite)
+    }
+
+    @MainActor
+    func testRepeatedWholeMealActionAppliesNewParentSharingWithoutNewXp() {
+        let appState = makeAppState()
+        let item = MealItem(
+            name: "현미밥",
+            allergyCodes: [],
+            nutrients: ["탄수화물"],
+            tags: ["곡류"],
+            sourceRawText: "현미밥"
+        )
+        let meal = MealDay(
+            date: "20260713",
+            menuItems: [item],
+            calorie: "100 Kcal",
+            nutrition: .empty,
+            isSample: false,
+            notice: nil
+        )
+
+        _ = appState.recordAllSafeMealsFinished(meal, shareWithParent: false)
+        let pendingLink = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary, registeredAt: Date())
+        appState.childShareLink = pendingLink
+        let repeated = appState.recordAllSafeMealsFinished(meal, shareWithParent: true)
+
+        XCTAssertEqual(repeated.gainedExp, 0)
+        XCTAssertEqual(appState.mealRecords.filter { $0.date == meal.date && $0.menuName == item.name }.count, 1)
+        XCTAssertEqual(appState.mealRecords.first?.parentShareEnabled, true)
+        XCTAssertEqual(appState.mealRecords.first?.childLinkId, pendingLink.id)
+        XCTAssertEqual(appState.records.first { $0.eatingStatus == .finished }?.parentShareEnabled, true)
+    }
+
+    func testPendingParentLinkStillAppliesSelectedSharingPermission() {
+        let pending = ChildLink(
+            childNickname: "지우",
+            schoolName: "냠냠초",
+            mode: .elementary,
+            permissions: .defaultChildSafe,
+            registeredAt: Date()
+        )
+
+        XCTAssertTrue(ParentSharingPolicy.shouldShare(status: .finished, link: pending))
+        XCTAssertTrue(ParentSharingPolicy.shouldShare(status: .oneBite, link: pending))
+        XCTAssertTrue(ParentSharingPolicy.shouldShare(status: .allergyAvoided, link: pending))
+        XCTAssertTrue(ParentSharingPolicy.shouldShareChallenge(status: .finished, link: pending))
+    }
+
+    func testAllergyWarningPermissionWorksWithoutEatingOrChallengeSharing() {
+        let warningOnly = SharingPermission(
+            shareEatingRecords: false,
+            shareChallengeRecords: false,
+            shareAllergyWarnings: true,
+            sharePhotos: false
+        )
+        let link = ChildLink(
+            childNickname: "지우",
+            schoolName: "냠냠초",
+            mode: .elementary,
+            permissions: warningOnly,
+            registeredAt: Date()
+        )
+
+        XCTAssertTrue(ParentSharingPolicy.shouldShare(status: .allergyAvoided, link: link))
+        XCTAssertFalse(ParentSharingPolicy.shouldShare(status: .finished, link: link))
+        XCTAssertFalse(ParentSharingPolicy.shouldShare(status: .oneBite, link: link))
+        XCTAssertFalse(ParentSharingPolicy.shouldShareChallenge(status: .allergyAvoided, link: link))
+    }
+
+    @MainActor
     func testRecordAllSafeMealsFinishedSkipsAllergyRiskAndDoesNotDuplicateXP() {
         let appState = makeAppState()
         appState.saveProfile(

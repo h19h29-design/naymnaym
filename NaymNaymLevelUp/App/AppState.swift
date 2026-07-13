@@ -97,9 +97,13 @@ final class AppState: ObservableObject {
         ParentConnectionState.resolve(link: childShareLink, syncError: parentSyncError)
     }
 
+    var connectedParentChildLinks: [ChildLink] {
+        parentProfile.childLinks.filter { $0.parentConnectedAt != nil }
+    }
+
     var connectionOverview: ConnectionOverview {
         currentMode == .parent
-            ? .parent(childLinks: parentProfile.childLinks)
+            ? .parent(childLinks: connectedParentChildLinks)
             : .child(link: childShareLink)
     }
 
@@ -278,7 +282,7 @@ final class AppState: ObservableObject {
             todayMeal = nil
             monthlyMeals = []
             mealStatus = .noMeal
-            mealMessage = parentProfile.childLinks.isEmpty
+            mealMessage = connectedParentChildLinks.isEmpty
                 ? "부모 모드는 아이 초대 코드를 연결해 기록과 급식 메뉴를 확인해요."
                 : "부모 모드에서 연결된 아이의 오늘 급식을 불러왔어요."
             await loadParentChildMeals(for: date)
@@ -328,6 +332,20 @@ final class AppState: ObservableObject {
         let isRisk = isAllergyRisk(item)
         let finalStatus = isRisk && status == .oneBite ? EatingStatus.allergyAvoided : status
         let childLinkId = shareWithParent ? childShareLink?.id : nil
+        if let duplicateOutcome = updateExistingMealInteraction(
+            item: item,
+            date: date,
+            status: finalStatus,
+            reasons: reasons,
+            photoIds: photoIds,
+            childLinkId: childLinkId,
+            shareWithParent: shareWithParent
+        ) {
+            if shareWithParent, publishParentSnapshot, automaticallyPublishesParentSharedData {
+                Task { await publishChildSharedData() }
+            }
+            return duplicateOutcome
+        }
         let grant = LevelUpXPPolicy.grant(
             for: item,
             status: finalStatus,
@@ -346,6 +364,9 @@ final class AppState: ObservableObject {
             parentShareEnabled: shareWithParent,
             childLinkId: childLinkId
         )
+        mealRecords.removeAll {
+            $0.date == date && normalizedMenuName($0.menuName) == normalizedMenuName(item.name)
+        }
         mealRecords.insert(record, at: 0)
         mealRecordStore.save(mealRecords)
 
@@ -365,6 +386,66 @@ final class AppState: ObservableObject {
             childLinkId: childLinkId,
             parentShareEnabled: shareWithParent,
             grant: grant
+        )
+    }
+
+    private func updateExistingMealInteraction(
+        item: MealItem,
+        date: String,
+        status: EatingStatus,
+        reasons: [DifficultyReason],
+        photoIds: [String],
+        childLinkId: UUID?,
+        shareWithParent: Bool
+    ) -> ChallengeOutcome? {
+        guard let challengeIndex = records.firstIndex(where: {
+            $0.date == date &&
+            normalizedMenuName($0.menuName) == normalizedMenuName(item.name) &&
+            challengeRecord($0, represents: status)
+        }) else {
+            return nil
+        }
+
+        let existingMeal = mealRecords.first {
+            $0.date == date &&
+            normalizedMenuName($0.menuName) == normalizedMenuName(item.name) &&
+            $0.eatingStatus == status
+        }
+        let mealRecord = MealRecord(
+            id: existingMeal?.id ?? UUID(),
+            date: date,
+            menuName: item.name,
+            eatingStatus: status,
+            difficultyReasons: reasons.isEmpty ? (existingMeal?.difficultyReasons ?? []) : reasons,
+            allergyCodes: item.allergyCodes,
+            photoIds: photoIds.isEmpty ? (existingMeal?.photoIds ?? []) : photoIds,
+            parentShareEnabled: shareWithParent,
+            createdAt: existingMeal?.createdAt ?? Date(),
+            childLinkId: childLinkId
+        )
+        mealRecords.removeAll {
+            $0.date == date && normalizedMenuName($0.menuName) == normalizedMenuName(item.name)
+        }
+        mealRecords.insert(mealRecord, at: 0)
+        mealRecordStore.save(mealRecords)
+
+        var challenge = records.remove(at: challengeIndex)
+        if !reasons.isEmpty { challenge.difficultyReasons = reasons }
+        if !photoIds.isEmpty { challenge.photoIds = photoIds }
+        challenge.parentShareEnabled = shareWithParent
+        challenge.childLinkId = childLinkId
+        records.insert(challenge, at: 0)
+        challengeStore.save(records)
+
+        return ChallengeOutcome(
+            menuName: item.name,
+            gainedExp: 0,
+            badgeName: NutritionEstimator.recommendBadge(for: item, status: status),
+            damage: 0,
+            oldLevel: progress.level,
+            newLevel: progress.level,
+            skin: progress.currentSkin,
+            xpNotes: ["오늘 같은 기록은 이미 XP를 받았어요."]
         )
     }
 
@@ -388,6 +469,15 @@ final class AppState: ObservableObject {
                 $0.date == meal.date && normalizedMenuName($0.menuName) == normalizedMenuName(item.name)
             }
             if matchingRecords.contains(where: { $0.eatingStatus == .finished }) {
+                _ = updateExistingMealInteraction(
+                    item: item,
+                    date: meal.date,
+                    status: .finished,
+                    reasons: [],
+                    photoIds: [],
+                    childLinkId: shareWithParent ? childShareLink?.id : nil,
+                    shareWithParent: shareWithParent
+                )
                 continue
             }
 
@@ -553,6 +643,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func challengeRecord(_ record: ChallengeRecord, represents status: EatingStatus) -> Bool {
+        if let recordedStatus = record.eatingStatus {
+            return recordedStatus == status
+        }
+        switch record.action {
+        case .oneBite:
+            return status == .oneBite
+        case .alreadyEats:
+            return status == .finished || status == .half
+        case .skipped:
+            return status == .smelledOnly || status == .difficultToday || status == .allergyAvoided
+        }
+    }
+
     func resetChallengeRecords() {
         records = []
         mealRecords = []
@@ -603,7 +707,8 @@ final class AppState: ObservableObject {
             childNickname: "\(profile?.nickname ?? "아이") \(index)",
             schoolName: profile?.schoolName ?? "학교 미설정",
             mode: currentMode,
-            inviteCode: "LOCAL-PREVIEW-\(index)"
+            inviteCode: "LOCAL-PREVIEW-\(index)",
+            parentConnectedAt: Date()
         )
         parentProfile.childLinks.insert(child, at: 0)
         parentProfileStore.save(parentProfile)
@@ -664,9 +769,11 @@ final class AppState: ObservableObject {
             childShareLinkStore.save(link)
             parentSyncMessage = "초대 코드가 서버에 등록됐어요. 부모에게 보내면 바로 연결할 수 있어요."
             parentSyncError = nil
-            await publishChildSharedData()
-            if parentSyncError == nil {
-                parentSyncMessage = "초대 코드가 서버에 등록됐어요. 부모에게 보내면 바로 연결할 수 있어요."
+            if automaticallyPublishesParentSharedData {
+                await publishChildSharedData()
+                if parentSyncError == nil {
+                    parentSyncMessage = "초대 코드가 서버에 등록됐어요. 부모에게 보내면 바로 연결할 수 있어요."
+                }
             }
         } catch {
             let message = parentServerMessage(
@@ -677,6 +784,46 @@ final class AppState: ObservableObject {
             link.registrationErrorMessage = message
             childShareLink = link
             childShareLinkStore.save(link)
+            parentSyncMessage = message
+            parentSyncError = message
+        }
+    }
+
+    func updateParentSharingPermissions(_ permissions: SharingPermission) async {
+        guard let confirmedLink = childShareLink else {
+            parentSyncMessage = "보호자 연결을 먼저 준비해 주세요."
+            parentSyncError = parentSyncMessage
+            return
+        }
+
+        isParentSyncing = true
+        defer { isParentSyncing = false }
+
+        var requestedLink = confirmedLink
+        let connectedAt = confirmedLink.parentConnectedAt
+        requestedLink.permissions = permissions
+        requestedLink.permissions.sharePhotos = false
+
+        do {
+            let registeredLink = try await serverParentLinkService.registerParentLink(requestedLink)
+            requestedLink.registeredAt = registeredLink.registeredAt ?? requestedLink.registeredAt ?? Date()
+            requestedLink.parentConnectedAt = registeredLink.parentConnectedAt ?? connectedAt
+            requestedLink.registrationErrorMessage = nil
+            childShareLink = requestedLink
+            childShareLinkStore.save(requestedLink)
+            parentSyncMessage = "보호자 공유 설정을 저장했어요."
+            parentSyncError = nil
+            if automaticallyPublishesParentSharedData {
+                await publishChildSharedData()
+                if parentSyncError == nil {
+                    parentSyncMessage = "보호자 공유 설정을 저장했어요."
+                }
+            }
+        } catch {
+            let message = parentServerMessage(
+                for: error,
+                fallback: "공유 설정을 저장하지 못했어요. 네트워크 상태를 확인해 주세요."
+            )
             parentSyncMessage = message
             parentSyncError = message
         }
@@ -732,7 +879,8 @@ final class AppState: ObservableObject {
             parentSyncError = validationMessage
             return false
         }
-        guard !parentProfile.childLinks.contains(where: { $0.inviteCode == normalizedCode }) else {
+        let existingLink = parentProfile.childLinks.first { $0.inviteCode == normalizedCode }
+        guard !ParentConnectionPolicy.rejectsReconnect(existingLink: existingLink) else {
             parentSyncMessage = "이미 연결된 아이예요. 새로고침으로 기록을 다시 불러올 수 있어요."
             parentSyncError = parentSyncMessage
             return false
@@ -767,13 +915,14 @@ final class AppState: ObservableObject {
     }
 
     func refreshParentSharedData() async {
-        guard !parentProfile.childLinks.isEmpty else { return }
+        let connectedChildren = connectedParentChildLinks
+        guard !connectedChildren.isEmpty else { return }
 
         isParentSyncing = true
         defer { isParentSyncing = false }
 
         var didFail = false
-        for child in parentProfile.childLinks {
+        for child in connectedChildren {
             do {
                 let snapshot = try await serverParentLinkService.fetchSharedSnapshot(childLink: child)
                 merge(snapshot: snapshot, for: child)
@@ -796,7 +945,8 @@ final class AppState: ObservableObject {
     }
 
     func loadParentChildMeals(for date: Date = Date()) async {
-        guard !parentProfile.childLinks.isEmpty else {
+        let connectedChildren = connectedParentChildLinks
+        guard !connectedChildren.isEmpty else {
             parentChildMeals = [:]
             parentChildMealMessages = [:]
             return
@@ -805,7 +955,7 @@ final class AppState: ObservableObject {
         var nextMeals: [UUID: MealDay] = [:]
         var nextMessages: [UUID: String] = [:]
 
-        for child in parentProfile.childLinks {
+        for child in connectedChildren {
             guard let school = child.school else {
                 nextMessages[child.id] = "아이 학교 코드가 없어 급식 메뉴를 불러올 수 없어요. 초대 코드를 다시 연결해 주세요."
                 continue
@@ -837,10 +987,16 @@ final class AppState: ObservableObject {
             return
         }
 
-        let sharedMeals = mealRecords.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
-        let sharedChallenges = records.filter { $0.parentShareEnabled && ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) }
-
-        guard !sharedMeals.isEmpty || !sharedChallenges.isEmpty else { return }
+        let sharedMeals = mealRecords.filter {
+            $0.parentShareEnabled &&
+            ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) &&
+            ParentSharingPolicy.shouldShare(status: $0.eatingStatus, link: childShareLink)
+        }
+        let sharedChallenges = records.filter {
+            $0.parentShareEnabled &&
+            ($0.childLinkId == nil || $0.childLinkId == childShareLink.id) &&
+            ParentSharingPolicy.shouldShareChallenge(status: sharingStatus(for: $0), link: childShareLink)
+        }
 
         do {
             try await serverParentLinkService.publishSharedSnapshot(
@@ -860,8 +1016,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func sharingStatus(for record: ChallengeRecord) -> EatingStatus {
+        if let status = record.eatingStatus { return status }
+        switch record.action {
+        case .oneBite:
+            return .oneBite
+        case .alreadyEats:
+            return .finished
+        case .skipped:
+            return .difficultToday
+        }
+    }
+
     func enableParentResultNotifications() async {
-        guard !parentProfile.childLinks.isEmpty else {
+        guard !connectedParentChildLinks.isEmpty else {
             parentNotificationMessage = "아이를 먼저 연결하면 급식 결과 알림을 받을 수 있어요."
             parentNotificationError = parentNotificationMessage
             return
@@ -892,11 +1060,12 @@ final class AppState: ObservableObject {
         guard !trimmedToken.isEmpty else { return }
         parentPushDeviceTokenStore.save(trimmedToken)
 
-        guard !parentProfile.childLinks.isEmpty else { return }
+        let connectedChildren = connectedParentChildLinks
+        guard !connectedChildren.isEmpty else { return }
 
         var successCount = 0
         var lastError: String?
-        for child in parentProfile.childLinks {
+        for child in connectedChildren {
             do {
                 try await serverParentLinkService.registerParentDevice(
                     childLink: child,
@@ -913,10 +1082,10 @@ final class AppState: ObservableObject {
         }
 
         if successCount > 0 {
-            parentNotificationMessage = successCount == parentProfile.childLinks.count
+            parentNotificationMessage = successCount == connectedChildren.count
                 ? "아이 급식 결과 알림을 받을 준비가 됐어요."
                 : "\(successCount)명 알림 등록을 완료했어요. 일부 아이는 다시 시도해 주세요."
-            parentNotificationError = successCount == parentProfile.childLinks.count ? nil : lastError
+            parentNotificationError = successCount == connectedChildren.count ? nil : lastError
         } else if let lastError {
             parentNotificationMessage = lastError
             parentNotificationError = lastError
@@ -945,7 +1114,7 @@ final class AppState: ObservableObject {
         ParentConnectionDiagnostics(
             hasChildShareLink: childShareLink != nil,
             inviteCode: childShareLink?.inviteCode ?? "생성되지 않음",
-            parentChildLinkCount: parentProfile.childLinks.count,
+            parentChildLinkCount: connectedParentChildLinks.count,
             lastSyncMessage: parentSyncMessage ?? "아직 동기화 기록이 없어요.",
             lastSyncError: parentSyncError ?? "최근 오류 없음",
             permissions: childShareLink?.permissions ?? .defaultChildSafe,
@@ -956,7 +1125,7 @@ final class AppState: ObservableObject {
     var childSummaries: [ChildSummary] {
         let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
 
-        return parentProfile.childLinks.map { link in
+        return connectedParentChildLinks.map { link in
             let sharedMealRecords = mealRecords
                 .filter(\.parentShareEnabled)
                 .filter { $0.childLinkId == link.id }

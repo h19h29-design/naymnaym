@@ -905,6 +905,31 @@ struct SharingPermission: Codable, Hashable {
     }
 }
 
+enum ParentSharingPolicy {
+    static func shouldShare(status: EatingStatus, link: ChildLink?) -> Bool {
+        guard let link else { return false }
+        switch status {
+        case .oneBite, .smelledOnly:
+            return link.permissions.shareChallengeRecords
+        case .finished, .half, .difficultToday:
+            return link.permissions.shareEatingRecords
+        case .allergyAvoided:
+            return link.permissions.shareAllergyWarnings
+        }
+    }
+
+    static func shouldShareChallenge(status: EatingStatus, link: ChildLink?) -> Bool {
+        guard let link, link.permissions.shareChallengeRecords else { return false }
+        return shouldShare(status: status, link: link)
+    }
+}
+
+enum ParentConnectionPolicy {
+    static func rejectsReconnect(existingLink: ChildLink?) -> Bool {
+        existingLink?.parentConnectedAt != nil
+    }
+}
+
 enum AppInviteDestination: Equatable {
     case connectChild(inviteCode: String)
     case openChildInvite
@@ -1050,9 +1075,10 @@ enum ParentConnectionState: Equatable {
     case syncError
 
     static func resolve(link: ChildLink?, syncError: String?) -> ParentConnectionState {
-        if syncError != nil { return .syncError }
         guard let link else { return .notLinked }
-        return link.parentConnectedAt == nil ? .invitePending : .connected
+        if link.parentConnectedAt != nil { return .connected }
+        if syncError != nil { return .syncError }
+        return .invitePending
     }
 
     var childMessage: String {
@@ -1119,7 +1145,7 @@ struct ConnectionOverview: Equatable {
     }
 
     static func parent(childLinks: [ChildLink]) -> ConnectionOverview {
-        let count = childLinks.count
+        let count = childLinks.filter { $0.parentConnectedAt != nil }.count
         return ConnectionOverview(
             role: .parent,
             connectedCount: count,

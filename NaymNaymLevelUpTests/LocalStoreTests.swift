@@ -115,7 +115,7 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(ParentConnectionState.resolve(link: nil, syncError: nil), .notLinked)
         XCTAssertEqual(ParentConnectionState.resolve(link: pending, syncError: nil), .invitePending)
         XCTAssertEqual(ParentConnectionState.resolve(link: connected, syncError: nil), .connected)
-        XCTAssertEqual(ParentConnectionState.resolve(link: connected, syncError: "network"), .syncError)
+        XCTAssertEqual(ParentConnectionState.resolve(link: connected, syncError: "network"), .connected)
     }
 
     func testParentConnectionStateUsesTruthfulChildAndParentCopy() {
@@ -151,14 +151,14 @@ final class LocalStoreTests: XCTestCase {
     }
 
     func testParentOverviewReportsConnectedChildren() {
-        let links = [
-            ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary),
-            ChildLink(childNickname: "시준", schoolName: "냠냠중", mode: .middle)
-        ]
+        var connected = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary)
+        connected.parentConnectedAt = Date()
+        let pending = ChildLink(childNickname: "시준", schoolName: "냠냠중", mode: .middle)
+        let links = [connected, pending]
 
-        XCTAssertEqual(ConnectionOverview.parent(childLinks: links).connectedCount, 2)
+        XCTAssertEqual(ConnectionOverview.parent(childLinks: links).connectedCount, 1)
         XCTAssertEqual(ConnectionOverview.parent(childLinks: links).title, "아이와 연결되었습니다")
-        XCTAssertEqual(ConnectionOverview.parent(childLinks: links).countText, "연결된 아이 2명")
+        XCTAssertEqual(ConnectionOverview.parent(childLinks: links).countText, "연결된 아이 1명")
     }
 
     func testLegacyChildLinkDefaultsParentConnectionReceiptToNil() throws {
@@ -372,6 +372,102 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(appState.parentSyncError, appState.parentSyncMessage)
     }
 
+    @MainActor
+    func testConnectedChildCanUpdateSharingPermissionsWithoutLosingConnection() async {
+        let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
+        var registeredPermissions: SharingPermission?
+        var connected = ChildLink(
+            childNickname: "지우",
+            schoolName: "냠냠초등학교",
+            mode: .elementary,
+            inviteSecret: ServerParentLinkService.makeUploadSecret(),
+            registeredAt: Date(),
+            parentConnectedAt: Date()
+        )
+        childShareLinkStore.save(connected)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: childShareLinkStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            serverParentLinkService: ServerParentLinkService(
+                registerParentLinkHandler: { link in
+                    registeredPermissions = link.permissions
+                    return link
+                }
+            ),
+            automaticallyPublishesParentSharedData: false
+        )
+        connected.permissions = SharingPermission(
+            shareEatingRecords: false,
+            shareChallengeRecords: true,
+            shareAllergyWarnings: false,
+            sharePhotos: false
+        )
+
+        await appState.updateParentSharingPermissions(connected.permissions)
+
+        XCTAssertEqual(appState.childShareLink?.permissions, connected.permissions)
+        XCTAssertEqual(registeredPermissions, connected.permissions)
+        XCTAssertNotNil(appState.childShareLink?.parentConnectedAt)
+        XCTAssertEqual(childShareLinkStore.load()?.permissions, connected.permissions)
+    }
+
+    @MainActor
+    func testFailedPermissionUpdateKeepsLastConfirmedSharingSettings() async {
+        let childShareLinkStore = ChildShareLinkStore(defaults: defaults)
+        let connected = ChildLink(
+            childNickname: "지우",
+            schoolName: "냠냠초등학교",
+            mode: .elementary,
+            inviteSecret: ServerParentLinkService.makeUploadSecret(),
+            registeredAt: Date(),
+            parentConnectedAt: Date()
+        )
+        childShareLinkStore.save(connected)
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            childShareLinkStore: childShareLinkStore,
+            mealService: MealService(client: NEISClient(apiKey: "YOUR_KEY_HERE")),
+            sampleProvider: SampleDataProvider(),
+            serverParentLinkService: ServerParentLinkService(
+                registerParentLinkHandler: { _ in throw ParentSyncServiceError.invalidResponse }
+            ),
+            automaticallyPublishesParentSharedData: false
+        )
+        let disabled = SharingPermission(
+            shareEatingRecords: false,
+            shareChallengeRecords: false,
+            shareAllergyWarnings: false,
+            sharePhotos: false
+        )
+
+        await appState.updateParentSharingPermissions(disabled)
+
+        XCTAssertEqual(appState.childShareLink?.permissions, connected.permissions)
+        XCTAssertEqual(childShareLinkStore.load()?.permissions, connected.permissions)
+        XCTAssertNotNil(appState.parentSyncError)
+    }
+
+    func testLegacyPendingParentLinkCanBeReconnected() {
+        let pending = ChildLink(childNickname: "지우", schoolName: "냠냠초", mode: .elementary)
+        var connected = pending
+        connected.parentConnectedAt = Date()
+
+        XCTAssertFalse(ParentConnectionPolicy.rejectsReconnect(existingLink: pending))
+        XCTAssertTrue(ParentConnectionPolicy.rejectsReconnect(existingLink: connected))
+    }
+
     func testParentInviteShareMessageCanBePastedAsInviteCode() {
         let service = CloudKitParentLinkService()
         let child = ChildLink(
@@ -416,13 +512,15 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "첫째",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-8K3P-7M2A-C9YD"
+            inviteCode: "NYAM-8K3P-7M2A-C9YD",
+            parentConnectedAt: Date()
         )
         let secondChild = ChildLink(
             childNickname: "둘째",
             schoolName: "냠냠중학교",
             mode: .middle,
-            inviteCode: "NYAM-9K3P-7M2A-C9YD"
+            inviteCode: "NYAM-9K3P-7M2A-C9YD",
+            parentConnectedAt: Date()
         )
         var registered: [(UUID, String, String)] = []
         let tokenStore = ParentPushDeviceTokenStore(defaults: defaults)
@@ -463,7 +561,8 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-8K3P-7M2A-C9YD"
+            inviteCode: "NYAM-8K3P-7M2A-C9YD",
+            parentConnectedAt: Date()
         )
         let appState = AppState(
             profileStore: UserProfileStore(defaults: defaults),
@@ -809,7 +908,8 @@ final class LocalStoreTests: XCTestCase {
             childNickname: "지우",
             schoolName: "등촌고등학교",
             mode: .high,
-            inviteCode: "NYAM-8K3P-7M2A-C9YD"
+            inviteCode: "NYAM-8K3P-7M2A-C9YD",
+            parentConnectedAt: Date()
         )
         let appState = AppState(
             profileStore: UserProfileStore(defaults: defaults),
@@ -1229,8 +1329,8 @@ final class LocalStoreTests: XCTestCase {
         )
         appState.parentProfile = ParentProfile(
             childLinks: [
-                ChildLink(id: firstChildId, childNickname: "첫째", schoolName: "등촌고등학교", mode: .high, inviteCode: "NYAM-AAAA-BBBB-CCCC"),
-                ChildLink(id: secondChildId, childNickname: "둘째", schoolName: "냠냠중학교", mode: .middle, inviteCode: "NYAM-DDDD-EEEE-FFFF")
+                ChildLink(id: firstChildId, childNickname: "첫째", schoolName: "등촌고등학교", mode: .high, inviteCode: "NYAM-AAAA-BBBB-CCCC", parentConnectedAt: Date()),
+                ChildLink(id: secondChildId, childNickname: "둘째", schoolName: "냠냠중학교", mode: .middle, inviteCode: "NYAM-DDDD-EEEE-FFFF", parentConnectedAt: Date())
             ]
         )
         appState.mealRecords = [

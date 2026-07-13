@@ -23,7 +23,7 @@ struct SchoolSearchView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(mode == .onboarding ? "학교를 찾아볼게요" : "학교 다시 선택")
                             .font(AppTypography.title)
-                        Text("NEIS 학교기본정보 API로 실제 학교를 검색해요. API 키가 없거나 검색에 실패하면 샘플로 자동 전환하지 않고 상태를 알려줘요.")
+                        Text("공공 급식 정보에서 실제 학교를 검색해요. 연동 설정이나 검색에 문제가 생겨도 샘플로 자동 전환하지 않고 상태를 알려줘요.")
                             .font(AppTypography.caption)
                             .foregroundStyle(AppColors.graySecondary)
                             .fixedSize(horizontal: false, vertical: true)

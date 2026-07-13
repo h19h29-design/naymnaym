@@ -574,6 +574,7 @@ private struct ParentSyncChallengeRecordDTO: Codable {
     var badgeName: String?
     var nutrients: [String]
     var createdAt: Date
+    var eatingStatus: String?
 
     init(_ record: ChallengeRecord, childLink: ChildLink) {
         id = record.id.uuidString
@@ -584,6 +585,7 @@ private struct ParentSyncChallengeRecordDTO: Codable {
         badgeName = record.badgeName
         nutrients = childLink.permissions.shareChallengeRecords ? record.nutrients : []
         createdAt = record.createdAt
+        eatingStatus = record.eatingStatus?.rawValue
     }
 
     func challengeRecord(childLinkId: UUID) -> ChallengeRecord {
@@ -596,6 +598,7 @@ private struct ParentSyncChallengeRecordDTO: Codable {
             badgeName: badgeName,
             nutrients: nutrients,
             createdAt: createdAt,
+            eatingStatus: eatingStatus.flatMap(EatingStatus.init(rawValue:)),
             childLinkId: childLinkId,
             parentShareEnabled: true
         )

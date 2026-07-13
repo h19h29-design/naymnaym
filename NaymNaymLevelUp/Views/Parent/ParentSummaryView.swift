@@ -164,9 +164,9 @@ struct ParentSummaryView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.parentProfile.childLinks.isEmpty ? "우리 아이들" : "연결된 아이")
+                        Text(appState.connectedParentChildLinks.isEmpty ? "우리 아이들" : "연결된 아이")
                             .font(AppTypography.title)
-                        if appState.parentProfile.childLinks.isEmpty {
+                        if appState.connectedParentChildLinks.isEmpty {
                             Text("초대 링크를 누르거나 받은 코드를 붙여넣어 아이를 연결할 수 있어요.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
@@ -192,7 +192,7 @@ struct ParentSummaryView: View {
                     .accessibilityLabel("아이 연결하기")
                 }
 
-                if appState.parentProfile.childLinks.isEmpty {
+                if appState.connectedParentChildLinks.isEmpty {
                     Button {
                         inviteShareItem = AppInviteShareItem(message: AppInviteLink.childInviteRequestShareMessage)
                     } label: {
@@ -206,7 +206,7 @@ struct ParentSummaryView: View {
                     }
                     .accessibilityLabel("아이에게 초대 요청 링크 공유하기")
                 } else {
-                    ForEach(appState.parentProfile.childLinks) { child in
+                    ForEach(appState.connectedParentChildLinks) { child in
                         ParentConnectionStatusView(state: .connected, connectedName: child.childNickname) {
                             Task { await appState.refreshParentSharedData() }
                         }
@@ -219,7 +219,7 @@ struct ParentSummaryView: View {
                     Label(appState.isParentSyncing ? "불러오는 중" : "아이 기록 새로고침", systemImage: "arrow.clockwise")
                         .font(.caption.weight(.semibold))
                 }
-                .disabled(appState.isParentSyncing || appState.parentProfile.childLinks.isEmpty)
+                .disabled(appState.isParentSyncing || appState.connectedParentChildLinks.isEmpty)
 
                 Button {
                     Task { await appState.enableParentResultNotifications() }
@@ -227,7 +227,7 @@ struct ParentSummaryView: View {
                     Label("급식 결과 알림 켜기", systemImage: "bell.badge.fill")
                         .font(.caption.weight(.semibold))
                 }
-                .disabled(appState.parentProfile.childLinks.isEmpty)
+                .disabled(appState.connectedParentChildLinks.isEmpty)
 
 #if DEBUG
                 Button {
@@ -244,7 +244,7 @@ struct ParentSummaryView: View {
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.warningRed)
                         .fixedSize(horizontal: false, vertical: true)
-                } else if appState.parentProfile.childLinks.isEmpty,
+                } else if appState.connectedParentChildLinks.isEmpty,
                           let message = appState.parentSyncMessage {
                     Text(message)
                         .font(AppTypography.caption)

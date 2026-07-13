@@ -6,8 +6,8 @@
 
 - 앱 이름: 냠냠레벨업
 - 패키지명: `com.h19h29.naymnaymlevelup`
-- 버전: `1.0-android-test4`
-- versionCode: `4`
+- 버전: `1.0-android-test5`
+- versionCode: `5`
 - 카테고리: 교육
 - 가격: 무료
 - 광고 포함: 아니요

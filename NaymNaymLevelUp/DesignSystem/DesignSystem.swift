@@ -376,7 +376,7 @@ struct MealCard: View {
                 }
 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    MealFeedbackButton(action: .oneBite, isDisabled: isAllergyRisk, handler: onOneBite)
+                    MealFeedbackButton(action: .oneBite, isLocked: isAllergyRisk, handler: onOneBite)
                     MealFeedbackButton(action: .enjoyed, handler: onEnjoyed)
                     MealFeedbackButton(action: .difficult, handler: onDifficult)
                 }
@@ -401,13 +401,13 @@ struct MealCard: View {
 
 private struct MealFeedbackButton: View {
     let action: MealFeedbackAction
-    var isDisabled = false
+    var isLocked = false
     let handler: () -> Void
 
     var body: some View {
         Button(action: handler) {
             VStack(spacing: 6) {
-                Image(systemName: action.systemImage)
+                Image(systemName: isLocked ? "lock.fill" : action.systemImage)
                     .font(.headline)
                 Text(action.title)
                     .font(.caption.weight(.bold))
@@ -426,12 +426,11 @@ private struct MealFeedbackButton: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel(isDisabled ? "\(action.title), 알레르기 주의로 잠김" : action.title)
+        .accessibilityLabel(isLocked ? "\(action.title), 알레르기 주의로 잠김, 안전 안내 열기" : action.title)
     }
 
     private var foregroundColor: Color {
-        if isDisabled { return AppColors.graySecondary }
+        if isLocked { return AppColors.graySecondary }
         switch action {
         case .oneBite: return .white
         case .enjoyed: return AppColors.primaryGreen
@@ -441,7 +440,7 @@ private struct MealFeedbackButton: View {
 
     @ViewBuilder
     private var background: some View {
-        if isDisabled {
+        if isLocked {
             AppColors.graySecondary.opacity(0.10)
         } else if action == .oneBite {
             LinearGradient(
@@ -457,7 +456,7 @@ private struct MealFeedbackButton: View {
     }
 
     private var borderColor: Color {
-        if isDisabled { return AppColors.graySecondary.opacity(0.16) }
+        if isLocked { return AppColors.graySecondary.opacity(0.16) }
         switch action {
         case .oneBite: return AppColors.primaryGreen.opacity(0.28)
         case .enjoyed: return AppColors.primaryGreen.opacity(0.22)

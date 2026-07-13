@@ -48,6 +48,7 @@ struct TodayMealView: View {
                                     recordNotice = nil
                                     guard !appState.isAllergyRisk(item) else {
                                         recordNotice = "선택한 알레르기와 관련된 메뉴예요. 보호자와 학교 안내를 꼭 확인해 주세요."
+                                        selectedItem = item
                                         return
                                     }
                                     challengeOutcome = appState.recordMealInteraction(
@@ -255,15 +256,7 @@ struct TodayMealView: View {
     }
 
     private func shouldShare(_ status: EatingStatus) -> Bool {
-        guard let link = appState.childShareLink, link.parentConnectedAt != nil else { return false }
-        switch status {
-        case .oneBite, .smelledOnly:
-            return link.permissions.shareChallengeRecords
-        case .finished, .half, .difficultToday:
-            return link.permissions.shareEatingRecords
-        case .allergyAvoided:
-            return link.permissions.shareAllergyWarnings
-        }
+        ParentSharingPolicy.shouldShare(status: status, link: appState.childShareLink)
     }
 
     private func mealStatusBanner(status: MealDataState, message: String) -> some View {

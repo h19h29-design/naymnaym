@@ -1,4 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
+import {
+  canShareChallengeRecord,
+  canShareChallengeRow,
+  canShareMealRecord,
+  canShareMealRow,
+} from "./sharing-policy.ts";
 
 type SharingPermission = {
   shareEatingRecords: boolean;
@@ -42,6 +48,7 @@ type ChallengeRecordDTO = {
   badgeName?: string | null;
   nutrients: string[];
   createdAt: string;
+  eatingStatus?: string | null;
 };
 
 type ParentDeviceDTO = {
@@ -58,7 +65,8 @@ type ApnsConfig = {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json",
 };
@@ -75,21 +83,34 @@ Deno.serve(async (req: Request) => {
   }
 
   if (req.method !== "POST") {
-    return json({ ok: false, code: "method_not_allowed", error: "POST만 사용할 수 있어요." }, 405);
+    return json({
+      ok: false,
+      code: "method_not_allowed",
+      error: "POST만 사용할 수 있어요.",
+    }, 405);
   }
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return json({ ok: false, code: "server_not_configured", error: "부모 연결 서버 설정이 완료되지 않았어요." }, 500);
+    return json({
+      ok: false,
+      code: "server_not_configured",
+      error: "부모 연결 서버 설정이 완료되지 않았어요.",
+    }, 500);
   }
 
   const body = await safeJson(req);
   const action = typeof body?.action === "string" ? body.action : "";
-  const payload = body?.payload ?? {};
+  const payload: Record<string, unknown> = isRecord(body?.payload)
+    ? body.payload
+    : {};
 
   try {
     switch (action) {
       case "health":
-        return json({ ok: true, data: { status: "ok", apnsConfigured: Boolean(resolveApnsConfig()) } });
+        return json({
+          ok: true,
+          data: { status: "ok", apnsConfigured: Boolean(resolveApnsConfig()) },
+        });
       case "registerInvite":
         return await registerInvite(payload);
       case "connectInvite":
@@ -103,24 +124,45 @@ Deno.serve(async (req: Request) => {
       case "registerParentDevice":
         return await registerParentDevice(payload);
       default:
-        return json({ ok: false, code: "unknown_action", error: "지원하지 않는 요청이에요." }, 400);
+        return json({
+          ok: false,
+          code: "unknown_action",
+          error: "지원하지 않는 요청이에요.",
+        }, 400);
     }
   } catch {
     console.error("parent-sync request failed");
-    return json({ ok: false, code: "server_error", error: "부모 연결 서버 처리 중 오류가 발생했어요." }, 500);
+    return json({
+      ok: false,
+      code: "server_error",
+      error: "부모 연결 서버 처리 중 오류가 발생했어요.",
+    }, 500);
   }
 });
 
-async function registerInvite(payload: Record<string, unknown>): Promise<Response> {
+async function registerInvite(
+  payload: Record<string, unknown>,
+): Promise<Response> {
   const link = payload.link as ChildLinkDTO | undefined;
   const inviteSecret = asString(payload.inviteSecret);
 
-  if (!link || !isValidUUID(link.id) || !isValidInviteCode(link.inviteCode) || inviteSecret.length < 32) {
-    return json({ ok: false, code: "invalid_invite", error: "초대 코드 등록 정보가 올바르지 않아요." }, 400);
+  if (
+    !link || !isValidUUID(link.id) || !isValidInviteCode(link.inviteCode) ||
+    inviteSecret.length < 32
+  ) {
+    return json({
+      ok: false,
+      code: "invalid_invite",
+      error: "초대 코드 등록 정보가 올바르지 않아요.",
+    }, 400);
   }
 
   if (!link.officeCode || !link.schoolCode || !link.schoolName) {
-    return json({ ok: false, code: "missing_school", error: "학교 정보가 없어 부모가 급식 메뉴를 볼 수 없어요." }, 400);
+    return json({
+      ok: false,
+      code: "missing_school",
+      error: "학교 정보가 없어 부모가 급식 메뉴를 볼 수 없어요.",
+    }, 400);
   }
 
   const { data: existingByCode, error: existingError } = await supabase
@@ -130,11 +172,19 @@ async function registerInvite(payload: Record<string, unknown>): Promise<Respons
     .maybeSingle();
 
   if (existingError) {
-    return json({ ok: false, code: "db_error", error: "초대 코드 중복 확인에 실패했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "초대 코드 중복 확인에 실패했어요.",
+    }, 500);
   }
 
   if (existingByCode && existingByCode.child_link_id !== link.id) {
-    return json({ ok: false, code: "invite_code_conflict", error: "이미 사용 중인 초대 코드예요. 새 코드를 만들어 주세요." }, 409);
+    return json({
+      ok: false,
+      code: "invite_code_conflict",
+      error: "이미 사용 중인 초대 코드예요. 새 코드를 만들어 주세요.",
+    }, 409);
   }
 
   const registeredAt = new Date().toISOString();
@@ -164,17 +214,27 @@ async function registerInvite(payload: Record<string, unknown>): Promise<Respons
     .single();
 
   if (error) {
-    return json({ ok: false, code: "db_error", error: "초대 코드를 서버에 저장하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "초대 코드를 서버에 저장하지 못했어요.",
+    }, 500);
   }
 
   return json({ ok: true, data: { link: rowToLink(data) } });
 }
 
-async function connectInvite(payload: Record<string, unknown>): Promise<Response> {
+async function connectInvite(
+  payload: Record<string, unknown>,
+): Promise<Response> {
   const inviteCode = asString(payload.inviteCode);
   const link = await findLinkByInviteCode(inviteCode);
   if (!link) {
-    return json({ ok: false, code: "invite_code_not_found", error: "초대 코드를 찾지 못했어요." }, 404);
+    return json({
+      ok: false,
+      code: "invite_code_not_found",
+      error: "초대 코드를 찾지 못했어요.",
+    }, 404);
   }
 
   const connectedAt = new Date().toISOString();
@@ -184,7 +244,11 @@ async function connectInvite(payload: Record<string, unknown>): Promise<Response
     .eq("child_link_id", link.child_link_id)
     .is("connected_at", null);
   if (error) {
-    return json({ ok: false, code: "db_error", error: "부모 연결 확인을 저장하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "부모 연결 확인을 저장하지 못했어요.",
+    }, 500);
   }
 
   const { data: resolvedLink, error: reloadError } = await supabase
@@ -193,18 +257,28 @@ async function connectInvite(payload: Record<string, unknown>): Promise<Response
     .eq("child_link_id", link.child_link_id)
     .single();
   if (reloadError) {
-    return json({ ok: false, code: "db_error", error: "부모 연결 확인을 불러오지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "부모 연결 확인을 불러오지 못했어요.",
+    }, 500);
   }
 
-  const snapshot = await loadSnapshot(resolvedLink.child_link_id);
+  const snapshot = await loadSnapshot(resolvedLink.child_link_id, resolvedLink);
   return json({ ok: true, data: { link: rowToLink(resolvedLink), snapshot } });
 }
 
-async function checkConnectionStatus(payload: Record<string, unknown>): Promise<Response> {
+async function checkConnectionStatus(
+  payload: Record<string, unknown>,
+): Promise<Response> {
   const childLinkId = asString(payload.childLinkId);
   const inviteSecret = asString(payload.inviteSecret);
   if (!isValidUUID(childLinkId) || inviteSecret.length < 32) {
-    return json({ ok: false, code: "invalid_status_check", error: "부모 연결 확인 정보가 올바르지 않아요." }, 400);
+    return json({
+      ok: false,
+      code: "invalid_status_check",
+      error: "부모 연결 확인 정보가 올바르지 않아요.",
+    }, 400);
   }
 
   const { data: link, error } = await supabase
@@ -213,44 +287,78 @@ async function checkConnectionStatus(payload: Record<string, unknown>): Promise<
     .eq("child_link_id", childLinkId)
     .maybeSingle();
   if (error) {
-    return json({ ok: false, code: "db_error", error: "부모 연결 상태를 확인하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "부모 연결 상태를 확인하지 못했어요.",
+    }, 500);
   }
   if (!link || link.invite_secret_hash !== await sha256(inviteSecret)) {
-    return json({ ok: false, code: "status_check_forbidden", error: "아이 기기에서만 연결 상태를 확인할 수 있어요." }, 403);
+    return json({
+      ok: false,
+      code: "status_check_forbidden",
+      error: "아이 기기에서만 연결 상태를 확인할 수 있어요.",
+    }, 403);
   }
 
   return json({ ok: true, data: { connectedAt: link.connected_at } });
 }
 
-async function fetchSnapshot(payload: Record<string, unknown>): Promise<Response> {
+async function fetchSnapshot(
+  payload: Record<string, unknown>,
+): Promise<Response> {
   const childLinkId = asString(payload.childLinkId);
   const inviteCode = asString(payload.inviteCode);
 
   if (!isValidUUID(childLinkId)) {
-    return json({ ok: false, code: "invalid_child_link", error: "아이 연결 정보가 올바르지 않아요." }, 400);
+    return json({
+      ok: false,
+      code: "invalid_child_link",
+      error: "아이 연결 정보가 올바르지 않아요.",
+    }, 400);
   }
 
   const link = await findLinkByInviteCode(inviteCode);
   if (!link || link.child_link_id !== childLinkId) {
-    return json({ ok: false, code: "invite_code_not_found", error: "초대 코드를 찾지 못했어요." }, 404);
+    return json({
+      ok: false,
+      code: "invite_code_not_found",
+      error: "초대 코드를 찾지 못했어요.",
+    }, 404);
   }
 
-  return json({ ok: true, data: { snapshot: await loadSnapshot(childLinkId) } });
+  return json({
+    ok: true,
+    data: { snapshot: await loadSnapshot(childLinkId, link) },
+  });
 }
 
-async function registerParentDevice(payload: Record<string, unknown>): Promise<Response> {
+async function registerParentDevice(
+  payload: Record<string, unknown>,
+): Promise<Response> {
   const childLinkId = asString(payload.childLinkId);
   const inviteCode = asString(payload.inviteCode);
   const deviceToken = asString(payload.deviceToken).trim().toLowerCase();
   const environment = normalizeApnsEnvironment(payload.environment);
 
-  if (!isValidUUID(childLinkId) || !isValidDeviceToken(deviceToken) || !environment) {
-    return json({ ok: false, code: "invalid_parent_device", error: "부모 알림 기기 정보가 올바르지 않아요." }, 400);
+  if (
+    !isValidUUID(childLinkId) || !isValidDeviceToken(deviceToken) ||
+    !environment
+  ) {
+    return json({
+      ok: false,
+      code: "invalid_parent_device",
+      error: "부모 알림 기기 정보가 올바르지 않아요.",
+    }, 400);
   }
 
   const link = await findLinkByInviteCode(inviteCode);
   if (!link || link.child_link_id !== childLinkId) {
-    return json({ ok: false, code: "invite_code_not_found", error: "초대 코드를 찾지 못했어요." }, 404);
+    return json({
+      ok: false,
+      code: "invite_code_not_found",
+      error: "초대 코드를 찾지 못했어요.",
+    }, 404);
   }
 
   const now = new Date().toISOString();
@@ -271,24 +379,42 @@ async function registerParentDevice(payload: Record<string, unknown>): Promise<R
     .upsert(row, { onConflict: "child_link_id,device_token_hash" });
 
   if (error) {
-    return json({ ok: false, code: "db_error", error: "부모 알림 기기를 등록하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "부모 알림 기기를 등록하지 못했어요.",
+    }, 500);
   }
 
   return json({ ok: true, data: {} });
 }
 
-async function publishSnapshot(payload: Record<string, unknown>): Promise<Response> {
+async function publishSnapshot(
+  payload: Record<string, unknown>,
+): Promise<Response> {
   const childLinkId = asString(payload.childLinkId);
   const inviteSecret = asString(payload.inviteSecret);
-  const mealRecords = Array.isArray(payload.mealRecords) ? payload.mealRecords as MealRecordDTO[] : [];
-  const challengeRecords = Array.isArray(payload.challengeRecords) ? payload.challengeRecords as ChallengeRecordDTO[] : [];
+  const mealRecords = Array.isArray(payload.mealRecords)
+    ? payload.mealRecords as MealRecordDTO[]
+    : [];
+  const challengeRecords = Array.isArray(payload.challengeRecords)
+    ? payload.challengeRecords as ChallengeRecordDTO[]
+    : [];
 
   if (!isValidUUID(childLinkId) || inviteSecret.length < 32) {
-    return json({ ok: false, code: "invalid_upload", error: "공유 기록 업로드 정보가 올바르지 않아요." }, 400);
+    return json({
+      ok: false,
+      code: "invalid_upload",
+      error: "공유 기록 업로드 정보가 올바르지 않아요.",
+    }, 400);
   }
 
   if (mealRecords.length > 200 || challengeRecords.length > 200) {
-    return json({ ok: false, code: "payload_too_large", error: "한 번에 공유할 수 있는 기록 수를 초과했어요." }, 413);
+    return json({
+      ok: false,
+      code: "payload_too_large",
+      error: "한 번에 공유할 수 있는 기록 수를 초과했어요.",
+    }, 413);
   }
 
   const { data: link, error } = await supabase
@@ -298,48 +424,67 @@ async function publishSnapshot(payload: Record<string, unknown>): Promise<Respon
     .maybeSingle();
 
   if (error) {
-    return json({ ok: false, code: "db_error", error: "아이 연결 정보를 확인하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "아이 연결 정보를 확인하지 못했어요.",
+    }, 500);
   }
   if (!link || link.invite_secret_hash !== await sha256(inviteSecret)) {
-    return json({ ok: false, code: "upload_forbidden", error: "아이 기기에서만 공유 기록을 올릴 수 있어요." }, 403);
+    return json({
+      ok: false,
+      code: "upload_forbidden",
+      error: "아이 기기에서만 공유 기록을 올릴 수 있어요.",
+    }, 403);
   }
 
-  const mealRows = link.share_eating_records
-    ? mealRecords.filter(isValidMealRecord).map((record) => ({
+  const mealRows = mealRecords
+    .filter(isValidMealRecord)
+    .filter((record) => canShareMealRecord(record, link))
+    .map((record) => ({
       child_link_id: childLinkId,
       record_id: record.id,
       meal_date: trimForStorage(record.date, 12),
       menu_name: trimForStorage(record.menuName, 80),
       eating_status: record.eatingStatus,
       difficulty_reasons: safeStringArray(record.difficultyReasons, 12, 40),
-      allergy_codes: link.share_allergy_warnings ? safeNumberArray(record.allergyCodes, 20) : [],
+      allergy_codes: link.share_allergy_warnings
+        ? safeNumberArray(record.allergyCodes, 20)
+        : [],
       photo_ids: [],
       created_at: safeDate(record.createdAt),
       updated_at: new Date().toISOString(),
-    }))
-    : [];
+    }));
 
-  const challengeRows = link.share_challenge_records
-    ? challengeRecords.filter(isValidChallengeRecord).map((record) => ({
+  const challengeRows = challengeRecords
+    .filter(isValidChallengeRecord)
+    .filter((record) => canShareChallengeRecord(record, link))
+    .map((record) => ({
       child_link_id: childLinkId,
       record_id: record.id,
       challenge_date: trimForStorage(record.date, 12),
       menu_name: trimForStorage(record.menuName, 80),
       action: record.action,
+      eating_status: normalizedEatingStatus(record.eatingStatus),
       gained_exp: Math.max(0, Math.min(Number(record.gainedExp) || 0, 500)),
-      badge_name: record.badgeName ? trimForStorage(record.badgeName, 50) : null,
+      badge_name: record.badgeName
+        ? trimForStorage(record.badgeName, 50)
+        : null,
       nutrients: safeStringArray(record.nutrients, 20, 40),
       created_at: safeDate(record.createdAt),
       updated_at: new Date().toISOString(),
-    }))
-    : [];
+    }));
 
   const { error: deleteMealsError } = await supabase
     .from("nyam_parent_meal_records")
     .delete()
     .eq("child_link_id", childLinkId);
   if (deleteMealsError) {
-    return json({ ok: false, code: "db_error", error: "기존 먹은 정도 기록을 정리하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "기존 먹은 정도 기록을 정리하지 못했어요.",
+    }, 500);
   }
 
   const { error: deleteChallengesError } = await supabase
@@ -347,28 +492,51 @@ async function publishSnapshot(payload: Record<string, unknown>): Promise<Respon
     .delete()
     .eq("child_link_id", childLinkId);
   if (deleteChallengesError) {
-    return json({ ok: false, code: "db_error", error: "기존 도전 기록을 정리하지 못했어요." }, 500);
+    return json({
+      ok: false,
+      code: "db_error",
+      error: "기존 도전 기록을 정리하지 못했어요.",
+    }, 500);
   }
 
   if (mealRows.length > 0) {
-    const { error: insertMealsError } = await supabase.from("nyam_parent_meal_records").insert(mealRows);
+    const { error: insertMealsError } = await supabase.from(
+      "nyam_parent_meal_records",
+    ).insert(mealRows);
     if (insertMealsError) {
-      return json({ ok: false, code: "db_error", error: "먹은 정도 기록을 저장하지 못했어요." }, 500);
+      return json({
+        ok: false,
+        code: "db_error",
+        error: "먹은 정도 기록을 저장하지 못했어요.",
+      }, 500);
     }
   }
 
   if (challengeRows.length > 0) {
-    const { error: insertChallengesError } = await supabase.from("nyam_parent_challenge_records").insert(challengeRows);
+    const { error: insertChallengesError } = await supabase.from(
+      "nyam_parent_challenge_records",
+    ).insert(challengeRows);
     if (insertChallengesError) {
-      return json({ ok: false, code: "db_error", error: "한 입 도전 기록을 저장하지 못했어요." }, 500);
+      return json({
+        ok: false,
+        code: "db_error",
+        error: "한 입 도전 기록을 저장하지 못했어요.",
+      }, 500);
     }
   }
 
-  const notification = await sendParentMealResultNotifications(link, mealRows, challengeRows);
+  const notification = await sendParentMealResultNotifications(
+    link,
+    mealRows,
+    challengeRows,
+  );
   return json({ ok: true, data: { notification } });
 }
 
-async function loadSnapshot(childLinkId: string) {
+async function loadSnapshot(
+  childLinkId: string,
+  link: Record<string, unknown>,
+) {
   const { data: meals, error: mealsError } = await supabase
     .from("nyam_parent_meal_records")
     .select("*")
@@ -385,9 +553,19 @@ async function loadSnapshot(childLinkId: string) {
     .limit(100);
   if (challengesError) throw challengesError;
 
+  const visibleMeals = (meals ?? []).filter((row) =>
+    canShareMealRow(row, link)
+  );
+  const visibleChallenges = (challenges ?? []).filter((row) =>
+    canShareChallengeRow(row, link)
+  );
+  const visibleMealRecords = visibleMeals.map(rowToMealRecord).map((record) => (
+    link.share_allergy_warnings ? record : { ...record, allergyCodes: [] }
+  ));
+
   return {
-    mealRecords: (meals ?? []).map(rowToMealRecord),
-    challengeRecords: (challenges ?? []).map(rowToChallengeRecord),
+    mealRecords: visibleMealRecords,
+    challengeRecords: visibleChallenges.map(rowToChallengeRecord),
   };
 }
 
@@ -432,14 +610,20 @@ function rowToMealRecord(row: Record<string, unknown>): MealRecordDTO {
     date: asString(row.meal_date),
     menuName: asString(row.menu_name),
     eatingStatus: asString(row.eating_status),
-    difficultyReasons: Array.isArray(row.difficulty_reasons) ? row.difficulty_reasons.map(String) : [],
-    allergyCodes: Array.isArray(row.allergy_codes) ? row.allergy_codes.map(Number).filter(Number.isFinite) : [],
+    difficultyReasons: Array.isArray(row.difficulty_reasons)
+      ? row.difficulty_reasons.map(String)
+      : [],
+    allergyCodes: Array.isArray(row.allergy_codes)
+      ? row.allergy_codes.map(Number).filter(Number.isFinite)
+      : [],
     photoIds: [],
     createdAt: asString(row.created_at),
   };
 }
 
-function rowToChallengeRecord(row: Record<string, unknown>): ChallengeRecordDTO {
+function rowToChallengeRecord(
+  row: Record<string, unknown>,
+): ChallengeRecordDTO {
   return {
     id: asString(row.record_id),
     date: asString(row.challenge_date),
@@ -449,12 +633,20 @@ function rowToChallengeRecord(row: Record<string, unknown>): ChallengeRecordDTO 
     badgeName: row.badge_name ? asString(row.badge_name) : null,
     nutrients: Array.isArray(row.nutrients) ? row.nutrients.map(String) : [],
     createdAt: asString(row.created_at),
+    eatingStatus: normalizedEatingStatus(row.eating_status),
   };
 }
 
 function isValidMealRecord(record: MealRecordDTO): boolean {
   return isValidUUID(record.id) &&
-    ["finished", "half", "oneBite", "smelledOnly", "difficultToday", "allergyAvoided"].includes(record.eatingStatus) &&
+    [
+      "finished",
+      "half",
+      "oneBite",
+      "smelledOnly",
+      "difficultToday",
+      "allergyAvoided",
+    ].includes(record.eatingStatus) &&
     trimForStorage(record.date, 12).length > 0 &&
     trimForStorage(record.menuName, 80).length > 0;
 }
@@ -462,8 +654,24 @@ function isValidMealRecord(record: MealRecordDTO): boolean {
 function isValidChallengeRecord(record: ChallengeRecordDTO): boolean {
   return isValidUUID(record.id) &&
     ["skipped", "oneBite", "alreadyEats"].includes(record.action) &&
+    (!record.eatingStatus ||
+      normalizedEatingStatus(record.eatingStatus) !== null) &&
     trimForStorage(record.date, 12).length > 0 &&
     trimForStorage(record.menuName, 80).length > 0;
+}
+
+function normalizedEatingStatus(value: unknown): string | null {
+  const status = asString(value);
+  return [
+      "finished",
+      "half",
+      "oneBite",
+      "smelledOnly",
+      "difficultToday",
+      "allergyAvoided",
+    ].includes(status)
+    ? status
+    : null;
 }
 
 function resolveServiceRoleKey(): string {
@@ -475,7 +683,8 @@ function resolveServiceRoleKey(): string {
 
   try {
     const parsed = JSON.parse(secretKeys);
-    return parsed.service_role ?? parsed.serviceRole ?? parsed.default ?? parsed.SUPABASE_SERVICE_ROLE_KEY ?? "";
+    return parsed.service_role ?? parsed.serviceRole ?? parsed.default ??
+      parsed.SUPABASE_SERVICE_ROLE_KEY ?? "";
   } catch {
     return "";
   }
@@ -491,7 +700,9 @@ async function sendParentMealResultNotifications(
     return { attempted: 0, sent: 0, skipped: "no_shared_records" };
   }
 
-  const signature = `${latest.kind}:${asString(latest.record.record_id)}:${asString(latest.record.created_at)}`;
+  const signature = `${latest.kind}:${asString(latest.record.record_id)}:${
+    asString(latest.record.created_at)
+  }`;
   if (asString(link.last_notification_signature) === signature) {
     return { attempted: 0, sent: 0, skipped: "duplicate_snapshot" };
   }
@@ -513,10 +724,16 @@ async function sendParentMealResultNotifications(
   const apnsConfig = resolveApnsConfig();
   if (!apnsConfig) {
     await markNotificationSignature(childLinkId, signature);
-    return { attempted: registeredDevices.length, sent: 0, skipped: "apns_not_configured" };
+    return {
+      attempted: registeredDevices.length,
+      sent: 0,
+      skipped: "apns_not_configured",
+    };
   }
 
-  const title = `${trimForStorage(link.child_nickname, 40) || "아이"}가 급식 결과를 올렸어요`;
+  const title = `${
+    trimForStorage(link.child_nickname, 40) || "아이"
+  }가 급식 결과를 올렸어요`;
   const body = notificationBody(latest);
   let sent = 0;
   for (const device of registeredDevices) {
@@ -544,14 +761,22 @@ function latestSharedRecord(
     ...mealRows.map((record) => ({ kind: "meal", record })),
     ...challengeRows.map((record) => ({ kind: "challenge", record })),
   ];
-  candidates.sort((lhs, rhs) => asString(rhs.record.created_at).localeCompare(asString(lhs.record.created_at)));
+  candidates.sort((lhs, rhs) =>
+    asString(rhs.record.created_at).localeCompare(
+      asString(lhs.record.created_at),
+    )
+  );
   return candidates[0] ?? null;
 }
 
-function notificationBody(latest: { kind: string; record: Record<string, unknown> }): string {
+function notificationBody(
+  latest: { kind: string; record: Record<string, unknown> },
+): string {
   const menuName = trimForStorage(latest.record.menu_name, 40) || "급식 메뉴";
   if (latest.kind === "meal") {
-    return `${menuName}: ${eatingStatusTitle(asString(latest.record.eating_status))}`;
+    return `${menuName}: ${
+      eatingStatusTitle(asString(latest.record.eating_status))
+    }`;
   }
   return `${menuName}: 한 입 도전 기록이 업데이트됐어요.`;
 }
@@ -574,7 +799,10 @@ function eatingStatusTitle(status: string): string {
   }
 }
 
-async function markNotificationSignature(childLinkId: string, signature: string) {
+async function markNotificationSignature(
+  childLinkId: string,
+  signature: string,
+) {
   const { error } = await supabase
     .from("nyam_parent_links")
     .update({
@@ -591,7 +819,8 @@ function resolveApnsConfig(): ApnsConfig | null {
   const keyId = Deno.env.get("APNS_KEY_ID")?.trim() ?? "";
   const rawPrivateKey = Deno.env.get("APNS_PRIVATE_KEY") ?? "";
   const privateKey = rawPrivateKey.replace(/\\n/g, "\n").trim();
-  const bundleId = Deno.env.get("APNS_BUNDLE_ID")?.trim() || "com.h19h29.naymnaymlevelup";
+  const bundleId = Deno.env.get("APNS_BUNDLE_ID")?.trim() ||
+    "com.h19h29.naymnaymlevelup";
   if (!teamId || !keyId || !privateKey || !bundleId) return null;
   return { teamId, keyId, privateKey, bundleId };
 }
@@ -601,21 +830,27 @@ async function sendApnsNotification(
   device: ParentDeviceDTO,
   payload: Record<string, unknown>,
 ): Promise<boolean> {
-  const environment = normalizeApnsEnvironment(device.environment) ?? "production";
-  const host = environment === "sandbox" ? "api.sandbox.push.apple.com" : "api.push.apple.com";
+  const environment = normalizeApnsEnvironment(device.environment) ??
+    "production";
+  const host = environment === "sandbox"
+    ? "api.sandbox.push.apple.com"
+    : "api.push.apple.com";
   const jwt = await makeApnsJwt(config);
 
-  const response = await fetch(`https://${host}/3/device/${device.device_token}`, {
-    method: "POST",
-    headers: {
-      "authorization": `bearer ${jwt}`,
-      "apns-topic": config.bundleId,
-      "apns-push-type": "alert",
-      "apns-priority": "10",
-      "content-type": "application/json",
+  const response = await fetch(
+    `https://${host}/3/device/${device.device_token}`,
+    {
+      method: "POST",
+      headers: {
+        "authorization": `bearer ${jwt}`,
+        "apns-topic": config.bundleId,
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+  );
 
   if (response.ok) return true;
 
@@ -632,7 +867,9 @@ async function sendApnsNotification(
 
 async function makeApnsJwt(config: ApnsConfig): Promise<string> {
   const header = base64Url(JSON.stringify({ alg: "ES256", kid: config.keyId }));
-  const claims = base64Url(JSON.stringify({ iss: config.teamId, iat: Math.floor(Date.now() / 1000) }));
+  const claims = base64Url(
+    JSON.stringify({ iss: config.teamId, iat: Math.floor(Date.now() / 1000) }),
+  );
   const signingInput = `${header}.${claims}`;
   const key = await crypto.subtle.importKey(
     "pkcs8",
@@ -663,12 +900,17 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
 }
 
 function base64Url(value: string | Uint8Array): string {
-  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
+  const bytes = typeof value === "string"
+    ? new TextEncoder().encode(value)
+    : value;
   let binary = "";
   bytes.forEach((byte) => {
     binary += String.fromCharCode(byte);
   });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(
+    /=+$/g,
+    "",
+  );
 }
 
 async function safeJson(req: Request): Promise<Record<string, unknown> | null> {
@@ -684,20 +926,26 @@ function json(body: unknown, status = 200): Response {
 }
 
 function isValidInviteCode(code: string): boolean {
-  return /^NYAM-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$/.test(code);
+  return /^NYAM-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$/
+    .test(code);
 }
 
 function isValidUUID(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
 }
 
 function isValidDeviceToken(value: string): boolean {
   return /^[a-f0-9]{64,200}$/.test(value);
 }
 
-function normalizeApnsEnvironment(value: unknown): "sandbox" | "production" | null {
+function normalizeApnsEnvironment(
+  value: unknown,
+): "sandbox" | "production" | null {
   const environment = asString(value).trim().toLowerCase();
-  if (environment === "sandbox" || environment === "production") return environment;
+  if (environment === "sandbox" || environment === "production") {
+    return environment;
+  }
   return null;
 }
 
@@ -705,13 +953,22 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function trimForStorage(value: unknown, maxLength: number): string {
   return asString(value).trim().slice(0, maxLength);
 }
 
-function safeStringArray(value: unknown, maxItems: number, maxLength: number): string[] {
+function safeStringArray(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+): string[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => trimForStorage(item, maxLength)).filter(Boolean).slice(0, maxItems);
+  return value.map((item) => trimForStorage(item, maxLength)).filter(Boolean)
+    .slice(0, maxItems);
 }
 
 function safeNumberArray(value: unknown, maxItems: number): number[] {
@@ -733,5 +990,7 @@ function safeDate(value: unknown): string {
 async function sha256(value: string): Promise<string> {
   const data = new TextEncoder().encode(value);
   const hash = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(hash)].map((byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
 }

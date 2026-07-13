@@ -85,8 +85,14 @@ public class MainActivity extends Activity {
     private School selectedSchool;
     private boolean demoMode;
     private ChildLink childLink;
+    private MealSnapshotLedger mealSnapshotLedger;
     private final List<ParentChildReceipt> parentChildren = new ArrayList<>();
+    private SharedPreferences.OnSharedPreferenceChangeListener preferenceListener;
     private boolean refreshingConnectionStatus;
+    private final Object snapshotSyncLock = new Object();
+    private boolean snapshotUploadInFlight;
+    private boolean snapshotRetryScheduled;
+    private int snapshotRetryAttempt;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,9 +101,25 @@ public class MainActivity extends Activity {
         selectedSchool = loadSchool();
         demoMode = prefs.getBoolean("demoMode", false);
         childLink = loadChildLink();
+        mealSnapshotLedger = loadMealSnapshotLedger();
+        initializeSnapshotSyncState();
         parentChildren.addAll(loadParentChildren());
+        preferenceListener = (sharedPreferences, key) -> {
+            if (!"parentChildren".equals(key)) return;
+            mainHandler.post(this::reloadParentChildren);
+        };
+        prefs.registerOnSharedPreferenceChangeListener(preferenceListener);
         handleDeepLink(getIntent());
         renderHome();
+        mainHandler.postDelayed(this::retryPendingSnapshotIfNeeded, 600);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (prefs != null && preferenceListener != null) {
+            prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener);
+        }
+        super.onDestroy();
     }
 
     @Override
@@ -225,7 +247,7 @@ public class MainActivity extends Activity {
 
     private String currentStatusMessage() {
         if (BuildConfig.NEIS_API_KEY.trim().isEmpty()) {
-            return "NEIS API 키가 없어 실제 급식을 불러올 수 없어요.";
+            return "급식 연동 설정이 필요해요.";
         }
         if (selectedSchool == null) {
             return "학교 등록하고 시작";
@@ -266,7 +288,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (BuildConfig.NEIS_API_KEY.trim().isEmpty()) {
-            setStatus("NEIS API 키가 없어 학교를 검색할 수 없어요.");
+            setStatus("급식 연동 설정을 확인해 주세요.");
             return;
         }
         showLoading("학교를 검색하는 중이에요.");
@@ -290,10 +312,10 @@ public class MainActivity extends Activity {
                 }
                 mainHandler.post(() -> renderSchoolResults(schools));
             } catch (Exception error) {
-                Log.w("NaymAndroid", "School search failed: " + error.getClass().getSimpleName() + ": " + userSafeMessage(error));
+                Log.w("NaymAndroid", "School search failed: " + error.getClass().getSimpleName());
                 mainHandler.post(() -> {
                     renderSchoolSearch();
-                    setStatus("학교 검색에 실패했어요. API 키, 네트워크 상태를 확인해 주세요.");
+                    setStatus("학교 검색에 실패했어요. 급식 연동 설정과 네트워크 상태를 확인해 주세요.");
                 });
             }
         });
@@ -348,7 +370,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (BuildConfig.NEIS_API_KEY.trim().isEmpty()) {
-            setStatus("급식 정보를 불러오지 못했어요. API 키 설정을 확인해 주세요.");
+            setStatus("급식 정보를 불러오지 못했어요. 급식 연동 설정을 확인해 주세요.");
             return;
         }
         showLoading("오늘 급식을 불러오는 중이에요.");
@@ -390,10 +412,10 @@ public class MainActivity extends Activity {
                 );
                 mainHandler.post(() -> renderMeal(meal, "실제 NEIS 급식 조회 성공"));
             } catch (Exception error) {
-                Log.w("NaymAndroid", "Meal fetch failed: " + error.getClass().getSimpleName() + ": " + userSafeMessage(error));
+                Log.w("NaymAndroid", "Meal fetch failed: " + error.getClass().getSimpleName());
                 mainHandler.post(() -> {
                     renderHome();
-                    setStatus("급식 정보를 불러오지 못했어요. API 키, 학교 설정, 네트워크 상태를 확인해 주세요.");
+                    setStatus("급식 정보를 불러오지 못했어요. 급식 연동, 학교 설정, 네트워크 상태를 확인해 주세요.");
                 });
             }
         });
@@ -415,9 +437,9 @@ public class MainActivity extends Activity {
             if (warning) {
                 box.addView(disabledButton("한입도전 잠금"));
             } else {
-                box.addView(primaryButton("한입도전", v -> recordChallenge(cleanMenu(menu), false)));
+                box.addView(primaryButton("한입도전", v -> recordChallenge(menu, false)));
             }
-            box.addView(secondaryButton("잘먹어요", v -> recordMeal(cleanMenu(menu))));
+            box.addView(secondaryButton("잘먹어요", v -> recordMeal(menu)));
             box.addView(secondaryButton("못먹겠어요", v -> showDifficultyDialog(menu, warning)));
             content.addView(box);
         }
@@ -425,21 +447,33 @@ public class MainActivity extends Activity {
         content.addView(secondaryButton("홈", v -> renderHome()));
     }
 
-    private void recordChallenge(String menu, boolean safety) {
-        int xp = awardDailyBaseXp(safety ? 8 : 18);
-        setStatus((safety ? "안전 XP" : "도전 XP") + " +" + xp + " · " + menu + " 기록 완료");
-        publishSimpleSnapshot(menu, safety ? "allergyAvoided" : "oneBite", xp);
+    private void recordChallenge(String rawMenu, boolean safety) {
+        String menu = cleanMenu(rawMenu);
+        FeedbackRecordResult result = recordFeedback(
+            rawMenu,
+            safety ? "allergyAvoided" : "oneBite",
+            Collections.emptyList(),
+            safety ? 8 : 18
+        );
+        if (result.firstAction) {
+            setStatus((safety ? "안전 XP" : "도전 XP") + " +" + result.gainedXp + " · " + menu + " 기록 완료");
+        } else {
+            setStatus(menu + "의 같은 도전은 오늘 이미 기록했어요. XP는 한 번만 받아요.");
+        }
+        publishCompleteSnapshot();
     }
 
-    private void recordMeal(String menu) {
-        if (isFinishedToday(menu)) {
+    private void recordMeal(String rawMenu) {
+        String menu = cleanMenu(rawMenu);
+        FeedbackRecordResult result = recordFeedback(rawMenu, "finished", Collections.emptyList(), 10);
+        if (!result.firstAction) {
             setStatus(menu + "은 오늘 이미 잘먹어요로 기록했어요.");
+            publishCompleteSnapshot();
             return;
         }
         markFinishedToday(menu);
-        int xp = awardDailyBaseXp(10);
-        setStatus("기록 XP +" + xp + " · " + menu + " 기록 완료");
-        publishSimpleSnapshot(menu, "finished", xp);
+        setStatus("기록 XP +" + result.gainedXp + " · " + menu + " 기록 완료");
+        publishCompleteSnapshot();
     }
 
     private void recordAllMeals(MealDay meal) {
@@ -449,13 +483,16 @@ public class MainActivity extends Activity {
         }
         MealFeedbackPolicy.BatchSelection selection = MealFeedbackPolicy.safeBatch(items, Collections.emptySet());
         int gainedXp = 0;
-        for (String menu : selection.recordedNames) {
-            if (isFinishedToday(menu)) continue;
+        Set<String> recordedNames = new HashSet<>(selection.recordedNames);
+        for (String rawMenu : meal.items) {
+            String menu = cleanMenu(rawMenu);
+            if (!recordedNames.contains(menu) || !allergyCodes(rawMenu).isEmpty()) continue;
+            FeedbackRecordResult result = recordFeedback(rawMenu, "finished", Collections.emptyList(), 10);
+            if (!result.firstAction) continue;
             markFinishedToday(menu);
-            int xp = awardDailyBaseXp(10);
-            gainedXp += xp;
-            publishSimpleSnapshot(menu, "finished", xp);
+            gainedXp += result.gainedXp;
         }
+        publishCompleteSnapshot();
         showWholeMealPraise(selection, gainedXp);
     }
 
@@ -559,9 +596,11 @@ public class MainActivity extends Activity {
             layout.addView(reason);
         }
 
+        ScrollView dialogScroll = new ScrollView(this);
+        dialogScroll.addView(layout);
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
             .setTitle(menu + " · 못먹겠어요")
-            .setView(layout)
+            .setView(dialogScroll)
             .setNegativeButton("닫기", null)
             .setPositiveButton("이렇게 기록하기", (dialog, which) -> {
                 RadioButton selected = statusGroup.findViewById(statusGroup.getCheckedRadioButtonId());
@@ -570,12 +609,16 @@ public class MainActivity extends Activity {
                 for (CheckBox reason : reasonChecks) {
                     if (reason.isChecked()) reasons.add(String.valueOf(reason.getTag()));
                 }
-                int xp = awardDailyBaseXp(requestedXp(status));
-                setStatus(statusTitle(status) + " · " + menu + " · XP +" + xp);
-                publishSimpleSnapshot(menu, status, xp, reasons);
+                FeedbackRecordResult result = recordFeedback(rawMenu, status, reasons, requestedXp(status));
+                if (result.firstAction) {
+                    setStatus(statusTitle(status) + " · " + menu + " · XP +" + result.gainedXp);
+                } else {
+                    setStatus(menu + "의 같은 기록은 오늘 이미 남겼어요. XP는 한 번만 받아요.");
+                }
+                publishCompleteSnapshot();
             });
         if (!allergyRisk) {
-            builder.setNeutralButton("그래도 한입도전", (dialog, which) -> recordChallenge(menu, false));
+            builder.setNeutralButton("그래도 한입도전", (dialog, which) -> recordChallenge(rawMenu, false));
         }
         builder.show();
     }
@@ -590,6 +633,55 @@ public class MainActivity extends Activity {
         if ("smelledOnly".equals(status)) return 10;
         if ("allergyAvoided".equals(status)) return 8;
         return 3;
+    }
+
+    private FeedbackRecordResult recordFeedback(
+        String rawMenu,
+        String status,
+        List<String> reasons,
+        int requestedXp
+    ) {
+        String menu = cleanMenu(rawMenu);
+        String date = currentDate();
+        boolean firstAction = !mealSnapshotLedger.hasAction(date, menu, status);
+        int gainedXp = firstAction ? awardDailyBaseXp(requestedXp) : 0;
+        MealSnapshotLedger.Entry entry = new MealSnapshotLedger.Entry(
+            UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(),
+            date,
+            menu,
+            status,
+            reasons,
+            allergyCodes(rawMenu),
+            gainedXp,
+            nutrientTags(menu),
+            isoNow()
+        );
+        boolean recordedAsNew = mealSnapshotLedger.record(entry);
+        saveMealSnapshotLedger();
+        markSnapshotSyncPending();
+        return new FeedbackRecordResult(firstAction && recordedAsNew, gainedXp);
+    }
+
+    private List<String> nutrientTags(String menu) {
+        String normalized = menu.toLowerCase(Locale.ROOT);
+        List<String> tags = new ArrayList<>();
+        if (normalized.contains("나물") || normalized.contains("채소") || normalized.contains("김치")) {
+            tags.add("식이섬유");
+            tags.add("비타민");
+        } else if (normalized.contains("고기") || normalized.contains("갈비") || normalized.contains("닭")
+            || normalized.contains("두부") || normalized.contains("달걀")) {
+            tags.add("단백질");
+        } else if (normalized.contains("우유") || normalized.contains("치즈") || normalized.contains("멸치")) {
+            tags.add("칼슘");
+        } else if (normalized.contains("밥") || normalized.contains("면") || normalized.contains("빵")) {
+            tags.add("탄수화물");
+        }
+        return tags;
+    }
+
+    private String currentDate() {
+        return new SimpleDateFormat("yyyyMMdd", Locale.KOREA).format(new Date());
     }
 
     private String nutritionMotivation(String menu) {
@@ -610,19 +702,7 @@ public class MainActivity extends Activity {
     }
 
     private Set<Integer> allergyCodes(String menu) {
-        Set<Integer> codes = new HashSet<>();
-        int open = menu.lastIndexOf('(');
-        int close = menu.lastIndexOf(')');
-        if (open < 0 || close <= open) return codes;
-        String body = menu.substring(open + 1, close);
-        for (String value : body.split("[.,\\s]+")) {
-            try {
-                if (!value.isEmpty()) codes.add(Integer.parseInt(value));
-            } catch (NumberFormatException ignored) {
-                // Ignore non-NEIS markers.
-            }
-        }
-        return codes;
+        return MealFeedbackPolicy.parseAllergyCodes(menu);
     }
 
     private int awardDailyBaseXp(int requested) {
@@ -731,6 +811,7 @@ public class MainActivity extends Activity {
         selectedSchool = null;
         demoMode = false;
         childLink = null;
+        mealSnapshotLedger = new MealSnapshotLedger();
         parentChildren.clear();
         renderHome();
         setStatus("이 기기의 앱 데이터를 삭제했어요.");
@@ -753,13 +834,14 @@ public class MainActivity extends Activity {
                 childLink.registeredAt = new Date().toString();
                 saveChildLink(childLink);
                 mainHandler.post(() -> {
+                    publishCompleteSnapshot();
                     renderInvite();
                     setStatus("초대 링크 준비 완료. 공유하기를 누르면 카카오톡, 메시지, 복사하기가 떠요.");
                 });
             } catch (Exception error) {
                 mainHandler.post(() -> {
                     renderInvite();
-                    setStatus("초대 링크 준비 실패: " + userSafeMessage(error));
+                    setStatus("초대 링크를 준비하지 못했어요. 네트워크 상태를 확인해 주세요.");
                 });
             }
         });
@@ -775,8 +857,9 @@ public class MainActivity extends Activity {
                 JSONObject link = response.getJSONObject("data").getJSONObject("link");
                 String childName = link.optString("childNickname", "아이");
                 String schoolName = link.optString("schoolName", "학교");
-                upsertParentChild(new ParentChildReceipt(inviteCode, childName, schoolName));
+                persistParentChild(new ParentChildReceipt(inviteCode, childName, schoolName));
                 mainHandler.post(() -> {
+                    reloadParentChildren();
                     resetContent("보호자 연결 완료");
                     content.addView(connectionSuccessCard(
                         childName + "와 연결되었습니다",
@@ -790,7 +873,7 @@ public class MainActivity extends Activity {
             } catch (Exception error) {
                 mainHandler.post(() -> {
                     renderHome();
-                    setStatus("아이 연결 실패: " + userSafeMessage(error));
+                    setStatus("아이 연결에 실패했어요. 초대 코드를 확인하고 다시 시도해 주세요.");
                 });
             }
         });
@@ -823,6 +906,7 @@ public class MainActivity extends Activity {
         resetContent("연결된 아이");
         if (parentChildren.isEmpty()) {
             content.addView(card("아직 연결된 아이가 없어요", "아이에게 초대 요청 링크를 보내거나 받은 초대 링크를 열어 주세요.", false));
+            content.addView(primaryButton("아이에게 연결 요청 보내기", v -> shareText(parentInviteRequestMessage())));
         } else {
             content.addView(connectionSuccessCard(
                 "아이와 연결되었습니다",
@@ -833,7 +917,6 @@ public class MainActivity extends Activity {
                 content.addView(card(child.childName, child.schoolName + "\n연결 완료", false));
             }
         }
-        content.addView(primaryButton("아이에게 연결 요청 보내기", v -> shareText(parentInviteRequestMessage())));
         content.addView(secondaryButton("홈", v -> renderHome()));
     }
 
@@ -869,53 +952,149 @@ public class MainActivity extends Activity {
             } catch (Exception error) {
                 mainHandler.post(() -> {
                     refreshingConnectionStatus = false;
-                    if (showResult) setStatus("연결 상태 확인 실패: " + userSafeMessage(error));
+                    if (showResult) setStatus("연결 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.");
                 });
             }
         });
     }
 
-    private void publishSimpleSnapshot(String menu, String status, int gainedExp) {
-        publishSimpleSnapshot(menu, status, gainedExp, Collections.emptyList());
-    }
-
-    private void publishSimpleSnapshot(String menu, String status, int gainedExp, List<String> reasons) {
-        if (childLink == null || childLink.inviteSecret == null || childLink.inviteSecret.isEmpty()) {
+    private void publishCompleteSnapshot() {
+        boolean hasRegisteredLink = childLink != null && childLink.registeredAt != null
+            && !childLink.registeredAt.isEmpty() && childLink.inviteSecret != null && !childLink.inviteSecret.isEmpty();
+        boolean pending = prefs.getBoolean("snapshotSyncPending", false);
+        int recordCount = mealSnapshotLedger.latestMeals().size() + mealSnapshotLedger.challengeEntries().size();
+        if (!MealFeedbackPolicy.shouldAttemptSnapshotUpload(hasRegisteredLink, pending, recordCount)) {
+            return;
+        }
+        synchronized (snapshotSyncLock) {
+            if (snapshotUploadInFlight) return;
+            snapshotUploadInFlight = true;
+        }
+        final long uploadRevision = prefs.getLong("snapshotSyncRevision", 0L);
+        final String childLinkId = childLink.id;
+        final String inviteSecret = childLink.inviteSecret;
+        final JSONArray mealRecords = new JSONArray();
+        final JSONArray challenges = new JSONArray();
+        try {
+            for (MealSnapshotLedger.Entry entry : mealSnapshotLedger.latestMeals()) {
+                mealRecords.put(new JSONObject()
+                    .put("id", entry.mealId)
+                    .put("date", entry.date)
+                    .put("menuName", entry.menuName)
+                    .put("eatingStatus", entry.eatingStatus)
+                    .put("difficultyReasons", new JSONArray(entry.difficultyReasons))
+                    .put("allergyCodes", new JSONArray(entry.allergyCodes))
+                    .put("photoIds", new JSONArray())
+                    .put("createdAt", entry.createdAt));
+            }
+            for (MealSnapshotLedger.Entry entry : mealSnapshotLedger.challengeEntries()) {
+                challenges.put(new JSONObject()
+                    .put("id", entry.challengeId)
+                    .put("date", entry.date)
+                    .put("menuName", entry.menuName)
+                    .put("action", challengeAction(entry.eatingStatus))
+                    .put("eatingStatus", entry.eatingStatus)
+                    .put("gainedExp", entry.gainedExp)
+                    .put("badgeName", JSONObject.NULL)
+                    .put("nutrients", new JSONArray(entry.nutrients))
+                    .put("createdAt", entry.createdAt));
+            }
+        } catch (Exception error) {
+            Log.w("NaymAndroid", "Could not prepare parent snapshot: " + error.getClass().getSimpleName());
+            completeSnapshotUpload(false, uploadRevision);
             return;
         }
         executor.execute(() -> {
             try {
-                String now = isoNow();
-                JSONArray mealRecords = new JSONArray()
-                    .put(new JSONObject()
-                        .put("id", UUID.randomUUID().toString())
-                        .put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(new Date()))
-                        .put("menuName", menu)
-                        .put("eatingStatus", status)
-                        .put("difficultyReasons", new JSONArray(reasons))
-                        .put("allergyCodes", new JSONArray())
-                        .put("photoIds", new JSONArray())
-                        .put("createdAt", now));
-                JSONArray challenges = new JSONArray()
-                    .put(new JSONObject()
-                        .put("id", UUID.randomUUID().toString())
-                        .put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(new Date()))
-                        .put("menuName", menu)
-                        .put("action", challengeAction(status))
-                        .put("gainedExp", gainedExp)
-                        .put("badgeName", JSONObject.NULL)
-                        .put("nutrients", new JSONArray())
-                        .put("createdAt", now));
                 JSONObject payload = new JSONObject()
-                    .put("childLinkId", childLink.id)
-                    .put("inviteSecret", childLink.inviteSecret)
+                    .put("childLinkId", childLinkId)
+                    .put("inviteSecret", inviteSecret)
                     .put("mealRecords", mealRecords)
                     .put("challengeRecords", challenges);
-                postParentSync("publishSnapshot", payload);
-            } catch (Exception ignored) {
-                // The local record is still valid; parent sync errors are surfaced during explicit invite registration.
+                JSONObject response = postParentSync("publishSnapshot", payload);
+                if (!response.optBoolean("ok")) {
+                    throw new IllegalStateException("snapshot_rejected");
+                }
+                completeSnapshotUpload(true, uploadRevision);
+            } catch (Exception error) {
+                Log.w("NaymAndroid", "Parent snapshot remains pending: " + error.getClass().getSimpleName());
+                completeSnapshotUpload(false, uploadRevision);
             }
         });
+    }
+
+    private void markSnapshotSyncPending() {
+        synchronized (snapshotSyncLock) {
+            long nextRevision = prefs.getLong("snapshotSyncRevision", 0L) + 1L;
+            prefs.edit()
+                .putLong("snapshotSyncRevision", nextRevision)
+                .putBoolean("snapshotSyncPending", true)
+                .apply();
+        }
+    }
+
+    private void completeSnapshotUpload(boolean succeeded, long uploadedRevision) {
+        boolean stillPending;
+        synchronized (snapshotSyncLock) {
+            snapshotUploadInFlight = false;
+            if (succeeded) {
+                long currentRevision = prefs.getLong("snapshotSyncRevision", 0L);
+                stillPending = !MealFeedbackPolicy.shouldClearPendingAfterSuccess(
+                    uploadedRevision,
+                    currentRevision
+                );
+                prefs.edit().putBoolean("snapshotSyncPending", stillPending).apply();
+                snapshotRetryAttempt = 0;
+            } else {
+                stillPending = true;
+                snapshotRetryAttempt += 1;
+                prefs.edit().putBoolean("snapshotSyncPending", true).apply();
+            }
+        }
+
+        if (!stillPending) return;
+        if (succeeded) {
+            mainHandler.post(this::publishCompleteSnapshot);
+        } else {
+            scheduleSnapshotRetry();
+        }
+    }
+
+    private void scheduleSnapshotRetry() {
+        final long delayMillis;
+        synchronized (snapshotSyncLock) {
+            if (snapshotRetryScheduled) return;
+            snapshotRetryScheduled = true;
+            delayMillis = MealFeedbackPolicy.snapshotRetryDelayMillis(snapshotRetryAttempt);
+        }
+        mainHandler.postDelayed(() -> {
+            synchronized (snapshotSyncLock) {
+                snapshotRetryScheduled = false;
+            }
+            if (!isFinishing()
+                && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed())) {
+                publishCompleteSnapshot();
+            }
+        }, delayMillis);
+    }
+
+    private void retryPendingSnapshotIfNeeded() {
+        publishCompleteSnapshot();
+    }
+
+    private void initializeSnapshotSyncState() {
+        boolean initialized = prefs.getBoolean("snapshotSyncInitialized", false);
+        int recordCount = mealSnapshotLedger.latestMeals().size() + mealSnapshotLedger.challengeEntries().size();
+        boolean needsInitialUpload = MealFeedbackPolicy.needsInitialSnapshotUpload(initialized, recordCount);
+        if (!initialized || needsInitialUpload) {
+            long revision = prefs.getLong("snapshotSyncRevision", 0L);
+            if (needsInitialUpload && revision == 0L) revision = 1L;
+            prefs.edit()
+                .putBoolean("snapshotSyncInitialized", true)
+                .putLong("snapshotSyncRevision", revision)
+                .putBoolean("snapshotSyncPending", prefs.getBoolean("snapshotSyncPending", false) || needsInitialUpload)
+                .apply();
+        }
     }
 
     private String challengeAction(String status) {
@@ -1161,6 +1340,99 @@ public class MainActivity extends Activity {
         return link;
     }
 
+    private MealSnapshotLedger loadMealSnapshotLedger() {
+        MealSnapshotLedger ledger = new MealSnapshotLedger();
+        String stored = prefs.getString("mealSnapshotLedger", "{}");
+        try {
+            JSONObject root = new JSONObject(stored == null ? "{}" : stored);
+            JSONArray latestMeals = root.optJSONArray("latestMeals");
+            if (latestMeals != null) {
+                for (int index = 0; index < latestMeals.length(); index++) {
+                    JSONObject value = latestMeals.optJSONObject(index);
+                    if (value != null) ledger.restoreLatest(mealLedgerEntry(value));
+                }
+            }
+            JSONArray actions = root.optJSONArray("actions");
+            if (actions != null) {
+                for (int index = 0; index < actions.length(); index++) {
+                    JSONObject value = actions.optJSONObject(index);
+                    if (value != null) ledger.restoreChallenge(mealLedgerEntry(value));
+                }
+            }
+        } catch (Exception ignored) {
+            // Corrupt legacy data starts with a clean local sharing ledger.
+        }
+        return ledger;
+    }
+
+    private void saveMealSnapshotLedger() {
+        JSONArray latestMeals = new JSONArray();
+        JSONArray actions = new JSONArray();
+        try {
+            for (MealSnapshotLedger.Entry entry : mealSnapshotLedger.latestMeals()) {
+                latestMeals.put(mealLedgerJson(entry));
+            }
+            for (MealSnapshotLedger.Entry entry : mealSnapshotLedger.challengeEntries()) {
+                actions.put(mealLedgerJson(entry));
+            }
+            JSONObject root = new JSONObject()
+                .put("latestMeals", latestMeals)
+                .put("actions", actions);
+            prefs.edit().putString("mealSnapshotLedger", root.toString()).apply();
+        } catch (Exception error) {
+            Log.w("NaymAndroid", "Could not save meal ledger: " + error.getClass().getSimpleName());
+        }
+    }
+
+    private JSONObject mealLedgerJson(MealSnapshotLedger.Entry entry) throws Exception {
+        return new JSONObject()
+            .put("mealId", entry.mealId)
+            .put("challengeId", entry.challengeId)
+            .put("date", entry.date)
+            .put("menuName", entry.menuName)
+            .put("eatingStatus", entry.eatingStatus)
+            .put("difficultyReasons", new JSONArray(entry.difficultyReasons))
+            .put("allergyCodes", new JSONArray(entry.allergyCodes))
+            .put("gainedExp", entry.gainedExp)
+            .put("nutrients", new JSONArray(entry.nutrients))
+            .put("createdAt", entry.createdAt);
+    }
+
+    private MealSnapshotLedger.Entry mealLedgerEntry(JSONObject value) {
+        return new MealSnapshotLedger.Entry(
+            value.optString("mealId", UUID.randomUUID().toString()),
+            value.optString("challengeId", UUID.randomUUID().toString()),
+            MealFeedbackPolicy.normalizeSharedDate(value.optString("date", currentDate())),
+            value.optString("menuName", "메뉴"),
+            value.optString("eatingStatus", "difficultToday"),
+            stringValues(value.optJSONArray("difficultyReasons")),
+            integerValues(value.optJSONArray("allergyCodes")),
+            value.optInt("gainedExp", 0),
+            stringValues(value.optJSONArray("nutrients")),
+            value.optString("createdAt", isoNow())
+        );
+    }
+
+    private List<String> stringValues(JSONArray values) {
+        List<String> result = new ArrayList<>();
+        if (values == null) return result;
+        for (int index = 0; index < values.length(); index++) {
+            String value = values.optString(index, "");
+            if (!value.isEmpty()) result.add(value);
+        }
+        return result;
+    }
+
+    private Set<Integer> integerValues(JSONArray values) {
+        Set<Integer> result = new HashSet<>();
+        if (values == null) return result;
+        for (int index = 0; index < values.length(); index++) {
+            int value = values.optInt(index, 0);
+            if (value > 0) result.add(value);
+        }
+        return result;
+    }
+
     private List<ParentChildReceipt> loadParentChildren() {
         List<ParentChildReceipt> children = new ArrayList<>();
         String stored = prefs.getString("parentChildren", "[]");
@@ -1183,15 +1455,16 @@ public class MainActivity extends Activity {
         return children;
     }
 
-    private void upsertParentChild(ParentChildReceipt child) {
-        for (int index = parentChildren.size() - 1; index >= 0; index--) {
-            if (parentChildren.get(index).inviteCode.equals(child.inviteCode)) {
-                parentChildren.remove(index);
+    private void persistParentChild(ParentChildReceipt child) {
+        List<ParentChildReceipt> storedChildren = loadParentChildren();
+        for (int index = storedChildren.size() - 1; index >= 0; index--) {
+            if (storedChildren.get(index).inviteCode.equals(child.inviteCode)) {
+                storedChildren.remove(index);
             }
         }
-        parentChildren.add(0, child);
+        storedChildren.add(0, child);
         JSONArray array = new JSONArray();
-        for (ParentChildReceipt receipt : parentChildren) {
+        for (ParentChildReceipt receipt : storedChildren) {
             try {
                 array.put(new JSONObject()
                     .put("inviteCode", receipt.inviteCode)
@@ -1201,7 +1474,12 @@ public class MainActivity extends Activity {
                 // Keep saving the remaining valid receipts.
             }
         }
-        prefs.edit().putString("parentChildren", array.toString()).apply();
+        prefs.edit().putString("parentChildren", array.toString()).commit();
+    }
+
+    private void reloadParentChildren() {
+        parentChildren.clear();
+        parentChildren.addAll(loadParentChildren());
     }
 
     private ChildLink makeChildLink() {
@@ -1353,13 +1631,18 @@ public class MainActivity extends Activity {
         return null;
     }
 
-    private String userSafeMessage(Exception error) {
-        String message = error.getMessage();
-        return message == null || message.isEmpty() ? "네트워크 상태를 확인해 주세요." : message;
-    }
-
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static final class FeedbackRecordResult {
+        final boolean firstAction;
+        final int gainedXp;
+
+        FeedbackRecordResult(boolean firstAction, int gainedXp) {
+            this.firstAction = firstAction;
+            this.gainedXp = gainedXp;
+        }
     }
 
     private static final class School {

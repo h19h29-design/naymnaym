@@ -297,6 +297,23 @@ struct ParentConnectionGuideView: View {
                                 }
                             }
                         }
+                        sharingPermissionsCard
+                        PrimaryButton(
+                            "공유 설정 저장",
+                            systemImage: "checkmark.shield",
+                            isDisabled: appState.isParentSyncing
+                        ) {
+                            Task {
+                                await appState.updateParentSharingPermissions(permissions)
+                                loadConfirmedPermissions()
+                            }
+                        }
+                        if let error = appState.parentSyncError {
+                            Text(error)
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColors.warningRed)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     } else {
                     RoundedCard {
                         VStack(alignment: .leading, spacing: 12) {
@@ -383,19 +400,7 @@ struct ParentConnectionGuideView: View {
                         }
                     }
 
-                    RoundedCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("공유할 항목")
-                                .font(AppTypography.headline)
-                            Toggle("먹은 정도 기록", isOn: $shareEating)
-                            Toggle("한 입 도전 기록", isOn: $shareChallenge)
-                            Toggle("알레르기 주의", isOn: $shareAllergy)
-                            Text("사진은 부모에게 공유하지 않고 이 기기 안에만 저장됩니다. 아이가 급식 결과를 올리면 부모에게 알림을 보낼 수 있어요.")
-                                .font(AppTypography.caption)
-                                .foregroundStyle(AppColors.graySecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                    sharingPermissionsCard
 
                     RoundedCard {
                         VStack(alignment: .leading, spacing: 10) {
@@ -462,11 +467,30 @@ struct ParentConnectionGuideView: View {
             }
             .pageBackground()
             .onAppear {
-                if let permissions = appState.childShareLink?.permissions {
-                    shareEating = permissions.shareEatingRecords
-                    shareChallenge = permissions.shareChallengeRecords
-                    shareAllergy = permissions.shareAllergyWarnings
-                }
+                loadConfirmedPermissions()
+            }
+        }
+    }
+
+    private func loadConfirmedPermissions() {
+        guard let permissions = appState.childShareLink?.permissions else { return }
+        shareEating = permissions.shareEatingRecords
+        shareChallenge = permissions.shareChallengeRecords
+        shareAllergy = permissions.shareAllergyWarnings
+    }
+
+    private var sharingPermissionsCard: some View {
+        RoundedCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("공유할 항목")
+                    .font(AppTypography.headline)
+                Toggle("먹은 정도 기록", isOn: $shareEating)
+                Toggle("한 입 도전 기록", isOn: $shareChallenge)
+                Toggle("알레르기 주의", isOn: $shareAllergy)
+                Text("사진은 부모에게 공유하지 않고 이 기기 안에만 저장됩니다. 아이가 급식 결과를 올리면 부모에게 알림을 보낼 수 있어요.")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColors.graySecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -768,7 +792,7 @@ private struct DataSourcesView: View {
                 }
                 Section("현재 버전") {
                     Text("샘플 데이터는 사용자가 명시적으로 체험 모드를 선택한 경우에만 표시됩니다.")
-                    Text("실제 학교 선택 상태에서 API 키 없음, 네트워크 오류, 급식 없음은 정확한 안내 화면으로 표시됩니다.")
+                    Text("실제 학교 선택 상태에서 연동 설정, 네트워크 오류, 급식 없음은 각각 정확한 안내 화면으로 표시됩니다.")
                 }
                 Section("데이터 안전") {
                     Link(destination: AppExternalLinks.dataSafety) {
