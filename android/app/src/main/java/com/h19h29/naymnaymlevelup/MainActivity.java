@@ -1184,7 +1184,11 @@ public class MainActivity extends Activity {
     }
 
     private void upsertParentChild(ParentChildReceipt child) {
-        parentChildren.removeIf(existing -> existing.inviteCode.equals(child.inviteCode));
+        for (int index = parentChildren.size() - 1; index >= 0; index--) {
+            if (parentChildren.get(index).inviteCode.equals(child.inviteCode)) {
+                parentChildren.remove(index);
+            }
+        }
         parentChildren.add(0, child);
         JSONArray array = new JSONArray();
         for (ParentChildReceipt receipt : parentChildren) {

@@ -1,6 +1,6 @@
 # Meal Feedback and Parent Connection Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Simplify meal feedback to three clear actions, add a safe motivational difficulty flow and whole-meal praise, and make completed parent connections prominent and role-aware on iOS and Android.
 
@@ -37,7 +37,7 @@
 - Produces: `MealBatchOutcome` with `recordedMenuNames`, `skippedAllergyMenuNames`, `gainedExp`, `newLevel`, and `didLevelUp`.
 - Produces: `AppState.recordAllSafeMealsFinished(_ meal: MealDay, shareWithParent: Bool = false) -> MealBatchOutcome`.
 
-- [ ] **Step 1: Write failing action-mapping and batch-recording tests**
+- [x] **Step 1: Write failing action-mapping and batch-recording tests**
 
 ```swift
 func testMealFeedbackActionsMapToExistingStatuses() {
@@ -78,14 +78,14 @@ func testRecordAllSafeMealsFinishedSkipsAllergyRiskAndDoesNotDuplicateXP() {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run with XcodeBuildMCP:
 `test_sim({"extraArgs":["-only-testing:NaymNaymLevelUpTests/ProgressLevelTests"]})`
 
 Expected: compile failure because `MealFeedbackAction`, `MealBatchOutcome`, and `recordAllSafeMealsFinished` do not exist.
 
-- [ ] **Step 3: Implement the three-action mapping and batch outcome**
+- [x] **Step 3: Implement the three-action mapping and batch outcome**
 
 ```swift
 enum MealFeedbackAction: String, CaseIterable, Identifiable {
@@ -115,15 +115,15 @@ struct MealBatchOutcome: Identifiable, Equatable {
 }
 ```
 
-- [ ] **Step 4: Implement idempotent safe batch recording**
+- [x] **Step 4: Implement idempotent safe batch recording**
 
 Before recording each safe item, do nothing when a meal record with the same `date + normalized menu name` is already `.finished`. When replacing another meal status, upsert only the current `MealRecord`; keep prior `ChallengeRecord` entries as the immutable XP ledger so daily-cap accounting remains correct. Persist once at the end and publish one parent snapshot when sharing is enabled. Allergy-risk items are appended only to `skippedAllergyMenuNames`.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Expected: all `ProgressLevelTests` pass and second batch execution grants `0 XP`.
 
-- [ ] **Step 6: Commit the policy change**
+- [x] **Step 6: Commit the policy change**
 
 ```bash
 git add NaymNaymLevelUp/Models/AppModels.swift NaymNaymLevelUp/App/AppState.swift NaymNaymLevelUpTests/ProgressLevelTests.swift
@@ -146,7 +146,7 @@ git commit -m "feat: add simplified meal feedback policy"
 - Produces: `WholeMealPraiseView(outcome:level:)`.
 - Changes: `MealCard` callbacks to `onOneBite`, `onEnjoyed`, and `onDifficult` only.
 
-- [ ] **Step 1: Write failing presentation tests**
+- [x] **Step 1: Write failing presentation tests**
 
 ```swift
 func testMealFeedbackActionTitlesAreTheThreeApprovedChoices() {
@@ -159,11 +159,11 @@ func testWholeMealPraiseCopyMentionsExcludedWarningMenus() {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Expected: compile failure because titles and `WholeMealPraisePresentation` do not exist.
 
-- [ ] **Step 3: Replace the four-button meal card with three stable actions**
+- [x] **Step 3: Replace the four-button meal card with three stable actions**
 
 Use a three-column `LazyVGrid` with stable minimum height and icons:
 
@@ -175,19 +175,19 @@ SecondaryButton("못먹겠어요", systemImage: "heart.text.square", action: onD
 
 On iPhone SE, allow labels to wrap without shrinking below legible size. Remove `안내 보기` and `먹은 정도` from the card.
 
-- [ ] **Step 4: Build the motivational difficulty guide**
+- [x] **Step 4: Build the motivational difficulty guide**
 
 Reuse `NutritionEstimator.makeStudentExplanation(for:)` and `NutritionEstimator.makeGameStats(for:)`. Place the allergy safety card first when locked. Offer `.smelledOnly`, `.difficultToday`, and `.allergyAvoided`; show `그래도 한입도전` only for safe items. Reuse `DifficultyReason` toggles and return the selected status plus sorted reasons through `onSave`.
 
-- [ ] **Step 5: Add the whole-meal action and praise image**
+- [x] **Step 5: Add the whole-meal action and praise image**
 
 Place `오늘 급식 다 잘먹었어요` above the list. Present `WholeMealPraiseView` with `GrowthCharacterView(level:size:pose: .celebrate)` and the batch result. Show recorded count, excluded warning count, and XP without exposing private details.
 
-- [ ] **Step 6: Run focused tests and verify GREEN**
+- [x] **Step 6: Run focused tests and verify GREEN**
 
 Expected: action-title and praise-copy tests pass.
 
-- [ ] **Step 7: Commit the iOS meal UI**
+- [x] **Step 7: Commit the iOS meal UI**
 
 ```bash
 git add NaymNaymLevelUp/DesignSystem/DesignSystem.swift NaymNaymLevelUp/Views/Meals/TodayMealView.swift NaymNaymLevelUp/Views/Meals/MealDetailViews.swift NaymNaymLevelUpTests/ProgressLevelTests.swift
@@ -211,7 +211,7 @@ git commit -m "feat: simplify iOS meal feedback flow"
 - Produces: `AppState.connectionOverview`.
 - Produces: `ParentConnectionPresentation.showsWaitingCopy(link:state:) -> Bool`.
 
-- [ ] **Step 1: Write failing connection presentation tests**
+- [x] **Step 1: Write failing connection presentation tests**
 
 ```swift
 func testConnectedChildHidesWaitingCopyAndReportsOneParent() {
@@ -233,31 +233,31 @@ func testParentOverviewReportsConnectedChildren() {
 }
 ```
 
-- [ ] **Step 2: Run `LocalStoreTests` and verify RED**
+- [x] **Step 2: Run `LocalStoreTests` and verify RED**
 
 Expected: compile failure because `ConnectionOverview` and `showsWaitingCopy` do not exist.
 
-- [ ] **Step 3: Add truthful role-specific connection presentation**
+- [x] **Step 3: Add truthful role-specific connection presentation**
 
 For child modes, derive `0/1` from `childShareLink.parentConnectedAt`. For parent mode, derive `N` from `parentProfile.childLinks.count`. Do not infer a count from invite registration alone.
 
-- [ ] **Step 4: Make completed connection UI prominent and remove stale copy**
+- [x] **Step 4: Make completed connection UI prominent and remove stale copy**
 
 Use a full-width success card with `checkmark.circle.fill`, the connection title, and `연결된 보호자 1명` or `연결된 아이 N명`. Connected child screens must not render `childInviteHeader`, `childInviteSteps`, `inviteStatusBadge`, or `parentSyncMessage` from the invite flow. Parent screens only show request/code instructions when `childLinks.isEmpty`.
 
-- [ ] **Step 5: Replace the small registration badge with a success banner**
+- [x] **Step 5: Replace the small registration badge with a success banner**
 
 When `childShareLink.isCloudRegistered` is true but not connected, show `초대 링크 준비 완료` and the share/copy actions in a card-width green banner. After connection, replace the entire invitation card with the connected success card.
 
-- [ ] **Step 6: Add Settings connection counts and remove server internals**
+- [x] **Step 6: Add Settings connection counts and remove server internals**
 
 Add a `연결 상태` section with a role-aware row. Remove the `서버 설정` diagnostic row and replace internal labels such as `childShareLink` with `아이 공유 준비`. Remove Supabase/Edge Function/upload-key wording from user-facing Settings and connection guides while keeping the build configuration unchanged.
 
-- [ ] **Step 7: Run `LocalStoreTests` and verify GREEN**
+- [x] **Step 7: Run `LocalStoreTests` and verify GREEN**
 
 Expected: all connection tests pass.
 
-- [ ] **Step 8: Commit the iOS connection UI**
+- [x] **Step 8: Commit the iOS connection UI**
 
 ```bash
 git add NaymNaymLevelUp/Models/AppModels.swift NaymNaymLevelUp/App/AppState.swift NaymNaymLevelUp/Views/Parent/ParentConnectionStatusView.swift NaymNaymLevelUp/Views/Parent/ParentSummaryView.swift NaymNaymLevelUp/Views/Settings/SettingsView.swift NaymNaymLevelUpTests/LocalStoreTests.swift
@@ -279,7 +279,7 @@ git commit -m "feat: clarify parent connection completion"
 - Produces: `MealFeedbackPolicy.connectedCount(boolean childConnected, int parentChildren)`.
 - Persists: parent-side connected child receipts as a JSON array in `SharedPreferences`.
 
-- [ ] **Step 1: Add JUnit and write failing Android policy tests**
+- [x] **Step 1: Add JUnit and write failing Android policy tests**
 
 ```java
 @Test public void safeBatchSkipsAllergyRiskMenus() {
@@ -295,29 +295,29 @@ git commit -m "feat: clarify parent connection completion"
 
 Add `testImplementation "junit:junit:4.13.2"`.
 
-- [ ] **Step 2: Run Android unit tests and verify RED**
+- [x] **Step 2: Run Android unit tests and verify RED**
 
 Run: `./gradlew :app:testDebugUnitTest`
 
 Expected: compile failure because `MealFeedbackPolicy` does not exist.
 
-- [ ] **Step 3: Implement the Android policy and persistence**
+- [x] **Step 3: Implement the Android policy and persistence**
 
 Keep menu policy free of Activity dependencies. Store each successfully connected child using invite code, child nickname, and school name only; deduplicate by normalized invite code.
 
-- [ ] **Step 4: Replace Android menu actions and add the difficulty dialog**
+- [x] **Step 4: Replace Android menu actions and add the difficulty dialog**
 
 Render `한입도전`, `잘먹어요`, and `못먹겠어요`. The difficulty dialog includes educational nutrient text, `냄새만 맡아봤어요`, `오늘은 어려워요`, and `알레르기·주의로 피했어요`. Allergy-risk items keep one-bite disabled.
 
-- [ ] **Step 5: Add whole-meal praise and connection completion cards**
+- [x] **Step 5: Add whole-meal praise and connection completion cards**
 
 The whole-meal action records only safe items and opens a dialog containing `R.drawable.mascot_jump`. Child mode shows `연결된 보호자 1명` after `parentConnectedAt`; parent connection results show `연결된 아이 N명` from persisted receipts. Hide waiting and invite instructions after connection.
 
-- [ ] **Step 6: Remove server implementation details from Android user copy**
+- [x] **Step 6: Remove server implementation details from Android user copy**
 
 Keep `BuildConfig.PARENT_SYNC_API_BASE_URL` internal. Remove user-visible `서버 등록`, server address, and backend technology wording; use `초대 링크 준비`, `연결 상태 확인`, and `연결 완료`.
 
-- [ ] **Step 7: Run Android tests and build**
+- [x] **Step 7: Run Android tests and build**
 
 Run:
 
@@ -327,7 +327,7 @@ Run:
 
 Expected: all tasks succeed.
 
-- [ ] **Step 8: Commit Android parity**
+- [x] **Step 8: Commit Android parity**
 
 ```bash
 git add android/app/build.gradle android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java android/app/src/main/java/com/h19h29/naymnaymlevelup/MealFeedbackPolicy.java android/app/src/test/java/com/h19h29/naymnaymlevelup/MealFeedbackPolicyTest.java
@@ -347,21 +347,21 @@ git commit -m "feat: align Android meal and connection flow"
 - Produces: Android debug APK and release AAB.
 - Produces: clean test and diff evidence.
 
-- [ ] **Step 1: Run all iOS simulator tests**
+- [x] **Step 1: Run all iOS simulator tests**
 
 Use XcodeBuildMCP `test_sim` with the project defaults. Expected: the complete `NaymNaymLevelUpTests` suite passes.
 
-- [ ] **Step 2: Build and launch iPhone 16 and iPhone SE**
+- [x] **Step 2: Build and launch iPhone 16 and iPhone SE**
 
 Capture Today Meal, difficulty guide, whole-meal praise, connected child Settings, and connected parent Settings. Verify no overlap, no clipped action title, and no waiting copy after connection.
 
-- [ ] **Step 3: Run Android tests and release build**
+- [x] **Step 3: Run Android tests and release build**
 
 Run: `cd android && ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:bundleRelease`
 
 Expected: all tasks succeed and artifacts exist under `android/app/build/outputs/`.
 
-- [ ] **Step 4: Run repository checks**
+- [x] **Step 4: Run repository checks**
 
 ```bash
 git diff --check
@@ -370,7 +370,7 @@ git status --short
 
 Expected: no whitespace errors and only intended verification artifacts or plan checkbox updates remain.
 
-- [ ] **Step 5: Commit verification evidence**
+- [x] **Step 5: Commit verification evidence**
 
 ```bash
 git add docs/superpowers/plans/2026-07-13-meal-feedback-parent-connection-implementation.md
