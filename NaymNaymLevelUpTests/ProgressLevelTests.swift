@@ -514,6 +514,43 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertFalse(MealDataState.missingAPIKey.usesSample)
     }
 
+    func testMealFeedbackActionsMapToExistingStatuses() {
+        XCTAssertEqual(MealFeedbackAction.oneBite.immediateStatus(isAllergyRisk: false), .oneBite)
+        XCTAssertEqual(MealFeedbackAction.enjoyed.immediateStatus(isAllergyRisk: false), .finished)
+        XCTAssertNil(MealFeedbackAction.difficult.immediateStatus(isAllergyRisk: false))
+        XCTAssertNil(MealFeedbackAction.oneBite.immediateStatus(isAllergyRisk: true))
+    }
+
+    @MainActor
+    func testRecordAllSafeMealsFinishedSkipsAllergyRiskAndDoesNotDuplicateXP() {
+        let appState = makeAppState()
+        appState.saveProfile(
+            nickname: "냠냠이",
+            school: School(name: "테스트초", officeCode: "B10", schoolCode: "123", region: "서울", address: "", schoolType: "초등학교"),
+            allergyCodes: [1]
+        )
+        let meal = MealDay(
+            date: "20260713",
+            menuItems: [
+                MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥"),
+                MealItem(name: "우유", allergyCodes: [1], nutrients: ["칼슘"], tags: [], sourceRawText: "우유(1)")
+            ],
+            calorie: "500 Kcal",
+            nutrition: .empty,
+            isSample: false,
+            notice: nil
+        )
+
+        let first = appState.recordAllSafeMealsFinished(meal)
+        let second = appState.recordAllSafeMealsFinished(meal)
+
+        XCTAssertEqual(first.recordedMenuNames, ["현미밥"])
+        XCTAssertEqual(first.skippedAllergyMenuNames, ["우유"])
+        XCTAssertEqual(appState.mealRecords.filter { $0.date == meal.date && $0.menuName == "현미밥" }.count, 1)
+        XCTAssertEqual(second.gainedExp, 0)
+        XCTAssertFalse(appState.mealRecords.contains { $0.date == meal.date && $0.menuName == "우유" && $0.eatingStatus == .finished })
+    }
+
     func testShareCardRendererKeepsPersonalDetailsOutOfCardText() {
         let outcome = ChallengeOutcome(
             menuName: "시금치나물",

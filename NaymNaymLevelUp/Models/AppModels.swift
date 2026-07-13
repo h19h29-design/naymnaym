@@ -159,6 +159,54 @@ enum EatingStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum MealFeedbackAction: String, CaseIterable, Identifiable {
+    case oneBite
+    case enjoyed
+    case difficult
+
+    var id: String { rawValue }
+
+    func immediateStatus(isAllergyRisk: Bool) -> EatingStatus? {
+        switch self {
+        case .oneBite:
+            return isAllergyRisk ? nil : .oneBite
+        case .enjoyed:
+            return .finished
+        case .difficult:
+            return nil
+        }
+    }
+}
+
+struct MealBatchOutcome: Identifiable, Equatable {
+    let id: UUID
+    var recordedMenuNames: [String]
+    var skippedAllergyMenuNames: [String]
+    var gainedExp: Int
+    var oldLevel: Int
+    var newLevel: Int
+
+    init(
+        id: UUID = UUID(),
+        recordedMenuNames: [String],
+        skippedAllergyMenuNames: [String],
+        gainedExp: Int,
+        oldLevel: Int,
+        newLevel: Int
+    ) {
+        self.id = id
+        self.recordedMenuNames = recordedMenuNames
+        self.skippedAllergyMenuNames = skippedAllergyMenuNames
+        self.gainedExp = gainedExp
+        self.oldLevel = oldLevel
+        self.newLevel = newLevel
+    }
+
+    var didLevelUp: Bool {
+        newLevel > oldLevel
+    }
+}
+
 struct XPBreakdown: Codable, Hashable {
     var record: Int
     var challenge: Int

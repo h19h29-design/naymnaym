@@ -316,7 +316,8 @@ final class AppState: ObservableObject {
         status: EatingStatus,
         reasons: [DifficultyReason] = [],
         photoIds: [String] = [],
-        shareWithParent: Bool = false
+        shareWithParent: Bool = false,
+        publishParentSnapshot: Bool = true
     ) -> ChallengeOutcome? {
         let isRisk = isAllergyRisk(item)
         let finalStatus = isRisk && status == .oneBite ? EatingStatus.allergyAvoided : status
@@ -343,7 +344,7 @@ final class AppState: ObservableObject {
         mealRecordStore.save(mealRecords)
 
         defer {
-            if shareWithParent, automaticallyPublishesParentSharedData {
+            if shareWithParent, publishParentSnapshot, automaticallyPublishesParentSharedData {
                 Task { await publishChildSharedData() }
             }
         }
@@ -359,6 +360,63 @@ final class AppState: ObservableObject {
             parentShareEnabled: shareWithParent,
             grant: grant
         )
+    }
+
+    func recordAllSafeMealsFinished(
+        _ meal: MealDay,
+        shareWithParent: Bool = false
+    ) -> MealBatchOutcome {
+        let oldLevel = progress.level
+        var recordedMenuNames: [String] = []
+        var skippedAllergyMenuNames: [String] = []
+        var gainedExp = 0
+
+        for item in meal.menuItems {
+            if isAllergyRisk(item) {
+                skippedAllergyMenuNames.append(item.name)
+                continue
+            }
+
+            let matchingRecords = mealRecords.filter {
+                $0.date == meal.date && normalizedMenuName($0.menuName) == normalizedMenuName(item.name)
+            }
+            if matchingRecords.contains(where: { $0.eatingStatus == .finished }) {
+                continue
+            }
+
+            mealRecords.removeAll {
+                $0.date == meal.date && normalizedMenuName($0.menuName) == normalizedMenuName(item.name)
+            }
+            if let outcome = recordMealInteraction(
+                item: item,
+                date: meal.date,
+                status: .finished,
+                shareWithParent: shareWithParent,
+                publishParentSnapshot: false
+            ) {
+                recordedMenuNames.append(item.name)
+                gainedExp += outcome.gainedExp
+            }
+        }
+
+        if shareWithParent, !recordedMenuNames.isEmpty, automaticallyPublishesParentSharedData {
+            Task { await publishChildSharedData() }
+        }
+
+        return MealBatchOutcome(
+            recordedMenuNames: recordedMenuNames,
+            skippedAllergyMenuNames: skippedAllergyMenuNames,
+            gainedExp: gainedExp,
+            oldLevel: oldLevel,
+            newLevel: progress.level
+        )
+    }
+
+    private func normalizedMenuName(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
     }
 
     func saveMealPhotoData(_ data: Data, sharedWithParent: Bool = false) throws -> MealPhotoRecord {
