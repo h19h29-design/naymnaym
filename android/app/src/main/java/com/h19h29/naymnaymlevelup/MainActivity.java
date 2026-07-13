@@ -22,10 +22,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -43,9 +46,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -79,6 +85,7 @@ public class MainActivity extends Activity {
     private School selectedSchool;
     private boolean demoMode;
     private ChildLink childLink;
+    private final List<ParentChildReceipt> parentChildren = new ArrayList<>();
     private boolean refreshingConnectionStatus;
 
     @Override
@@ -88,6 +95,7 @@ public class MainActivity extends Activity {
         selectedSchool = loadSchool();
         demoMode = prefs.getBoolean("demoMode", false);
         childLink = loadChildLink();
+        parentChildren.addAll(loadParentChildren());
         handleDeepLink(getIntent());
         renderHome();
     }
@@ -201,6 +209,9 @@ public class MainActivity extends Activity {
         actions.addView(secondaryButton("개인정보 · 지원 · 데이터 관리", v -> renderPrivacyAndSupport()));
 
         content.addView(parentConnectionCard());
+        if (!parentChildren.isEmpty()) {
+            content.addView(parentChildrenConnectionCard());
+        }
         refreshChildConnectionStatus(false);
 
         if (selectedSchool == null) {
@@ -395,18 +406,19 @@ public class MainActivity extends Activity {
         badge.setGravity(Gravity.CENTER);
         content.addView(badge);
         content.addView(card(meal.schoolName, "칼로리: " + safe(meal.calorie) + "\n영양: " + safe(meal.nutrition), false));
+        content.addView(primaryButton("오늘 급식 다 잘먹었어요", v -> recordAllMeals(meal)));
         for (String menu : meal.items) {
             LinearLayout box = cardContainer();
             boolean warning = hasAllergyMarker(menu);
             box.addView(text(cleanMenu(menu), 20, warning ? WARNING : TEXT, Typeface.BOLD));
-            box.addView(text(warning ? "알레르기 번호가 있는 메뉴예요. 학교 안내와 보호자 판단이 먼저예요." : "오늘의 한 입 미션 후보", 13, warning ? WARNING : MUTED, Typeface.NORMAL));
+            box.addView(text(warning ? "알레르기 번호가 있는 메뉴예요. 학교 안내와 보호자 판단이 먼저예요." : nutritionMotivation(cleanMenu(menu)), 13, warning ? WARNING : MUTED, Typeface.NORMAL));
             if (warning) {
-                box.addView(disabledButton("한 입 도전 잠금"));
-                box.addView(secondaryButton("안전하게 확인했어요", v -> recordChallenge(cleanMenu(menu), true)));
+                box.addView(disabledButton("한입도전 잠금"));
             } else {
-                box.addView(primaryButton("한 입 도전", v -> recordChallenge(cleanMenu(menu), false)));
+                box.addView(primaryButton("한입도전", v -> recordChallenge(cleanMenu(menu), false)));
             }
-            box.addView(secondaryButton("먹은 정도 기록", v -> recordMeal(cleanMenu(menu))));
+            box.addView(secondaryButton("잘먹어요", v -> recordMeal(cleanMenu(menu))));
+            box.addView(secondaryButton("못먹겠어요", v -> showDifficultyDialog(menu, warning)));
             content.addView(box);
         }
         content.addView(secondaryButton("보호자 초대/공유", v -> renderInvite()));
@@ -414,14 +426,233 @@ public class MainActivity extends Activity {
     }
 
     private void recordChallenge(String menu, boolean safety) {
-        int xp = safety ? 8 : 18;
+        int xp = awardDailyBaseXp(safety ? 8 : 18);
         setStatus((safety ? "안전 XP" : "도전 XP") + " +" + xp + " · " + menu + " 기록 완료");
         publishSimpleSnapshot(menu, safety ? "allergyAvoided" : "oneBite", xp);
     }
 
     private void recordMeal(String menu) {
-        setStatus("기록 XP +10 · " + menu + " 기록 완료");
-        publishSimpleSnapshot(menu, "finished", 10);
+        if (isFinishedToday(menu)) {
+            setStatus(menu + "은 오늘 이미 잘먹어요로 기록했어요.");
+            return;
+        }
+        markFinishedToday(menu);
+        int xp = awardDailyBaseXp(10);
+        setStatus("기록 XP +" + xp + " · " + menu + " 기록 완료");
+        publishSimpleSnapshot(menu, "finished", xp);
+    }
+
+    private void recordAllMeals(MealDay meal) {
+        List<MealFeedbackPolicy.MenuFeedbackItem> items = new ArrayList<>();
+        for (String raw : meal.items) {
+            items.add(new MealFeedbackPolicy.MenuFeedbackItem(cleanMenu(raw), allergyCodes(raw)));
+        }
+        MealFeedbackPolicy.BatchSelection selection = MealFeedbackPolicy.safeBatch(items, Collections.emptySet());
+        int gainedXp = 0;
+        for (String menu : selection.recordedNames) {
+            if (isFinishedToday(menu)) continue;
+            markFinishedToday(menu);
+            int xp = awardDailyBaseXp(10);
+            gainedXp += xp;
+            publishSimpleSnapshot(menu, "finished", xp);
+        }
+        showWholeMealPraise(selection, gainedXp);
+    }
+
+    private void showWholeMealPraise(MealFeedbackPolicy.BatchSelection selection, int gainedXp) {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(22), dp(10), dp(22), 0);
+
+        ImageView mascot = new ImageView(this);
+        mascot.setImageResource(R.drawable.mascot_onboarding);
+        mascot.setAdjustViewBounds(true);
+        layout.addView(mascot, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190)));
+
+        String title = selection.skippedNames.isEmpty()
+            ? "오늘 급식을 모두 잘 먹었어요!"
+            : "주의 메뉴를 제외한 오늘 급식을 잘 먹었어요!";
+        TextView titleView = text(title, 21, DARK_GREEN, Typeface.BOLD);
+        titleView.setGravity(Gravity.CENTER);
+        layout.addView(titleView);
+        TextView detail = text(
+            selection.recordedNames.size() + "개 메뉴 기록 완료"
+                + (selection.skippedNames.isEmpty() ? "" : " · 주의 메뉴 " + selection.skippedNames.size() + "개 제외")
+                + "\n오늘 받은 XP +" + gainedXp,
+            15,
+            MUTED,
+            Typeface.NORMAL
+        );
+        detail.setGravity(Gravity.CENTER);
+        detail.setPadding(0, dp(8), 0, dp(8));
+        layout.addView(detail);
+
+        new AlertDialog.Builder(this)
+            .setTitle("오늘의 칭찬")
+            .setView(layout)
+            .setPositiveButton("칭찬 받기", null)
+            .show();
+    }
+
+    private void showDifficultyDialog(String rawMenu, boolean allergyRisk) {
+        String menu = cleanMenu(rawMenu);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(22), dp(8), dp(22), 0);
+
+        if (allergyRisk) {
+            layout.addView(text(
+                "안전 확인이 먼저예요\n알레르기/주의 메뉴는 먹지 않아도 괜찮고, 안전하게 피한 기록도 성장으로 인정돼요.",
+                15,
+                WARNING,
+                Typeface.BOLD
+            ));
+        } else {
+            layout.addView(text(
+                nutritionMotivation(menu) + "\n\n냄새만 맡아도 도전이에요. 오늘 어렵다고 기록해도 다음 도전의 시작이 됩니다.",
+                15,
+                TEXT,
+                Typeface.NORMAL
+            ));
+        }
+
+        TextView statusTitle = text("오늘은 어떻게 기록할까요?", 16, TEXT, Typeface.BOLD);
+        statusTitle.setPadding(0, dp(14), 0, dp(4));
+        layout.addView(statusTitle);
+
+        RadioGroup statusGroup = new RadioGroup(this);
+        statusGroup.setOrientation(RadioGroup.VERTICAL);
+        List<String> statuses = new ArrayList<>();
+        if (allergyRisk) {
+            statuses.add("allergyAvoided");
+        } else {
+            statuses.add("smelledOnly");
+            statuses.add("difficultToday");
+            if (hasAllergyMarker(rawMenu)) statuses.add("allergyAvoided");
+        }
+        for (String status : statuses) {
+            RadioButton option = new RadioButton(this);
+            option.setId(View.generateViewId());
+            option.setTag(status);
+            option.setText(statusTitle(status));
+            option.setTextColor(TEXT);
+            option.setTextSize(15);
+            statusGroup.addView(option);
+            if ((allergyRisk && "allergyAvoided".equals(status)) || (!allergyRisk && "difficultToday".equals(status))) {
+                option.setChecked(true);
+            }
+        }
+        layout.addView(statusGroup);
+
+        TextView reasonTitle = text("어떤 점이 어려웠나요?", 16, TEXT, Typeface.BOLD);
+        reasonTitle.setPadding(0, dp(12), 0, dp(4));
+        layout.addView(reasonTitle);
+        String[] reasonLabels = {"맛", "냄새", "식감", "모양", "처음 보는 음식"};
+        String[] reasonValues = {"taste", "smell", "texture", "appearance", "unfamiliar"};
+        List<CheckBox> reasonChecks = new ArrayList<>();
+        for (int i = 0; i < reasonLabels.length; i++) {
+            CheckBox reason = new CheckBox(this);
+            reason.setText(reasonLabels[i]);
+            reason.setTag(reasonValues[i]);
+            reason.setTextColor(TEXT);
+            reasonChecks.add(reason);
+            layout.addView(reason);
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+            .setTitle(menu + " · 못먹겠어요")
+            .setView(layout)
+            .setNegativeButton("닫기", null)
+            .setPositiveButton("이렇게 기록하기", (dialog, which) -> {
+                RadioButton selected = statusGroup.findViewById(statusGroup.getCheckedRadioButtonId());
+                String status = selected == null ? (allergyRisk ? "allergyAvoided" : "difficultToday") : String.valueOf(selected.getTag());
+                List<String> reasons = new ArrayList<>();
+                for (CheckBox reason : reasonChecks) {
+                    if (reason.isChecked()) reasons.add(String.valueOf(reason.getTag()));
+                }
+                int xp = awardDailyBaseXp(requestedXp(status));
+                setStatus(statusTitle(status) + " · " + menu + " · XP +" + xp);
+                publishSimpleSnapshot(menu, status, xp, reasons);
+            });
+        if (!allergyRisk) {
+            builder.setNeutralButton("그래도 한입도전", (dialog, which) -> recordChallenge(menu, false));
+        }
+        builder.show();
+    }
+
+    private String statusTitle(String status) {
+        if ("smelledOnly".equals(status)) return "냄새만 맡아봤어요";
+        if ("allergyAvoided".equals(status)) return "알레르기·주의로 피했어요";
+        return "오늘은 어려워요";
+    }
+
+    private int requestedXp(String status) {
+        if ("smelledOnly".equals(status)) return 10;
+        if ("allergyAvoided".equals(status)) return 8;
+        return 3;
+    }
+
+    private String nutritionMotivation(String menu) {
+        String normalized = menu.toLowerCase(Locale.ROOT);
+        if (normalized.contains("나물") || normalized.contains("채소") || normalized.contains("김치")) {
+            return "식이섬유와 비타민이 몸의 균형과 활력을 키워줘요.";
+        }
+        if (normalized.contains("고기") || normalized.contains("갈비") || normalized.contains("닭") || normalized.contains("두부") || normalized.contains("달걀")) {
+            return "단백질이 근육과 성장 에너지를 채워줘요.";
+        }
+        if (normalized.contains("우유") || normalized.contains("치즈") || normalized.contains("멸치")) {
+            return "칼슘이 뼈와 치아를 튼튼하게 돕는 메뉴예요.";
+        }
+        if (normalized.contains("밥") || normalized.contains("면") || normalized.contains("빵")) {
+            return "탄수화물이 공부하고 움직일 힘을 채워줘요.";
+        }
+        return "여러 영양소를 경험하면 오늘의 성장 스탯이 조금씩 올라가요.";
+    }
+
+    private Set<Integer> allergyCodes(String menu) {
+        Set<Integer> codes = new HashSet<>();
+        int open = menu.lastIndexOf('(');
+        int close = menu.lastIndexOf(')');
+        if (open < 0 || close <= open) return codes;
+        String body = menu.substring(open + 1, close);
+        for (String value : body.split("[.,\\s]+")) {
+            try {
+                if (!value.isEmpty()) codes.add(Integer.parseInt(value));
+            } catch (NumberFormatException ignored) {
+                // Ignore non-NEIS markers.
+            }
+        }
+        return codes;
+    }
+
+    private int awardDailyBaseXp(int requested) {
+        String key = "dailyBaseXp-" + todayKey();
+        int used = prefs.getInt(key, 0);
+        int awarded = Math.max(0, Math.min(requested, 50 - used));
+        prefs.edit().putInt(key, used + awarded).apply();
+        return awarded;
+    }
+
+    private boolean isFinishedToday(String menu) {
+        return finishedMealKeys().contains(todayKey() + ":" + normalizedMenuKey(menu));
+    }
+
+    private void markFinishedToday(String menu) {
+        Set<String> keys = finishedMealKeys();
+        keys.add(todayKey() + ":" + normalizedMenuKey(menu));
+        prefs.edit().putStringSet("finishedMealKeys", keys).apply();
+    }
+
+    private Set<String> finishedMealKeys() {
+        return new HashSet<>(prefs.getStringSet("finishedMealKeys", Collections.emptySet()));
+    }
+
+    private String normalizedMenuKey(String menu) {
+        return cleanMenu(menu).toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+    }
+
+    private String todayKey() {
+        return new SimpleDateFormat("yyyyMMdd", Locale.KOREA).format(new Date());
     }
 
     private void renderInvite() {
@@ -437,17 +668,28 @@ public class MainActivity extends Activity {
             saveChildLink(childLink);
         }
         if (childLink.parentConnectedAt != null && !childLink.parentConnectedAt.isEmpty()) {
-            content.addView(card("보호자 연결", "보호자와 연결되었습니다", false));
+            content.addView(connectionSuccessCard("보호자와 연결되었습니다", "연결된 보호자 1명", "급식 결과를 보호자와 함께 확인할 수 있어요."));
             content.addView(secondaryButton("연결 상태 새로고침", v -> refreshChildConnectionStatus(true)));
             content.addView(secondaryButton("뒤로", v -> renderHome()));
             return;
         }
         content.addView(parentConnectionCard());
+        boolean inviteReady = childLink.registeredAt != null && !childLink.registeredAt.isEmpty();
+        if (inviteReady) {
+            content.addView(connectionSuccessCard(
+                "초대 링크 준비 완료",
+                "보호자 연결 대기 중",
+                "부모에게 링크를 보내면 앱에서 바로 연결할 수 있어요."
+            ));
+        }
         content.addView(card("보호자 연결 링크", "코드: " + childLink.inviteCode + "\n링크가 열리지 않으면 이 코드를 붙여넣으면 됩니다.", false));
-        content.addView(card("공유 범위", "공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐입니다. 급식판 사진, 친구 얼굴, 반/번호, 이름표는 서버나 부모 화면에 올리지 않습니다.", false));
-        content.addView(primaryButton("초대 코드 서버 등록", v -> registerInvite()));
-        content.addView(primaryButton("공유하기", v -> shareText(parentInviteShareMessage())));
-        content.addView(secondaryButton("링크 복사", v -> copyText("초대 링크", parentInviteUrl())));
+        content.addView(card("공유 범위", "공유되는 항목은 먹은 정도, 한 입 도전 기록, 알레르기 주의뿐입니다. 급식판 사진, 친구 얼굴, 반/번호, 이름표는 연결된 보호자 화면에 올리지 않습니다.", false));
+        if (inviteReady) {
+            content.addView(primaryButton("링크 공유", v -> shareText(parentInviteShareMessage())));
+            content.addView(secondaryButton("링크 복사", v -> copyText("초대 링크", parentInviteUrl())));
+        } else {
+            content.addView(primaryButton("초대 링크 준비하기", v -> registerInvite()));
+        }
         content.addView(secondaryButton("연결 상태 새로고침", v -> refreshChildConnectionStatus(true)));
         content.addView(card("부모에서 아이에게 요청하기", "부모 기기에서 아래 요청 링크를 공유하면 아이 기기에서 이 화면이 열립니다.", false));
         content.addView(secondaryButton("부모 요청 링크 공유", v -> shareText(parentInviteRequestMessage())));
@@ -489,6 +731,7 @@ public class MainActivity extends Activity {
         selectedSchool = null;
         demoMode = false;
         childLink = null;
+        parentChildren.clear();
         renderHome();
         setStatus("이 기기의 앱 데이터를 삭제했어요.");
     }
@@ -498,7 +741,7 @@ public class MainActivity extends Activity {
             childLink = makeChildLink();
             saveChildLink(childLink);
         }
-        showLoading("초대 코드를 서버에 등록하는 중이에요.");
+        showLoading("초대 링크를 준비하는 중이에요.");
         executor.execute(() -> {
             try {
                 JSONObject link = childLinkJson(childLink);
@@ -511,12 +754,12 @@ public class MainActivity extends Activity {
                 saveChildLink(childLink);
                 mainHandler.post(() -> {
                     renderInvite();
-                    setStatus("등록 완료. 공유하기를 누르면 카카오톡, 메시지, 복사하기가 떠요.");
+                    setStatus("초대 링크 준비 완료. 공유하기를 누르면 카카오톡, 메시지, 복사하기가 떠요.");
                 });
             } catch (Exception error) {
                 mainHandler.post(() -> {
                     renderInvite();
-                    setStatus("초대 코드 등록 실패: " + userSafeMessage(error));
+                    setStatus("초대 링크 준비 실패: " + userSafeMessage(error));
                 });
             }
         });
@@ -532,9 +775,15 @@ public class MainActivity extends Activity {
                 JSONObject link = response.getJSONObject("data").getJSONObject("link");
                 String childName = link.optString("childNickname", "아이");
                 String schoolName = link.optString("schoolName", "학교");
+                upsertParentChild(new ParentChildReceipt(inviteCode, childName, schoolName));
                 mainHandler.post(() -> {
                     resetContent("보호자 연결 완료");
-                    content.addView(card(childName + "와 연결되었습니다", schoolName + "의 공유 기록을 확인할 수 있어요.", false));
+                    content.addView(connectionSuccessCard(
+                        childName + "와 연결되었습니다",
+                        "연결된 아이 " + MealFeedbackPolicy.parentConnectedCount(parentChildren.size()) + "명",
+                        schoolName + "의 공유 기록을 확인할 수 있어요."
+                    ));
+                    content.addView(secondaryButton("연결된 아이 보기", v -> renderParentConnections()));
                     content.addView(secondaryButton("홈", v -> renderHome()));
                     setStatus("아이와 보호자 연결이 완료됐어요.");
                 });
@@ -552,7 +801,7 @@ public class MainActivity extends Activity {
             return card("보호자 연결", "아직 보호자와 연결되지 않았어요", false);
         }
         if (childLink.parentConnectedAt != null && !childLink.parentConnectedAt.isEmpty()) {
-            return card("보호자 연결", "보호자와 연결되었습니다", false);
+            return connectionSuccessCard("보호자와 연결되었습니다", "연결된 보호자 1명", "급식 결과를 보호자와 함께 확인할 수 있어요.");
         }
         if (childLink.registeredAt == null || childLink.registeredAt.isEmpty()) {
             return card("보호자 연결", "아직 보호자와 연결되지 않았어요\n초대 코드를 등록하고 보호자에게 링크를 공유해 주세요.", false);
@@ -560,10 +809,38 @@ public class MainActivity extends Activity {
         return card("보호자 연결 대기 중", "아직 보호자와 연결되지 않았어요\n보호자가 초대 링크를 열면 자동으로 연결됩니다.", false);
     }
 
+    private LinearLayout parentChildrenConnectionCard() {
+        LinearLayout card = connectionSuccessCard(
+            "아이와 연결되었습니다",
+            "연결된 아이 " + MealFeedbackPolicy.parentConnectedCount(parentChildren.size()) + "명",
+            "아이의 급식 결과와 도전 변화를 확인할 수 있어요."
+        );
+        card.setOnClickListener(v -> renderParentConnections());
+        return card;
+    }
+
+    private void renderParentConnections() {
+        resetContent("연결된 아이");
+        if (parentChildren.isEmpty()) {
+            content.addView(card("아직 연결된 아이가 없어요", "아이에게 초대 요청 링크를 보내거나 받은 초대 링크를 열어 주세요.", false));
+        } else {
+            content.addView(connectionSuccessCard(
+                "아이와 연결되었습니다",
+                "연결된 아이 " + MealFeedbackPolicy.parentConnectedCount(parentChildren.size()) + "명",
+                "각 아이의 학교와 연결 상태를 확인할 수 있어요."
+            ));
+            for (ParentChildReceipt child : parentChildren) {
+                content.addView(card(child.childName, child.schoolName + "\n연결 완료", false));
+            }
+        }
+        content.addView(primaryButton("아이에게 연결 요청 보내기", v -> shareText(parentInviteRequestMessage())));
+        content.addView(secondaryButton("홈", v -> renderHome()));
+    }
+
     private void refreshChildConnectionStatus(boolean showResult) {
         if (refreshingConnectionStatus || childLink == null || childLink.registeredAt == null
             || childLink.inviteSecret == null || childLink.inviteSecret.isEmpty()) {
-            if (showResult) setStatus("초대 코드를 먼저 서버에 등록해 주세요.");
+            if (showResult) setStatus("초대 링크를 먼저 준비해 주세요.");
             return;
         }
         refreshingConnectionStatus = true;
@@ -599,6 +876,10 @@ public class MainActivity extends Activity {
     }
 
     private void publishSimpleSnapshot(String menu, String status, int gainedExp) {
+        publishSimpleSnapshot(menu, status, gainedExp, Collections.emptyList());
+    }
+
+    private void publishSimpleSnapshot(String menu, String status, int gainedExp, List<String> reasons) {
         if (childLink == null || childLink.inviteSecret == null || childLink.inviteSecret.isEmpty()) {
             return;
         }
@@ -611,7 +892,7 @@ public class MainActivity extends Activity {
                         .put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(new Date()))
                         .put("menuName", menu)
                         .put("eatingStatus", status)
-                        .put("difficultyReasons", new JSONArray())
+                        .put("difficultyReasons", new JSONArray(reasons))
                         .put("allergyCodes", new JSONArray())
                         .put("photoIds", new JSONArray())
                         .put("createdAt", now));
@@ -620,7 +901,7 @@ public class MainActivity extends Activity {
                         .put("id", UUID.randomUUID().toString())
                         .put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(new Date()))
                         .put("menuName", menu)
-                        .put("action", status)
+                        .put("action", challengeAction(status))
                         .put("gainedExp", gainedExp)
                         .put("badgeName", JSONObject.NULL)
                         .put("nutrients", new JSONArray())
@@ -635,6 +916,12 @@ public class MainActivity extends Activity {
                 // The local record is still valid; parent sync errors are surfaced during explicit invite registration.
             }
         });
+    }
+
+    private String challengeAction(String status) {
+        if ("oneBite".equals(status)) return "oneBite";
+        if ("finished".equals(status) || "half".equals(status)) return "alreadyEats";
+        return "skipped";
     }
 
     private JSONObject postParentSync(String action, JSONObject payload) throws Exception {
@@ -714,6 +1001,19 @@ public class MainActivity extends Activity {
         LinearLayout box = cardContainer();
         box.addView(text(title, 18, warning ? WARNING : TEXT, Typeface.BOLD));
         box.addView(text(body, 14, warning ? WARNING : MUTED, Typeface.NORMAL));
+        return box;
+    }
+
+    private LinearLayout connectionSuccessCard(String title, String count, String message) {
+        LinearLayout box = cardContainer();
+        box.setBackgroundColor(MINT);
+        TextView titleView = text("✓ " + title, 20, DARK_GREEN, Typeface.BOLD);
+        titleView.setPadding(0, 0, 0, dp(5));
+        box.addView(titleView);
+        box.addView(text(count, 18, DARK_GREEN, Typeface.BOLD));
+        TextView messageView = text(message, 14, MUTED, Typeface.NORMAL);
+        messageView.setPadding(0, dp(5), 0, 0);
+        box.addView(messageView);
         return box;
     }
 
@@ -859,6 +1159,45 @@ public class MainActivity extends Activity {
         link.registeredAt = prefs.getString("registeredAt", null);
         link.parentConnectedAt = prefs.getString("parentConnectedAt", null);
         return link;
+    }
+
+    private List<ParentChildReceipt> loadParentChildren() {
+        List<ParentChildReceipt> children = new ArrayList<>();
+        String stored = prefs.getString("parentChildren", "[]");
+        try {
+            JSONArray array = new JSONArray(stored == null ? "[]" : stored);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject child = array.optJSONObject(i);
+                if (child == null) continue;
+                String inviteCode = child.optString("inviteCode", "");
+                if (inviteCode.isEmpty()) continue;
+                children.add(new ParentChildReceipt(
+                    inviteCode,
+                    child.optString("childName", "아이"),
+                    child.optString("schoolName", "학교")
+                ));
+            }
+        } catch (Exception ignored) {
+            // Invalid legacy data is treated as no parent-side connections.
+        }
+        return children;
+    }
+
+    private void upsertParentChild(ParentChildReceipt child) {
+        parentChildren.removeIf(existing -> existing.inviteCode.equals(child.inviteCode));
+        parentChildren.add(0, child);
+        JSONArray array = new JSONArray();
+        for (ParentChildReceipt receipt : parentChildren) {
+            try {
+                array.put(new JSONObject()
+                    .put("inviteCode", receipt.inviteCode)
+                    .put("childName", receipt.childName)
+                    .put("schoolName", receipt.schoolName));
+            } catch (Exception ignored) {
+                // Keep saving the remaining valid receipts.
+            }
+        }
+        prefs.edit().putString("parentChildren", array.toString()).apply();
     }
 
     private ChildLink makeChildLink() {
@@ -1059,5 +1398,17 @@ public class MainActivity extends Activity {
         String inviteSecret;
         String registeredAt;
         String parentConnectedAt;
+    }
+
+    private static final class ParentChildReceipt {
+        final String inviteCode;
+        final String childName;
+        final String schoolName;
+
+        ParentChildReceipt(String inviteCode, String childName, String schoolName) {
+            this.inviteCode = inviteCode;
+            this.childName = childName;
+            this.schoolName = schoolName;
+        }
     }
 }
