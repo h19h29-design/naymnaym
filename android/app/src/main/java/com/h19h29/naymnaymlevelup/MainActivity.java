@@ -1,5 +1,8 @@
 package com.h19h29.naymnaymlevelup;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -7,8 +10,17 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -21,9 +33,11 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -185,10 +199,10 @@ public class MainActivity extends Activity {
         scrollView.addView(content);
         setContentView(scrollView);
 
-        ImageView logo = new ImageView(this);
-        logo.setImageResource(R.drawable.logo_naym_levelup);
-        logo.setAdjustViewBounds(true);
-        content.addView(logo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(74)));
+        content.addView(
+            createAnimatedIntroLogo(),
+            new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(74))
+        );
 
         TextView subtitle = text("편식을 혼내지 않고, 한 입 도전으로 바꾸는 급식 코칭 앱", 15, TEXT, Typeface.BOLD);
         subtitle.setGravity(Gravity.CENTER);
@@ -243,6 +257,198 @@ public class MainActivity extends Activity {
         }
 
         featureCards();
+    }
+
+    private View createAnimatedIntroLogo() {
+        FrameLayout container = new FrameLayout(this);
+        container.setContentDescription("냠냠레벨업");
+        container.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        ImageView nyamLayer = introLogoImageView();
+        ImageView levelUpLayer = introLogoImageView();
+        ImageView reducedMotionLayer = introLogoImageView();
+        LogoShineView shineLayer = new LogoShineView();
+
+        prepareHiddenWordLayer(nyamLayer);
+        prepareHiddenWordLayer(levelUpLayer);
+        reducedMotionLayer.setAlpha(0f);
+        reducedMotionLayer.setVisibility(View.INVISIBLE);
+        shineLayer.setAlpha(0f);
+
+        container.addView(nyamLayer, matchFrame());
+        container.addView(levelUpLayer, matchFrame());
+        container.addView(reducedMotionLayer, matchFrame());
+        container.addView(shineLayer, matchFrame());
+        container.post(() -> startIntroLogoMotion(
+            container,
+            nyamLayer,
+            levelUpLayer,
+            reducedMotionLayer,
+            shineLayer
+        ));
+        return container;
+    }
+
+    private ImageView introLogoImageView() {
+        ImageView imageView = new ImageView(this);
+        imageView.setImageResource(R.drawable.logo_naym_levelup);
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        imageView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return imageView;
+    }
+
+    private FrameLayout.LayoutParams matchFrame() {
+        return new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        );
+    }
+
+    private void prepareHiddenWordLayer(ImageView layer) {
+        layer.setAlpha(0f);
+        layer.setTranslationY(dp(Math.round(IntroLogoMotionSpec.INITIAL_Y_DP)));
+        layer.setScaleX(IntroLogoMotionSpec.INITIAL_SCALE);
+        layer.setScaleY(IntroLogoMotionSpec.INITIAL_SCALE);
+    }
+
+    private void startIntroLogoMotion(
+        FrameLayout container,
+        ImageView nyamLayer,
+        ImageView levelUpLayer,
+        ImageView reducedMotionLayer,
+        LogoShineView shineLayer
+    ) {
+        if (!container.isAttachedToWindow()) return;
+
+        Drawable logo = nyamLayer.getDrawable();
+        if (logo == null || logo.getIntrinsicWidth() <= 0 || logo.getIntrinsicHeight() <= 0) return;
+
+        int viewWidth = container.getWidth();
+        int viewHeight = container.getHeight();
+        int splitX = IntroLogoMotionSpec.splitX(
+            viewWidth,
+            viewHeight,
+            logo.getIntrinsicWidth(),
+            logo.getIntrinsicHeight()
+        );
+        nyamLayer.setClipBounds(new Rect(0, 0, splitX, viewHeight));
+        levelUpLayer.setClipBounds(new Rect(splitX, 0, viewWidth, viewHeight));
+
+        if (!systemAnimationsEnabled()) {
+            reducedMotionLayer.setVisibility(View.VISIBLE);
+            reducedMotionLayer.animate()
+                .alpha(1f)
+                .setDuration(IntroLogoMotionSpec.REDUCE_MOTION_FADE_DURATION_MS)
+                .start();
+            return;
+        }
+
+        animateIntroLogoWord(nyamLayer, IntroLogoMotionSpec.NYAM_START_MS);
+        animateIntroLogoWord(levelUpLayer, IntroLogoMotionSpec.LEVEL_UP_START_MS);
+
+        shineLayer.setAlpha(0f);
+        shineLayer.setProgress(0f);
+        ValueAnimator shineAnimator = ValueAnimator.ofFloat(0f, 1f);
+        shineAnimator.setStartDelay(IntroLogoMotionSpec.SHINE_START_MS);
+        shineAnimator.setDuration(IntroLogoMotionSpec.SHINE_DURATION_MS);
+        shineAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
+        shineAnimator.addUpdateListener(animation -> {
+            if (!container.isAttachedToWindow()) {
+                animation.cancel();
+                return;
+            }
+            float progress = (float) animation.getAnimatedValue();
+            shineLayer.setProgress(progress);
+            float edgeFade = Math.min(1f, Math.min(progress / 0.16f, (1f - progress) / 0.16f));
+            shineLayer.setAlpha(0.92f * Math.max(0f, edgeFade));
+        });
+        shineAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                shineLayer.setAlpha(0f);
+            }
+        });
+        shineAnimator.start();
+    }
+
+    private void animateIntroLogoWord(ImageView layer, long startDelayMillis) {
+        layer.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setStartDelay(startDelayMillis)
+            .setDuration(IntroLogoMotionSpec.RISE_DURATION_MS)
+            .setInterpolator(new PathInterpolator(0.22f, 0.78f, 0.36f, 1f))
+            .start();
+    }
+
+    private boolean systemAnimationsEnabled() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ValueAnimator.areAnimatorsEnabled();
+    }
+
+    private final class LogoShineView extends View {
+        private final Drawable logo;
+        private final Paint shinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF logoBounds = new RectF();
+        private float progress;
+
+        LogoShineView() {
+            super(MainActivity.this);
+            logo = getResources().getDrawable(R.drawable.logo_naym_levelup, getTheme()).mutate();
+            shinePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        void setProgress(float progress) {
+            this.progress = progress;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (getWidth() <= 0 || getHeight() <= 0) return;
+
+            float scale = Math.min(
+                (float) getWidth() / logo.getIntrinsicWidth(),
+                (float) getHeight() / logo.getIntrinsicHeight()
+            );
+            float contentWidth = logo.getIntrinsicWidth() * scale;
+            float contentHeight = logo.getIntrinsicHeight() * scale;
+            float left = (getWidth() - contentWidth) / 2f;
+            float top = (getHeight() - contentHeight) / 2f;
+            logoBounds.set(left, top, left + contentWidth, top + contentHeight);
+
+            int layer = canvas.saveLayer(logoBounds, null);
+            logo.setBounds(
+                Math.round(logoBounds.left),
+                Math.round(logoBounds.top),
+                Math.round(logoBounds.right),
+                Math.round(logoBounds.bottom)
+            );
+            logo.draw(canvas);
+
+            float bandWidth = contentWidth * 0.34f;
+            float centerX = logoBounds.left - bandWidth
+                + progress * (contentWidth + bandWidth * 2f);
+            shinePaint.setShader(new LinearGradient(
+                centerX - bandWidth,
+                0f,
+                centerX + bandWidth,
+                0f,
+                new int[] {
+                    Color.TRANSPARENT,
+                    Color.argb(245, 255, 255, 255),
+                    Color.argb(195, 255, 245, 173),
+                    Color.TRANSPARENT
+                },
+                new float[] {0f, 0.42f, 0.58f, 1f},
+                Shader.TileMode.CLAMP
+            ));
+            canvas.drawRect(logoBounds, shinePaint);
+            canvas.restoreToCount(layer);
+        }
     }
 
     private String currentStatusMessage() {
