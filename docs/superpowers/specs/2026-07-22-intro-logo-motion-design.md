@@ -31,7 +31,7 @@
 - 같은 로고 drawable을 사용하는 두 `ImageView`를 `FrameLayout`에 겹친다.
 - 실제 drawable이 `FIT_CENTER`로 표시되는 콘텐츠 영역을 계산하고 그 영역의 40% 지점에서 `clipBounds`를 나눈다.
 - 두 단어 묶음은 `ViewPropertyAnimator`로 순차 등장시킨다.
-- 세 번째 흰색 tint 로고 레이어의 좁은 `clipBounds`를 `ValueAnimator`로 이동해 빛 효과를 만든다.
+- 로고 알파를 마스크로 사용하는 전용 뷰에 흰색·금색 그라데이션을 그리고 `ValueAnimator`로 한 번 이동해 빛 효과를 만든다.
 - 화면을 다시 구성할 때 이전 애니메이터가 새 화면을 건드리지 않도록 컨테이너에 연결된 애니메이터만 실행한다.
 
 ## 동작 줄이기
@@ -46,4 +46,3 @@
 - Android에서는 실제 표시 영역 기준 분할 좌표 계산을 단위 테스트한다.
 - iOS 테스트, Android JVM 테스트, 양 플랫폼 debug 빌드를 실행한다.
 - 배포, 스토어 업로드, 테스트 트랙 생성은 수행하지 않는다.
-

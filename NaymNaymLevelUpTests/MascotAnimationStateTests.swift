@@ -81,11 +81,18 @@ final class MascotAnimationStateTests: XCTestCase {
     }
 
     func testIntroLogoMotionUsesApprovedOneShotTiming() {
+        XCTAssertEqual(IntroLogoMotionSpec.initialYOffset, 10, accuracy: 0.001)
+        XCTAssertEqual(IntroLogoMotionSpec.initialScale, 0.988, accuracy: 0.001)
         XCTAssertEqual(IntroLogoMotionSpec.nyamStart, 0.04, accuracy: 0.001)
         XCTAssertEqual(IntroLogoMotionSpec.levelUpStart, 0.34, accuracy: 0.001)
         XCTAssertEqual(IntroLogoMotionSpec.riseDuration, 0.76, accuracy: 0.001)
         XCTAssertEqual(IntroLogoMotionSpec.shineStart, 1.18, accuracy: 0.001)
         XCTAssertEqual(IntroLogoMotionSpec.shineDuration, 0.82, accuracy: 0.001)
+        XCTAssertEqual(
+            IntroLogoMotionSpec.shineStart + IntroLogoMotionSpec.shineDuration,
+            2.0,
+            accuracy: 0.001
+        )
         XCTAssertEqual(IntroLogoMotionSpec.reduceMotionFadeDuration, 0.25, accuracy: 0.001)
     }
 }
