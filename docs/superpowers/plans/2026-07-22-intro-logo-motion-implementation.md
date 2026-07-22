@@ -272,7 +272,7 @@ git add docs/superpowers/plans/2026-07-22-intro-logo-motion-implementation.md
 git commit -m "test: verify intro logo motion"
 ```
 
-- [ ] **Step 3: Push the current branch only**
+- [x] **Step 3: Push the current branch only**
 
 ```bash
 git push origin codex/fix-student-growth-p1
