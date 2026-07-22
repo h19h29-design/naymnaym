@@ -1,6 +1,23 @@
 import SwiftUI
 import UIKit
 
+enum IntroLogoMotionSpec {
+    static let sourceAspectRatio: CGFloat = 357.0 / 86.0
+    static let splitFraction: CGFloat = 0.40
+    static let initialYOffset: CGFloat = 10
+    static let initialScale: CGFloat = 0.988
+    static let nyamStart: TimeInterval = 0.04
+    static let levelUpStart: TimeInterval = 0.34
+    static let riseDuration: TimeInterval = 0.76
+    static let shineStart: TimeInterval = 1.18
+    static let shineDuration: TimeInterval = 0.82
+    static let reduceMotionFadeDuration: TimeInterval = 0.25
+
+    static func splitX(for width: CGFloat) -> CGFloat {
+        width * splitFraction
+    }
+}
+
 enum IntroExperienceKind {
     case firstLaunch
     case daily
@@ -457,11 +474,7 @@ private struct LogoHeader: View {
     var body: some View {
         VStack(spacing: compact ? 2 : 4) {
             if AssetCatalog.hasImage("logo_naym_levelup") {
-                Image("logo_naym_levelup")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: compact ? 52 : 62)
-                    .accessibilityLabel("냠냠레벨업")
+                AnimatedIntroLogo(height: compact ? 52 : 62)
             } else {
                 RequiredAssetPlaceholder(
                     assetName: "logo_naym_levelup",
@@ -471,6 +484,152 @@ private struct LogoHeader: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct AnimatedIntroLogo: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let height: CGFloat
+
+    @State private var nyamVisible = false
+    @State private var levelUpVisible = false
+    @State private var reducedMotionVisible = false
+    @State private var shineProgress: CGFloat = -1
+    @State private var shineOpacity = 0.0
+
+    private var logoWidth: CGFloat {
+        height * IntroLogoMotionSpec.sourceAspectRatio
+    }
+
+    private var splitX: CGFloat {
+        IntroLogoMotionSpec.splitX(for: logoWidth)
+    }
+
+    private var riseAnimation: Animation {
+        .timingCurve(
+            0.22,
+            0.78,
+            0.36,
+            1,
+            duration: IntroLogoMotionSpec.riseDuration
+        )
+    }
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                logoImage
+                    .opacity(reducedMotionVisible ? 1 : 0)
+            } else {
+                ZStack {
+                    wordLayer(
+                        maskWidth: splitX,
+                        alignment: .leading,
+                        isVisible: nyamVisible
+                    )
+                    wordLayer(
+                        maskWidth: logoWidth - splitX,
+                        alignment: .trailing,
+                        isVisible: levelUpVisible
+                    )
+                    shineLayer
+                }
+            }
+        }
+        .frame(width: logoWidth, height: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("냠냠레벨업")
+        .task(id: reduceMotion) {
+            await playOnce()
+        }
+    }
+
+    private var logoImage: some View {
+        Image("logo_naym_levelup")
+            .resizable()
+            .scaledToFit()
+            .frame(width: logoWidth, height: height)
+    }
+
+    private func wordLayer(
+        maskWidth: CGFloat,
+        alignment: Alignment,
+        isVisible: Bool
+    ) -> some View {
+        logoImage
+            .mask(alignment: alignment) {
+                Rectangle()
+                    .frame(width: maskWidth, height: height)
+            }
+            .opacity(isVisible ? 1 : 0)
+            .offset(y: isVisible ? 0 : IntroLogoMotionSpec.initialYOffset)
+            .scaleEffect(isVisible ? 1 : IntroLogoMotionSpec.initialScale)
+    }
+
+    private var shineLayer: some View {
+        LinearGradient(
+            colors: [
+                .clear,
+                Color.white.opacity(0.96),
+                Color(red: 1, green: 0.96, blue: 0.68).opacity(0.76),
+                .clear
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(width: logoWidth * 0.34, height: height)
+        .offset(x: shineProgress * logoWidth)
+        .mask {
+            logoImage
+        }
+        .opacity(shineOpacity)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    @MainActor
+    private func playOnce() async {
+        nyamVisible = false
+        levelUpVisible = false
+        reducedMotionVisible = false
+        shineProgress = -1
+        shineOpacity = 0
+
+        if reduceMotion {
+            withAnimation(.easeOut(duration: IntroLogoMotionSpec.reduceMotionFadeDuration)) {
+                reducedMotionVisible = true
+            }
+            return
+        }
+
+        guard await wait(IntroLogoMotionSpec.nyamStart) else { return }
+        withAnimation(riseAnimation) {
+            nyamVisible = true
+        }
+
+        guard await wait(IntroLogoMotionSpec.levelUpStart - IntroLogoMotionSpec.nyamStart) else { return }
+        withAnimation(riseAnimation) {
+            levelUpVisible = true
+        }
+
+        guard await wait(IntroLogoMotionSpec.shineStart - IntroLogoMotionSpec.levelUpStart) else { return }
+        shineOpacity = 0.9
+        withAnimation(.easeInOut(duration: IntroLogoMotionSpec.shineDuration)) {
+            shineProgress = 1
+        }
+
+        guard await wait(IntroLogoMotionSpec.shineDuration) else { return }
+        shineOpacity = 0
+    }
+
+    private func wait(_ seconds: TimeInterval) async -> Bool {
+        do {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            return !Task.isCancelled
+        } catch {
+            return false
+        }
     }
 }
 

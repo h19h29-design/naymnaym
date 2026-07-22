@@ -71,4 +71,21 @@ final class MascotAnimationStateTests: XCTestCase {
             )
         }
     }
+
+    func testIntroLogoSplitFallsInsideVerifiedTransparentGap() {
+        let splitX = IntroLogoMotionSpec.splitX(for: 357)
+
+        XCTAssertEqual(splitX, 142.8, accuracy: 0.001)
+        XCTAssertGreaterThan(splitX, 138)
+        XCTAssertLessThan(splitX, 146)
+    }
+
+    func testIntroLogoMotionUsesApprovedOneShotTiming() {
+        XCTAssertEqual(IntroLogoMotionSpec.nyamStart, 0.04, accuracy: 0.001)
+        XCTAssertEqual(IntroLogoMotionSpec.levelUpStart, 0.34, accuracy: 0.001)
+        XCTAssertEqual(IntroLogoMotionSpec.riseDuration, 0.76, accuracy: 0.001)
+        XCTAssertEqual(IntroLogoMotionSpec.shineStart, 1.18, accuracy: 0.001)
+        XCTAssertEqual(IntroLogoMotionSpec.shineDuration, 0.82, accuracy: 0.001)
+        XCTAssertEqual(IntroLogoMotionSpec.reduceMotionFadeDuration, 0.25, accuracy: 0.001)
+    }
 }
