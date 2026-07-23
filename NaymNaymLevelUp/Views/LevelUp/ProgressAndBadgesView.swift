@@ -156,7 +156,7 @@ struct ProgressAndBadgesView: View {
                 .font(.system(.title3, design: .rounded).weight(.bold))
                 .foregroundStyle(GrowthPalette.text)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
         }
         .accessibilityElement(children: .combine)
     }
@@ -228,10 +228,10 @@ struct ProgressAndBadgesView: View {
             }
 
             Text("Lv.\(level)")
-                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .font(AppTypography.supporting.weight(.bold))
                 .foregroundStyle(isCurrent ? GrowthPalette.orange : GrowthPalette.text)
             Text(GrowthCharacterAssets.stageTitle(for: level))
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                .font(AppTypography.supporting.weight(.semibold))
                 .foregroundStyle(isUnlocked ? GrowthPalette.text : GrowthPalette.muted)
                 .multilineTextAlignment(.center)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
@@ -239,7 +239,7 @@ struct ProgressAndBadgesView: View {
                 .frame(width: stageWidth - 4)
                 .frame(minHeight: 32, alignment: .top)
             Text(stageStatus(isCurrent: isCurrent, isUnlocked: isUnlocked))
-                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .font(AppTypography.supporting.weight(.bold))
                 .foregroundStyle(stageColor(isCurrent: isCurrent, isUnlocked: isUnlocked))
         }
         .frame(width: stageWidth)
@@ -402,7 +402,7 @@ struct ProgressAndBadgesView: View {
                 .foregroundStyle(GrowthPalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
             Label(isCurrent ? "현재 의상" : (isUnlocked ? "사용 가능" : "Lv.\(skin.levelRequired)에 열림"), systemImage: isUnlocked ? "checkmark" : "lock.fill")
-                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .font(AppTypography.supporting.weight(.bold))
                 .foregroundStyle(isCurrent ? GrowthPalette.orange : (isUnlocked ? GrowthPalette.forest : GrowthPalette.muted))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -443,7 +443,7 @@ struct ProgressAndBadgesView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Text(isUnlocked ? "획득 완료" : "아직 잠김")
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                .font(AppTypography.supporting.weight(.semibold))
                 .foregroundStyle(isUnlocked ? tint : GrowthPalette.muted)
         }
         .frame(maxWidth: .infinity)
@@ -532,7 +532,7 @@ struct ProgressAndBadgesView: View {
                     .font(.system(.headline, design: .rounded).weight(.bold))
                     .foregroundStyle(GrowthPalette.text)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                    .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
             }
             Spacer(minLength: 0)
         }
@@ -629,12 +629,12 @@ private enum GrowthTab: String, CaseIterable, Identifiable {
 
 private enum GrowthPalette {
     static let cream = Color(hex: "#FFF9EE")
-    static let forest = Color(hex: "#527A2D")
-    static let orange = Color(hex: "#E58A2E")
-    static let teal = Color(hex: "#1FA6A7")
-    static let text = Color(hex: "#3B3024")
-    static let muted = Color(hex: "#746B60")
-    static let safety = Color(hex: "#C84C4C")
+    static let forest = AppColors.primaryGreen
+    static let orange = AppColors.orange
+    static let teal = AppColors.infoBlue
+    static let text = AppColors.textDark
+    static let muted = AppColors.graySecondary
+    static let safety = AppColors.warningRed
     static let softForest = Color(hex: "#EDF4E7")
     static let softOrange = Color(hex: "#FFF0DF")
     static let softTeal = Color(hex: "#E5F5F3")

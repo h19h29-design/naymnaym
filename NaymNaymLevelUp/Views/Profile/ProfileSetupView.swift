@@ -20,6 +20,7 @@ struct ProfileSetupView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("별명을 입력해 주세요")
                             .font(AppTypography.title)
+                            .foregroundStyle(AppColors.textDark)
                         Text("이름은 필요 없어요.\n별명만 입력하면 시작할 수 있어요.\n기록은 내 아이폰에만 저장돼요.")
                             .font(AppTypography.body)
                             .foregroundStyle(AppColors.graySecondary)
@@ -27,6 +28,8 @@ struct ProfileSetupView: View {
                         TextField("예: 냠냠이", text: $nickname)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .foregroundStyle(AppColors.textDark)
+                            .tint(AppColors.primaryGreen)
                             .padding()
                             .background(Color.white)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -54,4 +57,3 @@ struct ProfileSetupView: View {
         }
     }
 }
-

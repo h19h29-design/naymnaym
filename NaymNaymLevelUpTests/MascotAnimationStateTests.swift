@@ -95,4 +95,41 @@ final class MascotAnimationStateTests: XCTestCase {
         )
         XCTAssertEqual(IntroLogoMotionSpec.reduceMotionFadeDuration, 0.25, accuracy: 0.001)
     }
+
+    func testReadabilityPolicyKeepsSupportingTextLegible() {
+        XCTAssertGreaterThanOrEqual(AppReadabilityPolicy.minimumSupportingPointSize, 13)
+        XCTAssertGreaterThanOrEqual(AppReadabilityPolicy.minimumTextScale, 0.90)
+    }
+
+    func testReadabilityPaletteMeetsNormalTextContrastOnLightSurfaces() {
+        let foregrounds = [
+            AppReadabilityPolicy.textPrimaryHex,
+            AppReadabilityPolicy.textSecondaryHex,
+            AppReadabilityPolicy.greenTextHex,
+            AppReadabilityPolicy.orangeTextHex,
+            AppReadabilityPolicy.successTextHex,
+            AppReadabilityPolicy.warningTextHex
+        ]
+        let backgrounds = ["#FFFFFF", "#FFF8E7"]
+
+        for foreground in foregrounds {
+            for background in backgrounds {
+                XCTAssertGreaterThanOrEqual(
+                    AppReadabilityPolicy.contrastRatio(foregroundHex: foreground, backgroundHex: background),
+                    4.5,
+                    "Expected \(foreground) to remain readable on \(background)"
+                )
+            }
+        }
+    }
+
+    func testPrimaryButtonGradientSupportsWhiteText() {
+        for background in AppReadabilityPolicy.primaryButtonGradientHexes {
+            XCTAssertGreaterThanOrEqual(
+                AppReadabilityPolicy.contrastRatio(foregroundHex: "#FFFFFF", backgroundHex: background),
+                4.5,
+                "Expected white button text to remain readable on \(background)"
+            )
+        }
+    }
 }

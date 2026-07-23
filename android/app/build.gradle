@@ -17,7 +17,7 @@ def quoteBuildConfig = { value ->
 
 android {
     namespace "com.h19h29.naymnaymlevelup"
-    compileSdk 35
+    compileSdk 36
 
     buildFeatures {
         buildConfig true
@@ -26,9 +26,9 @@ android {
     defaultConfig {
         applicationId "com.h19h29.naymnaymlevelup"
         minSdk 23
-        targetSdk 35
-        versionCode 5
-        versionName "1.0-android-test5"
+        targetSdk 36
+        versionCode 7
+        versionName "1.0-android-test7"
 
         buildConfigField "String", "NEIS_API_KEY", quoteBuildConfig(localProperties.getProperty("NEIS_API_KEY", ""))
         buildConfigField "String", "PARENT_SYNC_API_BASE_URL", quoteBuildConfig(localProperties.getProperty(

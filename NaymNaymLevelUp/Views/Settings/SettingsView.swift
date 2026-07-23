@@ -124,6 +124,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeBackdrop(theme: appState.currentTheme).ignoresSafeArea())
+            .tint(AppColors.orange)
             .navigationTitle("설정")
             .onAppear {
                 nickname = appState.profile?.nickname ?? ""
@@ -321,7 +322,7 @@ struct ParentConnectionGuideView: View {
                                 .font(AppTypography.headline)
                             Text(inviteCodeText)
                                 .font(.system(size: 28, weight: .heavy, design: .rounded))
-                                .minimumScaleFactor(0.55)
+                                .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)

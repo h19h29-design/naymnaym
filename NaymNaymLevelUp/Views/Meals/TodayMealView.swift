@@ -201,7 +201,7 @@ struct TodayMealView: View {
                     ForEach(meal.nutrition.summaryRows, id: \.0) { row in
                         VStack(spacing: 4) {
                             Text(row.0)
-                                .font(.caption2.weight(.semibold))
+                                .font(AppTypography.supporting.weight(.semibold))
                                 .foregroundStyle(AppColors.graySecondary)
                             Text(row.1)
                                 .font(.caption.weight(.bold))

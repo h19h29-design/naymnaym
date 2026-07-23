@@ -148,7 +148,7 @@ struct MealCalendarView: View {
                 VStack(spacing: 3) {
                     Text(periodTitle)
                         .font(AppTypography.headline)
-                        .minimumScaleFactor(0.75)
+                        .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
                         .lineLimit(1)
                     Button("오늘") {
                         displayedWeekStart = Calendar.current.startOfDay(for: Date())
@@ -303,7 +303,7 @@ private struct MealDayPreviewCard: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(isToday ? Color.white : AppColors.indigo)
                     Text(weekdayText)
-                        .font(.caption2.weight(.semibold))
+                        .font(AppTypography.supporting.weight(.semibold))
                         .foregroundStyle(isToday ? Color.white.opacity(0.9) : AppColors.graySecondary)
                 }
                 .frame(width: 50, height: 54)
@@ -318,7 +318,7 @@ private struct MealDayPreviewCard: View {
                         Spacer()
                         if meal?.isSample == true {
                             Text("체험")
-                                .font(.caption2.weight(.bold))
+                                .font(AppTypography.supporting.weight(.bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -379,19 +379,19 @@ private struct MealMonthDayCell: View {
             if let meal, !meal.menuItems.isEmpty {
                 ForEach(Array(meal.menuItems.prefix(2))) { item in
                     Text(item.name)
-                        .font(.caption2)
+                        .font(AppTypography.supporting)
                         .foregroundStyle(AppColors.textDark)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.65)
+                        .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
                 }
                 if meal.menuItems.count > 2 {
                     Text("+\(meal.menuItems.count - 2)개")
-                        .font(.caption2.weight(.bold))
+                        .font(AppTypography.supporting.weight(.bold))
                         .foregroundStyle(AppColors.indigo)
                 }
             } else {
                 Text("정보 없음")
-                    .font(.caption2)
+                    .font(AppTypography.supporting)
                     .foregroundStyle(AppColors.graySecondary)
                     .lineLimit(2)
             }
@@ -487,7 +487,7 @@ private struct MealCalendarDetailSheet: View {
                     ForEach(meal.nutrition.summaryRows, id: \.0) { row in
                         VStack(spacing: 3) {
                             Text(row.0)
-                                .font(.caption2.weight(.semibold))
+                                .font(AppTypography.supporting.weight(.semibold))
                                 .foregroundStyle(AppColors.graySecondary)
                             Text(row.1)
                                 .font(.caption.weight(.bold))
@@ -592,14 +592,14 @@ private struct MealDataStateBadge: View {
 
     var body: some View {
         Label(status.calendarTitle, systemImage: status.noticeIcon)
-            .font(.caption2.weight(.bold))
+            .font(AppTypography.supporting.weight(.bold))
             .foregroundStyle(status.noticeColor)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background(status.noticeColor.opacity(0.12))
             .clipShape(Capsule())
             .lineLimit(1)
-            .minimumScaleFactor(0.8)
+            .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
     }
 }
 

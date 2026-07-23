@@ -6,15 +6,15 @@
 
 - 앱 이름: 냠냠레벨업
 - 패키지명: `com.h19h29.naymnaymlevelup`
-- 버전: `1.0-android-test5`
-- versionCode: `5`
+- 버전: `1.0-android-test7`
+- versionCode: `7`
 - 카테고리: 교육
 - 가격: 무료
 - 광고 포함: 아니요
 - 인앱 상품/결제: 없음
-- 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
-- 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
-- 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
+- 개인정보 처리방침 URL: `https://nyam.h19h19.com/privacy.html`
+- 지원 URL: `https://nyam.h19h19.com/support.html`
+- 데이터 안전 안내 URL: `https://nyam.h19h19.com/data-safety.html`
 - Android 테스트 앱 권한: 인터넷 권한만 사용. 알림, 위치, 연락처, 카메라, 사진 권한은 요청하지 않음
 
 ## 앱 액세스

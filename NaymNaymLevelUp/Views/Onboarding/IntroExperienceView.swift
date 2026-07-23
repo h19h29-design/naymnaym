@@ -69,7 +69,7 @@ enum IntroMissionTextFactory {
                 title: "학교를 등록하면 시작할 수 있어요",
                 message: "학교를 선택하면 오늘 급식과 한 입 미션을 확인할 수 있어요.",
                 iconName: "building.columns.fill",
-                tintHex: "#7BC96F",
+                tintHex: AppReadabilityPolicy.greenTextHex,
                 primaryTitle: "오늘 급식 보러가기",
                 primarySubtitle: "학교 등록하고 시작",
                 mascotState: .wave
@@ -81,7 +81,7 @@ enum IntroMissionTextFactory {
                 title: "급식 확인 중",
                 message: "냠냠이가 오늘 급식을 살펴보고 있어요.",
                 iconName: "fork.knife",
-                tintHex: "#7BC96F"
+                tintHex: AppReadabilityPolicy.greenTextHex
             )
         }
 
@@ -90,7 +90,7 @@ enum IntroMissionTextFactory {
                 title: "체험 모드예요",
                 message: "실제 학교 급식이 아니라 샘플 데이터로 앱을 둘러보는 중이에요.",
                 iconName: "sparkles",
-                tintHex: "#8B5CF6",
+                tintHex: AppReadabilityPolicy.primaryButtonGradientHexes[0],
                 showsDemoBadge: true,
                 mascotState: .wave
             )
@@ -102,7 +102,7 @@ enum IntroMissionTextFactory {
                     title: "먼저 안전 확인",
                     message: "오늘 급식에 주의가 필요한 메뉴가 있어요. 한 입 도전보다 먼저 확인해요!",
                     iconName: "shield.lefthalf.filled",
-                    tintHex: "#EF4444",
+                    tintHex: AppReadabilityPolicy.warningTextHex,
                     mascotState: .allergyWarning
                 )
             }
@@ -112,7 +112,7 @@ enum IntroMissionTextFactory {
                     title: "오늘의 한 입 미션",
                     message: "오늘은 \(candidate.name) 한 입 도전이 추천돼요!",
                     iconName: "star.fill",
-                    tintHex: "#FF9F43",
+                    tintHex: AppReadabilityPolicy.orangeTextHex,
                     mascotState: .wave
                 )
             }
@@ -124,7 +124,7 @@ enum IntroMissionTextFactory {
                 title: "급식 정보를 불러오지 못했어요",
                 message: "API 키, 학교 설정, 네트워크 상태를 확인해 주세요.",
                 iconName: "key.fill",
-                tintHex: "#EF4444",
+                tintHex: AppReadabilityPolicy.warningTextHex,
                 primaryTitle: "설정 확인하기",
                 primarySubtitle: "API 키와 학교 설정 확인"
             )
@@ -133,7 +133,7 @@ enum IntroMissionTextFactory {
                 title: "급식 정보를 불러오지 못했어요",
                 message: "API 키, 학교 설정, 네트워크 상태를 확인해 주세요.",
                 iconName: "exclamationmark.triangle.fill",
-                tintHex: "#EF4444",
+                tintHex: AppReadabilityPolicy.warningTextHex,
                 primaryTitle: "설정 확인하기",
                 primarySubtitle: "API 키와 학교 설정 확인"
             )
@@ -142,7 +142,7 @@ enum IntroMissionTextFactory {
                 title: "급식 정보를 불러오지 못했어요",
                 message: "API 키, 학교 설정, 네트워크 상태를 확인해 주세요.",
                 iconName: "building.columns.fill",
-                tintHex: "#EF4444",
+                tintHex: AppReadabilityPolicy.warningTextHex,
                 primaryTitle: "설정 확인하기",
                 primarySubtitle: "실제 학교 설정 확인"
             )
@@ -151,7 +151,7 @@ enum IntroMissionTextFactory {
                 title: "체험 모드예요",
                 message: "실제 학교 급식이 아니라 샘플 데이터로 앱을 둘러보는 중이에요.",
                 iconName: "sparkles",
-                tintHex: "#8B5CF6",
+                tintHex: AppReadabilityPolicy.primaryButtonGradientHexes[0],
                 showsDemoBadge: true,
                 mascotState: .wave
             )
@@ -160,14 +160,14 @@ enum IntroMissionTextFactory {
                 title: "오늘은 급식 정보가 없어요",
                 message: "방학, 재량휴업일, 급식 미운영일일 수 있어요.",
                 iconName: "calendar.badge.exclamationmark",
-                tintHex: "#7BC96F"
+                tintHex: AppReadabilityPolicy.greenTextHex
             )
         case .live:
             return IntroMission(
                 title: "오늘도 천천히",
                 message: "어려운 음식이 있어도 괜찮아요. 한 단계씩 해봐요!",
                 iconName: "leaf.fill",
-                tintHex: "#7BC96F"
+                tintHex: AppReadabilityPolicy.greenTextHex
             )
         }
     }
@@ -250,12 +250,16 @@ struct IntroExperienceView: View {
                         .padding(.top, isCompactHeight(proxy.size.height) ? 8 : 18)
 
                     Text("편식을 혼내지 않고, 한 입 도전으로 바꾸는 급식 코칭 앱")
-                        .font(.system(isSmallHeight(proxy.size.height) ? .caption : .subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(style.text.opacity(0.75))
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(style.text)
                         .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.78)
-                        .padding(.horizontal, 8)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.white.opacity(0.90))
+                        )
 
                     ZStack {
                         ParticleField(isMoving: particlesAreMoving, compact: isCompactHeight(proxy.size.height))
@@ -460,7 +464,7 @@ private struct IntroStyle {
 
     var buttonGradient: LinearGradient {
         LinearGradient(
-            colors: [purple, Color(hex: "#B455FF")],
+            colors: AppReadabilityPolicy.primaryButtonGradientHexes.map(Color.init(hex:)),
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -645,7 +649,7 @@ private struct MissionCard: View {
         VStack(spacing: compact ? 7 : 10) {
             if mission.showsDemoBadge {
                 Text("체험 모드")
-                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .font(.system(.footnote, design: .rounded).weight(.heavy))
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -667,8 +671,6 @@ private struct MissionCard: View {
                 .font(.system(compact ? .headline : .title3, design: .rounded).weight(.heavy))
                 .foregroundStyle(style.text)
                 .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .minimumScaleFactor(0.74)
                 .fixedSize(horizontal: false, vertical: true)
 
             if kind == .daily {
@@ -676,10 +678,10 @@ private struct MissionCard: View {
                     .tint(style.primary)
                     .padding(.top, 2)
                 Text(progressText)
-                    .font(AppTypography.caption.weight(.semibold))
-                    .foregroundStyle(style.text.opacity(0.62))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .font(AppTypography.supporting.weight(.semibold))
+                    .foregroundStyle(AppColors.graySecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 18)
@@ -698,6 +700,8 @@ private struct MissionCard: View {
 }
 
 private struct ActionButtonStack: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var primaryTitle: String
     var primarySubtitle: String
     var style: IntroStyle
@@ -720,31 +724,46 @@ private struct ActionButtonStack: View {
                 action: onPrimary
             )
 
-            HStack(spacing: 10) {
-                IntroActionButton(
-                    title: "체험 모드",
-                    subtitle: "샘플로 살펴보기",
-                    systemImage: "sparkles",
-                    style: style,
-                    prominence: .secondary,
-                    compact: compact,
-                    isDisabled: !isReady,
-                    action: onDemo
-                )
-                IntroActionButton(
-                    title: "보호자 모드",
-                    subtitle: "아이 연결하기",
-                    systemImage: "person.2.fill",
-                    style: style,
-                    prominence: .secondary,
-                    compact: compact,
-                    isDisabled: !isReady,
-                    action: onParent
-                )
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    demoButton
+                    parentButton
+                }
+            } else {
+                HStack(spacing: 10) {
+                    demoButton
+                    parentButton
+                }
             }
         }
         .opacity(isReady ? 1 : 0.52)
         .animation(.easeOut(duration: 0.28), value: isReady)
+    }
+
+    private var demoButton: some View {
+        IntroActionButton(
+            title: "체험 모드",
+            subtitle: "샘플로 살펴보기",
+            systemImage: "sparkles",
+            style: style,
+            prominence: .secondary,
+            compact: compact,
+            isDisabled: !isReady,
+            action: onDemo
+        )
+    }
+
+    private var parentButton: some View {
+        IntroActionButton(
+            title: "보호자 모드",
+            subtitle: "아이 연결하기",
+            systemImage: "person.2.fill",
+            style: style,
+            prominence: .secondary,
+            compact: compact,
+            isDisabled: !isReady,
+            action: onParent
+        )
     }
 }
 
@@ -773,13 +792,11 @@ private struct IntroActionButton: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.system(prominence == .primary ? .headline : .subheadline, design: .rounded).weight(.heavy))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
-                        .font(.system(.caption2, design: .rounded).weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.68)
-                        .opacity(0.82)
+                        .font(.system(.footnote, design: .rounded).weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(0.92)
                 }
                 Spacer(minLength: 0)
             }
@@ -823,23 +840,37 @@ private struct IntroActionButton: View {
 
     private var buttonHeight: CGFloat {
         if compact {
-            return prominence == .primary ? 56 : 46
+            return prominence == .primary ? 60 : 54
         }
-        return prominence == .primary ? 62 : 52
+        return prominence == .primary ? 66 : 58
     }
 }
 
 private struct FeatureStrip: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var style: IntroStyle
     var compact: Bool
 
     var body: some View {
-        HStack(spacing: 0) {
-            FeaturePill(assetName: "icon_one_bite", title: "한 입 도전", message: "작은 한 입이 변화를 만들어요", compact: compact)
-            Divider().frame(height: compact ? 34 : 42)
-            FeaturePill(assetName: "icon_growth_report", title: "성장 리포트", message: "나만의 성장을 확인해요", compact: compact)
-            Divider().frame(height: compact ? 34 : 42)
-            FeaturePill(assetName: "icon_reward", title: "응원과 보상", message: "도전할수록 레벨업", compact: compact)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    FeaturePill(assetName: "icon_one_bite", title: "한 입 도전", message: "작은 한 입이 변화를 만들어요", compact: compact, horizontal: true)
+                    Divider()
+                    FeaturePill(assetName: "icon_growth_report", title: "성장 리포트", message: "나만의 성장을 확인해요", compact: compact, horizontal: true)
+                    Divider()
+                    FeaturePill(assetName: "icon_reward", title: "응원과 보상", message: "도전할수록 레벨업", compact: compact, horizontal: true)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    FeaturePill(assetName: "icon_one_bite", title: "한 입 도전", message: "작은 한 입이 변화를 만들어요", compact: compact)
+                    Divider().frame(height: compact ? 52 : 60)
+                    FeaturePill(assetName: "icon_growth_report", title: "성장 리포트", message: "나만의 성장을 확인해요", compact: compact)
+                    Divider().frame(height: compact ? 52 : 60)
+                    FeaturePill(assetName: "icon_reward", title: "응원과 보상", message: "도전할수록 레벨업", compact: compact)
+                }
+            }
         }
         .padding(.vertical, compact ? 8 : 12)
         .padding(.horizontal, 8)
@@ -860,9 +891,29 @@ private struct FeaturePill: View {
     var title: String
     var message: String
     var compact: Bool
+    var horizontal = false
 
     var body: some View {
-        VStack(spacing: compact ? 3 : 5) {
+        Group {
+            if horizontal {
+                HStack(spacing: 12) {
+                    icon
+                    copy
+                    Spacer(minLength: 0)
+                }
+            } else {
+                VStack(spacing: compact ? 4 : 6) {
+                    icon
+                    copy
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        Group {
             if AssetCatalog.hasImage(assetName) {
                 Image(assetName)
                     .resizable()
@@ -872,20 +923,23 @@ private struct FeaturePill: View {
                 RequiredAssetPlaceholder(assetName: assetName, recommendedSize: "256x256 PNG")
                     .frame(width: compact ? 32 : 38, height: compact ? 32 : 38)
             }
-
-            Text(title)
-                .font(.system(.caption, design: .rounded).weight(.heavy))
-                .foregroundStyle(AppColors.textDark)
-                .lineLimit(1)
-                .minimumScaleFactor(0.68)
-            Text(message)
-                .font(.system(size: compact ? 8.4 : 9.4, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppColors.graySecondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.70)
         }
-        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
+    }
+
+    private var copy: some View {
+        VStack(alignment: horizontal ? .leading : .center, spacing: 2) {
+            Text(title)
+                .font(.system(.footnote, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppColors.textDark)
+                .multilineTextAlignment(horizontal ? .leading : .center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(message)
+                .font(.system(.footnote, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppColors.graySecondary)
+                .multilineTextAlignment(horizontal ? .leading : .center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -1165,11 +1219,11 @@ private struct RequiredAssetPlaceholder: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 22, weight: .semibold))
             Text(assetName)
-                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .font(.system(.footnote, design: .rounded).weight(.heavy))
                 .lineLimit(1)
-                .minimumScaleFactor(0.65)
+                .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
             Text(recommendedSize)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.system(.footnote, design: .rounded).weight(.semibold))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
         }

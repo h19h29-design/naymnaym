@@ -37,7 +37,7 @@ struct ParentConnectionStatusView: View {
                     .font(state == .connected ? .title2.weight(.bold) : .caption.weight(.bold))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(message)
-                        .font(state == .connected ? AppTypography.headline : .caption.weight(.semibold))
+                        .font(state == .connected ? AppTypography.headline : AppTypography.supporting.weight(.semibold))
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                     if state == .connected {
@@ -87,11 +87,11 @@ struct ParentConnectionStatusView: View {
     private var tint: Color {
         switch state {
         case .notLinked:
-            return Color(hex: "#E58A2E")
+            return AppColors.orange
         case .invitePending:
-            return Color(hex: "#1FA6A7")
+            return AppColors.infoBlue
         case .connected:
-            return Color(hex: "#527A2D")
+            return AppColors.primaryGreen
         case .syncError:
             return AppColors.warningRed
         }

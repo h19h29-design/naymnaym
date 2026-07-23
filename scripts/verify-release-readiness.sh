@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-27}"
+RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-29}"
 RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${RELEASE_BUILD_NUMBER}-signed-upload.log}"
 RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${RELEASE_BUILD_NUMBER}Signed}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
@@ -276,7 +276,7 @@ ruby -rjson -e '
   abort "wrong bundle id" unless data.dig("appInfo", "bundleId") == "com.h19h29.naymnaymlevelup"
   abort "wrong version" unless data.dig("appInfo", "version") == "1.0"
   abort "wrong build" unless data.dig("appInfo", "build") == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
-  abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://h19h29-design.github.io/naymnaym/privacy.html"
+  abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://nyam.h19h19.com/privacy.html"
   data_types = data.dig("appPrivacy", "dataTypes") || []
   required = ["Other User Content", "Health and Fitness", "User ID"]
   required.each do |name|
@@ -373,8 +373,8 @@ require_pattern "THIRD_PARTY_NOTICES.md" "lottie-ios" "Third-party notices inclu
 require_pattern "THIRD_PARTY_NOTICES.md" "Apache License 2\\.0" "Third-party notices include lottie-ios license"
 require_pattern "THIRD_PARTY_NOTICES.md" "first-party Lottie JSON" "Third-party notices identify bundled mascot JSON as first-party"
 require_pattern "NaymNaymLevelUp/Resources/Animations/README.md" "mascot_idle_loop\\.json" "Animation README documents idle loop JSON"
-require_pattern "android/app/build.gradle" "versionCode 5" "Android versionCode is bumped for Play test upload"
-require_pattern "android/app/build.gradle" "versionName \"1\\.0-android-test5\"" "Android versionName is updated for Play test upload"
+require_pattern "android/app/build.gradle" "versionCode 7" "Android versionCode is bumped for Play test upload"
+require_pattern "android/app/build.gradle" "versionName \"1\\.0-android-test7\"" "Android versionName is updated for Play test upload"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "개인정보 · 지원 · 데이터 관리" "Android app exposes privacy, support, and data management"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" 'disabledButton\("한입도전 잠금"\)' "Android allergy items lock one-bite challenge"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "sharePhotos\", false" "Android parent sharing excludes photos"
@@ -490,18 +490,18 @@ do
 done
 
 for url in \
-  "https://h19h29-design.github.io/naymnaym/" \
-  "https://h19h29-design.github.io/naymnaym/privacy.html" \
-  "https://h19h29-design.github.io/naymnaym/support.html" \
-  "https://h19h29-design.github.io/naymnaym/data-safety.html"
+  "https://nyam.h19h19.com/" \
+  "https://nyam.h19h19.com/privacy.html" \
+  "https://nyam.h19h19.com/support.html" \
+  "https://nyam.h19h19.com/data-safety.html"
 do
   check_url "$url"
 done
 
-require_url_pattern "https://h19h29-design.github.io/naymnaym/" "무료 급식 식습관 코칭 앱" "Published landing page shows release-ready app badge"
-require_url_pattern "https://h19h29-design.github.io/naymnaym/" "데이터와 안전 기준" "Published landing page shows data and safety section"
-require_url_absent_pattern "https://h19h29-design.github.io/naymnaym/" "준비중|처리 확인 중|제출 전 검토|출시 준비 상태" "Published landing page has no temporary release-status copy"
-require_url_pattern "https://h19h29-design.github.io/naymnaym/support.html" "앱에서" "Published support page uses polished app copy"
-require_url_absent_pattern "https://h19h29-design.github.io/naymnaym/support.html" "아이 폰|준비중|처리 확인 중" "Published support page has no stale temporary copy"
+require_url_pattern "https://nyam.h19h19.com/" "무료 급식 식습관 코칭 앱" "Published landing page shows release-ready app badge"
+require_url_pattern "https://nyam.h19h19.com/" "데이터와 안전 기준" "Published landing page shows data and safety section"
+require_url_absent_pattern "https://nyam.h19h19.com/" "준비중|처리 확인 중|제출 전 검토|출시 준비 상태" "Published landing page has no temporary release-status copy"
+require_url_pattern "https://nyam.h19h19.com/support.html" "앱에서" "Published support page uses polished app copy"
+require_url_absent_pattern "https://nyam.h19h19.com/support.html" "아이 폰|준비중|처리 확인 중" "Published support page has no stale temporary copy"
 
 pass "release readiness checks completed"

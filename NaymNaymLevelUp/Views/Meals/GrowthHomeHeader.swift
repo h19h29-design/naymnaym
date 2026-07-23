@@ -343,7 +343,7 @@ struct GrowthHomeHeader: View {
                 ProgressView(value: progress.expProgress)
                     .tint(Palette.orange)
                 Text(progress.nextLevelText)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppTypography.supporting.weight(.semibold))
                     .foregroundStyle(Palette.forest)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -381,14 +381,14 @@ struct GrowthHomeHeader: View {
     private var missionContent: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("오늘의 한 입 미션")
-                .font(.caption.weight(.bold))
+                .font(AppTypography.supporting.weight(.bold))
                 .foregroundStyle(Palette.teal)
             Text(mission.title)
                 .font(.system(.subheadline, design: .rounded).weight(.bold))
                 .foregroundStyle(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
             Text("\(mission.progressText) · \(mission.detail)")
-                .font(.caption2)
+                .font(AppTypography.supporting)
                 .foregroundStyle(Palette.forest)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -404,7 +404,7 @@ struct GrowthHomeHeader: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(color)
             Text(label)
-                .font(.caption2)
+                .font(AppTypography.supporting)
                 .foregroundStyle(Palette.text.opacity(0.72))
         }
     }
@@ -419,8 +419,8 @@ struct GrowthHomeHeader: View {
 
 private enum Palette {
     static let cream = Color(hex: "#FFF9EE")
-    static let forest = Color(hex: "#527A2D")
-    static let orange = Color(hex: "#E58A2E")
-    static let teal = Color(hex: "#1FA6A7")
-    static let text = Color(hex: "#3B3024")
+    static let forest = AppColors.primaryGreen
+    static let orange = AppColors.orange
+    static let teal = AppColors.infoBlue
+    static let text = AppColors.textDark
 }

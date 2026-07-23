@@ -1,28 +1,64 @@
 import SwiftUI
 
+enum AppReadabilityPolicy {
+    static let minimumSupportingPointSize: CGFloat = 13
+    static let minimumTextScale: CGFloat = 0.90
+
+    static let textPrimaryHex = "#1F2937"
+    static let textSecondaryHex = "#4B5563"
+    static let greenTextHex = "#2F6B2A"
+    static let orangeTextHex = "#9A3F00"
+    static let successTextHex = "#1F7A34"
+    static let warningTextHex = "#B4232A"
+    static let primaryButtonGradientHexes = ["#633CD4", "#2552B8", "#14647A"]
+
+    static func contrastRatio(foregroundHex: String, backgroundHex: String) -> Double {
+        let foreground = relativeLuminance(hex: foregroundHex)
+        let background = relativeLuminance(hex: backgroundHex)
+        let lighter = max(foreground, background)
+        let darker = min(foreground, background)
+        return (lighter + 0.05) / (darker + 0.05)
+    }
+
+    private static func relativeLuminance(hex: String) -> Double {
+        let raw = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        guard raw.count == 6, let value = UInt64(raw, radix: 16) else { return 0 }
+        let red = Double((value >> 16) & 0xFF) / 255
+        let green = Double((value >> 8) & 0xFF) / 255
+        let blue = Double(value & 0xFF) / 255
+        return 0.2126 * linearized(red) + 0.7152 * linearized(green) + 0.0722 * linearized(blue)
+    }
+
+    private static func linearized(_ component: Double) -> Double {
+        component <= 0.04045
+            ? component / 12.92
+            : pow((component + 0.055) / 1.055, 2.4)
+    }
+}
+
 enum AppColors {
     static let mint = Color(hex: "#7BC96F")
     static let lime = Color(hex: "#B7E66E")
     static let yellow = Color(hex: "#FFD966")
     static let coral = Color(hex: "#FF6B6B")
     static let pink = Color(hex: "#F78FB3")
-    static let purple = Color(hex: "#7C5CFF")
+    static let purple = Color(hex: AppReadabilityPolicy.primaryButtonGradientHexes[0])
     static let indigo = Color(hex: "#3F51B5")
-    static let sky = Color(hex: "#65B7D4")
-    static let blue = Color(hex: "#3F6AE6")
+    static let sky = Color(hex: AppReadabilityPolicy.primaryButtonGradientHexes[2])
+    static let blue = Color(hex: AppReadabilityPolicy.primaryButtonGradientHexes[1])
     static let navy = Color(hex: "#10172A")
     static let cream = Color(hex: "#FFF8E7")
     static let lavender = Color(hex: "#F3E8FF")
     static let cardWhite = Color(hex: "#FFFFFF")
-    static let warningRed = Color(hex: "#E5484D")
-    static let successGreen = Color(hex: "#2FB344")
-    static let infoBlue = Color(hex: "#3F6AE6")
-    static let primaryGreen = Color(hex: "#7BC96F")
+    static let warningRed = Color(hex: AppReadabilityPolicy.warningTextHex)
+    static let successGreen = Color(hex: AppReadabilityPolicy.successTextHex)
+    static let infoBlue = Color(hex: AppReadabilityPolicy.primaryButtonGradientHexes[1])
+    static let primaryGreen = Color(hex: AppReadabilityPolicy.greenTextHex)
     static let softYellow = Color(hex: "#FFD966")
-    static let orange = Color(hex: "#FF9F43")
+    static let orange = Color(hex: AppReadabilityPolicy.orangeTextHex)
     static let creamBackground = Color(hex: "#FFF8E7")
-    static let textDark = Color(hex: "#263126")
-    static let graySecondary = Color(hex: "#6B7280")
+    static let textDark = Color(hex: AppReadabilityPolicy.textPrimaryHex)
+    static let graySecondary = Color(hex: AppReadabilityPolicy.textSecondaryHex)
     static let cardStroke = Color.black.opacity(0.07)
 }
 
@@ -48,7 +84,8 @@ enum AppTypography {
     static let title = Font.system(.title2, design: .rounded).weight(.bold)
     static let headline = Font.system(.headline, design: .rounded).weight(.semibold)
     static let body = Font.system(.body, design: .rounded)
-    static let caption = Font.system(.caption, design: .rounded)
+    static let supporting = Font.system(.footnote, design: .rounded)
+    static let caption = supporting
 }
 
 struct RoundedCard<Content: View>: View {
@@ -95,7 +132,7 @@ struct PrimaryButton: View {
                 Text(title)
                     .font(.system(.headline, design: .rounded).weight(.bold))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
             } icon: {
                 if let systemImage {
                     Image(systemName: systemImage)
@@ -141,7 +178,7 @@ struct SecondaryButton: View {
                 Text(title)
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
             } icon: {
                 if let systemImage {
                     Image(systemName: systemImage)
@@ -205,11 +242,11 @@ struct BadgeView: View {
                     .foregroundStyle(isLocked ? AppColors.graySecondary : badgeColor)
             }
             Text(name)
-                .font(.caption2.weight(.semibold))
+                .font(AppTypography.supporting.weight(.semibold))
                 .foregroundStyle(isLocked ? AppColors.graySecondary : AppColors.textDark)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
                 .frame(minHeight: 28)
         }
         .frame(maxWidth: .infinity)
@@ -243,7 +280,7 @@ struct AllergyChip: View {
         Text(AllergyMap.label(for: code))
             .font(.caption.weight(.semibold))
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
+            .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .foregroundStyle(isSelected ? Color.white : AppColors.textDark)
@@ -479,10 +516,10 @@ struct CalendarDayCell: View {
                 .background(isToday ? AppColors.purple : Color.clear)
                 .clipShape(Circle())
             Text(meal?.representativeMenu ?? "정보 없음")
-                .font(.caption2)
+                .font(AppTypography.supporting)
                 .foregroundStyle(meal == nil ? AppColors.graySecondary : AppColors.textDark)
                 .lineLimit(3)
-                .minimumScaleFactor(0.65)
+                .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }

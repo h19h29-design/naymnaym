@@ -348,7 +348,7 @@ struct ParentSummaryView: View {
                     .foregroundStyle(AppColors.textDark)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("NEIS 공공데이터로 조회한 실제 급식 메뉴예요.")
-                    .font(.caption2)
+                    .font(AppTypography.supporting)
                     .foregroundStyle(AppColors.graySecondary)
             } else {
                 Text(appState.parentChildMealMessages[child.id] ?? "급식 메뉴를 불러오는 중이에요.")
@@ -374,7 +374,7 @@ struct ParentSummaryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Text("자유 채팅 없이 정해진 칭찬 카드만 사용합니다.")
-                    .font(.caption2)
+                    .font(AppTypography.supporting)
                     .foregroundStyle(AppColors.graySecondary)
             }
         }
@@ -402,7 +402,7 @@ struct ParentSummaryView: View {
     private func summaryPill(title: String, value: String, color: Color) -> some View {
         VStack(spacing: 3) {
             Text(title)
-                .font(.caption2.weight(.semibold))
+                .font(AppTypography.supporting.weight(.semibold))
                 .foregroundStyle(AppColors.graySecondary)
             Text(value)
                 .font(.caption.weight(.bold))

@@ -56,7 +56,7 @@ struct RootView: View {
                     }
             }
         }
-        .tint(Color(hex: appState.currentTheme.primaryColorHex))
+        .tint(AppColors.primaryGreen)
         .onOpenURL { url in
             Task {
                 await handleOpenURL(url)

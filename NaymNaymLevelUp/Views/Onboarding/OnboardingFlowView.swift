@@ -25,6 +25,9 @@ struct OnboardingFlowView: View {
                 .toolbar(step == .intro ? .hidden : .visible, for: .navigationBar)
                 .pageBackground()
         }
+        // Onboarding uses a fixed light palette. Following the device dark mode
+        // made inherited text colors disappear against the white setup cards.
+        .preferredColorScheme(.light)
     }
 
     @ViewBuilder
@@ -139,6 +142,7 @@ private struct ModeCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(mode.title) 모드")
                         .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textDark)
                     Text(description)
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColors.graySecondary)

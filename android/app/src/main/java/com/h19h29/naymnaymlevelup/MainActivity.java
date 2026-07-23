@@ -72,14 +72,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final int GREEN = Color.rgb(99, 184, 77);
-    private static final int DARK_GREEN = Color.rgb(35, 128, 54);
-    private static final int ORANGE = Color.rgb(255, 148, 42);
-    private static final int CREAM = Color.rgb(255, 249, 232);
-    private static final int MINT = Color.rgb(236, 248, 219);
-    private static final int TEXT = Color.rgb(45, 38, 30);
-    private static final int MUTED = Color.rgb(112, 107, 97);
-    private static final int WARNING = Color.rgb(230, 73, 58);
+    private static final int GREEN = ReadableColorPalette.GREEN;
+    private static final int DARK_GREEN = ReadableColorPalette.DARK_GREEN;
+    private static final int ORANGE = ReadableColorPalette.ORANGE;
+    private static final int CREAM = ReadableColorPalette.CREAM;
+    private static final int MINT = ReadableColorPalette.MINT;
+    private static final int TEXT = ReadableColorPalette.TEXT;
+    private static final int MUTED = ReadableColorPalette.MUTED;
+    private static final int WARNING = ReadableColorPalette.WARNING;
     private static final String PRIVACY_URL = "https://nyam.h19h19.com/privacy.html";
     private static final String SUPPORT_URL = "https://nyam.h19h19.com/support.html";
     private static final String DATA_SAFETY_URL = "https://nyam.h19h19.com/data-safety.html";
@@ -195,7 +195,12 @@ public class MainActivity extends Activity {
         scrollView.setBackgroundColor(CREAM);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(18), dp(18), dp(18), dp(28));
+        content.setPadding(
+            dp(18),
+            dp(ReadableColorPalette.HOME_CONTENT_TOP_INSET_DP),
+            dp(18),
+            dp(28)
+        );
         scrollView.addView(content);
         setContentView(scrollView);
 
@@ -535,7 +540,12 @@ public class MainActivity extends Activity {
         for (School school : schools) {
             LinearLayout box = cardContainer();
             box.addView(text(school.name, 19, TEXT, Typeface.BOLD));
-            box.addView(text(school.region + " · " + school.schoolType + "\n" + school.address, 13, MUTED, Typeface.NORMAL));
+            box.addView(text(
+                school.region + " · " + school.schoolType + "\n" + school.address,
+                ReadableColorPalette.MIN_SUPPORTING_TEXT_SP,
+                MUTED,
+                Typeface.NORMAL
+            ));
             box.addView(primaryButton("이 학교 등록", v -> {
                 selectedSchool = school;
                 demoMode = false;
@@ -630,7 +640,12 @@ public class MainActivity extends Activity {
     private void renderMeal(MealDay meal, String status) {
         resetContent("오늘 급식");
         setStatus(status);
-        TextView badge = text(meal.demo ? "체험 모드" : "LIVE", 13, meal.demo ? ORANGE : DARK_GREEN, Typeface.BOLD);
+        TextView badge = text(
+            meal.demo ? "체험 모드" : "LIVE",
+            ReadableColorPalette.MIN_SUPPORTING_TEXT_SP,
+            meal.demo ? ORANGE : DARK_GREEN,
+            Typeface.BOLD
+        );
         badge.setGravity(Gravity.CENTER);
         content.addView(badge);
         content.addView(card(meal.schoolName, "칼로리: " + safe(meal.calorie) + "\n영양: " + safe(meal.nutrition), false));
@@ -639,7 +654,12 @@ public class MainActivity extends Activity {
             LinearLayout box = cardContainer();
             boolean warning = hasAllergyMarker(menu);
             box.addView(text(cleanMenu(menu), 20, warning ? WARNING : TEXT, Typeface.BOLD));
-            box.addView(text(warning ? "알레르기 번호가 있는 메뉴예요. 학교 안내와 보호자 판단이 먼저예요." : nutritionMotivation(cleanMenu(menu)), 13, warning ? WARNING : MUTED, Typeface.NORMAL));
+            box.addView(text(
+                warning ? "알레르기 번호가 있는 메뉴예요. 학교 안내와 보호자 판단이 먼저예요." : nutritionMotivation(cleanMenu(menu)),
+                ReadableColorPalette.MIN_SUPPORTING_TEXT_SP,
+                warning ? WARNING : MUTED,
+                Typeface.NORMAL
+            ));
             if (warning) {
                 box.addView(disabledButton("한입도전 잠금"));
             } else {
