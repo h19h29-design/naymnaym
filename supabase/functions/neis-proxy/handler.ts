@@ -6,6 +6,8 @@ import { normalizeMealRows, normalizeSchoolRows } from './neis-normalizer.ts';
 import type { RawMealRow, RawSchoolRow } from './neis-normalizer.ts';
 
 const MAX_BODY_BYTES = 4096;
+const MAX_UPSTREAM_BODY_BYTES = 1024 * 1024;
+const UPSTREAM_TIMEOUT_MS = 1800;
 const OFFICE_CODE = /^[A-Z][0-9]{2}$/;
 const SCHOOL_CODE = /^[0-9]{7}$/;
 const DATE = /^[0-9]{8}$/;
@@ -16,6 +18,7 @@ export interface HandlerDeps {
   neisApiKey: string;
   fetch: typeof fetch;
   log?: (message: string) => void;
+  createTimeoutSignal?: (milliseconds: number) => AbortSignal;
 }
 
 function isRealDate(value: string): boolean {
@@ -38,6 +41,39 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   const actual = Object.keys(value).sort();
   return actual.length === expected.length &&
     actual.every((key, index) => key === expected[index]);
+}
+
+async function readLimitedBytes(
+  stream: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<Uint8Array | null> {
+  if (stream === null) return new Uint8Array();
+
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        void reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 function validateRequest(value: unknown): ProxyRequest | null {
@@ -145,20 +181,21 @@ function neisUrl(request: ProxyRequest, apiKey: string): URL {
   return url;
 }
 
-function resultCode(value: unknown, resource: string): string | null {
-  if (!isObject(value)) return null;
+function resultCodes(value: unknown, resource: string): string[] {
+  if (!isObject(value)) return [];
+  const codes: string[] = [];
 
   if (
     isObject(value.RESULT) &&
     typeof value.RESULT.CODE === 'string'
   ) {
-    return value.RESULT.CODE;
+    codes.push(value.RESULT.CODE);
   }
 
   const group = value[resource];
-  if (!Array.isArray(group) || !isObject(group[0])) return null;
+  if (!Array.isArray(group) || !isObject(group[0])) return codes;
   const head = group[0].head;
-  if (!Array.isArray(head)) return null;
+  if (!Array.isArray(head)) return codes;
 
   for (const entry of head) {
     if (
@@ -166,10 +203,10 @@ function resultCode(value: unknown, resource: string): string | null {
       isObject(entry.RESULT) &&
       typeof entry.RESULT.CODE === 'string'
     ) {
-      return entry.RESULT.CODE;
+      codes.push(entry.RESULT.CODE);
     }
   }
-  return null;
+  return codes;
 }
 
 function resourceRows(
@@ -240,12 +277,14 @@ export function createHandler(deps: HandlerDeps) {
 
       if (request.method !== 'POST') {
         status = 405;
-        return error(
+        const response = error(
           origin,
           status,
           'BAD_REQUEST',
           'POST 요청만 사용할 수 있어요.',
         );
+        response.headers.set('allow', 'POST, OPTIONS');
+        return response;
       }
 
       const advertised = Number(
@@ -264,8 +303,11 @@ export function createHandler(deps: HandlerDeps) {
         );
       }
 
-      const raw = await request.text();
-      if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+      const requestBytes = await readLimitedBytes(
+        request.body,
+        MAX_BODY_BYTES,
+      );
+      if (requestBytes === null) {
         status = 413;
         return error(
           origin,
@@ -277,6 +319,9 @@ export function createHandler(deps: HandlerDeps) {
 
       let decoded: unknown;
       try {
+        const raw = new TextDecoder('utf-8', { fatal: true }).decode(
+          requestBytes,
+        );
         decoded = JSON.parse(raw);
       } catch {
         status = 400;
@@ -300,9 +345,16 @@ export function createHandler(deps: HandlerDeps) {
       }
       action = parsed.action;
 
+      const timeoutSignal = (deps.createTimeoutSignal ??
+        ((milliseconds: number) => AbortSignal.timeout(milliseconds)))(
+          UPSTREAM_TIMEOUT_MS,
+        );
       const upstream = await deps.fetch(
         neisUrl(parsed, deps.neisApiKey),
-        { headers: { accept: 'application/json' } },
+        {
+          headers: { accept: 'application/json' },
+          signal: timeoutSignal,
+        },
       );
       if (upstream.status === 429) {
         status = 429;
@@ -323,12 +375,46 @@ export function createHandler(deps: HandlerDeps) {
         );
       }
 
-      const upstreamJson: unknown = await upstream.json();
+      const upstreamBytes = await readLimitedBytes(
+        upstream.body,
+        MAX_UPSTREAM_BODY_BYTES,
+      );
+      if (upstreamBytes === null) {
+        status = 502;
+        return error(
+          origin,
+          status,
+          'UPSTREAM_ERROR',
+          '급식 정보를 불러오지 못했어요.',
+        );
+      }
+      const upstreamJson: unknown = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(upstreamBytes),
+      );
       const resource = parsed.action === 'searchSchools'
         ? 'schoolInfo'
         : 'mealServiceDietInfo';
-      const code = resultCode(upstreamJson, resource);
+      const codes = [...new Set(resultCodes(upstreamJson, resource))];
+      if (codes.length !== 1) {
+        status = 502;
+        return error(
+          origin,
+          status,
+          'UPSTREAM_ERROR',
+          '급식 정보를 불러오지 못했어요.',
+        );
+      }
+      const [code] = codes;
 
+      if (code === 'INFO-300') {
+        status = 429;
+        return error(
+          origin,
+          status,
+          'RATE_LIMITED',
+          '요청이 많아요. 잠시 후 다시 시도해 주세요.',
+        );
+      }
       if (code === 'INFO-200') {
         const response = noData(origin, parsed);
         status = response.status;

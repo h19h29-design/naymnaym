@@ -106,6 +106,7 @@ Deno.test('rejects every non-POST application method before upstream fetch', asy
   for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) {
     const response = await handler(request({}, { method }));
     assertEquals(response.status, 405);
+    assertEquals(response.headers.get('allow'), 'POST, OPTIONS');
     assertEquals((await body(response)).code, 'BAD_REQUEST');
   }
   assertEquals(calls, 0);
@@ -146,6 +147,38 @@ Deno.test('rejects an actual UTF-8 body over 4096 bytes without upstream fetch',
 
   assertEquals(response.status, 413);
   assertEquals(calls, 0);
+});
+
+Deno.test('cancels a chunked request body immediately after 4096 bytes', async () => {
+  const totalChunks = 10;
+  let pulls = 0;
+  let cancelled = false;
+  let upstreamCalls = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      controller.enqueue(new Uint8Array(2048).fill(0x61));
+      if (pulls === totalChunks) controller.close();
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const response = await createHandler(deps(async () => {
+    upstreamCalls++;
+    return new Response();
+  }))(
+    new Request('https://edge.test', {
+      method: 'POST',
+      headers: { origin: ALLOWED_ORIGIN },
+      body: stream,
+    }),
+  );
+
+  assertEquals(response.status, 413);
+  assertEquals(cancelled, true);
+  assert(pulls < totalChunks);
+  assertEquals(upstreamCalls, 0);
 });
 
 Deno.test('rejects invalid JSON without echoing it', async () => {
@@ -431,6 +464,36 @@ Deno.test('maps explicit top-level and resource-head no-data envelopes safely', 
   }
 });
 
+Deno.test('maps top-level and resource-head INFO-300 envelopes to rate limited', async () => {
+  const rateLimitEnvelopes = [
+    { RESULT: { CODE: 'INFO-300', MESSAGE: '요청 제한 횟수를 초과했습니다.' } },
+    {
+      schoolInfo: [{
+        head: [
+          { list_total_count: 0 },
+          { RESULT: { CODE: 'INFO-300' } },
+        ],
+      }],
+    },
+  ];
+
+  for (const envelope of rateLimitEnvelopes) {
+    const response = await createHandler(
+      deps(async () => new Response(JSON.stringify(envelope))),
+    )(request({
+      action: 'searchSchools',
+      payload: { keyword: '가람' },
+    }));
+
+    assertEquals(response.status, 429);
+    assertEquals(await body(response), {
+      ok: false,
+      code: 'RATE_LIMITED',
+      message: '요청이 많아요. 잠시 후 다시 시도해 주세요.',
+    });
+  }
+});
+
 Deno.test('returns an empty list for an explicit no-data school response', async () => {
   const response = await createHandler(
     deps(async () =>
@@ -472,6 +535,38 @@ Deno.test('does not mistake a NEIS error envelope with no rows for no data', asy
   assertEquals(response.status, 502);
   assertStringIncludes(text, 'UPSTREAM_ERROR');
   assertEquals(text.includes('invalid key detail'), false);
+});
+
+Deno.test('rejects contradictory top-level and resource-head result codes', async () => {
+  const response = await createHandler(
+    deps(async () =>
+      new Response(JSON.stringify({
+        RESULT: { CODE: 'INFO-000' },
+        schoolInfo: [
+          {
+            head: [
+              { list_total_count: 0 },
+              {
+                RESULT: {
+                  CODE: 'ERROR-300',
+                  MESSAGE: 'private contradiction detail',
+                },
+              },
+            ],
+          },
+          { row: [] },
+        ],
+      }))
+    ),
+  )(request({
+    action: 'searchSchools',
+    payload: { keyword: '가람' },
+  }));
+  const text = await response.text();
+
+  assertEquals(response.status, 502);
+  assertStringIncludes(text, 'UPSTREAM_ERROR');
+  assertEquals(text.includes('private contradiction detail'), false);
 });
 
 Deno.test('treats malformed or wrong-resource success bodies as upstream errors', async () => {
@@ -526,6 +621,72 @@ Deno.test('maps upstream 429 and other HTTP failures without body leakage', asyn
   assertEquals(failed.status, 502);
   assertStringIncludes(failedText, 'UPSTREAM_ERROR');
   assertEquals(failedText.includes(sentinel), false);
+});
+
+Deno.test('passes an 1800ms abort signal to the upstream request', async () => {
+  const controller = new AbortController();
+  const sentinel = 'private-timeout-detail';
+  let timeoutMs: number | undefined;
+  let receivedSignal: AbortSignal | null | undefined;
+  const response = await createHandler({
+    ...deps(async (_input, init) => {
+      receivedSignal = init?.signal;
+      assert(receivedSignal !== null && receivedSignal !== undefined);
+      assertEquals(receivedSignal, controller.signal);
+      assertEquals(receivedSignal.aborted, true);
+      throw receivedSignal.reason;
+    }),
+    createTimeoutSignal(milliseconds: number) {
+      timeoutMs = milliseconds;
+      controller.abort(new DOMException(sentinel, 'TimeoutError'));
+      return controller.signal;
+    },
+  })(request({
+    action: 'searchSchools',
+    payload: { keyword: '가람' },
+  }));
+  const text = await response.text();
+
+  assertEquals(timeoutMs, 1800);
+  assertEquals(response.status, 502);
+  assertStringIncludes(text, 'UPSTREAM_ERROR');
+  assertEquals(text.includes(sentinel), false);
+  assertEquals(text.includes(API_KEY), false);
+});
+
+Deno.test('cancels an upstream body immediately above 1 MiB', async () => {
+  const totalChunks = 10;
+  const chunkSize = 300 * 1024;
+  const sentinel = `private-upstream-body ${API_KEY}`;
+  const prefix = new TextEncoder().encode(sentinel);
+  let pulls = 0;
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      const chunk = new Uint8Array(chunkSize).fill(0x78);
+      chunk.set(prefix);
+      controller.enqueue(chunk);
+      if (pulls === totalChunks) controller.close();
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const response = await createHandler(
+    deps(async () => new Response(stream)),
+  )(request({
+    action: 'searchSchools',
+    payload: { keyword: '가람' },
+  }));
+  const text = await response.text();
+
+  assertEquals(response.status, 502);
+  assertStringIncludes(text, 'UPSTREAM_ERROR');
+  assertEquals(cancelled, true);
+  assert(pulls < totalChunks);
+  assertEquals(text.includes(sentinel), false);
+  assertEquals(text.includes(API_KEY), false);
 });
 
 Deno.test('never includes the NEIS key or user payload in an upstream failure', async () => {
