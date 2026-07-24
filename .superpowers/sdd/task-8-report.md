@@ -3,6 +3,7 @@
 Base SHA: `dacc65b6f4053acb742f85a7f61517f9f2e63f5a`
 Implementation SHA: `f7ea3eae14412113ab38bac05b3250ba048b032a`
 Review follow-up SHA: `19e162677d8bb428a2e12f6b6bf8cfa86e66732b`
+Journal hardening SHA: `3b6393c3b74f146176dc6c053f36b42ab5f80aac`
 
 ## RED
 
