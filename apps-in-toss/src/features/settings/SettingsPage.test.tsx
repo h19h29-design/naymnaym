@@ -23,11 +23,15 @@ const emptyState = (): RepositoryState => ({
 function renderSettings({
   profile = makeProfile(),
   deleteAll = vi.fn(async () => undefined),
+  initialEntries = ['/settings'],
+  initialIndex,
 }: {
   profile?: Profile;
   deleteAll?: AppRepository['deleteAll'];
+  initialEntries?: string[];
+  initialIndex?: number;
 } = {}) {
-  const router = createMemoryRouter(routeObjects(), { initialEntries: ['/settings'] });
+  const router = createMemoryRouter(routeObjects(), { initialEntries, initialIndex });
   const repository = {
     load: vi.fn(async () => ({ ...emptyState(), profile })),
     deleteAll,
@@ -81,14 +85,18 @@ describe('SettingsPage', () => {
   });
 
   it('keeps back navigation on onboarding after successful deletion', async () => {
-    const { user, router } = renderSettings();
+    const { user, router } = renderSettings({
+      initialEntries: ['/today', '/settings'],
+      initialIndex: 1,
+    });
 
     await user.click(await screen.findByRole('button', { name: '내 데이터 삭제' }));
     await user.click(screen.getByRole('button', { name: /모두 삭제/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/onboarding'));
 
     await router.navigate(-1);
-    expect(router.state.location.pathname).toBe('/onboarding');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/onboarding'));
+    expect(screen.queryByRole('heading', { name: '오늘 급식' })).not.toBeInTheDocument();
   });
 
   it('guards double taps and disables deletion controls while pending', async () => {

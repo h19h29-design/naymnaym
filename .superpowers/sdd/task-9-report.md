@@ -65,4 +65,4 @@ Review hardening SHA: `13086d8f0e326ea9ecb01b46311cad10e17b5a4a`
 ## Note
 
 - Vite retains the existing production chunk-size warning (1.31 MB minified /
-  425.26 kB gzip); no new runtime dependency or native-app change was added.
+  425.60 kB gzip); no new runtime dependency or native-app change was added.
