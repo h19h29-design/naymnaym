@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import {
   act,
   cleanup,
@@ -75,6 +75,20 @@ function ReloadCapture({
   return null;
 }
 
+function ReloadResultProbe() {
+  const { reload } = useAppState();
+  const [result, setResult] = useState<string | null>(null);
+
+  return (
+    <>
+      <button onClick={() => void reload().then((ok) => setResult(String(ok)))}>
+        결과와 함께 다시 불러오기
+      </button>
+      {result !== null ? <p>{result}</p> : null}
+    </>
+  );
+}
+
 describe('AppStateProvider', () => {
   it('loads the device-only repository during bootstrap', async () => {
     const repository = makeRepository();
@@ -91,6 +105,26 @@ describe('AppStateProvider', () => {
     render(<AppStateProvider repository={repository}><StateProbe /></AppStateProvider>);
 
     expect(await screen.findByText('저장된 정보를 불러오지 못했어요.')).toBeInTheDocument();
+  });
+
+  it('returns false while retaining recoverable state when a manual reload fails', async () => {
+    const repository = makeRepository();
+    vi.spyOn(repository, 'load')
+      .mockResolvedValueOnce(makeState(null))
+      .mockRejectedValueOnce(new Error('storage unavailable'));
+
+    render(
+      <AppStateProvider repository={repository}>
+        <ReloadResultProbe />
+        <StateProbe />
+      </AppStateProvider>,
+    );
+    expect(await screen.findByText('ready')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '결과와 함께 다시 불러오기' }));
+
+    expect(await screen.findByText('false')).toBeInTheDocument();
+    expect(screen.getByText('저장된 정보를 불러오지 못했어요.')).toBeInTheDocument();
   });
 
   it('ignores an earlier StrictMode load that resolves after the active load', async () => {
@@ -142,7 +176,7 @@ describe('AppStateProvider', () => {
       pending.resolve(makeState(makeProfile()));
       await pending.promise;
     });
-    await capturedReload?.();
+    expect(await capturedReload!()).toBe(false);
 
     expect(load).toHaveBeenCalledTimes(1);
   });

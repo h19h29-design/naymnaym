@@ -7,6 +7,7 @@ import { neisClient } from '../../services/neisClient';
 import { useAppState } from '../../state/AppStateProvider';
 
 const SCHOOL_KEYWORD = /^[가-힣A-Za-z0-9\s().-]{2,40}$/;
+const POST_ONBOARDING_PATHS = new Set(['/today', '/settings']);
 
 const copy = {
   title: '냠냠레벨업 시작하기',
@@ -15,9 +16,7 @@ const copy = {
   noResults: '검색 결과가 없어요. 학교 이름을 다시 확인해 주세요.',
 };
 
-function isSafeInternalPath(requested: string | null): requested is string {
-  if (requested === null) return false;
-
+function decodePath(requested: string): string | null {
   let decoded = requested;
   try {
     for (let index = 0; index < 5; index += 1) {
@@ -25,26 +24,29 @@ function isSafeInternalPath(requested: string | null): requested is string {
       if (next === decoded) break;
       decoded = next;
     }
+    return decoded;
   } catch {
-    return false;
+    return null;
   }
-
-  return decoded.startsWith('/')
-    && !decoded.startsWith('//')
-    && !decoded.includes('\\')
-    && !/[\u0000-\u001F]/.test(decoded);
 }
 
 function safeNextPath(requested: string | null): string {
-  if (!isSafeInternalPath(requested)) return '/today';
-
-  let decoded = requested;
-  for (let index = 0; index < 5; index += 1) {
-    const next = decodeURIComponent(decoded);
-    if (next === decoded) break;
-    decoded = next;
+  if (requested === null) return '/today';
+  const decoded = decodePath(requested);
+  if (decoded === null
+    || !decoded.startsWith('/')
+    || decoded.startsWith('//')
+    || decoded.includes('\\')
+    || /[\u0000-\u001F]/.test(decoded)) {
+    return '/today';
   }
-  return decoded;
+
+  const destination = new URL(decoded, 'https://nyam.invalid');
+  return destination.search === ''
+    && destination.hash === ''
+    && POST_ONBOARDING_PATHS.has(destination.pathname)
+    ? destination.pathname
+    : '/today';
 }
 
 export function OnboardingPage() {
@@ -59,7 +61,11 @@ export function OnboardingPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const submittingRef = useRef(false);
+  const savedProfileRef = useRef(false);
   const { repository, reload } = useAppState();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -126,6 +132,7 @@ export function OnboardingPage() {
   };
 
   const submit = async () => {
+    if (submittingRef.current) return;
     const nextErrors = [
       ...(nickname.trim() ? [] : ['별명을 입력해 주세요.']),
       ...(schoolType ? [] : ['중학교 또는 고등학교를 선택해 주세요.']),
@@ -140,15 +147,33 @@ export function OnboardingPage() {
     setFormErrors(nextErrors);
     if (nextErrors.length > 0 || schoolType === null || selectedSchool === null) return;
 
-    await repository.saveProfile({
-      nickname: nickname.trim().slice(0, 12),
-      schoolType,
-      school: selectedSchool,
-      allergyCodes,
-      createdAt: new Date().toISOString(),
-    });
-    await reload();
-    navigate(safeNextPath(searchParams.get('next')), { replace: true });
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    try {
+      if (!savedProfileRef.current) {
+        await repository.saveProfile({
+          nickname: nickname.trim().slice(0, 12),
+          schoolType,
+          school: selectedSchool,
+          allergyCodes,
+          createdAt: new Date().toISOString(),
+        });
+        savedProfileRef.current = true;
+      }
+      if (!await reload()) {
+        setSubmissionError('저장했지만 정보를 불러오지 못했어요. 다시 시도해 주세요.');
+        return;
+      }
+      navigate(safeNextPath(searchParams.get('next')), { replace: true });
+    } catch {
+      setSubmissionError(savedProfileRef.current
+        ? '저장했지만 정보를 불러오지 못했어요. 다시 시도해 주세요.'
+        : '프로필을 저장하지 못했어요. 다시 시도해 주세요.');
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -171,13 +196,16 @@ export function OnboardingPage() {
         {(['middle', 'high'] as const).map((value) => (
           <div key={value}>
             <Checkbox.Circle
+              id={`school-type-${value}`}
               inputType="radio"
               name="schoolType"
               aria-label={value === 'middle' ? '중학교' : '고등학교'}
               checked={schoolType === value}
               onCheckedChange={() => setSchool(value)}
             />
-            {value === 'middle' ? '중학교' : '고등학교'}
+            <label htmlFor={`school-type-${value}`}>
+              {value === 'middle' ? '중학교' : '고등학교'}
+            </label>
           </div>
         ))}
       </fieldset>
@@ -219,28 +247,33 @@ export function OnboardingPage() {
           return (
             <div key={code}>
               <Checkbox.Line
+                id={`allergy-${code}`}
                 aria-label={label}
                 checked={allergyCodes.includes(numericCode)}
                 onCheckedChange={(checked) => toggleAllergy(numericCode, checked)}
               />
-              {label}
+              <label htmlFor={`allergy-${code}`}>{label}</label>
             </div>
           );
         })}
         <div>
           <Checkbox.Line
+            id="allergy-none"
             aria-label="해당 없음"
             checked={allergyCodes.length === 0}
             onCheckedChange={(checked) => {
               if (checked) setAllergyCodes([]);
             }}
           />
-          해당 없음
+          <label htmlFor="allergy-none">해당 없음</label>
         </div>
       </fieldset>
 
       {formErrors.map((message) => <p role="alert" key={message}>{message}</p>)}
-      <Button display="block" onClick={() => void submit()}>시작하기</Button>
+      {submissionError !== null ? <p role="alert">{submissionError}</p> : null}
+      <Button display="block" loading={isSubmitting} disabled={isSubmitting} onClick={() => void submit()}>
+        시작하기
+      </Button>
       <Button color="light" display="block" onClick={() => setDemoConfirmOpen(true)}>
         {copy.demo}
       </Button>

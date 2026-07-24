@@ -15,7 +15,7 @@ interface AppStateValue {
   state: AppState;
   dispatch: Dispatch<AppAction>;
   repository: AppRepository;
-  reload(): Promise<void>;
+  reload(): Promise<boolean>;
 }
 
 const Context = createContext<AppStateValue | null>(null);
@@ -30,7 +30,7 @@ export function AppStateProvider({
   const repositoryRef = useRef(repository);
 
   const reload = useCallback(async () => {
-    if (!activeRef.current || repositoryRef.current !== repository) return;
+    if (!activeRef.current || repositoryRef.current !== repository) return false;
     const generation = ++generationRef.current;
     dispatch({ type: 'reset' });
     try {
@@ -41,7 +41,9 @@ export function AppStateProvider({
         && repositoryRef.current === repository
       ) {
         dispatch({ type: 'loaded', value });
+        return true;
       }
+      return false;
     } catch {
       if (
         activeRef.current
@@ -50,6 +52,7 @@ export function AppStateProvider({
       ) {
         dispatch({ type: 'failed', message: '저장된 정보를 불러오지 못했어요.' });
       }
+      return false;
     }
   }, [repository]);
 

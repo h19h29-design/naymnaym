@@ -17,18 +17,3 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 });
-
-Object.assign(window, {
-  _uf: { _uf2: () => 'afterbegin' },
-});
-
-const insertAdjacentElement = HTMLElement.prototype.insertAdjacentElement;
-HTMLElement.prototype.insertAdjacentElement = function (position, element) {
-  const normalized = position === 'beforebegin'
-    || position === 'afterbegin'
-    || position === 'beforeend'
-    || position === 'afterend'
-    ? position
-    : 'afterbegin';
-  return insertAdjacentElement.call(this, normalized, element);
-};

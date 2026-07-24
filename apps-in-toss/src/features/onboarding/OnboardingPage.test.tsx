@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnboardingPage } from './OnboardingPage';
 import { AppProviders } from '../../app/AppProviders';
 import { AppStateProvider } from '../../state/AppStateProvider';
@@ -11,6 +11,27 @@ import { school } from '../../test/fixtures';
 
 const saveProfile = vi.fn(async () => undefined);
 
+function initialState() {
+  return {
+    profile: null,
+    progress: {
+      totalXp: 0,
+      baseEarnedByDate: {},
+      challengeEarnedByDate: {},
+    },
+    mealRecords: [],
+    challengeRecords: [],
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function Location() {
   const location = useLocation();
   return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
@@ -19,23 +40,16 @@ function Location() {
 function renderOnboarding({
   searchSchools = vi.fn(async () => []),
   initialEntry = '/onboarding',
+  load = async () => initialState(),
 }: {
   searchSchools?: typeof neisClient.searchSchools;
   initialEntry?: string;
+  load?: AppRepository['load'];
 } = {}) {
   const user = userEvent.setup();
   vi.spyOn(neisClient, 'searchSchools').mockImplementation(searchSchools);
   const repository = {
-    load: async () => ({
-      profile: null,
-      progress: {
-        totalXp: 0,
-        baseEarnedByDate: {},
-        challengeEarnedByDate: {},
-      },
-      mealRecords: [],
-      challengeRecords: [],
-    }),
+    load,
     saveProfile,
   } as unknown as AppRepository;
 
@@ -53,9 +67,43 @@ function renderOnboarding({
   return user;
 }
 
+async function selectMiddleSchool(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText('별명'), '냠냠이');
+  await user.click(screen.getByRole('radio', { name: '중학교' }));
+  await user.type(screen.getByLabelText('학교 검색'), '가람');
+  await user.click(await screen.findByRole('button', { name: /가람중학교/ }));
+}
+
+let nativeInsertAdjacentElement: typeof HTMLElement.prototype.insertAdjacentElement;
+
 describe('OnboardingPage', () => {
   beforeEach(() => {
     saveProfile.mockClear();
+  });
+
+  beforeAll(() => {
+    nativeInsertAdjacentElement = HTMLElement.prototype.insertAdjacentElement;
+    // TDS 2.5's Radix focus guard expects Granite's runtime transform in the
+    // browser. JSDOM lacks it, so intercept only that exact missing position.
+    HTMLElement.prototype.insertAdjacentElement = function (position, element) {
+      const isValidPosition = position === 'beforebegin'
+        || position === 'afterbegin'
+        || position === 'beforeend'
+        || position === 'afterend';
+      const isMissingTdsFocusGuardPosition = this === document.body
+        && !isValidPosition
+        && element instanceof HTMLElement
+        && element.hasAttribute('data-radix-focus-guard');
+      return nativeInsertAdjacentElement.call(
+        this,
+        isMissingTdsFocusGuardPosition ? 'afterbegin' : position,
+        element,
+      );
+    };
+  });
+
+  afterAll(() => {
+    HTMLElement.prototype.insertAdjacentElement = nativeInsertAdjacentElement;
   });
 
   afterEach(() => {
@@ -66,7 +114,7 @@ describe('OnboardingPage', () => {
   it('requires a nickname, school, and supported school type', async () => {
     const user = renderOnboarding();
 
-    await user.click(screen.getByRole('button', { name: '시작하기' }));
+    await user.click(screen.getByRole('button', { name: /시작하기/ }));
 
     expect(screen.getByText('별명을 입력해 주세요.')).toBeInTheDocument();
     expect(screen.getByText('중학교 또는 고등학교를 선택해 주세요.')).toBeInTheDocument();
@@ -83,7 +131,7 @@ describe('OnboardingPage', () => {
     expect(searchSchools).not.toHaveBeenCalled();
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith('가람', expect.any(AbortSignal)));
     await user.click(await screen.findByRole('button', { name: /가람중학교/ }));
-    await user.click(screen.getByRole('button', { name: '시작하기' }));
+    await user.click(screen.getByRole('button', { name: /시작하기/ }));
 
     expect(saveProfile).toHaveBeenCalledWith(expect.objectContaining({
       nickname: '냠냠이',
@@ -142,18 +190,92 @@ describe('OnboardingPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/today?demo=1');
   });
 
-  it.each(['/\\evil.test', '/%5Cevil.test', '//evil.test', '/%2F%2Fevil.test'])
+  it.each([
+    '/\\evil.test',
+    '/%5Cevil.test',
+    '//evil.test',
+    '/%2F%2Fevil.test',
+    '/onboarding',
+    '/onboarding?next=/today',
+    '/%6fnboarding',
+    '/%256fnboarding',
+  ])
   ('rejects unsafe next destinations', async (next) => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
-    const user = renderOnboarding({ searchSchools, initialEntry: `/onboarding?next=${next}` });
+    const user = renderOnboarding({
+      searchSchools,
+      initialEntry: `/onboarding?next=${encodeURIComponent(next)}`,
+    });
 
-    await user.type(screen.getByLabelText('별명'), '냠냠이');
-    await user.click(screen.getByRole('radio', { name: '중학교' }));
-    await user.type(screen.getByLabelText('학교 검색'), '가람');
-    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith('가람', expect.any(AbortSignal)));
-    await user.click(await screen.findByRole('button', { name: /가람중학교/ }));
-    await user.click(screen.getByRole('button', { name: '시작하기' }));
+    await selectMiddleSchool(user);
+    await user.click(screen.getByRole('button', { name: /시작하기/ }));
 
     expect(screen.getByTestId('location')).toHaveTextContent('/today');
+  });
+
+  it('toggles representative school and allergy choices when their visible labels are clicked', async () => {
+    const user = renderOnboarding();
+
+    await user.click(screen.getByText('중학교', { selector: 'label' }));
+    expect(screen.getByRole('radio', { name: '중학교' })).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(screen.getByText('난류', { selector: 'label' }));
+    expect(screen.getByRole('checkbox', { name: '난류' })).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(screen.getByText('해당 없음', { selector: 'label' }));
+    expect(screen.getByRole('checkbox', { name: '난류' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('checkbox', { name: '해당 없음' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('prevents concurrent profile saves while a submission is pending', async () => {
+    const pendingSave = deferred<undefined>();
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    saveProfile.mockImplementation(() => pendingSave.promise);
+    const user = renderOnboarding({ searchSchools });
+
+    await selectMiddleSchool(user);
+    const start = screen.getByRole('button', { name: '시작하기' });
+    await user.dblClick(start);
+
+    expect(saveProfile).toHaveBeenCalledTimes(1);
+    expect(start).toBeDisabled();
+    pendingSave.resolve(undefined);
+    expect(await screen.findByTestId('location')).toHaveTextContent('/today');
+  });
+
+  it('shows a save error and permits a retry', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    saveProfile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
+    const user = renderOnboarding({ searchSchools });
+
+    await selectMiddleSchool(user);
+    await user.click(screen.getByRole('button', { name: /시작하기/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '프로필을 저장하지 못했어요. 다시 시도해 주세요.',
+    );
+
+    await user.click(screen.getByRole('button', { name: /시작하기/ }));
+    expect(saveProfile).toHaveBeenCalledTimes(2);
+    expect(await screen.findByTestId('location')).toHaveTextContent('/today');
+  });
+
+  it('retries reload without saving a duplicate profile after reload fails', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    const load = vi.fn()
+      .mockResolvedValueOnce(initialState())
+      .mockRejectedValueOnce(new Error('read failed'))
+      .mockResolvedValueOnce(initialState());
+    const user = renderOnboarding({ searchSchools, load });
+
+    await selectMiddleSchool(user);
+    await user.click(screen.getByRole('button', { name: '시작하기' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '저장했지만 정보를 불러오지 못했어요. 다시 시도해 주세요.',
+    );
+    expect(saveProfile).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: /시작하기/ }));
+    expect(saveProfile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('location')).toHaveTextContent('/today');
   });
 });

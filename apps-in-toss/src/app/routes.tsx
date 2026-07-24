@@ -32,11 +32,9 @@ function RootGate() {
 }
 
 function OnboardingGate() {
-  return (
-    <ReadyGate>
-      {() => onboarding}
-    </ReadyGate>
-  );
+  const { state } = useAppState();
+  if (state.status === 'loading') return <p>불러오는 중...</p>;
+  return onboarding;
 }
 
 function TodayGate() {
