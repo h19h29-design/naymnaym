@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadTodayMeal, millisecondsUntilNextSeoulMidnight, seoulDate, type TodayMealResult } from './useTodayMeal';
-import type { AppRepository } from '../../services/repository';
+import { AppRepository } from '../../services/repository';
 import type { AppState } from '../../state/reducer';
 import { meal, mealWithAllergen, makeProfile } from '../../test/fixtures';
 import { TodayPage } from './TodayPage';
@@ -315,6 +315,45 @@ describe('today meal loading', () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
     expect(screen.getByText('live')).toBeInTheDocument();
+  });
+
+  it('aborts a stale live fetch and cannot cache an ignored response after deletion', async () => {
+    const actual = await vi.importActual<typeof import('./useTodayMeal')>('./useTodayMeal');
+    const values = new Map<string, string>([
+      ['nyam-toss:profile:v1', JSON.stringify(makeProfile())],
+    ]);
+    const repository = new AppRepository({
+      getItem: async (key) => values.get(key) ?? null,
+      setItem: async (key, value) => { values.set(key, value); },
+      removeItem: async (key) => { values.delete(key); },
+    });
+    let resolveMeal!: (value: typeof meal) => void;
+    let observedSignal: AbortSignal | undefined;
+    const client = {
+      fetchMeal: vi.fn((_school, _date, signal?: AbortSignal) => {
+        observedSignal = signal;
+        return new Promise<typeof meal>((resolve) => { resolveMeal = resolve; });
+      }),
+    };
+
+    function Probe() {
+      actual.useTodayMeal({
+        mode: { kind: 'live' },
+        profile: makeProfile(),
+        client: client as never,
+        repository,
+      });
+      return null;
+    }
+
+    const view = render(<Probe />);
+    await waitFor(() => expect(client.fetchMeal).toHaveBeenCalledTimes(1));
+    view.unmount();
+    expect(observedSignal?.aborted).toBe(true);
+
+    await repository.deleteAll();
+    resolveMeal({ ...meal, date: seoulDate() });
+    await waitFor(() => expect([...values.keys()]).toEqual([]));
   });
 
   it('schedules its next refresh at Seoul midnight', () => {

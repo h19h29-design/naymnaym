@@ -38,23 +38,29 @@ export async function loadTodayMeal(input: {
   client: NeisClient;
   repository: AppRepository;
   now?: Date;
+  signal?: AbortSignal;
+  mutationEpoch?: number;
 }): Promise<TodayMealResult> {
   if (input.mode.kind === 'demo') return { kind: 'demo', meal: demoMeal };
   if (input.profile === null) return { kind: 'error', code: 'PROFILE_REQUIRED' };
 
   const date = seoulDate(input.now);
   try {
-    const meal = await input.client.fetchMeal(input.profile.school, date);
+    const meal = await input.client.fetchMeal(input.profile.school, date, input.signal);
+    if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     if (!isValidLiveMeal(meal, date)) {
       throw new NeisClientError('UPSTREAM_ERROR', '급식 정보를 불러오지 못했어요.', 502);
     }
     try {
-      await input.repository.cacheMeal(input.profile.school, meal);
+      await input.repository.cacheMeal(input.profile.school, meal, input.mutationEpoch);
     } catch {
       // A device cache is only an offline convenience; a successful live result wins.
     }
     return { kind: 'live', meal };
   } catch (caught) {
+    if (input.signal?.aborted || (caught instanceof DOMException && caught.name === 'AbortError')) {
+      throw caught;
+    }
     if (caught instanceof NeisClientError && caught.code === 'NO_DATA') {
       return { kind: 'noMeal' };
     }
@@ -89,15 +95,22 @@ export function useTodayMeal(input: Omit<Parameters<typeof loadTodayMeal>[0], 'n
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    const mutationEpoch = typeof stableInput.repository.captureMutationEpoch === 'function'
+      ? stableInput.repository.captureMutationEpoch()
+      : undefined;
     setResult('loading');
-    void loadTodayMeal(stableInput)
+    void loadTodayMeal({ ...stableInput, signal: controller.signal, mutationEpoch })
       .then((next) => {
         if (active) setResult(next);
       })
       .catch(() => {
         if (active) setResult({ kind: 'error', code: 'UPSTREAM_ERROR' });
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [stableInput, date, attempt]);
 
   useEffect(() => {

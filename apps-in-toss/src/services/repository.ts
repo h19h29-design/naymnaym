@@ -15,6 +15,8 @@ const KEYS = {
   mealCache: 'nyam-toss:meal-cache:v1',
 } as const;
 
+const DEVICE_KEYS = Object.values(KEYS);
+
 const DEFAULT_PROGRESS = {
   totalXp: 0,
 } as const;
@@ -257,6 +259,7 @@ export class AppRepository {
   private operationTail: Promise<void> = Promise.resolve();
   private deletionGeneration = 0;
   private isDeleting = false;
+  private deletionPromise: Promise<void> | null = null;
 
   constructor(private readonly storage: KeyValueStorage) {}
 
@@ -266,9 +269,18 @@ export class AppRepository {
     return result;
   }
 
-  private serializeMutation<T>(operation: () => Promise<T>, skipped: T): Promise<T> {
-    const generation = this.deletionGeneration;
-    if (this.isDeleting) return Promise.resolve(skipped);
+  // A repository is app-scoped: this queue and epoch protect mutations made
+  // through this one instance, including the async meal-fetch cache boundary.
+  captureMutationEpoch(): number {
+    return this.deletionGeneration;
+  }
+
+  private serializeMutation<T>(
+    operation: () => Promise<T>,
+    skipped: T,
+    generation = this.captureMutationEpoch(),
+  ): Promise<T> {
+    if (this.isDeleting || generation !== this.deletionGeneration) return Promise.resolve(skipped);
     return this.serialize(async () => {
       if (this.isDeleting || generation !== this.deletionGeneration) return skipped;
       return operation();
@@ -388,7 +400,7 @@ export class AppRepository {
     return `${school.officeCode}:${school.schoolCode}:${date}`;
   }
 
-  cacheMeal(school: School, meal: MealDay): Promise<void> {
+  cacheMeal(school: School, meal: MealDay, mutationEpoch = this.captureMutationEpoch()): Promise<void> {
     return this.serializeMutation(async () => {
       if (!isValidLiveMeal(meal, meal.date)) return;
 
@@ -404,7 +416,7 @@ export class AppRepository {
       ].slice(0, 14);
 
       await this.write(KEYS.mealCache, next);
-    }, undefined);
+    }, undefined, mutationEpoch);
   }
 
   getCachedMeal(school: School, date: string) {
@@ -425,14 +437,36 @@ export class AppRepository {
   }
 
   deleteAll(): Promise<void> {
+    if (this.deletionPromise !== null) return this.deletionPromise;
+
     this.isDeleting = true;
     this.deletionGeneration += 1;
-    return this.serialize(async () => {
-      try {
-        await Promise.all(Object.values(KEYS).map((key) => this.storage.removeItem(key)));
-      } finally {
+    const operation = this.serialize(async () => {
+      const snapshot = new Map(await Promise.all(DEVICE_KEYS.map(async (key) => [
+        key,
+        await this.storage.getItem(key),
+      ] as const)));
+      const results = await Promise.allSettled(
+        DEVICE_KEYS.map((key) => this.storage.removeItem(key)),
+      );
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure !== undefined) {
+        await Promise.allSettled(DEVICE_KEYS.map((key) => {
+          const value = snapshot.get(key) ?? null;
+          return value === null
+            ? this.storage.removeItem(key)
+            : this.storage.setItem(key, value);
+        }));
+        throw failure.reason;
+      }
+    });
+    const shared = operation.finally(() => {
+      if (this.deletionPromise === shared) {
+        this.deletionPromise = null;
         this.isDeleting = false;
       }
     });
+    this.deletionPromise = shared;
+    return shared;
   }
 }

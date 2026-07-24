@@ -1,5 +1,5 @@
 import { openURL } from '@apps-in-toss/web-framework';
-import { Button, Modal } from '@toss/tds-mobile';
+import { Button, List, ListRow, Modal } from '@toss/tds-mobile';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../../state/AppStateProvider';
@@ -14,15 +14,24 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isOpeningLink, setIsOpeningLink] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const deletingRef = useRef(false);
+  const openingLinkRef = useRef(false);
+  const isBusy = isDeleting || isOpeningLink;
 
   const openApprovedUrl = async (url: typeof POLICY_URLS[keyof typeof POLICY_URLS]) => {
+    if (openingLinkRef.current) return;
+    openingLinkRef.current = true;
+    setIsOpeningLink(true);
     setError(null);
     try {
       await openURL(url);
     } catch {
       setError('링크를 열지 못했어요. 다시 시도해 주세요.');
+    } finally {
+      openingLinkRef.current = false;
+      setIsOpeningLink(false);
     }
   };
 
@@ -47,24 +56,27 @@ export function SettingsPage() {
   return (
     <main className="app-shell">
       <h1>설정</h1>
-      <Button color="light" display="block" disabled={isDeleting} onClick={() => navigate('/onboarding?mode=edit&next=%2Fsettings')}>
-        프로필과 알레르기 수정
-      </Button>
-      <Button color="light" display="block" disabled={isDeleting} onClick={() => void openApprovedUrl(POLICY_URLS.privacy)}>
-        개인정보 처리방침
-      </Button>
-      <Button color="light" display="block" disabled={isDeleting} onClick={() => void openApprovedUrl(POLICY_URLS.support)}>
-        문의 및 지원
-      </Button>
-      <Button color="danger" display="block" disabled={isDeleting} onClick={() => setDeleteOpen(true)}>
-        내 데이터 삭제
-      </Button>
+      <List>
+        <ListRow
+          contents={<Button color="light" display="block" disabled={isBusy} onClick={() => navigate('/onboarding?mode=edit&next=%2Fsettings')}>프로필과 알레르기 수정</Button>}
+        />
+        <ListRow
+          contents={<Button color="light" display="block" disabled={isBusy} onClick={() => void openApprovedUrl(POLICY_URLS.privacy)}>개인정보 처리방침</Button>}
+        />
+        <ListRow
+          contents={<Button color="light" display="block" disabled={isBusy} onClick={() => void openApprovedUrl(POLICY_URLS.support)}>문의 및 지원</Button>}
+        />
+        <ListRow
+          border="none"
+          contents={<Button color="danger" display="block" disabled={isBusy} onClick={() => setDeleteOpen(true)}>내 데이터 삭제</Button>}
+        />
+      </List>
       {error !== null ? <p role="alert">{error}</p> : null}
       <Modal open={deleteOpen} onOpenChange={(open) => {
-        if (!isDeleting) setDeleteOpen(open);
+        if (!isBusy) setDeleteOpen(open);
       }}>
         <Modal.Overlay onClick={() => {
-          if (!isDeleting) setDeleteOpen(false);
+          if (!isBusy) setDeleteOpen(false);
         }} />
         <Modal.Content aria-label="내 데이터 삭제 확인">
           <h2>내 데이터 삭제</h2>

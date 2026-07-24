@@ -55,7 +55,7 @@ export class NeisClient {
     return this.post({ action: 'searchSchools', payload: { keyword } }, signal);
   }
 
-  fetchMeal(school: School, date: string): Promise<MealDay> {
+  fetchMeal(school: School, date: string, signal?: AbortSignal): Promise<MealDay> {
     return this.post({
       action: 'fetchMeals',
       payload: {
@@ -63,7 +63,7 @@ export class NeisClient {
         schoolCode: school.schoolCode,
         date,
       },
-    });
+    }, signal);
   }
 
   private async post<T>(request: ProxyRequest, signal?: AbortSignal): Promise<T> {

@@ -37,6 +37,41 @@ class FailingWriteStorage extends MemoryStorage {
   }
 }
 
+class OneShotFailingRemoveStorage extends MemoryStorage {
+  private failed = false;
+
+  constructor(private readonly keyToFail: string, values: Map<string, string>) {
+    super(values);
+  }
+
+  override async removeItem(key: string) {
+    await super.removeItem(key);
+    if (!this.failed && key === this.keyToFail) {
+      this.failed = true;
+      throw new Error('simulated remove failure');
+    }
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+class DeferredRemoveStorage extends MemoryStorage {
+  readonly firstRemoval = deferred<void>();
+  private waiting = true;
+
+  override async removeItem(key: string) {
+    if (this.waiting) {
+      this.waiting = false;
+      await this.firstRemoval.promise;
+    }
+    await super.removeItem(key);
+  }
+}
+
 function seedAllKeys() {
   return new Map([
     ['nyam-toss:profile:v1', '{}'],
@@ -173,6 +208,65 @@ describe('AppRepository', () => {
       [{ date: '20260724', mealItemId: 'meal-1', kinds: ['retry'], awardedXp: 5 }],
     );
     await Promise.all([deleting, saving]);
+
+    expect(storage.keys()).toEqual([]);
+  });
+
+  it('coalesces overlapping deletions into one pending operation', async () => {
+    const storage = new DeferredRemoveStorage(seedAllKeys());
+    const repository = new AppRepository(storage);
+
+    const first = repository.deleteAll();
+    const second = repository.deleteAll();
+
+    expect(second).toBe(first);
+    storage.firstRemoval.resolve(undefined);
+    await first;
+    expect(storage.keys()).toEqual([]);
+  });
+
+  it('restores the exact five raw values when any deletion removal fails', async () => {
+    const values = new Map([
+      ['nyam-toss:profile:v1', '{"profile":"before"}'],
+      ['nyam-toss:progress:v1', '{"progress":"before"}'],
+      ['nyam-toss:meal-records:v1', '["before"]'],
+      ['nyam-toss:challenge-records:v1', '["before"]'],
+      ['nyam-toss:meal-cache:v1', '["before"]'],
+    ]);
+    const snapshot = new Map(values);
+    const repository = new AppRepository(new OneShotFailingRemoveStorage(
+      'nyam-toss:progress:v1',
+      values,
+    ));
+
+    await expect(repository.deleteAll()).rejects.toThrow('simulated remove failure');
+
+    expect([...values.entries()]).toEqual([...snapshot.entries()]);
+  });
+
+  it('rejects a cache write whose fetch epoch predates a completed deletion', async () => {
+    const storage = new MemoryStorage(seedAllKeys());
+    const repository = new AppRepository(storage);
+    const fetchEpoch = repository.captureMutationEpoch();
+
+    await repository.deleteAll();
+    await repository.cacheMeal(school, meal, fetchEpoch);
+
+    expect(storage.keys()).toEqual([]);
+  });
+
+  it('does not let any late profile, progress, record, or challenge write recreate data', async () => {
+    const storage = new MemoryStorage(seedAllKeys());
+    const repository = new AppRepository(storage);
+
+    const deleting = repository.deleteAll();
+    const writing = Promise.all([
+      repository.saveProfile(makeProfile()),
+      repository.saveProgress({ totalXp: 0, baseEarnedByDate: {}, challengeEarnedByDate: {} }),
+      repository.saveRecords([makeRecord()]),
+      repository.saveChallengeRecords([]),
+    ]);
+    await Promise.all([deleting, writing]);
 
     expect(storage.keys()).toEqual([]);
   });

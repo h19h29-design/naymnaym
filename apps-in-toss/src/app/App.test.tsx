@@ -100,6 +100,19 @@ describe('direct routes', () => {
       .toBeInTheDocument();
   });
 
+  it('recovers an unknown route to today for a configured user', async () => {
+    renderTestApp({ initialEntry: '/unknown-route', profile: makeProfile() });
+
+    expect(await screen.findByRole('heading', { name: '오늘 급식' })).toBeInTheDocument();
+  });
+
+  it('recovers an unknown route to onboarding for a new user', async () => {
+    renderTestApp({ initialEntry: '/unknown-route', profile: null });
+
+    expect(await screen.findByRole('heading', { name: '냠냠레벨업 시작하기' }))
+      .toBeInTheDocument();
+  });
+
   it('keeps navigation valid after onboarding saves a profile and reloads state', async () => {
     const user = userEvent.setup();
     const repository = makeRepository(null);

@@ -59,6 +59,21 @@ describe('NeisClient', () => {
     });
   });
 
+  it('passes an abort signal through a meal request', async () => {
+    const fetchSpy = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ ok: true, data: {} }), { status: 200 }));
+    const client = new NeisClient({
+      endpoint: 'https://edge.example/neis-proxy',
+      anonKey: 'public-anon-key',
+      fetch: fetchSpy,
+    });
+    const controller = new AbortController();
+
+    await client.fetchMeal(school, '20260724', controller.signal);
+
+    expect(fetchSpy.mock.calls[0][1]?.signal).toBe(controller.signal);
+  });
+
   it('maps a stable edge error without entering demo mode', async () => {
     const client = makeClientReturning<MealDay>({
       ok: false, code: 'RATE_LIMITED', message: '잠시 후 다시 시도해 주세요.',
