@@ -33,6 +33,17 @@ function seedAllKeys() {
   ]);
 }
 
+function cacheEntry(
+  cachedMeal = meal,
+  key = `${school.officeCode}:${school.schoolCode}:${cachedMeal.date}`,
+) {
+  return {
+    key,
+    meal: cachedMeal,
+    savedAt: '2026-07-24T03:00:00.000Z',
+  };
+}
+
 describe('AppRepository', () => {
   let repository: AppRepository;
 
@@ -142,6 +153,57 @@ describe('AppRepository', () => {
     expect(await repository.getCachedMeal(school, meal.date)).toBeNull();
     expect((await repository.load()).progress.totalXp).toBe(80);
     expect(storage.keys()).toEqual(['nyam-toss:progress:v1']);
+  });
+
+  it('drops a cache entry whose key date differs from its meal date', async () => {
+    const storage = new MemoryStorage(new Map([
+      ['nyam-toss:meal-cache:v1', JSON.stringify([
+        cacheEntry(
+          { ...meal, date: '20260725' },
+          `${school.officeCode}:${school.schoolCode}:${meal.date}`,
+        ),
+      ])],
+      ['nyam-toss:profile:v1', JSON.stringify(makeProfile())],
+    ]));
+    const repository = new AppRepository(storage);
+
+    expect(await repository.getCachedMeal(school, meal.date)).toBeNull();
+    expect(await repository.getCachedMeal(school, '20260725')).toBeNull();
+    expect(storage.keys()).toEqual(['nyam-toss:profile:v1']);
+  });
+
+  it('drops a cache with duplicate canonical keys', async () => {
+    const storage = new MemoryStorage(new Map([
+      ['nyam-toss:meal-cache:v1', JSON.stringify([
+        cacheEntry(),
+        cacheEntry(),
+      ])],
+      ['nyam-toss:progress:v1', JSON.stringify({ totalXp: 80 })],
+    ]));
+    const repository = new AppRepository(storage);
+
+    expect(await repository.getCachedMeal(school, meal.date)).toBeNull();
+    expect((await repository.load()).progress.totalXp).toBe(80);
+    expect(storage.keys()).toEqual(['nyam-toss:progress:v1']);
+  });
+
+  it('drops a pre-seeded cache containing more than 14 entries', async () => {
+    const entries = Array.from({ length: 15 }, (_, index) => {
+      const cachedMeal = {
+        ...meal,
+        date: `202607${String(index + 1).padStart(2, '0')}`,
+      };
+      return cacheEntry(cachedMeal);
+    });
+    const storage = new MemoryStorage(new Map([
+      ['nyam-toss:meal-cache:v1', JSON.stringify(entries)],
+      ['nyam-toss:profile:v1', JSON.stringify(makeProfile())],
+    ]));
+    const repository = new AppRepository(storage);
+
+    expect(await repository.getCachedMeal(school, '20260715')).toBeNull();
+    expect((await repository.load()).profile?.nickname).toBe('냠냠이');
+    expect(storage.keys()).toEqual(['nyam-toss:profile:v1']);
   });
 
   it('keeps exactly the 14 most recently cached live meals', async () => {

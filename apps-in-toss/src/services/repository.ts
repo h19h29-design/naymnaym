@@ -45,6 +45,10 @@ const CHALLENGE_KINDS = new Set([
   'retry',
 ]);
 
+const OFFICE_CODE_PATTERN = /^[A-Z]\d{2}$/;
+const SCHOOL_CODE_PATTERN = /^\d{7}$/;
+const MEAL_DATE_PATTERN = /^\d{8}$/;
+
 interface MealCacheEntry {
   key: string;
   meal: MealDay;
@@ -166,14 +170,32 @@ function isMealDay(value: unknown): value is MealDay {
     && isNullableString(value.notice);
 }
 
-function isMealCacheEntries(value: unknown): value is MealCacheEntry[] {
-  return Array.isArray(value) && value.every((entry) => {
-    if (!isRecord(entry)) return false;
+function isCanonicalCacheKey(key: string, mealDate: string): boolean {
+  const parts = key.split(':');
+  if (parts.length !== 3) return false;
 
-    return isString(entry.key)
-      && isMealDay(entry.meal)
+  const [officeCode, schoolCode, date] = parts;
+  return OFFICE_CODE_PATTERN.test(officeCode)
+    && SCHOOL_CODE_PATTERN.test(schoolCode)
+    && MEAL_DATE_PATTERN.test(date)
+    && date === mealDate
+    && key === `${officeCode}:${schoolCode}:${date}`;
+}
+
+function isMealCacheEntries(value: unknown): value is MealCacheEntry[] {
+  if (!Array.isArray(value) || value.length > 14) return false;
+
+  const keys = new Set<string>();
+  return value.every((entry) => {
+    if (!isRecord(entry) || !isString(entry.key)) return false;
+
+    const valid = isMealDay(entry.meal)
       && !entry.meal.isSample
-      && isString(entry.savedAt);
+      && isString(entry.savedAt)
+      && isCanonicalCacheKey(entry.key, entry.meal.date)
+      && !keys.has(entry.key);
+    keys.add(entry.key);
+    return valid;
   });
 }
 
@@ -291,7 +313,9 @@ export class AppRepository {
       (candidate) => candidate.key === this.cacheKey(school, date),
     );
 
-    return entry ? { meal: entry.meal, source: 'cache' as const } : null;
+    return entry && entry.meal.date === date
+      ? { meal: entry.meal, source: 'cache' as const }
+      : null;
   }
 
   async deleteAll(): Promise<void> {
