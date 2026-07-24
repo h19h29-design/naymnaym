@@ -10,6 +10,7 @@
     "test:release": "node --test scripts/verify-release.test.mjs",
     "typecheck": "tsc --noEmit",
     "build:web": "vite build",
+    "verify:web": "node scripts/verify-release.mjs --web",
     "build:ait": "ait build",
     "verify:release": "node scripts/verify-release.mjs"
   },

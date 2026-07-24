@@ -1,18 +1,19 @@
 # 냠냠레벨업 앱인토스 무료 운영·검수 런북
 
-이 문서는 토스 미니앱 MVP만 다룹니다. 기존 iOS/Android 앱의 사진, 부모 연결, 서버 동기화 고지는 그대로 유지하며, 이를 미니앱에 배포하거나 사용하지 않습니다. 미니앱은 토스 `Storage`의 기기 로컬 데이터와 NEIS 요청을 중계하는 `neis-proxy` Edge Function 하나만 사용합니다. 앱인토스 검수 또는 출시는 토스의 판단이며 이 체크리스트가 승인을 보장하지는 않습니다.
+이 문서는 토스 미니앱 MVP만 다룹니다. 기존 iOS/Android 앱의 사진, 부모 연결, 서버 동기화 고지는 그대로 유지하며, 이를 미니앱에 배포하거나 사용하지 않습니다. 미니앱은 토스 `Storage`와 NEIS 요청을 중계하는 `neis-proxy` Edge Function을 사용합니다. 앱인토스 검수 또는 출시는 토스의 판단이며 이 체크리스트가 승인을 보장하지는 않습니다.
 
 ## 운영 경계와 공개 정보
 
-- 기기에만 저장: 별명, 선택 학교, 알레르기, 식사 기록, XP, 레벨, 급식 캐시. 토스 앱/미니앱 삭제, 토스 저장소 삭제, 기기 변경 시 사라질 수 있으며 설정의 **내 데이터 삭제**로 지웁니다.
-- 중계로 전달: 학교 검색어 또는 선택 학교 코드와 날짜뿐입니다. `neis-proxy`는 사용자 기록을 저장하지 않습니다.
-- Supabase 역할: Edge Function 실행과 그 비밀 설정뿐입니다. **Supabase DB, Auth 사용자, Storage, Realtime은 생성·사용·연결하지 않습니다.**
-- 공개 가능한 키: Supabase Dashboard **Settings → API Keys**의 공개 anon/publishable 키만 `VITE_SUPABASE_ANON_KEY`로 클라이언트 빌드에 넣습니다. Supabase는 publishable/legacy anon 키를 브라우저용으로 설명하고, secret/service-role 키는 브라우저에 두면 안 된다고 명시합니다. [Supabase secrets guide](https://supabase.com/docs/guides/functions/secrets)
-- 금지: service-role/secret key, NEIS API 키, 콘솔에서 발급한 실제 값, 유료 토스 기능, 자동 결제, 자동 요금제 업그레이드. 키·값·전체 origin 문자열이 보이는 화면을 검수 캡처나 이슈에 올리지 않습니다.
+- 로컬 저장: 별명, 선택 학교, 알레르기, 식사 기록, XP, 레벨, 급식 캐시는 토스 `Storage`에 저장합니다. 토스 앱/미니앱 삭제, 토스 저장소 삭제, 기기 변경 시 사라질 수 있으며 설정의 **내 데이터 삭제**로 지웁니다.
+- Edge·NEIS 처리: 학교 검색어 또는 선택 학교 코드와 날짜가 급식 조회 목적의 `neis-proxy`와 NEIS API로 전달됩니다. Origin, IP 주소, User-Agent, 헤더 등 통상적인 요청 메타데이터와 Supabase 호출·로그 메타데이터도 제공자 운영 과정에서 처리될 수 있습니다. 함수 애플리케이션 로그는 요청 ID, 작업 종류, 상태, 처리 시간만 남기며 요청 본문과 키는 남기지 않습니다.
+- Supabase 경계: 미니앱 코드는 **Supabase DB, Auth 사용자, Storage, Realtime에 사용자 기록을 작성하지 않습니다.** Edge Function과 비밀 설정은 사용합니다. 이 문장은 제공자 플랫폼의 일반적 호출/보안/로그 처리를 부정하는 뜻이 아닙니다.
+- 보관·처리 위치: 실제 Supabase 프로젝트 지역, 호출·로그 보관 설정, Supabase/NEIS의 보관 기간 및 처리 위치는 아직 출시 구성으로 확정하지 않았습니다. Task 11 제출 전 프로젝트 설정과 제공자 정책을 확인하고, 정책 페이지·검수 자료에 반영합니다. 보장되지 않은 정확한 보관 기간이나 위치를 쓰지 않습니다.
+- 클라이언트 키: 현재 클라이언트는 같은 키를 `apikey`와 `Authorization: Bearer`에 전송하고 `verify_jwt` 기본값을 유지합니다. 그러므로 `VITE_SUPABASE_ANON_KEY`에는 **기존 JWT 형태의 `anon` 키**만 사용합니다. `sb_publishable_`는 JWT가 아니어서 이 Bearer 설계와 기본 JWT 검증에서 허용되지 않습니다. `service_role`와 `sb_secret_`는 금지입니다. [Supabase Authorization headers](https://supabase.com/docs/guides/functions/auth-headers), [API-key compatibility](https://supabase.com/docs/guides/getting-started/api-keys)
+- 금지: 실제 키·콘솔 값, 유료 토스 기능, 자동 결제, 자동 요금제 업그레이드, `--no-verify-jwt` 배포. 키·값·전체 origin 문자열이 보이는 화면을 검수 캡처나 이슈에 올리지 않습니다.
 
 ## 한 번만 준비할 설정
 
-1. 로컬 전용 `apps-in-toss/.env`에 `AIT_APP_NAME`, `AIT_ICON_URL`, `VITE_NEIS_PROXY_URL`, `VITE_SUPABASE_ANON_KEY`의 실제 값을 넣습니다. 값은 각 콘솔의 해당 필드에서 복사하고, `.env`를 커밋하지 않습니다.
+1. 로컬 전용 `apps-in-toss/.env`에 `AIT_APP_NAME`, `AIT_ICON_URL`, `VITE_NEIS_PROXY_URL`, `VITE_SUPABASE_ANON_KEY`의 실제 값을 넣습니다. `VITE_SUPABASE_ANON_KEY`는 기존 JWT 형태의 `anon` 키여야 하며 `sb_publishable_`가 아닙니다. 값은 각 콘솔의 해당 필드에서 복사하고, `.env`를 커밋하지 않습니다.
 2. `VITE_NEIS_PROXY_URL`은 Supabase Dashboard **Edge Functions → neis-proxy**에서 확인한 함수 URL입니다. URL 형식과 함수 배포 절차는 [Supabase Edge Function 배포 문서](https://supabase.com/docs/guides/functions/deploy)를 따릅니다.
 3. Supabase Dashboard **Edge Functions → Secrets**에 `NEIS_API_KEY`와 `NEIS_ALLOWED_ORIGINS`만 등록합니다. `NEIS_API_KEY`에는 NEIS 제공자 콘솔에서 발급·승인된 키를 직접 복사합니다. 클라이언트 `.env`, Git, 로그, QR 캡처에 넣지 않습니다. Secrets 변경은 재배포 없이 함수에서 사용할 수 있습니다. [Supabase secrets guide](https://supabase.com/docs/guides/functions/secrets)
 4. `NEIS_ALLOWED_ORIGINS`에는 아래처럼 프로토콜·호스트만 쉼표로 연결하여 **정확히** 넣습니다. 끝 `/`, 와일드카드, 부분 도메인, 공백으로 된 별도 항목을 넣지 않습니다. `<appName>`은 `AIT_APP_NAME`의 실제 앱 이름으로 치환합니다.
@@ -27,7 +28,7 @@
 
    토스는 QR 테스트와 실제 서비스 환경의 CORS/네트워크 동작이 다를 수 있다고 안내하며, 위 두 origin을 각각 허용하도록 명시합니다. [앱인토스 미니앱 출시 안내](https://developers-apps-in-toss.toss.im/development/deploy.html)
 
-5. 함수 코드는 `supabase/functions/neis-proxy/`만 배포합니다. 이 함수는 요청을 `searchSchools`와 `fetchMeals`로 제한하고 사용자 레코드를 쓰지 않습니다. 배포 전에는 부모 동기화 함수, migrations, DB 테이블, Auth 사용자, Storage bucket, Realtime 채널을 이 미니앱 구성에 추가하지 않았는지 다시 확인합니다.
+5. 함수 코드는 `supabase/functions/neis-proxy/`만 기본 `verify_jwt`를 유지해 배포합니다. `--no-verify-jwt`를 쓰지 않습니다. 이 함수는 요청을 `searchSchools`와 `fetchMeals`로 제한하고 미니앱 사용자 레코드를 쓰지 않습니다. 배포 전에는 부모 동기화 함수, migrations, DB 테이블, Auth 사용자, Storage bucket, Realtime 채널을 이 미니앱 구성에 추가하지 않았는지 다시 확인합니다.
 
 ## 키 회전과 중단
 
@@ -41,8 +42,8 @@
 ### 무료 한도 접근 또는 이상 요청 시
 
 1. 앱은 `RATE_LIMITED` 또는 서비스 제한 메시지를 표시하고 자동 결제·자동 업그레이드를 하지 않습니다. 실제 학교 조회는 샘플 급식으로 자동 대체하지 않습니다.
-2. 즉시 NEIS 호출을 막아야 하면 `NEIS_ALLOWED_ORIGINS`를 빈 값으로 바꿉니다. 현재 함수는 허용 origin이 비어 있으면 NEIS를 호출하지 않고 `NOT_CONFIGURED`/503을 반환합니다. 이는 재배포 없이 적용되는 안전한 임시 중단입니다.
-3. 계속 중단할 때는 프로젝트를 확인한 뒤 `neis-proxy`만 삭제/undeploy합니다. CLI의 `supabase functions delete neis-proxy --project-ref <project-ref>`는 원격 함수만 삭제하고 로컬 소스는 지우지 않습니다. 프로젝트 전체를 삭제하거나 데이터 제품을 새로 켜지 않습니다. [Supabase CLI Functions reference](https://supabase.com/docs/reference/cli/supabase-orgs-list)
+2. 즉시 NEIS 호출을 막아야 하면 지원되는 CLI로 `supabase secrets unset NEIS_ALLOWED_ORIGINS --project-ref <project-ref>`를 실행합니다. 현재 함수는 허용 origin이 없으면 NEIS를 호출하지 않고 `NOT_CONFIGURED`/503을 반환합니다. 허용된 origin에서 응답이 503이고 코드가 `NOT_CONFIGURED`인지 확인하되 키·요청 본문은 출력하거나 기록하지 않습니다. [Supabase secrets unset](https://supabase.com/docs/reference/cli/supabase-secrets-unset)
+3. 계속 중단할 때는 프로젝트를 확인한 뒤 `neis-proxy`만 삭제/undeploy합니다. `supabase functions delete neis-proxy --project-ref <project-ref>`는 원격 함수만 삭제하고 로컬 소스는 지우지 않습니다. 프로젝트 전체를 삭제하거나 데이터 제품을 새로 켜지 않습니다. [Supabase functions delete](https://supabase.com/docs/reference/cli/supabase-functions-delete)
 4. 재개할 때는 새 키와 정확한 두 토스 origin을 다시 설정하고 `neis-proxy`만 배포한 뒤 QR과 운영 환경을 다시 확인합니다.
 
 ## 사용량·무료 플랜 감시
@@ -60,11 +61,12 @@
 npm test
 npm run typecheck
 npm run build:web
-npm run verify:release
+npm run verify:web
 npm run build:ait
+npm run verify:release
 ```
 
-`verify:release`는 `dist/` 누락, 압축 해제 크기 100 MiB 이상, 직접 진입점/자산 참조 오류, 금지 표식, 빈/누락/추가된 레벨 PNG를 실패시킵니다. 소스맵과 문서는 내용 표식 검사에서 제외하되 bundle 크기에는 포함합니다. verifier 오류는 발견한 비밀 값이나 환경 변수 내용을 출력하지 않습니다.
+`verify:web`는 빠른 웹 preflight입니다. `verify:release`는 최종 `.ait`가 없으면 실패하며, 설치된 공식 AIT reader로 magic과 인덱스를 확인하고 모든 항목을 실제로 읽습니다. 압축 해제 합계 100 MiB 이상, 중복·경로 탈출·symlink 유사 항목, 미허용 형식, 깨진 HTML 자산, 모든 웹/RN bundle·map·JSON·HTML·CSS 및 허용된 산출물의 금지 표식, 빈/누락/추가된 레벨 PNG 또는 PNG 서명을 실패시킵니다. 소스맵과 문서는 검사에서 제외하지 않으며 오류는 발견한 값이나 환경 변수를 출력하지 않습니다.
 
 웹 빌드는 `index.html`을 직접 진입점으로 사용하며 내부 화면 전환은 WebView의 클라이언트 라우터가 처리합니다. 앱인토스 배포 외의 정적 호스트나 `/today` 같은 딥링크를 지원하려면 호스트의 SPA fallback을 별도로 검증합니다. 이 MVP는 앱인토스가 번들을 제공하는 흐름 외의 호스팅을 전제로 하지 않습니다.
 
@@ -74,4 +76,5 @@ npm run build:ait
 - [ ] 콘솔 sandbox/QR에서 학교 설정 → 실제 급식 → 세 가지 기록 → XP/레벨 → 앱 재실행 후 로컬 보존 → **내 데이터 삭제**를 캡처한다. 실제 값·키·개인 식별 정보·학교 상세 주소는 가린다.
 - [ ] 실제 토스 QR 테스트에서 학교 검색, 급식, `RATE_LIMITED`/서비스 제한 상태, CORS를 확인한다. QR 테스트 origin과 운영 origin은 각각 별도로 점검한다.
 - [ ] 지원되는 iOS와 Android 기기에서 같은 핵심 흐름, 글자/터치, 오류 상태, 네트워크 재시도를 기록한다. 네이티브 앱 설치나 외부 사이트를 핵심 기능의 대체 증거로 쓰지 않는다.
-- [ ] `npm run build:web`, `npm run verify:release`, `.ait` 빌드 결과, 테스트/타입 검사 출력을 보관한다. 승인 전에도 토스의 최신 비게임 출시 체크리스트를 대조한다. [앱인토스 출시 안내](https://developers-apps-in-toss.toss.im/development/deploy.html)
+- [ ] Task 11에서 실제 Supabase 프로젝트 지역·호출/로그 보관 설정·Supabase/NEIS 제공자 정책을 확인하고 정책 문구와 검수 자료를 갱신한다. 이 저장소는 아직 QR·실기기·승인 증거를 주장하지 않는다.
+- [ ] `npm run build:web`, `npm run verify:web`, `npm run build:ait`, `npm run verify:release`, 테스트/타입 검사와 최종 `.ait` verifier 출력을 보관한다. 승인 전에도 토스의 최신 비게임 출시 체크리스트를 대조한다. [앱인토스 출시 안내](https://developers-apps-in-toss.toss.im/development/deploy.html)
