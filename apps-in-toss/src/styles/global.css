@@ -1,0 +1,12 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Noto Sans KR", sans-serif;
+  background: #ffffff;
+  color: #191f28;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: #ffffff; }
+button, input { font: inherit; }
+.app-shell { min-height: 100dvh; padding: 24px 20px 40px; }

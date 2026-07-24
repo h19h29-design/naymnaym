@@ -9,6 +9,9 @@ build/
 .build/
 .swiftpm/
 node_modules/
+apps-in-toss/.env
+apps-in-toss/dist/
+apps-in-toss/*.ait
 marketing-site/node_modules/
 marketing-site/tmp/
 marketing-site/dist/**/*.map
