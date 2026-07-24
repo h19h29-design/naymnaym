@@ -1,6 +1,7 @@
 # Task 8 report — Today meal, feedback, demo, and growth
 
 Base SHA: `dacc65b6f4053acb742f85a7f61517f9f2e63f5a`
+Implementation SHA: `f7ea3eae14412113ab38bac05b3250ba048b032a`
 
 ## RED
 
