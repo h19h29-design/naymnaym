@@ -62,6 +62,7 @@ export function OnboardingPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAwaitingReload, setIsAwaitingReload] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const submittingRef = useRef(false);
@@ -69,8 +70,10 @@ export function OnboardingPage() {
   const { repository, reload } = useAppState();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const isProfileLocked = isSubmitting || isAwaitingReload;
 
   useEffect(() => {
+    if (isProfileLocked) return undefined;
     const normalized = keyword.trim();
     const requestId = ++requestIdRef.current;
     if (!SCHOOL_KEYWORD.test(normalized)) {
@@ -113,7 +116,7 @@ export function OnboardingPage() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [keyword, schoolType]);
+  }, [isProfileLocked, keyword, schoolType]);
 
   useEffect(() => {
     if (selectedSchool !== null && selectedSchool.schoolType !== schoolType) {
@@ -122,17 +125,43 @@ export function OnboardingPage() {
   }, [schoolType, selectedSchool]);
 
   const setSchool = (type: 'middle' | 'high') => {
+    if (isProfileLocked) return;
     setSchoolType(type);
   };
 
   const toggleAllergy = (code: number, checked: boolean) => {
+    if (isProfileLocked) return;
     setAllergyCodes((current) => (checked
       ? [...current, code]
       : current.filter((item) => item !== code)));
   };
 
+  const retryReload = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    try {
+      if (!await reload()) {
+        setSubmissionError('프로필은 저장되었어요. 정보를 다시 불러오면 시작할 수 있어요.');
+        return;
+      }
+      setIsAwaitingReload(false);
+      navigate(safeNextPath(searchParams.get('next')), { replace: true });
+    } catch {
+      setSubmissionError('프로필은 저장되었어요. 정보를 다시 불러오면 시작할 수 있어요.');
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
   const submit = async () => {
     if (submittingRef.current) return;
+    if (isAwaitingReload) {
+      await retryReload();
+      return;
+    }
     const nextErrors = [
       ...(nickname.trim() ? [] : ['별명을 입력해 주세요.']),
       ...(schoolType ? [] : ['중학교 또는 고등학교를 선택해 주세요.']),
@@ -162,14 +191,18 @@ export function OnboardingPage() {
         savedProfileRef.current = true;
       }
       if (!await reload()) {
-        setSubmissionError('저장했지만 정보를 불러오지 못했어요. 다시 시도해 주세요.');
+        setIsAwaitingReload(true);
+        setSubmissionError('프로필은 저장되었어요. 정보를 다시 불러오면 시작할 수 있어요.');
         return;
       }
       navigate(safeNextPath(searchParams.get('next')), { replace: true });
     } catch {
-      setSubmissionError(savedProfileRef.current
-        ? '저장했지만 정보를 불러오지 못했어요. 다시 시도해 주세요.'
-        : '프로필을 저장하지 못했어요. 다시 시도해 주세요.');
+      if (savedProfileRef.current) {
+        setIsAwaitingReload(true);
+        setSubmissionError('프로필은 저장되었어요. 정보를 다시 불러오면 시작할 수 있어요.');
+      } else {
+        setSubmissionError('프로필을 저장하지 못했어요. 다시 시도해 주세요.');
+      }
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -188,7 +221,10 @@ export function OnboardingPage() {
         placeholder="별명"
         value={nickname}
         maxLength={12}
-        onChange={(event) => setNickname(event.currentTarget.value)}
+        disabled={isProfileLocked}
+        onChange={(event) => {
+          if (!isProfileLocked) setNickname(event.currentTarget.value);
+        }}
       />
 
       <fieldset>
@@ -201,6 +237,7 @@ export function OnboardingPage() {
               name="schoolType"
               aria-label={value === 'middle' ? '중학교' : '고등학교'}
               checked={schoolType === value}
+              disabled={isProfileLocked}
               onCheckedChange={() => setSchool(value)}
             />
             <label htmlFor={`school-type-${value}`}>
@@ -217,7 +254,10 @@ export function OnboardingPage() {
         placeholder="학교 검색"
         value={keyword}
         maxLength={40}
-        onChange={(event) => setKeyword(event.currentTarget.value)}
+        disabled={isProfileLocked}
+        onChange={(event) => {
+          if (!isProfileLocked) setKeyword(event.currentTarget.value);
+        }}
       />
       {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
       {searchError !== null ? <p role="alert">{searchError}</p> : null}
@@ -229,7 +269,10 @@ export function OnboardingPage() {
           <li key={`${item.officeCode}:${item.schoolCode}`}>
             <Button
               color="light"
-              onClick={() => setSelectedSchool(item)}
+              disabled={isProfileLocked}
+              onClick={() => {
+                if (!isProfileLocked) setSelectedSchool(item);
+              }}
               aria-pressed={selectedSchool?.officeCode === item.officeCode
                 && selectedSchool.schoolCode === item.schoolCode}
             >
@@ -250,6 +293,7 @@ export function OnboardingPage() {
                 id={`allergy-${code}`}
                 aria-label={label}
                 checked={allergyCodes.includes(numericCode)}
+                disabled={isProfileLocked}
                 onCheckedChange={(checked) => toggleAllergy(numericCode, checked)}
               />
               <label htmlFor={`allergy-${code}`}>{label}</label>
@@ -261,8 +305,9 @@ export function OnboardingPage() {
             id="allergy-none"
             aria-label="해당 없음"
             checked={allergyCodes.length === 0}
+            disabled={isProfileLocked}
             onCheckedChange={(checked) => {
-              if (checked) setAllergyCodes([]);
+              if (checked && !isProfileLocked) setAllergyCodes([]);
             }}
           />
           <label htmlFor="allergy-none">해당 없음</label>
@@ -272,9 +317,16 @@ export function OnboardingPage() {
       {formErrors.map((message) => <p role="alert" key={message}>{message}</p>)}
       {submissionError !== null ? <p role="alert">{submissionError}</p> : null}
       <Button display="block" loading={isSubmitting} disabled={isSubmitting} onClick={() => void submit()}>
-        시작하기
+        {isAwaitingReload ? '다시 불러오기' : '시작하기'}
       </Button>
-      <Button color="light" display="block" onClick={() => setDemoConfirmOpen(true)}>
+      <Button
+        color="light"
+        display="block"
+        disabled={isProfileLocked}
+        onClick={() => {
+          if (!isProfileLocked) setDemoConfirmOpen(true);
+        }}
+      >
         {copy.demo}
       </Button>
       <Modal open={demoConfirmOpen} onOpenChange={setDemoConfirmOpen}>

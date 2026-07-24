@@ -259,7 +259,7 @@ describe('OnboardingPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent('/today');
   });
 
-  it('retries reload without saving a duplicate profile after reload fails', async () => {
+  it('locks the saved profile and retries only reload after reload fails', async () => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
     const load = vi.fn()
       .mockResolvedValueOnce(initialState())
@@ -270,11 +270,40 @@ describe('OnboardingPage', () => {
     await selectMiddleSchool(user);
     await user.click(screen.getByRole('button', { name: '시작하기' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '저장했지만 정보를 불러오지 못했어요. 다시 시도해 주세요.',
+      '프로필은 저장되었어요. 정보를 다시 불러오면 시작할 수 있어요.',
     );
     expect(saveProfile).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole('button', { name: /시작하기/ }));
+    const nickname = screen.getByLabelText('별명');
+    const middleSchool = screen.getByRole('radio', { name: '중학교' });
+    const highSchool = screen.getByRole('radio', { name: '고등학교' });
+    const schoolSearch = screen.getByLabelText('학교 검색');
+    const schoolResult = screen.getByRole('button', { name: /가람중학교/ });
+    const allergy = screen.getByRole('checkbox', { name: '난류' });
+    const demo = screen.getByRole('button', { name: '학교 없이 체험해 보기' });
+
+    expect(nickname).toBeDisabled();
+    expect(middleSchool).toHaveAttribute('aria-disabled', 'true');
+    expect(highSchool).toHaveAttribute('aria-disabled', 'true');
+    expect(schoolSearch).toBeDisabled();
+    expect(schoolResult).toBeDisabled();
+    expect(allergy).toHaveAttribute('aria-disabled', 'true');
+    expect(demo).toBeDisabled();
+
+    await user.type(nickname, '변경');
+    await user.click(highSchool);
+    await user.type(schoolSearch, '나래');
+    await user.click(allergy);
+
+    expect(nickname).toHaveValue('냠냠이');
+    expect(middleSchool).toHaveAttribute('aria-checked', 'true');
+    expect(highSchool).toHaveAttribute('aria-checked', 'false');
+    expect(schoolSearch).toHaveValue('가람');
+    expect(allergy).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText('선택한 학교: 가람중학교')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '체험 모드 안내' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /다시 불러오기/ }));
     expect(saveProfile).toHaveBeenCalledTimes(1);
     expect(await screen.findByTestId('location')).toHaveTextContent('/today');
   });
