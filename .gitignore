@@ -16,6 +16,7 @@ marketing-site/dist/**/*.map
 *.dSYM
 .DS_Store
 .xcodebuildmcp/
+.worktrees/
 android/.gradle/
 android/local.properties
 android/app/build/
