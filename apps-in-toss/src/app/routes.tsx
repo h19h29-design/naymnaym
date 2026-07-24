@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { Navigate, type RouteObject, useSearchParams } from 'react-router-dom';
 import { useAppState } from '../state/AppStateProvider';
 import type { AppState } from '../state/reducer';
+import { OnboardingPage } from '../features/onboarding/OnboardingPage';
 
-const OnboardingPlaceholder = () => <h1>냠냠레벨업 시작하기</h1>;
+const onboarding = <OnboardingPage />;
 const TodayPlaceholder = () => <h1>오늘 급식</h1>;
 const SettingsPlaceholder = () => <h1>설정</h1>;
 
@@ -33,7 +34,7 @@ function RootGate() {
 function OnboardingGate() {
   return (
     <ReadyGate>
-      {() => <OnboardingPlaceholder />}
+      {() => onboarding}
     </ReadyGate>
   );
 }
@@ -57,7 +58,7 @@ function SettingsGate() {
   return (
     <ReadyGate>
       {({ profile }) => (
-        profile ? <SettingsPlaceholder /> : <OnboardingPlaceholder />
+        profile ? <SettingsPlaceholder /> : onboarding
       )}
     </ReadyGate>
   );

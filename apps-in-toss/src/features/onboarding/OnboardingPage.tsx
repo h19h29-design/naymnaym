@@ -1,0 +1,257 @@
+import { useEffect, useRef, useState } from 'react';
+import { Button, Checkbox, Modal, Text, TextField } from '@toss/tds-mobile';
+import type { School } from '@nyam/neis-contract';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ALLERGIES } from '../../domain/allergy';
+import { neisClient } from '../../services/neisClient';
+import { useAppState } from '../../state/AppStateProvider';
+
+const SCHOOL_KEYWORD = /^[가-힣A-Za-z0-9\s().-]{2,40}$/;
+
+const copy = {
+  title: '냠냠레벨업 시작하기',
+  privacy: '별명, 학교, 알레르기와 기록은 이 기기에만 저장돼요.',
+  demo: '학교 없이 체험해 보기',
+  noResults: '검색 결과가 없어요. 학교 이름을 다시 확인해 주세요.',
+};
+
+function isSafeInternalPath(requested: string | null): requested is string {
+  if (requested === null) return false;
+
+  let decoded = requested;
+  try {
+    for (let index = 0; index < 5; index += 1) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {
+    return false;
+  }
+
+  return decoded.startsWith('/')
+    && !decoded.startsWith('//')
+    && !decoded.includes('\\')
+    && !/[\u0000-\u001F]/.test(decoded);
+}
+
+function safeNextPath(requested: string | null): string {
+  if (!isSafeInternalPath(requested)) return '/today';
+
+  let decoded = requested;
+  for (let index = 0; index < 5; index += 1) {
+    const next = decodeURIComponent(decoded);
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
+export function OnboardingPage() {
+  const [nickname, setNickname] = useState('');
+  const [schoolType, setSchoolType] = useState<'middle' | 'high' | null>(null);
+  const [keyword, setKeyword] = useState('');
+  const [schools, setSchools] = useState<School[]>([]);
+  const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+  const [allergyCodes, setAllergyCodes] = useState<number[]>([]);
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);
+  const requestIdRef = useRef(0);
+  const { repository, reload } = useAppState();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const normalized = keyword.trim();
+    const requestId = ++requestIdRef.current;
+    if (!SCHOOL_KEYWORD.test(normalized)) {
+      setSchools([]);
+      setSearchError(null);
+      setIsSearching(false);
+      setHasSearched(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setIsSearching(true);
+      setSearchError(null);
+      setHasSearched(false);
+      void neisClient.searchSchools(normalized, controller.signal)
+        .then((results) => {
+          if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+          setSchools(results
+            .filter((item) => schoolType === null || item.schoolType === schoolType)
+            .slice(0, 20));
+          setHasSearched(true);
+        })
+        .catch((caught: unknown) => {
+          if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+          if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
+            setSchools([]);
+            setSearchError('학교를 검색하지 못했어요. 다시 시도해 주세요.');
+            setHasSearched(true);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && requestId === requestIdRef.current) {
+            setIsSearching(false);
+          }
+        });
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [keyword, schoolType]);
+
+  useEffect(() => {
+    if (selectedSchool !== null && selectedSchool.schoolType !== schoolType) {
+      setSelectedSchool(null);
+    }
+  }, [schoolType, selectedSchool]);
+
+  const setSchool = (type: 'middle' | 'high') => {
+    setSchoolType(type);
+  };
+
+  const toggleAllergy = (code: number, checked: boolean) => {
+    setAllergyCodes((current) => (checked
+      ? [...current, code]
+      : current.filter((item) => item !== code)));
+  };
+
+  const submit = async () => {
+    const nextErrors = [
+      ...(nickname.trim() ? [] : ['별명을 입력해 주세요.']),
+      ...(schoolType ? [] : ['중학교 또는 고등학교를 선택해 주세요.']),
+      ...(
+        selectedSchool !== null
+          && selectedSchool.schoolType === schoolType
+          && (schoolType === 'middle' || schoolType === 'high')
+          ? []
+          : ['학교를 선택해 주세요.']
+      ),
+    ];
+    setFormErrors(nextErrors);
+    if (nextErrors.length > 0 || schoolType === null || selectedSchool === null) return;
+
+    await repository.saveProfile({
+      nickname: nickname.trim().slice(0, 12),
+      schoolType,
+      school: selectedSchool,
+      allergyCodes,
+      createdAt: new Date().toISOString(),
+    });
+    await reload();
+    navigate(safeNextPath(searchParams.get('next')), { replace: true });
+  };
+
+  return (
+    <main className="app-shell">
+      <h1>{copy.title}</h1>
+      <Text typography="t6" color="grey600">{copy.privacy}</Text>
+
+      <TextField
+        variant="box"
+        label="별명"
+        labelOption="sustain"
+        placeholder="별명"
+        value={nickname}
+        maxLength={12}
+        onChange={(event) => setNickname(event.currentTarget.value)}
+      />
+
+      <fieldset>
+        <legend>학교급</legend>
+        {(['middle', 'high'] as const).map((value) => (
+          <div key={value}>
+            <Checkbox.Circle
+              inputType="radio"
+              name="schoolType"
+              aria-label={value === 'middle' ? '중학교' : '고등학교'}
+              checked={schoolType === value}
+              onCheckedChange={() => setSchool(value)}
+            />
+            {value === 'middle' ? '중학교' : '고등학교'}
+          </div>
+        ))}
+      </fieldset>
+
+      <TextField
+        variant="box"
+        label="학교 검색"
+        labelOption="sustain"
+        placeholder="학교 검색"
+        value={keyword}
+        maxLength={40}
+        onChange={(event) => setKeyword(event.currentTarget.value)}
+      />
+      {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
+      {searchError !== null ? <p role="alert">{searchError}</p> : null}
+      {hasSearched && !isSearching && searchError === null && schools.length === 0
+        ? <p role="status">{copy.noResults}</p>
+        : null}
+      <ul aria-label="학교 검색 결과">
+        {schools.map((item) => (
+          <li key={`${item.officeCode}:${item.schoolCode}`}>
+            <Button
+              color="light"
+              onClick={() => setSelectedSchool(item)}
+              aria-pressed={selectedSchool?.officeCode === item.officeCode
+                && selectedSchool.schoolCode === item.schoolCode}
+            >
+              {item.name} · {item.region}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {selectedSchool !== null ? <p role="status">선택한 학교: {selectedSchool.name}</p> : null}
+
+      <fieldset>
+        <legend>알레르기</legend>
+        {Object.entries(ALLERGIES).map(([code, label]) => {
+          const numericCode = Number(code);
+          return (
+            <div key={code}>
+              <Checkbox.Line
+                aria-label={label}
+                checked={allergyCodes.includes(numericCode)}
+                onCheckedChange={(checked) => toggleAllergy(numericCode, checked)}
+              />
+              {label}
+            </div>
+          );
+        })}
+        <div>
+          <Checkbox.Line
+            aria-label="해당 없음"
+            checked={allergyCodes.length === 0}
+            onCheckedChange={(checked) => {
+              if (checked) setAllergyCodes([]);
+            }}
+          />
+          해당 없음
+        </div>
+      </fieldset>
+
+      {formErrors.map((message) => <p role="alert" key={message}>{message}</p>)}
+      <Button display="block" onClick={() => void submit()}>시작하기</Button>
+      <Button color="light" display="block" onClick={() => setDemoConfirmOpen(true)}>
+        {copy.demo}
+      </Button>
+      <Modal open={demoConfirmOpen} onOpenChange={setDemoConfirmOpen}>
+        <Modal.Overlay onClick={() => setDemoConfirmOpen(false)} />
+        <Modal.Content aria-label="체험 모드 안내">
+          <h2>체험해 볼까요?</h2>
+          <p>체험 기록은 저장되지 않고 실제 성장에 반영되지 않아요.</p>
+          <Button onClick={() => navigate('/today?demo=1')}>체험 시작</Button>
+        </Modal.Content>
+      </Modal>
+    </main>
+  );
+}

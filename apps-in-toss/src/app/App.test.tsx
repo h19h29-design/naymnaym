@@ -11,6 +11,7 @@ import { AppRepository } from '../services/repository';
 import type { KeyValueStorage } from '../services/storage';
 import { AppStateProvider, useAppState } from '../state/AppStateProvider';
 import { makeProfile } from '../test/fixtures';
+import { AppProviders } from './AppProviders';
 import { routeObjects } from './routes';
 
 afterEach(cleanup);
@@ -39,9 +40,11 @@ function renderTestApp({
     initialEntries: [initialEntry],
   });
   return render(
-    <AppStateProvider repository={makeRepository(profile)}>
-      <RouterProvider router={router} />
-    </AppStateProvider>,
+    <AppProviders>
+      <AppStateProvider repository={makeRepository(profile)}>
+        <RouterProvider router={router} />
+      </AppStateProvider>
+    </AppProviders>,
   );
 }
 
@@ -107,9 +110,11 @@ describe('direct routes', () => {
       initialEntries: ['/test-onboarding-save'],
     });
     render(
-      <AppStateProvider repository={repository}>
-        <RouterProvider router={router} />
-      </AppStateProvider>,
+      <AppProviders>
+        <AppStateProvider repository={repository}>
+          <RouterProvider router={router} />
+        </AppStateProvider>
+      </AppProviders>,
     );
 
     await user.click(await screen.findByRole('button', { name: '프로필 저장 후 오늘로' }));
