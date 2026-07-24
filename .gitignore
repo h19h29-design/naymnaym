@@ -12,6 +12,7 @@ node_modules/
 apps-in-toss/.env
 apps-in-toss/dist/
 apps-in-toss/*.ait
+apps-in-toss/*.tsbuildinfo
 marketing-site/node_modules/
 marketing-site/tmp/
 marketing-site/dist/**/*.map
