@@ -17,10 +17,18 @@ describe('meal records', () => {
     expect(updated.newXp).toBe(0);
   });
 
-  it('awards XP for a first record and leaves the input list unchanged', () => {
-    const first = makeRecord();
-    const result = upsertMealRecord([], first);
+  it('leaves a non-empty input array and record unchanged after an update', () => {
+    const first = makeRecord({ status: 'oneBite', awardedXp: 18 });
+    const records = [first];
+    const originalRecord = { ...first };
+    const result = upsertMealRecord(records, {
+      ...first,
+      status: 'finished',
+      awardedXp: 10,
+    });
 
-    expect(result).toEqual({ records: [first], newXp: 18 });
+    expect(records).toEqual([originalRecord]);
+    expect(records[0]).toBe(first);
+    expect(result.records[0]).not.toBe(first);
   });
 });
