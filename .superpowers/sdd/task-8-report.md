@@ -24,11 +24,15 @@ Review follow-up SHA: `19e162677d8bb428a2e12f6b6bf8cfa86e66732b`
   recover with a fresh repository instance; fetched and cached meal payloads
   are validated before use; the today hook schedules Seoul-midnight refreshes
   and refreshes on focus/visibility changes.
+- Re-review follow-up: repository operations are serialized per instance;
+  `saveProgress` refuses to overwrite a validated pending feedback journal;
+  journal snapshots require complete non-negative integer progress with canonical
+  meal-date XP maps, while legacy top-level partial progress remains readable.
 
 ## Results
 
-- Focused repository/provider/today/routes suites: 50 tests passed.
-- Full client suite: 91 tests passed across 13 files.
+- Focused repository/provider/today/routes suites: 53 tests passed.
+- Full client suite: 94 tests passed across 13 files.
 - `npm run typecheck`: passed.
 - `npm run build:web`: passed.
 - Asset audit: 7 PNG files, all non-empty; no other public assets.
@@ -37,8 +41,11 @@ Review follow-up SHA: `19e162677d8bb428a2e12f6b6bf8cfa86e66732b`
 ## Risks
 
 - The seven public PNG files add 8,735,557 bytes. The production build still
-  emits Vite's single-chunk warning: 1.31 MB minified / 424.34 kB gzip.
+  emits Vite's single-chunk warning: 1.31 MB minified / 424.61 kB gzip.
 - Device storage lacks a native transaction. The verified `progress:v1` journal
   carries an immutable feedback snapshot before companion writes and is replayed
   on the next repository load; crash injection after every journal/record/
   challenge/final-progress write converges idempotently without a sixth key.
+- A normal progress write cannot erase a valid journal: it is serialized and
+  rejected until recovery completes; incomplete journal progress invalidates only
+  `progress:v1`, preserving unrelated device keys.

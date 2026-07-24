@@ -317,4 +317,66 @@ describe('AppRepository', () => {
     expect(state.progress.totalXp).toBe(0);
     expect(storage.keys()).toEqual(['nyam-toss:profile:v1']);
   });
+
+  it('refuses saveProgress without clobbering a valid pending feedback journal', async () => {
+    const nextRecords = [makeRecord()];
+    const nextProgress = {
+      totalXp: 18,
+      baseEarnedByDate: { '20260724': 18 },
+      challengeEarnedByDate: {},
+    };
+    const nextChallenges = [{
+      date: '20260724', mealItemId: 'meal-1', kinds: ['variedFoodGroup'], awardedXp: 5,
+    }];
+    const values = new Map<string, string>([
+      ['nyam-toss:progress:v1', JSON.stringify({
+        ...nextProgress,
+        pendingMealFeedback: {
+          records: nextRecords,
+          progress: nextProgress,
+          challengeRecords: nextChallenges,
+        },
+      })],
+    ]);
+    const repository = new AppRepository(new MemoryStorage(values));
+
+    await expect(repository.saveProgress({
+      totalXp: 999,
+      baseEarnedByDate: {},
+      challengeEarnedByDate: {},
+    })).rejects.toThrow('pending feedback');
+    expect(JSON.parse(values.get('nyam-toss:progress:v1') ?? '{}'))
+      .toHaveProperty('pendingMealFeedback');
+
+    const recovered = await new AppRepository(new MemoryStorage(values)).load();
+    expect(recovered.mealRecords).toEqual(nextRecords);
+    expect(recovered.progress).toEqual(nextProgress);
+    expect(recovered.challengeRecords).toEqual(nextChallenges);
+  });
+
+  it.each([
+    { progress: {} },
+    { progress: { totalXp: 1, baseEarnedByDate: { yesterday: 1 }, challengeEarnedByDate: {} } },
+  ])('drops a journal with incomplete snapshot progress: %j', async ({ progress }) => {
+    const storage = new MemoryStorage(new Map([
+      ['nyam-toss:profile:v1', JSON.stringify(makeProfile())],
+      ['nyam-toss:progress:v1', JSON.stringify({
+        pendingMealFeedback: {
+          records: [makeRecord()],
+          progress,
+          challengeRecords: [],
+        },
+      })],
+    ]));
+
+    const state = await new AppRepository(storage).load();
+
+    expect(state.profile?.nickname).toBe('냠냠이');
+    expect(state.progress).toEqual({
+      totalXp: 0,
+      baseEarnedByDate: {},
+      challengeEarnedByDate: {},
+    });
+    expect(storage.keys()).toEqual(['nyam-toss:profile:v1']);
+  });
 });

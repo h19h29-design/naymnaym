@@ -91,6 +91,16 @@ function isNumberMap(value: unknown): value is Record<string, number> {
   return isRecord(value) && Object.values(value).every(isFiniteNumber);
 }
 
+function isCompleteProgress(value: unknown): value is Progress {
+  if (!isRecord(value)) return false;
+  const isXp = (item: unknown) => typeof item === 'number' && Number.isInteger(item) && item >= 0;
+  const isDateXpMap = (item: unknown) => isRecord(item)
+    && Object.entries(item).every(([date, xp]) => MEAL_DATE_PATTERN.test(date) && isXp(xp));
+  return isXp(value.totalXp)
+    && isDateXpMap(value.baseEarnedByDate)
+    && isDateXpMap(value.challengeEarnedByDate);
+}
+
 function isSchool(value: unknown): value is School {
   if (!isRecord(value)) return false;
 
@@ -224,7 +234,7 @@ function isMealCacheEntries(value: unknown): value is MealCacheEntry[] {
 function isMealFeedbackSnapshot(value: unknown): value is MealFeedbackSnapshot {
   if (!isRecord(value)) return false;
   return isMealRecords(value.records)
-    && isProgressValue(value.progress)
+    && isCompleteProgress(value.progress)
     && isChallengeRecords(value.challengeRecords);
 }
 
@@ -244,7 +254,15 @@ export interface RepositoryState {
 }
 
 export class AppRepository {
+  private operationTail: Promise<void> = Promise.resolve();
+
   constructor(private readonly storage: KeyValueStorage) {}
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationTail.then(operation, operation);
+    this.operationTail = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   private async read<T>(
     key: string,
@@ -268,7 +286,11 @@ export class AppRepository {
     return this.storage.setItem(key, JSON.stringify(value));
   }
 
-  async load(): Promise<RepositoryState> {
+  load(): Promise<RepositoryState> {
+    return this.serialize(() => this.loadUnsafe());
+  }
+
+  private async loadUnsafe(): Promise<RepositoryState> {
     const storedProgress = await this.read<StoredProgress>(
       KEYS.progress,
       {},
@@ -311,19 +333,25 @@ export class AppRepository {
   }
 
   saveProfile(profile: Profile) {
-    return this.write(KEYS.profile, profile);
+    return this.serialize(() => this.write(KEYS.profile, profile));
   }
 
   saveProgress(progress: Progress) {
-    return this.write(KEYS.progress, progress);
+    return this.serialize(async () => {
+      const stored = await this.read<StoredProgress>(KEYS.progress, {}, isProgress);
+      if (stored.pendingMealFeedback !== undefined) {
+        throw new Error('Cannot save progress while pending feedback recovery exists');
+      }
+      await this.write(KEYS.progress, progress);
+    });
   }
 
   saveRecords(records: MealRecord[]) {
-    return this.write(KEYS.mealRecords, records);
+    return this.serialize(() => this.write(KEYS.mealRecords, records));
   }
 
   saveChallengeRecords(records: ChallengeRecord[]) {
-    return this.write(KEYS.challengeRecords, records);
+    return this.serialize(() => this.write(KEYS.challengeRecords, records));
   }
 
   async saveMealFeedbackSnapshot(
@@ -331,9 +359,12 @@ export class AppRepository {
     progress: Progress,
     challengeRecords: ChallengeRecord[],
   ): Promise<void> {
-    const snapshot: MealFeedbackSnapshot = { records, progress, challengeRecords };
-    await this.write(KEYS.progress, { ...progress, pendingMealFeedback: snapshot });
-    await this.completeMealFeedbackSnapshot(snapshot);
+    return this.serialize(async () => {
+      const snapshot: MealFeedbackSnapshot = { records, progress, challengeRecords };
+      if (!isMealFeedbackSnapshot(snapshot)) throw new Error('Invalid meal feedback snapshot');
+      await this.write(KEYS.progress, { ...progress, pendingMealFeedback: snapshot });
+      await this.completeMealFeedbackSnapshot(snapshot);
+    });
   }
 
   private async completeMealFeedbackSnapshot(snapshot: MealFeedbackSnapshot): Promise<void> {
@@ -346,39 +377,45 @@ export class AppRepository {
     return `${school.officeCode}:${school.schoolCode}:${date}`;
   }
 
-  async cacheMeal(school: School, meal: MealDay): Promise<void> {
-    if (!isValidLiveMeal(meal, meal.date)) return;
+  cacheMeal(school: School, meal: MealDay): Promise<void> {
+    return this.serialize(async () => {
+      if (!isValidLiveMeal(meal, meal.date)) return;
 
-    const entries = await this.read<MealCacheEntry[]>(
-      KEYS.mealCache,
-      [],
-      isMealCacheEntries,
-    );
-    const key = this.cacheKey(school, meal.date);
-    const next = [
-      { key, meal, savedAt: new Date().toISOString() },
-      ...entries.filter((entry) => entry.key !== key),
-    ].slice(0, 14);
+      const entries = await this.read<MealCacheEntry[]>(
+        KEYS.mealCache,
+        [],
+        isMealCacheEntries,
+      );
+      const key = this.cacheKey(school, meal.date);
+      const next = [
+        { key, meal, savedAt: new Date().toISOString() },
+        ...entries.filter((entry) => entry.key !== key),
+      ].slice(0, 14);
 
-    await this.write(KEYS.mealCache, next);
+      await this.write(KEYS.mealCache, next);
+    });
   }
 
-  async getCachedMeal(school: School, date: string) {
-    const entries = await this.read<MealCacheEntry[]>(
-      KEYS.mealCache,
-      [],
-      isMealCacheEntries,
-    );
-    const entry = entries.find(
-      (candidate) => candidate.key === this.cacheKey(school, date),
-    );
+  getCachedMeal(school: School, date: string) {
+    return this.serialize(async () => {
+      const entries = await this.read<MealCacheEntry[]>(
+        KEYS.mealCache,
+        [],
+        isMealCacheEntries,
+      );
+      const entry = entries.find(
+        (candidate) => candidate.key === this.cacheKey(school, date),
+      );
 
-    return entry && entry.meal.date === date
-      ? { meal: entry.meal, source: 'cache' as const }
-      : null;
+      return entry && entry.meal.date === date
+        ? { meal: entry.meal, source: 'cache' as const }
+        : null;
+    });
   }
 
-  async deleteAll(): Promise<void> {
-    await Promise.all(Object.values(KEYS).map((key) => this.storage.removeItem(key)));
+  deleteAll(): Promise<void> {
+    return this.serialize(async () => {
+      await Promise.all(Object.values(KEYS).map((key) => this.storage.removeItem(key)));
+    });
   }
 }
