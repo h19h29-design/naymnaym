@@ -13,6 +13,7 @@
     "verify:release": "node scripts/verify-release.mjs"
   },
   "dependencies": {
+    "@nyam/neis-contract": "file:../supabase/functions/_shared/neis-contract",
     "@apps-in-toss/web-framework": "2.10.7",
     "@emotion/react": "11.14.0",
     "@toss/tds-mobile": "2.5.0",
