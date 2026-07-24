@@ -23,6 +23,20 @@ class MemoryStorage implements KeyValueStorage {
   }
 }
 
+class FailingWriteStorage extends MemoryStorage {
+  private writes = 0;
+
+  constructor(private readonly failAt: number, values?: Map<string, string>) {
+    super(values);
+  }
+
+  override async setItem(key: string, value: string) {
+    this.writes += 1;
+    await super.setItem(key, value);
+    if (this.writes === this.failAt) throw new Error('simulated crash');
+  }
+}
+
 function seedAllKeys() {
   return new Map([
     ['nyam-toss:profile:v1', '{}'],
@@ -251,5 +265,56 @@ describe('AppRepository', () => {
     await repository.saveRecords([makeRecord()]);
 
     expect((await repository.load()).mealRecords).toEqual([makeRecord()]);
+  });
+
+  it.each([1, 2, 3, 4])('recovers a feedback snapshot after a crash at write %i', async (failAt) => {
+    const values = new Map<string, string>();
+    const nextRecords = [makeRecord()];
+    const nextProgress = {
+      totalXp: 18,
+      baseEarnedByDate: { '20260724': 18 },
+      challengeEarnedByDate: {},
+    };
+    const nextChallenges = [{
+      date: '20260724', mealItemId: 'meal-1', kinds: ['variedFoodGroup' as const], awardedXp: 5,
+    }];
+    const crashing = new AppRepository(new FailingWriteStorage(failAt, values));
+    const save = crashing as AppRepository & {
+      saveMealFeedbackSnapshot(
+        records: typeof nextRecords,
+        progress: typeof nextProgress,
+        challenges: typeof nextChallenges,
+      ): Promise<void>;
+    };
+
+    await expect(save.saveMealFeedbackSnapshot(nextRecords, nextProgress, nextChallenges))
+      .rejects.toThrow('simulated crash');
+
+    const recovered = await new AppRepository(new MemoryStorage(values)).load();
+    expect(recovered.mealRecords).toEqual(nextRecords);
+    expect(recovered.progress).toEqual(nextProgress);
+    expect(recovered.challengeRecords).toEqual(nextChallenges);
+    expect(JSON.parse(values.get('nyam-toss:progress:v1') ?? '{}')).not.toHaveProperty('pendingMealFeedback');
+    expect([...values.keys()].sort()).toEqual([
+      'nyam-toss:challenge-records:v1',
+      'nyam-toss:meal-records:v1',
+      'nyam-toss:progress:v1',
+    ]);
+  });
+
+  it('drops a corrupt feedback journal without touching unrelated device data', async () => {
+    const storage = new MemoryStorage(new Map([
+      ['nyam-toss:profile:v1', JSON.stringify(makeProfile())],
+      ['nyam-toss:progress:v1', JSON.stringify({
+        totalXp: 18,
+        pendingMealFeedback: { records: 'not records' },
+      })],
+    ]));
+
+    const state = await new AppRepository(storage).load();
+
+    expect(state.profile?.nickname).toBe('냠냠이');
+    expect(state.progress.totalXp).toBe(0);
+    expect(storage.keys()).toEqual(['nyam-toss:profile:v1']);
   });
 });

@@ -55,6 +55,16 @@ interface MealCacheEntry {
   savedAt: string;
 }
 
+interface MealFeedbackSnapshot {
+  records: MealRecord[];
+  progress: Progress;
+  challengeRecords: ChallengeRecord[];
+}
+
+interface StoredProgress extends Partial<Progress> {
+  pendingMealFeedback?: MealFeedbackSnapshot;
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -74,7 +84,7 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 function isNumberArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every(isFiniteNumber);
+  return Array.isArray(value) && value.every((item) => Number.isInteger(item) && item >= 1 && item <= 19);
 }
 
 function isNumberMap(value: unknown): value is Record<string, number> {
@@ -103,13 +113,20 @@ function isProfile(value: unknown): value is Profile {
     && isString(value.createdAt);
 }
 
-function isProgress(value: unknown): value is Partial<Progress> {
+function isProgressValue(value: unknown): value is Partial<Progress> {
   if (!isRecord(value)) return false;
 
   return (value.totalXp === undefined || isFiniteNumber(value.totalXp))
     && (value.baseEarnedByDate === undefined || isNumberMap(value.baseEarnedByDate))
     && (value.challengeEarnedByDate === undefined
       || isNumberMap(value.challengeEarnedByDate));
+}
+
+function isProgress(value: unknown): value is StoredProgress {
+  if (!isRecord(value) || !isProgressValue(value)) return false;
+  const stored = value as UnknownRecord;
+  return stored.pendingMealFeedback === undefined
+    || isMealFeedbackSnapshot(stored.pendingMealFeedback);
 }
 
 function isMealRecord(value: unknown): value is MealRecord {
@@ -147,27 +164,33 @@ function isChallengeRecords(value: unknown): value is ChallengeRecord[] {
 function isMealItem(value: unknown): boolean {
   if (!isRecord(value)) return false;
 
-  return isString(value.id)
-    && isString(value.name)
+  return isString(value.id) && value.id.length > 0
+    && isString(value.name) && value.name.length > 0
     && isNumberArray(value.allergyCodes)
     && isStringArray(value.nutrients)
     && isStringArray(value.tags)
-    && isString(value.sourceRawText);
+    && isString(value.sourceRawText) && value.sourceRawText.length > 0;
 }
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || isString(value);
 }
 
-function isMealDay(value: unknown): value is MealDay {
+export function isValidLiveMeal(value: unknown, expectedDate?: string): value is MealDay {
   if (!isRecord(value) || !Array.isArray(value.menuItems)) return false;
 
   return isString(value.date)
+    && MEAL_DATE_PATTERN.test(value.date)
+    && (expectedDate === undefined || value.date === expectedDate)
     && value.menuItems.every(isMealItem)
     && isNullableString(value.calorie)
     && isNullableString(value.nutrition)
-    && typeof value.isSample === 'boolean'
+    && value.isSample === false
     && isNullableString(value.notice);
+}
+
+function isMealDay(value: unknown): value is MealDay {
+  return isValidLiveMeal(value);
 }
 
 function isCanonicalCacheKey(key: string, mealDate: string): boolean {
@@ -190,13 +213,19 @@ function isMealCacheEntries(value: unknown): value is MealCacheEntry[] {
     if (!isRecord(entry) || !isString(entry.key)) return false;
 
     const valid = isMealDay(entry.meal)
-      && !entry.meal.isSample
       && isString(entry.savedAt)
       && isCanonicalCacheKey(entry.key, entry.meal.date)
       && !keys.has(entry.key);
     keys.add(entry.key);
     return valid;
   });
+}
+
+function isMealFeedbackSnapshot(value: unknown): value is MealFeedbackSnapshot {
+  if (!isRecord(value)) return false;
+  return isMealRecords(value.records)
+    && isProgressValue(value.progress)
+    && isChallengeRecords(value.challengeRecords);
 }
 
 function createProgress(stored: Partial<Progress>): Progress {
@@ -240,11 +269,26 @@ export class AppRepository {
   }
 
   async load(): Promise<RepositoryState> {
-    const storedProgress = await this.read<Partial<Progress>>(
+    const storedProgress = await this.read<StoredProgress>(
       KEYS.progress,
       {},
       isProgress,
     );
+
+    if (storedProgress.pendingMealFeedback !== undefined) {
+      const snapshot = storedProgress.pendingMealFeedback;
+      await this.completeMealFeedbackSnapshot(snapshot);
+      return {
+        profile: await this.read<Profile | null>(
+          KEYS.profile,
+          null,
+          (value): value is Profile | null => value === null || isProfile(value),
+        ),
+        progress: snapshot.progress,
+        mealRecords: snapshot.records,
+        challengeRecords: snapshot.challengeRecords,
+      };
+    }
 
     return {
       profile: await this.read<Profile | null>(
@@ -282,12 +326,28 @@ export class AppRepository {
     return this.write(KEYS.challengeRecords, records);
   }
 
+  async saveMealFeedbackSnapshot(
+    records: MealRecord[],
+    progress: Progress,
+    challengeRecords: ChallengeRecord[],
+  ): Promise<void> {
+    const snapshot: MealFeedbackSnapshot = { records, progress, challengeRecords };
+    await this.write(KEYS.progress, { ...progress, pendingMealFeedback: snapshot });
+    await this.completeMealFeedbackSnapshot(snapshot);
+  }
+
+  private async completeMealFeedbackSnapshot(snapshot: MealFeedbackSnapshot): Promise<void> {
+    await this.write(KEYS.mealRecords, snapshot.records);
+    await this.write(KEYS.challengeRecords, snapshot.challengeRecords);
+    await this.write(KEYS.progress, snapshot.progress);
+  }
+
   private cacheKey(school: School, date: string) {
     return `${school.officeCode}:${school.schoolCode}:${date}`;
   }
 
   async cacheMeal(school: School, meal: MealDay): Promise<void> {
-    if (meal.isSample) return;
+    if (!isValidLiveMeal(meal, meal.date)) return;
 
     const entries = await this.read<MealCacheEntry[]>(
       KEYS.mealCache,

@@ -1,8 +1,8 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadTodayMeal, seoulDate, type TodayMealResult } from './useTodayMeal';
+import { loadTodayMeal, millisecondsUntilNextSeoulMidnight, seoulDate, type TodayMealResult } from './useTodayMeal';
 import type { AppRepository } from '../../services/repository';
 import type { AppState } from '../../state/reducer';
 import { meal, mealWithAllergen, makeProfile } from '../../test/fixtures';
@@ -14,6 +14,7 @@ const reload = vi.fn(async () => true);
 const saveRecords = vi.fn(async () => undefined);
 const saveProgress = vi.fn(async () => undefined);
 const saveChallengeRecords = vi.fn(async () => undefined);
+const saveMealFeedbackSnapshot = vi.fn(async () => undefined);
 
 let appState: AppState;
 let initialRoute = '/today';
@@ -31,6 +32,7 @@ vi.mock('../../state/AppStateProvider', () => ({
       saveRecords,
       saveProgress,
       saveChallengeRecords,
+      saveMealFeedbackSnapshot,
     } as unknown as AppRepository,
     reload,
   }),
@@ -99,6 +101,7 @@ describe('TodayPage', () => {
     saveRecords.mockClear();
     saveProgress.mockClear();
     saveChallengeRecords.mockClear();
+    saveMealFeedbackSnapshot.mockClear();
   });
 
   afterEach(cleanup);
@@ -129,6 +132,7 @@ describe('TodayPage', () => {
     expect(saveRecords).not.toHaveBeenCalled();
     expect(saveProgress).not.toHaveBeenCalled();
     expect(saveChallengeRecords).not.toHaveBeenCalled();
+    expect(saveMealFeedbackSnapshot).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
     expect(screen.getByText('체험 기록을 남겼어요. 이 기록은 저장되지 않아요.')).toBeInTheDocument();
   });
@@ -164,13 +168,15 @@ describe('TodayPage', () => {
     await user.click(screen.getByRole('button', { name: '냄새' }));
     await user.click(screen.getByRole('button', { name: '오늘은 어려웠어요' }));
 
-    await waitFor(() => expect(saveRecords).toHaveBeenCalledWith([
-      expect.objectContaining({ status: 'difficultToday', difficultyReason: 'smell' }),
-    ]));
+    await waitFor(() => expect(saveMealFeedbackSnapshot).toHaveBeenCalledWith(
+      [expect.objectContaining({ status: 'difficultToday', difficultyReason: 'smell' })],
+      expect.any(Object),
+      expect.any(Array),
+    ));
   });
 
   it('announces a save error and allows retry without duplicate XP', async () => {
-    saveRecords.mockRejectedValueOnce(new Error('storage failed'));
+    saveMealFeedbackSnapshot.mockRejectedValueOnce(new Error('storage failed'));
     const user = renderToday();
     renderPage();
 
@@ -178,13 +184,14 @@ describe('TodayPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('기록을 저장하지 못했어요. 다시 시도해 주세요.');
     await user.click(screen.getByRole('button', { name: '다시 시도' }));
 
-    await waitFor(() => expect(saveRecords).toHaveBeenCalledTimes(2));
-    expect(saveProgress).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(saveMealFeedbackSnapshot).toHaveBeenCalledTimes(2));
+    expect(saveRecords).not.toHaveBeenCalled();
+    expect(saveProgress).not.toHaveBeenCalled();
   });
 
   it('guards a record operation against double taps', async () => {
     let finish!: () => void;
-    saveRecords.mockImplementationOnce(() => new Promise<undefined>((resolve) => {
+    saveMealFeedbackSnapshot.mockImplementationOnce(() => new Promise<undefined>((resolve) => {
       finish = () => resolve(undefined);
     }));
     const user = renderToday();
@@ -192,7 +199,7 @@ describe('TodayPage', () => {
     const button = await screen.findByRole('button', { name: '한입도전' });
 
     await user.dblClick(button);
-    expect(saveRecords).toHaveBeenCalledTimes(1);
+    expect(saveMealFeedbackSnapshot).toHaveBeenCalledTimes(1);
     finish();
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
@@ -249,12 +256,45 @@ describe('today meal loading', () => {
     expect(result).toEqual({ kind: 'error', code: 'UPSTREAM_ERROR' });
   });
 
+  it('rejects a successful sample payload and uses only valid exact-date cache', async () => {
+    const result = await loadTodayMeal({
+      mode: { kind: 'live' },
+      profile: makeProfile(),
+      client: { fetchMeal: vi.fn().mockResolvedValue({ ...meal, isSample: true }) } as never,
+      repository: {
+        cacheMeal: vi.fn(),
+        getCachedMeal: vi.fn().mockResolvedValue({ meal, source: 'cache' }),
+      } as unknown as AppRepository,
+      now: new Date('2026-07-23T15:00:00.000Z'),
+    });
+
+    expect(result).toEqual({ kind: 'cache', meal });
+  });
+
+  it('rejects malformed successful data instead of rendering it live or from cache', async () => {
+    const result = await loadTodayMeal({
+      mode: { kind: 'live' },
+      profile: makeProfile(),
+      client: { fetchMeal: vi.fn().mockResolvedValue({ ...meal, menuItems: [{ name: 42 }] }) } as never,
+      repository: {
+        cacheMeal: vi.fn(),
+        getCachedMeal: vi.fn().mockResolvedValue({
+          meal: { ...meal, menuItems: [{ ...meal.menuItems[0], allergyCodes: [99] }] },
+          source: 'cache',
+        }),
+      } as unknown as AppRepository,
+      now: new Date('2026-07-23T15:00:00.000Z'),
+    });
+
+    expect(result).toEqual({ kind: 'error', code: 'UPSTREAM_ERROR' });
+  });
+
   it('suppresses stale loader errors after its client changes', async () => {
     const actual = await vi.importActual<typeof import('./useTodayMeal')>('./useTodayMeal');
     let rejectFirst!: (reason: unknown) => void;
     const first = new Promise<never>((_resolve, reject) => { rejectFirst = reject; });
     const firstClient = { fetchMeal: vi.fn().mockReturnValue(first) };
-    const secondClient = { fetchMeal: vi.fn().mockResolvedValue(meal) };
+    const secondClient = { fetchMeal: vi.fn().mockResolvedValue({ ...meal, date: seoulDate() }) };
     const repository = { cacheMeal: vi.fn().mockResolvedValue(undefined) } as unknown as AppRepository;
 
     function Probe({ client }: { client: typeof firstClient }) {
@@ -275,5 +315,22 @@ describe('today meal loading', () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
     expect(screen.getByText('live')).toBeInTheDocument();
+  });
+
+  it('schedules its next refresh at Seoul midnight', () => {
+    const beforeMidnight = new Date('2026-07-24T14:59:59.500Z');
+    const afterMidnight = new Date('2026-07-24T15:00:00.000Z');
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(beforeMidnight);
+      expect(seoulDate()).toBe('20260724');
+      expect(millisecondsUntilNextSeoulMidnight()).toBe(500);
+      vi.setSystemTime(afterMidnight);
+      expect(seoulDate()).toBe('20260725');
+      expect(millisecondsUntilNextSeoulMidnight()).toBe(24 * 60 * 60 * 1000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

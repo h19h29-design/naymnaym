@@ -18,12 +18,16 @@ Implementation SHA: `f7ea3eae14412113ab38bac05b3250ba048b032a`
   retry, demo-only local state, and XP/growth feedback.
 - Copied exactly seven non-empty native PNG growth assets (`level-1` through
   `level-7`) and added no new runtime dependencies.
+- Review follow-up: a ready-state reload now preserves the mounted route on
+  failure; feedback writes use a validated journal inside `progress:v1` and
+  recover with a fresh repository instance; fetched and cached meal payloads
+  are validated before use; the today hook schedules Seoul-midnight refreshes
+  and refreshes on focus/visibility changes.
 
 ## Results
 
-- Focused today-page suite: 13 tests passed.
-- Route plus today-page suites: 19 tests passed.
-- Full client suite: 82 tests passed across 12 files.
+- Focused repository/provider/today/routes suites: 50 tests passed.
+- Full client suite: 91 tests passed across 13 files.
 - `npm run typecheck`: passed.
 - `npm run build:web`: passed.
 - Asset audit: 7 PNG files, all non-empty; no other public assets.
@@ -31,9 +35,9 @@ Implementation SHA: `f7ea3eae14412113ab38bac05b3250ba048b032a`
 
 ## Risks
 
-- The production build emits Vite's existing-size warning for its single
-  1.31 MB minified / 423.86 kB gzip JavaScript chunk. No dependency was added;
-  this task adds only public PNG files, which are not bundled into that chunk.
-- Device storage lacks a transaction primitive. A failed multi-write is retained
-  as one immutable pending snapshot and retry rewrites that exact snapshot, which
-  prevents duplicate XP while converging the record, progress, and challenge data.
+- The seven public PNG files add 8,735,557 bytes. The production build still
+  emits Vite's single-chunk warning: 1.31 MB minified / 424.34 kB gzip.
+- Device storage lacks a native transaction. The verified `progress:v1` journal
+  carries an immutable feedback snapshot before companion writes and is replayed
+  on the next repository load; crash injection after every journal/record/
+  challenge/final-progress write converges idempotently without a sixth key.

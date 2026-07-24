@@ -26,13 +26,15 @@ export function AppStateProvider({
 }: PropsWithChildren<{ repository: AppRepository }>) {
   const [state, dispatch] = useReducer(reducer, { status: 'loading' });
   const activeRef = useRef(false);
+  const hasReadyStateRef = useRef(false);
   const generationRef = useRef(0);
   const repositoryRef = useRef(repository);
 
   const reload = useCallback(async () => {
     if (!activeRef.current || repositoryRef.current !== repository) return false;
     const generation = ++generationRef.current;
-    dispatch({ type: 'reset' });
+    const preserveReadyState = hasReadyStateRef.current;
+    if (!preserveReadyState) dispatch({ type: 'reset' });
     try {
       const value = await repository.load();
       if (
@@ -41,15 +43,16 @@ export function AppStateProvider({
         && repositoryRef.current === repository
       ) {
         dispatch({ type: 'loaded', value });
+        hasReadyStateRef.current = true;
         return true;
       }
       return false;
     } catch {
-      if (
+      if (!preserveReadyState && (
         activeRef.current
         && generation === generationRef.current
         && repositoryRef.current === repository
-      ) {
+      )) {
         dispatch({ type: 'failed', message: '저장된 정보를 불러오지 못했어요.' });
       }
       return false;
@@ -58,6 +61,7 @@ export function AppStateProvider({
 
   useEffect(() => {
     repositoryRef.current = repository;
+    hasReadyStateRef.current = false;
     activeRef.current = true;
     void reload();
     return () => {

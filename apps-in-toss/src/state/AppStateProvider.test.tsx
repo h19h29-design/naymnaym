@@ -107,7 +107,7 @@ describe('AppStateProvider', () => {
     expect(await screen.findByText('저장된 정보를 불러오지 못했어요.')).toBeInTheDocument();
   });
 
-  it('returns false while retaining recoverable state when a manual reload fails', async () => {
+  it('returns false while preserving the ready screen when a manual reload fails', async () => {
     const repository = makeRepository();
     vi.spyOn(repository, 'load')
       .mockResolvedValueOnce(makeState(null))
@@ -124,7 +124,8 @@ describe('AppStateProvider', () => {
     await userEvent.click(screen.getByRole('button', { name: '결과와 함께 다시 불러오기' }));
 
     expect(await screen.findByText('false')).toBeInTheDocument();
-    expect(screen.getByText('저장된 정보를 불러오지 못했어요.')).toBeInTheDocument();
+    expect(screen.getByText('ready')).toBeInTheDocument();
+    expect(screen.queryByText('저장된 정보를 불러오지 못했어요.')).not.toBeInTheDocument();
   });
 
   it('ignores an earlier StrictMode load that resolves after the active load', async () => {

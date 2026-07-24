@@ -64,11 +64,13 @@ export function TodayPage() {
     setIsSaving(true);
     setSaveError(null);
     try {
-      // Retrying writes this same complete snapshot, so partially completed device
-      // writes cannot add XP a second time or create a different challenge record.
-      await repository.saveRecords(pending.records);
-      await repository.saveProgress(pending.progress);
-      await repository.saveChallengeRecords(pending.challengeRecords);
+      // The repository journals this exact aggregate in the existing progress
+      // value before touching the companion record values. Retrying is idempotent.
+      await repository.saveMealFeedbackSnapshot(
+        pending.records,
+        pending.progress,
+        pending.challengeRecords,
+      );
       if (!await reload()) throw new Error('reload failed');
       pendingRef.current = null;
       setHasPendingSave(false);
