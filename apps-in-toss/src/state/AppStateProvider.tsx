@@ -2,9 +2,11 @@ import {
   createContext,
   type Dispatch,
   type PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
   useReducer,
+  useRef,
 } from 'react';
 import type { AppRepository } from '../services/repository';
 import { reducer, type AppAction, type AppState } from './reducer';
@@ -23,19 +25,43 @@ export function AppStateProvider({
   children,
 }: PropsWithChildren<{ repository: AppRepository }>) {
   const [state, dispatch] = useReducer(reducer, { status: 'loading' });
+  const activeRef = useRef(false);
+  const generationRef = useRef(0);
+  const repositoryRef = useRef(repository);
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
+    if (!activeRef.current || repositoryRef.current !== repository) return;
+    const generation = ++generationRef.current;
     dispatch({ type: 'reset' });
     try {
-      dispatch({ type: 'loaded', value: await repository.load() });
+      const value = await repository.load();
+      if (
+        activeRef.current
+        && generation === generationRef.current
+        && repositoryRef.current === repository
+      ) {
+        dispatch({ type: 'loaded', value });
+      }
     } catch {
-      dispatch({ type: 'failed', message: '저장된 정보를 불러오지 못했어요.' });
+      if (
+        activeRef.current
+        && generation === generationRef.current
+        && repositoryRef.current === repository
+      ) {
+        dispatch({ type: 'failed', message: '저장된 정보를 불러오지 못했어요.' });
+      }
     }
-  };
+  }, [repository]);
 
   useEffect(() => {
+    repositoryRef.current = repository;
+    activeRef.current = true;
     void reload();
-  }, [repository]);
+    return () => {
+      activeRef.current = false;
+      generationRef.current += 1;
+    };
+  }, [reload, repository]);
 
   return (
     <Context.Provider value={{ state, dispatch, repository, reload }}>

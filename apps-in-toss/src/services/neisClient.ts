@@ -95,12 +95,16 @@ export class NeisClient {
       throw this.unreadableResponse(response.status);
     }
 
-    if (!isApiResult(result) || !response.ok) {
+    if (!isApiResult(result)) {
       throw this.unreadableResponse(response.status);
     }
 
     if (!result.ok) {
       throw new NeisClientError(result.code, result.message, response.status);
+    }
+
+    if (!response.ok) {
+      throw this.unreadableResponse(response.status);
     }
 
     return result.data as T;
