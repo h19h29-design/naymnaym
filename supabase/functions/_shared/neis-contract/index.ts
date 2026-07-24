@@ -1,4 +1,4 @@
-export type SchoolType = 'middle' | 'high';
+export type SchoolType = "middle" | "high";
 
 export interface School {
   name: string;
@@ -28,19 +28,19 @@ export interface MealDay {
 }
 
 export type ProxyRequest =
-  | { action: 'searchSchools'; payload: { keyword: string } }
+  | { action: "searchSchools"; payload: { keyword: string } }
   | {
-    action: 'fetchMeals';
+    action: "fetchMeals";
     payload: { officeCode: string; schoolCode: string; date: string };
   };
 
 export type ProxyErrorCode =
-  | 'BAD_REQUEST'
-  | 'FORBIDDEN_ORIGIN'
-  | 'NO_DATA'
-  | 'NOT_CONFIGURED'
-  | 'RATE_LIMITED'
-  | 'UPSTREAM_ERROR';
+  | "BAD_REQUEST"
+  | "FORBIDDEN_ORIGIN"
+  | "NO_DATA"
+  | "NOT_CONFIGURED"
+  | "RATE_LIMITED"
+  | "UPSTREAM_ERROR";
 
 export type ApiResult<T> =
   | { ok: true; data: T }

@@ -1,9 +1,9 @@
 import type {
   ProxyErrorCode,
   ProxyRequest,
-} from '../_shared/neis-contract/index.ts';
-import { normalizeMealRows, normalizeSchoolRows } from './neis-normalizer.ts';
-import type { RawMealRow, RawSchoolRow } from './neis-normalizer.ts';
+} from "../_shared/neis-contract/index.ts";
+import { normalizeMealRows, normalizeSchoolRows } from "./neis-normalizer.ts";
+import type { RawMealRow, RawSchoolRow } from "./neis-normalizer.ts";
 
 const MAX_BODY_BYTES = 4096;
 const MAX_UPSTREAM_BODY_BYTES = 1024 * 1024;
@@ -33,7 +33,7 @@ function isRealDate(value: string): boolean {
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
@@ -79,41 +79,41 @@ async function readLimitedBytes(
 function validateRequest(value: unknown): ProxyRequest | null {
   if (
     !isObject(value) ||
-    !hasOnlyKeys(value, ['action', 'payload']) ||
+    !hasOnlyKeys(value, ["action", "payload"]) ||
     !isObject(value.payload)
   ) {
     return null;
   }
 
-  if (value.action === 'searchSchools') {
-    if (!hasOnlyKeys(value.payload, ['keyword'])) return null;
-    const keyword = typeof value.payload.keyword === 'string'
+  if (value.action === "searchSchools") {
+    if (!hasOnlyKeys(value.payload, ["keyword"])) return null;
+    const keyword = typeof value.payload.keyword === "string"
       ? value.payload.keyword.trim()
-      : '';
+      : "";
     return SCHOOL_KEYWORD.test(keyword)
-      ? { action: 'searchSchools', payload: { keyword } }
+      ? { action: "searchSchools", payload: { keyword } }
       : null;
   }
 
-  if (value.action === 'fetchMeals') {
+  if (value.action === "fetchMeals") {
     if (
       !hasOnlyKeys(value.payload, [
-        'officeCode',
-        'schoolCode',
-        'date',
+        "officeCode",
+        "schoolCode",
+        "date",
       ])
     ) {
       return null;
     }
     const { officeCode, schoolCode, date } = value.payload;
-    return typeof officeCode === 'string' &&
+    return typeof officeCode === "string" &&
         OFFICE_CODE.test(officeCode) &&
-        typeof schoolCode === 'string' &&
+        typeof schoolCode === "string" &&
         SCHOOL_CODE.test(schoolCode) &&
-        typeof date === 'string' &&
+        typeof date === "string" &&
         isRealDate(date)
       ? {
-        action: 'fetchMeals',
+        action: "fetchMeals",
         payload: { officeCode, schoolCode, date },
       }
       : null;
@@ -124,12 +124,12 @@ function validateRequest(value: unknown): ProxyRequest | null {
 
 function json(origin: string, status: number, value: unknown): Response {
   const headers = new Headers({
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
   });
   if (origin) {
-    headers.set('access-control-allow-origin', origin);
-    headers.set('vary', 'Origin');
+    headers.set("access-control-allow-origin", origin);
+    headers.set("vary", "Origin");
   }
   return new Response(JSON.stringify(value), { status, headers });
 }
@@ -145,37 +145,37 @@ function error(
 
 function corsHeaders(origin: string): HeadersInit {
   return {
-    'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'POST, OPTIONS',
-    'access-control-allow-headers': 'authorization, apikey, content-type',
-    'access-control-max-age': '600',
-    'vary': 'Origin',
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "authorization, apikey, content-type",
+    "access-control-max-age": "600",
+    "vary": "Origin",
   };
 }
 
 function neisUrl(request: ProxyRequest, apiKey: string): URL {
-  const resource = request.action === 'searchSchools'
-    ? 'schoolInfo'
-    : 'mealServiceDietInfo';
+  const resource = request.action === "searchSchools"
+    ? "schoolInfo"
+    : "mealServiceDietInfo";
   const url = new URL(`https://open.neis.go.kr/hub/${resource}`);
-  url.searchParams.set('KEY', apiKey);
-  url.searchParams.set('Type', 'json');
-  url.searchParams.set('pIndex', '1');
+  url.searchParams.set("KEY", apiKey);
+  url.searchParams.set("Type", "json");
+  url.searchParams.set("pIndex", "1");
   url.searchParams.set(
-    'pSize',
-    request.action === 'searchSchools' ? '20' : '10',
+    "pSize",
+    request.action === "searchSchools" ? "20" : "10",
   );
 
-  if (request.action === 'searchSchools') {
-    url.searchParams.set('SCHUL_NM', request.payload.keyword);
+  if (request.action === "searchSchools") {
+    url.searchParams.set("SCHUL_NM", request.payload.keyword);
   } else {
     url.searchParams.set(
-      'ATPT_OFCDC_SC_CODE',
+      "ATPT_OFCDC_SC_CODE",
       request.payload.officeCode,
     );
-    url.searchParams.set('SD_SCHUL_CODE', request.payload.schoolCode);
-    url.searchParams.set('MMEAL_SC_CODE', '2');
-    url.searchParams.set('MLSV_YMD', request.payload.date);
+    url.searchParams.set("SD_SCHUL_CODE", request.payload.schoolCode);
+    url.searchParams.set("MMEAL_SC_CODE", "2");
+    url.searchParams.set("MLSV_YMD", request.payload.date);
   }
 
   return url;
@@ -187,7 +187,7 @@ function resultCodes(value: unknown, resource: string): string[] {
 
   if (
     isObject(value.RESULT) &&
-    typeof value.RESULT.CODE === 'string'
+    typeof value.RESULT.CODE === "string"
   ) {
     codes.push(value.RESULT.CODE);
   }
@@ -201,7 +201,7 @@ function resultCodes(value: unknown, resource: string): string[] {
     if (
       isObject(entry) &&
       isObject(entry.RESULT) &&
-      typeof entry.RESULT.CODE === 'string'
+      typeof entry.RESULT.CODE === "string"
     ) {
       codes.push(entry.RESULT.CODE);
     }
@@ -218,7 +218,7 @@ function resourceRows(
   if (!Array.isArray(group)) return null;
 
   for (const entry of group) {
-    if (isObject(entry) && Object.hasOwn(entry, 'row')) {
+    if (isObject(entry) && Object.hasOwn(entry, "row")) {
       return Array.isArray(entry.row) ? entry.row : null;
     }
   }
@@ -226,14 +226,14 @@ function resourceRows(
 }
 
 function noData(origin: string, request: ProxyRequest): Response {
-  if (request.action === 'searchSchools') {
+  if (request.action === "searchSchools") {
     return json(origin, 200, { ok: true, data: [] });
   }
   return error(
     origin,
     404,
-    'NO_DATA',
-    '오늘은 등록된 급식이 없어요.',
+    "NO_DATA",
+    "오늘은 등록된 급식이 없어요.",
   );
 }
 
@@ -241,33 +241,33 @@ export function createHandler(deps: HandlerDeps) {
   return async (request: Request): Promise<Response> => {
     const started = performance.now();
     const requestId = crypto.randomUUID();
-    const origin = request.headers.get('origin') ?? '';
+    const origin = request.headers.get("origin") ?? "";
     const log = deps.log ?? ((message: string) => console.info(message));
-    let action = 'unparsed';
+    let action = "unparsed";
     let status = 500;
 
     try {
       if (!deps.neisApiKey || deps.allowedOrigins.size === 0) {
         status = 503;
         return error(
-          '',
+          "",
           status,
-          'NOT_CONFIGURED',
-          '급식 조회가 준비되지 않았어요.',
+          "NOT_CONFIGURED",
+          "급식 조회가 준비되지 않았어요.",
         );
       }
 
       if (!deps.allowedOrigins.has(origin)) {
         status = 403;
         return error(
-          '',
+          "",
           status,
-          'FORBIDDEN_ORIGIN',
-          '허용되지 않은 요청이에요.',
+          "FORBIDDEN_ORIGIN",
+          "허용되지 않은 요청이에요.",
         );
       }
 
-      if (request.method === 'OPTIONS') {
+      if (request.method === "OPTIONS") {
         status = 204;
         return new Response(null, {
           status,
@@ -275,20 +275,20 @@ export function createHandler(deps: HandlerDeps) {
         });
       }
 
-      if (request.method !== 'POST') {
+      if (request.method !== "POST") {
         status = 405;
         const response = error(
           origin,
           status,
-          'BAD_REQUEST',
-          'POST 요청만 사용할 수 있어요.',
+          "BAD_REQUEST",
+          "POST 요청만 사용할 수 있어요.",
         );
-        response.headers.set('allow', 'POST, OPTIONS');
+        response.headers.set("allow", "POST, OPTIONS");
         return response;
       }
 
       const advertised = Number(
-        request.headers.get('content-length') ?? '0',
+        request.headers.get("content-length") ?? "0",
       );
       if (
         Number.isFinite(advertised) &&
@@ -298,8 +298,8 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'BAD_REQUEST',
-          '요청 크기가 너무 커요.',
+          "BAD_REQUEST",
+          "요청 크기가 너무 커요.",
         );
       }
 
@@ -312,14 +312,14 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'BAD_REQUEST',
-          '요청 크기가 너무 커요.',
+          "BAD_REQUEST",
+          "요청 크기가 너무 커요.",
         );
       }
 
       let decoded: unknown;
       try {
-        const raw = new TextDecoder('utf-8', { fatal: true }).decode(
+        const raw = new TextDecoder("utf-8", { fatal: true }).decode(
           requestBytes,
         );
         decoded = JSON.parse(raw);
@@ -328,8 +328,8 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'BAD_REQUEST',
-          '요청 형식이 올바르지 않아요.',
+          "BAD_REQUEST",
+          "요청 형식이 올바르지 않아요.",
         );
       }
 
@@ -339,8 +339,8 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'BAD_REQUEST',
-          '요청 값이 올바르지 않아요.',
+          "BAD_REQUEST",
+          "요청 값이 올바르지 않아요.",
         );
       }
       action = parsed.action;
@@ -352,7 +352,7 @@ export function createHandler(deps: HandlerDeps) {
       const upstream = await deps.fetch(
         neisUrl(parsed, deps.neisApiKey),
         {
-          headers: { accept: 'application/json' },
+          headers: { accept: "application/json" },
           signal: timeoutSignal,
         },
       );
@@ -361,8 +361,8 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'RATE_LIMITED',
-          '요청이 많아요. 잠시 후 다시 시도해 주세요.',
+          "RATE_LIMITED",
+          "요청이 많아요. 잠시 후 다시 시도해 주세요.",
         );
       }
       if (!upstream.ok) {
@@ -370,8 +370,8 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'UPSTREAM_ERROR',
-          '급식 정보를 불러오지 못했어요.',
+          "UPSTREAM_ERROR",
+          "급식 정보를 불러오지 못했어요.",
         );
       }
 
@@ -384,49 +384,49 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'UPSTREAM_ERROR',
-          '급식 정보를 불러오지 못했어요.',
+          "UPSTREAM_ERROR",
+          "급식 정보를 불러오지 못했어요.",
         );
       }
       const upstreamJson: unknown = JSON.parse(
-        new TextDecoder('utf-8', { fatal: true }).decode(upstreamBytes),
+        new TextDecoder("utf-8", { fatal: true }).decode(upstreamBytes),
       );
-      const resource = parsed.action === 'searchSchools'
-        ? 'schoolInfo'
-        : 'mealServiceDietInfo';
+      const resource = parsed.action === "searchSchools"
+        ? "schoolInfo"
+        : "mealServiceDietInfo";
       const codes = [...new Set(resultCodes(upstreamJson, resource))];
       if (codes.length !== 1) {
         status = 502;
         return error(
           origin,
           status,
-          'UPSTREAM_ERROR',
-          '급식 정보를 불러오지 못했어요.',
+          "UPSTREAM_ERROR",
+          "급식 정보를 불러오지 못했어요.",
         );
       }
       const [code] = codes;
 
-      if (code === 'INFO-300') {
+      if (code === "INFO-300") {
         status = 429;
         return error(
           origin,
           status,
-          'RATE_LIMITED',
-          '요청이 많아요. 잠시 후 다시 시도해 주세요.',
+          "RATE_LIMITED",
+          "요청이 많아요. 잠시 후 다시 시도해 주세요.",
         );
       }
-      if (code === 'INFO-200') {
+      if (code === "INFO-200") {
         const response = noData(origin, parsed);
         status = response.status;
         return response;
       }
-      if (code !== 'INFO-000') {
+      if (code !== "INFO-000") {
         status = 502;
         return error(
           origin,
           status,
-          'UPSTREAM_ERROR',
-          '급식 정보를 불러오지 못했어요.',
+          "UPSTREAM_ERROR",
+          "급식 정보를 불러오지 못했어요.",
         );
       }
 
@@ -436,8 +436,8 @@ export function createHandler(deps: HandlerDeps) {
         return error(
           origin,
           status,
-          'UPSTREAM_ERROR',
-          '급식 정보를 불러오지 못했어요.',
+          "UPSTREAM_ERROR",
+          "급식 정보를 불러오지 못했어요.",
         );
       }
       if (upstreamRows.length === 0) {
@@ -446,7 +446,7 @@ export function createHandler(deps: HandlerDeps) {
         return response;
       }
 
-      const data = parsed.action === 'searchSchools'
+      const data = parsed.action === "searchSchools"
         ? normalizeSchoolRows(upstreamRows as RawSchoolRow[])
         : normalizeMealRows(
           upstreamRows as RawMealRow[],
@@ -459,8 +459,8 @@ export function createHandler(deps: HandlerDeps) {
       return error(
         origin,
         status,
-        'UPSTREAM_ERROR',
-        '급식 정보를 불러오지 못했어요.',
+        "UPSTREAM_ERROR",
+        "급식 정보를 불러오지 못했어요.",
       );
     } finally {
       log(JSON.stringify({
