@@ -255,6 +255,8 @@ export interface RepositoryState {
 
 export class AppRepository {
   private operationTail: Promise<void> = Promise.resolve();
+  private deletionGeneration = 0;
+  private isDeleting = false;
 
   constructor(private readonly storage: KeyValueStorage) {}
 
@@ -262,6 +264,15 @@ export class AppRepository {
     const result = this.operationTail.then(operation, operation);
     this.operationTail = result.then(() => undefined, () => undefined);
     return result;
+  }
+
+  private serializeMutation<T>(operation: () => Promise<T>, skipped: T): Promise<T> {
+    const generation = this.deletionGeneration;
+    if (this.isDeleting) return Promise.resolve(skipped);
+    return this.serialize(async () => {
+      if (this.isDeleting || generation !== this.deletionGeneration) return skipped;
+      return operation();
+    });
   }
 
   private async read<T>(
@@ -333,25 +344,25 @@ export class AppRepository {
   }
 
   saveProfile(profile: Profile) {
-    return this.serialize(() => this.write(KEYS.profile, profile));
+    return this.serializeMutation(() => this.write(KEYS.profile, profile), undefined);
   }
 
   saveProgress(progress: Progress) {
-    return this.serialize(async () => {
+    return this.serializeMutation(async () => {
       const stored = await this.read<StoredProgress>(KEYS.progress, {}, isProgress);
       if (stored.pendingMealFeedback !== undefined) {
         throw new Error('Cannot save progress while pending feedback recovery exists');
       }
       await this.write(KEYS.progress, progress);
-    });
+    }, undefined);
   }
 
   saveRecords(records: MealRecord[]) {
-    return this.serialize(() => this.write(KEYS.mealRecords, records));
+    return this.serializeMutation(() => this.write(KEYS.mealRecords, records), undefined);
   }
 
   saveChallengeRecords(records: ChallengeRecord[]) {
-    return this.serialize(() => this.write(KEYS.challengeRecords, records));
+    return this.serializeMutation(() => this.write(KEYS.challengeRecords, records), undefined);
   }
 
   async saveMealFeedbackSnapshot(
@@ -359,12 +370,12 @@ export class AppRepository {
     progress: Progress,
     challengeRecords: ChallengeRecord[],
   ): Promise<void> {
-    return this.serialize(async () => {
+    return this.serializeMutation(async () => {
       const snapshot: MealFeedbackSnapshot = { records, progress, challengeRecords };
       if (!isMealFeedbackSnapshot(snapshot)) throw new Error('Invalid meal feedback snapshot');
       await this.write(KEYS.progress, { ...progress, pendingMealFeedback: snapshot });
       await this.completeMealFeedbackSnapshot(snapshot);
-    });
+    }, undefined);
   }
 
   private async completeMealFeedbackSnapshot(snapshot: MealFeedbackSnapshot): Promise<void> {
@@ -378,7 +389,7 @@ export class AppRepository {
   }
 
   cacheMeal(school: School, meal: MealDay): Promise<void> {
-    return this.serialize(async () => {
+    return this.serializeMutation(async () => {
       if (!isValidLiveMeal(meal, meal.date)) return;
 
       const entries = await this.read<MealCacheEntry[]>(
@@ -393,7 +404,7 @@ export class AppRepository {
       ].slice(0, 14);
 
       await this.write(KEYS.mealCache, next);
-    });
+    }, undefined);
   }
 
   getCachedMeal(school: School, date: string) {
@@ -414,8 +425,14 @@ export class AppRepository {
   }
 
   deleteAll(): Promise<void> {
+    this.isDeleting = true;
+    this.deletionGeneration += 1;
     return this.serialize(async () => {
-      await Promise.all(Object.values(KEYS).map((key) => this.storage.removeItem(key)));
+      try {
+        await Promise.all(Object.values(KEYS).map((key) => this.storage.removeItem(key)));
+      } finally {
+        this.isDeleting = false;
+      }
     });
   }
 }

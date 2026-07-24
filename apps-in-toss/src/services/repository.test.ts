@@ -146,6 +146,37 @@ describe('AppRepository', () => {
     expect(storage.keys()).toEqual([]);
   });
 
+  it('does not allow a cache write started during deletion to recreate a key', async () => {
+    const storage = new MemoryStorage(seedAllKeys());
+    const repository = new AppRepository(storage);
+
+    const deleting = repository.deleteAll();
+    const caching = repository.cacheMeal(school, meal);
+    await Promise.all([deleting, caching]);
+
+    expect(storage.keys()).toEqual([]);
+  });
+
+  it('does not allow a feedback journal started during deletion to recreate a key', async () => {
+    const storage = new MemoryStorage(seedAllKeys());
+    const repository = new AppRepository(storage);
+    const progress = {
+      totalXp: 18,
+      baseEarnedByDate: { '20260724': 18 },
+      challengeEarnedByDate: {},
+    };
+
+    const deleting = repository.deleteAll();
+    const saving = repository.saveMealFeedbackSnapshot(
+      [makeRecord()],
+      progress,
+      [{ date: '20260724', mealItemId: 'meal-1', kinds: ['retry'], awardedXp: 5 }],
+    );
+    await Promise.all([deleting, saving]);
+
+    expect(storage.keys()).toEqual([]);
+  });
+
   it('returns a same-school same-date cached meal as cache data', async () => {
     await repository.cacheMeal(school, meal);
 

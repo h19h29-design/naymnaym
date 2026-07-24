@@ -89,6 +89,17 @@ function ReloadResultProbe() {
   );
 }
 
+function ClearStateProbe() {
+  const { clearLocalData, reload, state } = useAppState();
+  return (
+    <>
+      <p>{state.status === 'ready' ? state.profile?.nickname ?? '프로필 없음' : state.status}</p>
+      <button onClick={() => void reload()}>지연된 새로고침</button>
+      <button onClick={clearLocalData}>로컬 상태 비우기</button>
+    </>
+  );
+}
+
 describe('AppStateProvider', () => {
   it('loads the device-only repository during bootstrap', async () => {
     const repository = makeRepository();
@@ -200,5 +211,31 @@ describe('AppStateProvider', () => {
     expect(await screen.findByText('ready')).toBeInTheDocument();
 
     expect(new Set(reloads)).toHaveLength(1);
+  });
+
+  it('clears the live state and ignores an earlier reload completion', async () => {
+    const pending = deferred<RepositoryState>();
+    const repository = makeRepository();
+    vi.spyOn(repository, 'load')
+      .mockResolvedValueOnce(makeState(makeProfile()))
+      .mockImplementationOnce(() => pending.promise);
+
+    render(
+      <AppStateProvider repository={repository}>
+        <ClearStateProbe />
+      </AppStateProvider>,
+    );
+    expect(await screen.findByText('냠냠이')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '지연된 새로고침' }));
+    await userEvent.click(screen.getByRole('button', { name: '로컬 상태 비우기' }));
+    expect(screen.getByText('프로필 없음')).toBeInTheDocument();
+
+    await act(async () => {
+      pending.resolve(makeState(makeProfile({ nickname: '되살아난 프로필' })));
+      await pending.promise;
+    });
+    expect(screen.getByText('프로필 없음')).toBeInTheDocument();
+    expect(screen.queryByText('되살아난 프로필')).not.toBeInTheDocument();
   });
 });

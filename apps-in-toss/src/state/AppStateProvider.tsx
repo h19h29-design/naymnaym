@@ -16,6 +16,7 @@ interface AppStateValue {
   dispatch: Dispatch<AppAction>;
   repository: AppRepository;
   reload(): Promise<boolean>;
+  clearLocalData(): void;
 }
 
 const Context = createContext<AppStateValue | null>(null);
@@ -59,6 +60,13 @@ export function AppStateProvider({
     }
   }, [repository]);
 
+  const clearLocalData = useCallback(() => {
+    if (!activeRef.current || repositoryRef.current !== repository) return;
+    generationRef.current += 1;
+    hasReadyStateRef.current = true;
+    dispatch({ type: 'cleared' });
+  }, [repository]);
+
   useEffect(() => {
     repositoryRef.current = repository;
     hasReadyStateRef.current = false;
@@ -71,7 +79,7 @@ export function AppStateProvider({
   }, [reload, repository]);
 
   return (
-    <Context.Provider value={{ state, dispatch, repository, reload }}>
+    <Context.Provider value={{ state, dispatch, repository, reload, clearLocalData }}>
       {children}
     </Context.Provider>
   );

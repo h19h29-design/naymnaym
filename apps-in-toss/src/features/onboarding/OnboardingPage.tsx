@@ -67,10 +67,23 @@ export function OnboardingPage() {
   const requestIdRef = useRef(0);
   const submittingRef = useRef(false);
   const savedProfileRef = useRef(false);
-  const { repository, reload } = useAppState();
+  const editInitializedRef = useRef(false);
+  const { state: appState, repository, reload } = useAppState();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const editing = searchParams.get('mode') === 'edit';
+  const existingProfile = appState.status === 'ready' ? appState.profile : null;
   const isProfileLocked = isSubmitting || isAwaitingReload;
+
+  useEffect(() => {
+    if (!editing || existingProfile === null || editInitializedRef.current) return;
+    editInitializedRef.current = true;
+    setNickname(existingProfile.nickname);
+    setSchoolType(existingProfile.schoolType);
+    setSelectedSchool(existingProfile.school);
+    setKeyword(existingProfile.school.name);
+    setAllergyCodes(existingProfile.allergyCodes);
+  }, [editing, existingProfile]);
 
   useEffect(() => {
     if (isProfileLocked) return undefined;
@@ -186,7 +199,9 @@ export function OnboardingPage() {
           schoolType,
           school: selectedSchool,
           allergyCodes,
-          createdAt: new Date().toISOString(),
+          createdAt: editing && existingProfile
+            ? existingProfile.createdAt
+            : new Date().toISOString(),
         });
         savedProfileRef.current = true;
       }

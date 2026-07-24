@@ -3,10 +3,10 @@ import { Navigate, type RouteObject, useSearchParams } from 'react-router-dom';
 import { useAppState } from '../state/AppStateProvider';
 import type { AppState } from '../state/reducer';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
+import { SettingsPage } from '../features/settings/SettingsPage';
 import { TodayPage } from '../features/today/TodayPage';
 
 const onboarding = <OnboardingPage />;
-const SettingsPlaceholder = () => <h1>설정</h1>;
 
 type ReadyState = Extract<AppState, { status: 'ready' }>;
 
@@ -56,7 +56,7 @@ function SettingsGate() {
   return (
     <ReadyGate>
       {({ profile }) => (
-        profile ? <SettingsPlaceholder /> : onboarding
+        profile ? <SettingsPage /> : onboarding
       )}
     </ReadyGate>
   );

@@ -4,10 +4,10 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnboardingPage } from './OnboardingPage';
 import { AppProviders } from '../../app/AppProviders';
-import { AppStateProvider } from '../../state/AppStateProvider';
+import { AppStateProvider, useAppState } from '../../state/AppStateProvider';
 import { neisClient } from '../../services/neisClient';
 import type { AppRepository } from '../../services/repository';
-import { school } from '../../test/fixtures';
+import { makeProfile, school } from '../../test/fixtures';
 
 const saveProfile = vi.fn(async () => undefined);
 
@@ -37,14 +37,21 @@ function Location() {
   return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
 }
 
+function ReloadProfile() {
+  const { reload } = useAppState();
+  return <button onClick={() => void reload()}>프로필 다시 불러오기</button>;
+}
+
 function renderOnboarding({
   searchSchools = vi.fn(async () => []),
   initialEntry = '/onboarding',
   load = async () => initialState(),
+  withReloadControl = false,
 }: {
   searchSchools?: typeof neisClient.searchSchools;
   initialEntry?: string;
   load?: AppRepository['load'];
+  withReloadControl?: boolean;
 } = {}) {
   const user = userEvent.setup();
   vi.spyOn(neisClient, 'searchSchools').mockImplementation(searchSchools);
@@ -58,6 +65,7 @@ function renderOnboarding({
       <MemoryRouter initialEntries={[initialEntry]}>
         <AppStateProvider repository={repository}>
           <OnboardingPage />
+          {withReloadControl ? <ReloadProfile /> : null}
           <Location />
         </AppStateProvider>
       </MemoryRouter>
@@ -139,6 +147,53 @@ describe('OnboardingPage', () => {
       schoolType: 'middle',
     }));
     expect(screen.getByTestId('location')).toHaveTextContent('/today');
+  });
+
+  it('prefills edit mode and preserves the profile creation date when saved', async () => {
+    const profile = makeProfile({
+      nickname: '기존 별명',
+      allergyCodes: [1],
+      createdAt: '2025-01-02T03:04:05.000Z',
+    });
+    const user = renderOnboarding({
+      initialEntry: '/onboarding?mode=edit&next=%2Fsettings',
+      load: async () => ({ ...initialState(), profile }),
+    });
+
+    expect(await screen.findByDisplayValue('기존 별명')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '중학교' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('선택한 학교: 가람중학교')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '난류' })).toHaveAttribute('aria-checked', 'true');
+
+    await user.clear(screen.getByLabelText('별명'));
+    await user.type(screen.getByLabelText('별명'), '바꾼 별명');
+    await user.click(screen.getByRole('button', { name: '시작하기' }));
+
+    expect(saveProfile).toHaveBeenCalledWith(expect.objectContaining({
+      nickname: '바꾼 별명',
+      createdAt: '2025-01-02T03:04:05.000Z',
+    }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings');
+  });
+
+  it('does not clobber an active edit when the provider reloads a profile', async () => {
+    const first = makeProfile({ nickname: '기존 별명' });
+    const refreshed = makeProfile({ nickname: '새로 불러온 별명' });
+    const load = vi.fn()
+      .mockResolvedValueOnce({ ...initialState(), profile: first })
+      .mockResolvedValueOnce({ ...initialState(), profile: refreshed });
+    const user = renderOnboarding({
+      initialEntry: '/onboarding?mode=edit&next=%2Fsettings',
+      load,
+      withReloadControl: true,
+    });
+
+    const nickname = await screen.findByDisplayValue('기존 별명');
+    await user.clear(nickname);
+    await user.type(nickname, '작성 중인 별명');
+    await user.click(screen.getByRole('button', { name: '프로필 다시 불러오기' }));
+
+    expect(screen.getByLabelText('별명')).toHaveValue('작성 중인 별명');
   });
 
   it('does not request invalid school-search input and exposes an accessible empty state', async () => {
