@@ -65,3 +65,5 @@ export interface XpAward {
   challenge: number;
   total: number;
 }
+
+export type SessionMode = { kind: 'live' } | { kind: 'demo' };

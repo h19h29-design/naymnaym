@@ -1,11 +1,27 @@
-import { Button } from '@toss/tds-mobile';
+import { useMemo } from 'react';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { AppRepository } from '../services/repository';
+import { tossStorage } from '../services/storage';
+import { AppStateProvider, useAppState } from '../state/AppStateProvider';
+import { routeObjects } from './routes';
+
+const repository = new AppRepository(tossStorage);
+
+function RoutedApp() {
+  const { state } = useAppState();
+  const profile = state.status === 'ready' ? state.profile : null;
+  const router = useMemo(() => createBrowserRouter(routeObjects(profile)), [profile]);
+
+  if (state.status === 'loading') return <p>불러오는 중...</p>;
+  if (state.status === 'recoverableError') return <p>{state.message}</p>;
+
+  return <RouterProvider router={router} />;
+}
 
 export function App() {
   return (
-    <main className="app-shell">
-      <h1>냠냠레벨업</h1>
-      <p>오늘 급식을 한입씩 기록해요.</p>
-      <Button onClick={() => undefined}>준비됐어요</Button>
-    </main>
+    <AppStateProvider repository={repository}>
+      <RoutedApp />
+    </AppStateProvider>
   );
 }
