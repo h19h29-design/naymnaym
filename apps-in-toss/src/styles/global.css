@@ -10,3 +10,10 @@
 body { margin: 0; background: #ffffff; }
 button, input { font: inherit; }
 .app-shell { min-height: 100dvh; padding: 24px 20px 40px; }
+.growth-header { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+.growth-header img { width: 56px; height: 56px; object-fit: contain; }
+.growth-header--changed { animation: growth-pop 180ms ease-out; }
+.meal-card { padding: 16px 0; border-top: 1px solid #e5e8eb; }
+.meal-card > div { display: flex; flex-wrap: wrap; gap: 8px; }
+@keyframes growth-pop { from { opacity: .72; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .growth-header--changed { animation: none; } }

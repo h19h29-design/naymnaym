@@ -3,9 +3,9 @@ import { Navigate, type RouteObject, useSearchParams } from 'react-router-dom';
 import { useAppState } from '../state/AppStateProvider';
 import type { AppState } from '../state/reducer';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
+import { TodayPage } from '../features/today/TodayPage';
 
 const onboarding = <OnboardingPage />;
-const TodayPlaceholder = () => <h1>오늘 급식</h1>;
 const SettingsPlaceholder = () => <h1>설정</h1>;
 
 type ReadyState = Extract<AppState, { status: 'ready' }>;
@@ -45,7 +45,7 @@ function TodayGate() {
     <ReadyGate>
       {({ profile }) => (
         profile || isExplicitDemo
-          ? <TodayPlaceholder />
+          ? <TodayPage />
           : <Navigate to="/onboarding?next=%2Ftoday" replace />
       )}
     </ReadyGate>
