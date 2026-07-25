@@ -4,9 +4,11 @@ enum RebuildPersistentStore {
     static let storeFilename = "NaymRebuild.sqlite"
 
     static func makePersistent() throws -> NSPersistentContainer {
-        let description = makePersistentStoreDescription(
-            storeDirectory: NSPersistentContainer.defaultDirectoryURL()
-        )
+        try makePersistent(storeDirectory: NSPersistentContainer.defaultDirectoryURL())
+    }
+
+    static func makePersistent(storeDirectory: URL) throws -> NSPersistentContainer {
+        let description = makePersistentStoreDescription(storeDirectory: storeDirectory)
         return try makeContainer(description: description)
     }
 
@@ -46,8 +48,10 @@ enum RebuildPersistentStore {
             throw loadError
         }
 
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.performAndWait {
+            container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+            container.viewContext.automaticallyMergesChangesFromParent = true
+        }
         return container
     }
 }

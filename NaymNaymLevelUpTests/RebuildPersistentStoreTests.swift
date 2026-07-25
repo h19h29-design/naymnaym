@@ -67,6 +67,26 @@ final class RebuildPersistentStoreTests: XCTestCase {
                 "sourceDigest": .stringAttributeType,
             ],
         ]
+        let expectedOptionalAttributes: [String: Set<String>] = [
+            "RebuildProfile": ["officeCode", "schoolCode"],
+            "RebuildMealDay": [],
+            "RebuildMealRecord": ["deletedAt"],
+            "RebuildMealPhoto": [],
+            "RebuildProgressEvent": ["sourceRecordID"],
+            "RebuildSyncEnvelope": [],
+            "RebuildParentLink": ["connectedAt"],
+            "RebuildMigrationState": ["sourceDigest"],
+        ]
+        let expectedManagedObjectClasses: [String: NSManagedObject.Type] = [
+            "RebuildProfile": RebuildProfileManagedObject.self,
+            "RebuildMealDay": RebuildMealDayManagedObject.self,
+            "RebuildMealRecord": RebuildMealRecordManagedObject.self,
+            "RebuildMealPhoto": RebuildMealPhotoManagedObject.self,
+            "RebuildProgressEvent": RebuildProgressEventManagedObject.self,
+            "RebuildSyncEnvelope": RebuildSyncEnvelopeManagedObject.self,
+            "RebuildParentLink": RebuildParentLinkManagedObject.self,
+            "RebuildMigrationState": RebuildMigrationStateManagedObject.self,
+        ]
 
         XCTAssertEqual(Set(model.entitiesByName.keys), Set(expectedAttributes.keys))
         for (entityName, attributes) in expectedAttributes {
@@ -79,6 +99,26 @@ final class RebuildPersistentStoreTests: XCTestCase {
                 attributes,
                 "Attribute mismatch for \(entityName)"
             )
+            XCTAssertEqual(
+                Set(entity.attributesByName.compactMap { $0.value.isOptional ? $0.key : nil }),
+                expectedOptionalAttributes[entityName],
+                "Optionality mismatch for \(entityName)"
+            )
+            XCTAssertEqual(
+                entity.managedObjectClassName,
+                expectedManagedObjectClasses[entityName].map(NSStringFromClass),
+                "Managed-object class mismatch for \(entityName)"
+            )
+            for (attributeName, attribute) in entity.attributesByName {
+                if entityName == "RebuildMealRecord", attributeName == "parentShareEnabled" {
+                    XCTAssertEqual(attribute.defaultValue as? Bool, false)
+                } else {
+                    XCTAssertNil(
+                        attribute.defaultValue,
+                        "Unexpected default for \(entityName).\(attributeName)"
+                    )
+                }
+            }
         }
 
         let expectedUniqueKeys: [String: String] = [
@@ -106,6 +146,32 @@ final class RebuildPersistentStoreTests: XCTestCase {
         XCTAssertTrue(container.viewContext.automaticallyMergesChangesFromParent)
         XCTAssertTrue(
             (container.viewContext.mergePolicy as AnyObject)
+                === (NSMergeByPropertyObjectTrumpMergePolicy as AnyObject)
+        )
+    }
+
+    func testInMemoryStoreCanBeCreatedByBackgroundCallerWithoutDeadlock() throws {
+        let completion = expectation(description: "Background store factory returned")
+        let outcome = RebuildLockedBox<Result<NSPersistentContainer, Error>?>(nil)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            outcome.withValue {
+                $0 = Result { try RebuildPersistentStore.makeInMemory() }
+            }
+            completion.fulfill()
+        }
+
+        wait(for: [completion], timeout: 5)
+        let container = try XCTUnwrap(outcome.value).get()
+        let viewContextConfiguration = container.viewContext.performAndWait {
+            (
+                container.viewContext.automaticallyMergesChangesFromParent,
+                container.viewContext.mergePolicy as AnyObject
+            )
+        }
+        XCTAssertTrue(viewContextConfiguration.0)
+        XCTAssertTrue(
+            viewContextConfiguration.1
                 === (NSMergeByPropertyObjectTrumpMergePolicy as AnyObject)
         )
     }
@@ -155,6 +221,61 @@ final class RebuildPersistentStoreTests: XCTestCase {
         XCTAssertEqual(try repository.load(id: event.id), event)
     }
 
+    func testConcurrentProgressAppendAcrossContextsHasOneWinnerAndKeepsWinnerData() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let firstRepository = RebuildProgressRepository(context: container.newBackgroundContext())
+        let secondRepository = RebuildProgressRepository(context: container.newBackgroundContext())
+        let firstEvent = RebuildProgressEvent(
+            id: "meal:shared",
+            amount: 18,
+            occurredAt: Date(timeIntervalSince1970: 100),
+            sourceRecordID: "first-source"
+        )
+        let secondEvent = RebuildProgressEvent(
+            id: "meal:shared",
+            amount: 99,
+            occurredAt: Date(timeIntervalSince1970: 200),
+            sourceRecordID: "second-source"
+        )
+        let start = DispatchSemaphore(value: 0)
+        let group = DispatchGroup()
+        let outcomes = RebuildLockedBox<[(RebuildProgressEvent, Result<Bool, Error>)]>([])
+
+        for (repository, event) in [
+            (firstRepository, firstEvent),
+            (secondRepository, secondEvent),
+        ] {
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                start.wait()
+                let result = Result { try repository.appendIfAbsent(event) }
+                outcomes.withValue { $0.append((event, result)) }
+                group.leave()
+            }
+        }
+
+        start.signal()
+        start.signal()
+        XCTAssertEqual(group.wait(timeout: .now() + 5), .success)
+
+        let completed = outcomes.value
+        XCTAssertEqual(completed.count, 2)
+        let values = try completed.map { try $0.1.get() }
+        XCTAssertEqual(values.filter { $0 }.count, 1)
+        XCTAssertEqual(values.filter { !$0 }.count, 1)
+
+        let winningEvent = try XCTUnwrap(
+            completed.first(where: { (try? $0.1.get()) == true })?.0
+        )
+        let verifier = RebuildProgressRepository(context: container.newBackgroundContext())
+        XCTAssertEqual(try verifier.load(id: "meal:shared"), winningEvent)
+        XCTAssertEqual(try verifier.totalXP(), winningEvent.amount)
+        XCTAssertEqual(
+            try count(entity: RebuildEntityName.progressEvent, in: container.newBackgroundContext()),
+            1
+        )
+    }
+
     func testProgressTotalAccumulatesDistinctEvents() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let repository = RebuildProgressRepository(context: container.viewContext)
@@ -173,6 +294,30 @@ final class RebuildPersistentStoreTests: XCTestCase {
         )))
 
         XCTAssertEqual(try repository.totalXP(), 25)
+    }
+
+    func testProgressTotalThrowsTypedErrorOnInt64Overflow() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let repository = RebuildProgressRepository(context: container.viewContext)
+        XCTAssertTrue(try repository.appendIfAbsent(.init(
+            id: "overflow:max",
+            amount: .max,
+            occurredAt: Date(timeIntervalSince1970: 100)
+        )))
+        XCTAssertTrue(try repository.appendIfAbsent(.init(
+            id: "overflow:one",
+            amount: 1,
+            occurredAt: Date(timeIntervalSince1970: 200)
+        )))
+
+        XCTAssertThrowsError(try repository.totalXP()) { error in
+            guard
+                let repositoryError = error as? RebuildRepositoryError,
+                case .totalXPOverflow = repositoryError
+            else {
+                return XCTFail("Expected totalXPOverflow, got \(error)")
+            }
+        }
     }
 
     func testMigrationVersionMarkUpdatesSingletonAndPreservesMetadata() throws {
@@ -219,9 +364,40 @@ final class RebuildPersistentStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
 
+    func testPersistentStoreLoadFailureIsPropagated() throws {
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: false)
+        try Data("not a directory".utf8).write(to: blocker)
+        defer { try? FileManager.default.removeItem(at: blocker) }
+
+        XCTAssertThrowsError(
+            try RebuildPersistentStore.makePersistent(storeDirectory: blocker)
+        )
+    }
+
     private func count(entity: String, in context: NSManagedObjectContext) throws -> Int {
         try context.performAndWait {
             try context.count(for: NSFetchRequest<NSFetchRequestResult>(entityName: entity))
         }
+    }
+}
+
+private final class RebuildLockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue: Value
+
+    init(_ value: Value) {
+        storedValue = value
+    }
+
+    var value: Value {
+        withValue { $0 }
+    }
+
+    @discardableResult
+    func withValue<Result>(_ body: (inout Value) throws -> Result) rethrows -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body(&storedValue)
     }
 }

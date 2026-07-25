@@ -37,6 +37,7 @@ struct RebuildMigrationState: Equatable, Sendable {
 
 enum RebuildRepositoryError: Error {
     case unexpectedManagedObjectType(entityName: String)
+    case totalXPOverflow
 }
 
 final class RebuildProfileRepository {
@@ -99,6 +100,8 @@ final class RebuildProfileRepository {
 }
 
 final class RebuildProgressRepository {
+    private static let appendSerializationLock = NSLock()
+
     private let context: NSManagedObjectContext
 
     init(context: NSManagedObjectContext) {
@@ -106,7 +109,10 @@ final class RebuildProgressRepository {
     }
 
     func appendIfAbsent(_ event: RebuildProgressEvent) throws -> Bool {
-        try context.performAndWait {
+        Self.appendSerializationLock.lock()
+        defer { Self.appendSerializationLock.unlock() }
+
+        return try context.performAndWait {
             let request = requestForEvent(id: event.id)
             guard try context.count(for: request) == 0 else {
                 return false
@@ -131,9 +137,15 @@ final class RebuildProgressRepository {
             let request = NSFetchRequest<RebuildProgressEventManagedObject>(
                 entityName: RebuildEntityName.progressEvent
             )
-            return try context.fetch(request).reduce(into: Int64(0)) {
-                $0 += $1.amount
+            var total = Int64(0)
+            for event in try context.fetch(request) {
+                let (nextTotal, overflow) = total.addingReportingOverflow(event.amount)
+                guard !overflow else {
+                    throw RebuildRepositoryError.totalXPOverflow
+                }
+                total = nextTotal
             }
+            return total
         }
     }
 
