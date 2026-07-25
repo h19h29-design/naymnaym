@@ -8,11 +8,16 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.core.app.ActivityScenario
 import com.h19h29.naymnaymlevelup.MainActivity
+import com.h19h29.naymnaymlevelup.rebuild.data.ProfileEntity
+import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTheme
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -135,6 +140,9 @@ class OnboardingFlowTest {
             RebuildLegacyDestinationLauncher.ROUTE_TODAY_MEAL,
             mealIntent.getStringExtra(RebuildLegacyDestinationLauncher.EXTRA_ROUTE),
         )
+        assertNotNull(
+            mealIntent.getStringExtra(RebuildLegacyDestinationLauncher.EXTRA_CAPABILITY),
+        )
         assertEquals("child", preferences.getString("rebuildRole", null))
         assertEquals("서울 냠냠초", preferences.getString("schoolName", null))
         assertEquals("B10", preferences.getString("officeCode", null))
@@ -170,18 +178,118 @@ class OnboardingFlowTest {
             destination = OnboardingDestination.ParentConnection,
         )
 
-        ActivityScenario.launch<MainActivity>(
-            launcher.prepare(parentProfile),
-        ).use { scenario ->
+        val intent = launcher.prepare(parentProfile)
+        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
-                val visibleTexts = mutableListOf<String>()
-                collectText(
-                    activity.findViewById(android.R.id.content),
-                    visibleTexts,
-                )
+                val visibleTexts = visibleTexts(activity)
                 assertTrue(visibleTexts.contains("연결된 아이"))
                 assertTrue(visibleTexts.contains("아이에게 연결 요청 보내기"))
             }
+        }
+
+        ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val visibleTexts = visibleTexts(activity)
+                assertTrue(visibleTexts.contains("오늘 급식 보러가기"))
+                assertTrue(!visibleTexts.contains("아이에게 연결 요청 보내기"))
+            }
+        }
+    }
+
+    @Test
+    fun forgedLegacyDestinationIntentCannotOpenThePrivateDestination() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val forged = android.content.Intent(context, MainActivity::class.java)
+            .putExtra(
+                RebuildLegacyDestinationLauncher.EXTRA_ROUTE,
+                RebuildLegacyDestinationLauncher.ROUTE_PARENT_CONNECTION,
+            )
+            .putExtra(
+                RebuildLegacyDestinationLauncher.EXTRA_CAPABILITY,
+                "forged-capability",
+            )
+
+        ActivityScenario.launch<MainActivity>(forged).use { scenario ->
+            scenario.onActivity { activity ->
+                val visibleTexts = visibleTexts(activity)
+                assertTrue(visibleTexts.contains("오늘 급식 보러가기"))
+                assertTrue(!visibleTexts.contains("아이에게 연결 요청 보내기"))
+            }
+        }
+    }
+
+    @Test
+    fun missingAndUnknownLegacyRoutesCannotOpenThePrivateDestination() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val blockedIntents = listOf(
+            android.content.Intent(context, MainActivity::class.java),
+            android.content.Intent(context, MainActivity::class.java)
+                .putExtra(RebuildLegacyDestinationLauncher.EXTRA_ROUTE, "unknown")
+                .putExtra(
+                    RebuildLegacyDestinationLauncher.EXTRA_CAPABILITY,
+                    "unknown-capability",
+                ),
+        )
+
+        blockedIntents.forEach { blocked ->
+            ActivityScenario.launch<MainActivity>(blocked).use { scenario ->
+                scenario.onActivity { activity ->
+                    val visibleTexts = visibleTexts(activity)
+                    assertTrue(visibleTexts.contains("오늘 급식 보러가기"))
+                    assertTrue(!visibleTexts.contains("아이에게 연결 요청 보내기"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun roomProfileStorePreservesExactSchoolNameAcrossRecreation() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            RebuildDatabase::class.java,
+        ).build()
+        val preferences = context.getSharedPreferences(
+            "rebuild-school-name-test",
+            android.content.Context.MODE_PRIVATE,
+        )
+        preferences.edit().clear().commit()
+        val metadata = SharedPreferencesSchoolNameMetadataStore(preferences)
+        try {
+            RoomOnboardingProfileStore(database, metadata).save(
+                childProfile().copy(
+                    school = childProfile().school?.copy(
+                        name = "서울 냠냠초등학교",
+                    ),
+                ),
+            )
+
+            val relaunched = RoomOnboardingProfileStore(database, metadata).load()
+
+            assertEquals("서울 냠냠초등학교", relaunched?.school?.name)
+
+            database.profileDao().deleteAll()
+            preferences.edit().clear().commit()
+            database.profileDao().upsert(
+                ProfileEntity(
+                    id = "legacy-profile",
+                    role = "child",
+                    nickname = "냠냠이",
+                    officeCode = "B10",
+                    schoolCode = "7010111",
+                    allergyCodesJson = "[1,5]",
+                ),
+            )
+
+            val backwardsCompatible = RoomOnboardingProfileStore(
+                database,
+                metadata,
+            ).load()
+
+            assertEquals("등록한 학교", backwardsCompatible?.school?.name)
+        } finally {
+            database.close()
+            preferences.edit().clear().commit()
         }
     }
 
@@ -209,6 +317,12 @@ class OnboardingFlowTest {
             repeat(view.childCount) { index ->
                 collectText(view.getChildAt(index), result)
             }
+        }
+    }
+
+    private fun visibleTexts(activity: MainActivity): List<String> {
+        return buildList {
+            collectText(activity.findViewById(android.R.id.content), this)
         }
     }
 }

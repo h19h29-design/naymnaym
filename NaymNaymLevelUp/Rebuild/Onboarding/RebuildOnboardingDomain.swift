@@ -71,18 +71,99 @@ protocol RebuildSchoolSearchClient {
     func search(query: String) async throws -> [RebuildOnboardingSchool]
 }
 
-final class RebuildCoreDataOnboardingProfileStore:
-    RebuildOnboardingProfileStore,
-    @unchecked Sendable {
-    private let container: NSPersistentContainer
-
-    init(container: NSPersistentContainer) {
-        self.container = container
+final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
+    struct Snapshot {
+        let profileKey: String
+        let profileValue: String?
+        let schoolKey: String?
+        let schoolValue: String?
     }
 
-    func load() async throws -> RebuildUserProfile? {
-        let context = container.newBackgroundContext()
-        return try await context.perform {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func name(
+        profileID: String,
+        officeCode: String,
+        schoolCode: String
+    ) -> String? {
+        defaults.string(forKey: profileKey(profileID))
+            ?? defaults.string(forKey: schoolKey(officeCode, schoolCode))
+    }
+
+    func write(_ profile: RebuildUserProfile) -> Snapshot {
+        let idKey = profileKey(profile.id)
+        guard let school = profile.school else {
+            let snapshot = Snapshot(
+                profileKey: idKey,
+                profileValue: defaults.string(forKey: idKey),
+                schoolKey: nil,
+                schoolValue: nil
+            )
+            defaults.removeObject(forKey: idKey)
+            return snapshot
+        }
+        let codeKey = schoolKey(school.officeCode, school.schoolCode)
+        let snapshot = Snapshot(
+            profileKey: idKey,
+            profileValue: defaults.string(forKey: idKey),
+            schoolKey: codeKey,
+            schoolValue: defaults.string(forKey: codeKey)
+        )
+        defaults.set(school.name, forKey: idKey)
+        defaults.set(school.name, forKey: codeKey)
+        return snapshot
+    }
+
+    func restore(_ snapshot: Snapshot) {
+        restore(snapshot.profileValue, forKey: snapshot.profileKey)
+        if let schoolKey = snapshot.schoolKey {
+            restore(snapshot.schoolValue, forKey: schoolKey)
+        }
+    }
+
+    func removeProfile(id: String) {
+        defaults.removeObject(forKey: profileKey(id))
+    }
+
+    private func restore(_ value: String?, forKey key: String) {
+        if let value {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    private func profileKey(_ id: String) -> String {
+        "rebuild.school-name.profile.\(id)"
+    }
+
+    private func schoolKey(_ officeCode: String, _ schoolCode: String) -> String {
+        "rebuild.school-name.codes.\(officeCode).\(schoolCode)"
+    }
+}
+
+actor RebuildOnboardingProfileTransactionCoordinator {
+    private let context: NSManagedObjectContext
+    private let metadataStore: RebuildSchoolNameMetadataStore
+    private let beforeRemove: (() -> Void)?
+
+    init(
+        container: NSPersistentContainer,
+        metadataStore: RebuildSchoolNameMetadataStore = .init(),
+        beforeRemove: (() -> Void)? = nil
+    ) {
+        context = container.newBackgroundContext()
+        context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        self.metadataStore = metadataStore
+        self.beforeRemove = beforeRemove
+    }
+
+    func load() throws -> RebuildUserProfile? {
+        try context.performAndWait {
             let request = NSFetchRequest<RebuildProfileManagedObject>(
                 entityName: RebuildEntityName.profile
             )
@@ -109,7 +190,11 @@ final class RebuildCoreDataOnboardingProfileStore:
                 !schoolCode.isEmpty
             {
                 school = RebuildOnboardingSchool(
-                    name: "등록한 학교",
+                    name: metadataStore.name(
+                        profileID: object.id,
+                        officeCode: officeCode,
+                        schoolCode: schoolCode
+                    ) ?? "등록한 학교",
                     officeCode: officeCode,
                     schoolCode: schoolCode
                 )
@@ -127,9 +212,9 @@ final class RebuildCoreDataOnboardingProfileStore:
         }
     }
 
-    func save(_ profile: RebuildUserProfile) async throws {
-        let context = container.newBackgroundContext()
-        try await context.perform {
+    func save(_ profile: RebuildUserProfile) throws {
+        try context.performAndWait {
+            let metadataSnapshot = metadataStore.write(profile)
             do {
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
@@ -162,23 +247,30 @@ final class RebuildCoreDataOnboardingProfileStore:
                 try context.save()
             } catch {
                 context.rollback()
+                metadataStore.restore(metadataSnapshot)
                 throw error
             }
         }
     }
 
-    func removeIfCurrent(id: String) async throws {
-        let context = container.newBackgroundContext()
-        try await context.perform {
+    func removeIfCurrent(id: String) throws {
+        beforeRemove?()
+        try context.performAndWait {
             let request = NSFetchRequest<RebuildProfileManagedObject>(
                 entityName: RebuildEntityName.profile
             )
             request.predicate = NSPredicate(format: "id == %@", id)
-            for object in try context.fetch(request) {
+            let objects = try context.fetch(request)
+            guard !objects.isEmpty else { return }
+            for object in objects {
                 context.delete(object)
             }
-            if context.hasChanges {
+            do {
                 try context.save()
+                metadataStore.removeProfile(id: id)
+            } catch {
+                context.rollback()
+                throw error
             }
         }
     }
@@ -193,6 +285,34 @@ final class RebuildCoreDataOnboardingProfileStore:
             throw RebuildOnboardingError.persistenceUnavailable
         }
         return entity
+    }
+}
+
+final class RebuildCoreDataOnboardingProfileStore:
+    RebuildOnboardingProfileStore,
+    @unchecked Sendable {
+    private let coordinator: RebuildOnboardingProfileTransactionCoordinator
+
+    init(container: NSPersistentContainer) {
+        coordinator = RebuildOnboardingProfileTransactionCoordinator(
+            container: container
+        )
+    }
+
+    init(coordinator: RebuildOnboardingProfileTransactionCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func load() async throws -> RebuildUserProfile? {
+        try await coordinator.load()
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
+        try await coordinator.save(profile)
+    }
+
+    func removeIfCurrent(id: String) async throws {
+        try await coordinator.removeIfCurrent(id: id)
     }
 }
 
@@ -284,8 +404,12 @@ final class RebuildOnboardingAppStore {
     private init() throws {
         let container = try RebuildPersistentStore.makePersistent()
         self.container = container
+        let coordinator = RebuildOnboardingProfileTransactionCoordinator(
+            container: container,
+            metadataStore: RebuildSchoolNameMetadataStore()
+        )
         profileStore = RebuildCoreDataOnboardingProfileStore(
-            container: container
+            coordinator: coordinator
         )
     }
 }

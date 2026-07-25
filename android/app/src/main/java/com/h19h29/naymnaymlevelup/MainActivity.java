@@ -48,6 +48,8 @@ import android.widget.TextView;
 
 import com.h19h29.naymnaymlevelup.rebuild.RebuildActivity;
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyDestinationLauncher;
+import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyLaunchGate;
+import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyRouteCapability;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -114,10 +116,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        String rebuildDestination = getIntent() == null
-            ? null
-            : getIntent().getStringExtra(RebuildLegacyDestinationLauncher.EXTRA_ROUTE);
-        if (BuildConfig.NATIVE_REBUILD_ENABLED && rebuildDestination == null) {
+        String rebuildDestination = RebuildLegacyRouteCapability.consume(
+            this,
+            getIntent()
+        );
+        if (RebuildLegacyLaunchGate.shouldHandoffToRebuild(
+            BuildConfig.NATIVE_REBUILD_ENABLED,
+            rebuildDestination
+        )) {
             startActivity(new Intent(this, RebuildActivity.class));
             finish();
             return;

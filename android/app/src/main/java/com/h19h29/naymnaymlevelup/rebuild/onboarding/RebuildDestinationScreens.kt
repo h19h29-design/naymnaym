@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
+import java.util.UUID
 
 @Composable
 fun RebuildTodayDestinationScreen(
@@ -108,12 +109,14 @@ class RebuildLegacyDestinationLauncher(
         check(editor.commit()) {
             "Could not bridge the persisted rebuild profile"
         }
+        val capability = RebuildLegacyRouteCapability.issue(context, route)
         return Intent()
             .setClassName(
                 context,
                 "com.h19h29.naymnaymlevelup.MainActivity",
             )
             .putExtra(EXTRA_ROUTE, route)
+            .putExtra(EXTRA_CAPABILITY, capability)
             .apply {
                 if (context !is Activity) {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -129,7 +132,75 @@ class RebuildLegacyDestinationLauncher(
         const val LEGACY_PREFERENCES = "naymnaym-android"
         const val EXTRA_ROUTE =
             "com.h19h29.naymnaymlevelup.rebuild.LEGACY_DESTINATION"
+        const val EXTRA_CAPABILITY =
+            "com.h19h29.naymnaymlevelup.rebuild.LEGACY_CAPABILITY"
         const val ROUTE_TODAY_MEAL = "todayMeal"
         const val ROUTE_PARENT_CONNECTION = "parentConnection"
     }
+}
+
+object RebuildLegacyLaunchGate {
+    @JvmStatic
+    fun shouldHandoffToRebuild(
+        nativeEnabled: Boolean,
+        consumedRoute: String?,
+    ): Boolean {
+        return nativeEnabled && consumedRoute !in setOf(
+            RebuildLegacyDestinationLauncher.ROUTE_TODAY_MEAL,
+            RebuildLegacyDestinationLauncher.ROUTE_PARENT_CONNECTION,
+        )
+    }
+}
+
+object RebuildLegacyRouteCapability {
+    private const val PREFERENCES = "rebuild-legacy-route-capability"
+    private const val KEY_NONCE = "nonce"
+    private const val KEY_ROUTE = "route"
+    private val lock = Any()
+
+    fun issue(context: Context, route: String): String = synchronized(lock) {
+        require(
+            route == RebuildLegacyDestinationLauncher.ROUTE_TODAY_MEAL ||
+                route == RebuildLegacyDestinationLauncher.ROUTE_PARENT_CONNECTION,
+        )
+        val nonce = UUID.randomUUID().toString()
+        val saved = preferences(context)
+            .edit()
+            .putString(KEY_NONCE, nonce)
+            .putString(KEY_ROUTE, route)
+            .commit()
+        check(saved) { "Could not issue the private legacy route capability" }
+        nonce
+    }
+
+    @JvmStatic
+    fun consume(context: Context, intent: Intent?): String? = synchronized(lock) {
+        val presentedNonce = intent?.getStringExtra(
+            RebuildLegacyDestinationLauncher.EXTRA_CAPABILITY,
+        ) ?: return@synchronized null
+        val stored = preferences(context)
+        val storedNonce = stored.getString(KEY_NONCE, null)
+        if (presentedNonce != storedNonce) {
+            return@synchronized null
+        }
+        val storedRoute = stored.getString(KEY_ROUTE, null)
+        val presentedRoute = intent.getStringExtra(
+            RebuildLegacyDestinationLauncher.EXTRA_ROUTE,
+        )
+        check(stored.edit().clear().commit()) {
+            "Could not consume the private legacy route capability"
+        }
+        presentedRoute.takeIf {
+            it == storedRoute &&
+                it in setOf(
+                    RebuildLegacyDestinationLauncher.ROUTE_TODAY_MEAL,
+                    RebuildLegacyDestinationLauncher.ROUTE_PARENT_CONNECTION,
+                )
+        }
+    }
+
+    private fun preferences(context: Context) = context.getSharedPreferences(
+        PREFERENCES,
+        Context.MODE_PRIVATE,
+    )
 }

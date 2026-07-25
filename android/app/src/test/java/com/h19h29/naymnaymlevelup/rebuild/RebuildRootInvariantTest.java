@@ -67,7 +67,7 @@ public final class RebuildRootInvariantTest {
     }
 
     @Test
-    public void mainActivityAstAllowsOnlyTheInternalDestinationToBypassRebuildHandoff()
+    public void mainActivityAstRequiresConsumedCapabilityBeforeRebuildHandoff()
             throws Exception {
         File sourceFile = new File(
                 requireSystemProperty("rebuild.mainActivitySource"));
@@ -191,6 +191,7 @@ public final class RebuildRootInvariantTest {
         List<Statement> statements = onCreateBody.getStatements();
         if (statements.size() < 3
                 || !isSuperOnCreate(statements.get(0))
+                || !isConsumedCapabilityAssignment(statements.get(1))
                 || !statements.get(2).isIfStmt()
                 || !isNativeRebuildGuard(statements.get(2).asIfStmt())) {
             return false;
@@ -206,6 +207,41 @@ public final class RebuildRootInvariantTest {
         IfStmt rebuildGuard = statements.get(2).asIfStmt();
         return rebuildGuard.getElseStmt().isEmpty()
                 && isCompleteRebuildHandoff(rebuildGuard.getThenStmt());
+    }
+
+    private static boolean isConsumedCapabilityAssignment(Statement statement) {
+        if (!statement.isExpressionStmt()
+                || !statement
+                .asExpressionStmt()
+                .getExpression()
+                .isVariableDeclarationExpr()) {
+            return false;
+        }
+        var declaration = statement
+                .asExpressionStmt()
+                .getExpression()
+                .asVariableDeclarationExpr();
+        if (declaration.getVariables().size() != 1) {
+            return false;
+        }
+        var variable = declaration.getVariable(0);
+        if (!variable.getNameAsString().equals("rebuildDestination")
+                || variable.getInitializer().isEmpty()
+                || !variable.getInitializer().get().isMethodCallExpr()) {
+            return false;
+        }
+        MethodCallExpr consume = variable
+                .getInitializer()
+                .get()
+                .asMethodCallExpr();
+        return consume.getNameAsString().equals("consume")
+                && consume.getScope().filter(NameExpr.class::isInstance).isPresent()
+                && consume.getScope()
+                .map(NameExpr.class::cast)
+                .map(NameExpr::getNameAsString)
+                .filter("RebuildLegacyRouteCapability"::equals)
+                .isPresent()
+                && consume.getArguments().size() == 2;
     }
 
     private static boolean isSuperOnCreate(Statement statement) {
@@ -226,31 +262,35 @@ public final class RebuildRootInvariantTest {
     }
 
     private static boolean isNativeRebuildGuard(IfStmt statement) {
-        if (!(statement.getCondition() instanceof BinaryExpr)) {
+        if (!statement.getCondition().isMethodCallExpr()) {
             return false;
         }
-        BinaryExpr condition = statement.getCondition().asBinaryExpr();
-        if (condition.getOperator() != BinaryExpr.Operator.AND
-                || !(condition.getLeft() instanceof FieldAccessExpr)
-                || !condition.getRight().isBinaryExpr()) {
+        MethodCallExpr gate = statement.getCondition().asMethodCallExpr();
+        if (!gate.getNameAsString().equals("shouldHandoffToRebuild")
+                || gate.getScope().filter(NameExpr.class::isInstance).isEmpty()
+                || !gate.getScope()
+                .map(NameExpr.class::cast)
+                .map(NameExpr::getNameAsString)
+                .filter("RebuildLegacyLaunchGate"::equals)
+                .isPresent()
+                || gate.getArguments().size() != 2) {
             return false;
         }
-        FieldAccessExpr flag = condition.getLeft().asFieldAccessExpr();
-        BinaryExpr destinationCheck = condition.getRight().asBinaryExpr();
+        if (!gate.getArgument(0).isFieldAccessExpr()
+                || !gate.getArgument(1).isNameExpr()) {
+            return false;
+        }
+        FieldAccessExpr flag = gate.getArgument(0).asFieldAccessExpr();
         return flag.getNameAsString().equals("NATIVE_REBUILD_ENABLED")
                 && flag.getScope() instanceof NameExpr
                 && flag.getScope()
                 .asNameExpr()
                 .getNameAsString()
                 .equals("BuildConfig")
-                && destinationCheck.getOperator() == BinaryExpr.Operator.EQUALS
-                && destinationCheck.getLeft().isNameExpr()
-                && destinationCheck
-                .getLeft()
+                && gate.getArgument(1)
                 .asNameExpr()
                 .getNameAsString()
-                .equals("rebuildDestination")
-                && destinationCheck.getRight().isNullLiteralExpr();
+                .equals("rebuildDestination");
     }
 
     private static boolean isCompleteRebuildHandoff(Statement statement) {

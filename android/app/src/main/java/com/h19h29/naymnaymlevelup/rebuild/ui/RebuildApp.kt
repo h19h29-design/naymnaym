@@ -16,6 +16,7 @@ import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildParentConnectionDest
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyDestinationLauncher
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildTodayDestinationScreen
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RoomOnboardingProfileStore
+import com.h19h29.naymnaymlevelup.rebuild.onboarding.SharedPreferencesSchoolNameMetadataStore
 
 @Composable
 fun RebuildApp(database: RebuildDatabase) {
@@ -23,8 +24,16 @@ fun RebuildApp(database: RebuildDatabase) {
     val destinationLauncher = remember(context) {
         RebuildLegacyDestinationLauncher(context)
     }
-    val profileStore = remember(database) {
-        RoomOnboardingProfileStore(database)
+    val profileStore = remember(database, context) {
+        RoomOnboardingProfileStore(
+            database,
+            SharedPreferencesSchoolNameMetadataStore(
+                context.getSharedPreferences(
+                    "rebuild-school-name-metadata",
+                    android.content.Context.MODE_PRIVATE,
+                ),
+            ),
+        )
     }
     val bootstrap = remember(profileStore) {
         OnboardingBootstrapper(profileStore)

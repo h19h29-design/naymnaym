@@ -54,18 +54,68 @@ struct RebuildRootView: View {
 
     @ViewBuilder
     private func destination(for profile: RebuildUserProfile) -> some View {
-        switch profile.destination {
-        case .today:
-            TodayMealView()
-                .task(id: profile.id) {
-                    appState.applyRebuildProfile(profile)
-                    await appState.loadMeals()
+        RebuildBridgedDestinationView(profile: profile)
+    }
+}
+
+enum RebuildLegacyProfileBridgeState: Equatable {
+    case pending
+    case ready(RebuildUserProfile)
+}
+
+@MainActor
+final class RebuildLegacyProfileBridge: ObservableObject {
+    @Published private(set) var state: RebuildLegacyProfileBridgeState = .pending
+
+    func prepare(_ profile: RebuildUserProfile, appState: AppState) {
+        appState.applyRebuildProfile(profile)
+        guard isApplied(profile, to: appState) else { return }
+        state = .ready(profile)
+    }
+
+    private func isApplied(
+        _ profile: RebuildUserProfile,
+        to appState: AppState
+    ) -> Bool {
+        switch profile.role {
+        case .child:
+            guard let school = profile.school else { return false }
+            return appState.currentMode == .elementary
+                && appState.profile?.officeCode == school.officeCode
+                && appState.profile?.schoolCode == school.schoolCode
+                && appState.profile?.selectedAllergyCodes
+                    == profile.allergyCodes.sorted()
+        case .parent:
+            return appState.currentMode == .parent
+                && appState.profile?.nickname == profile.nickname
+        }
+    }
+}
+
+private struct RebuildBridgedDestinationView: View {
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var bridge = RebuildLegacyProfileBridge()
+    let profile: RebuildUserProfile
+
+    var body: some View {
+        Group {
+            switch bridge.state {
+            case .pending:
+                ProgressView("프로필을 준비하고 있어요.")
+            case let .ready(readyProfile):
+                switch readyProfile.destination {
+                case .today:
+                    TodayMealView()
+                        .task(id: readyProfile.id) {
+                            await appState.loadMeals()
+                        }
+                case .parentConnection:
+                    ParentSummaryView()
                 }
-        case .parentConnection:
-            ParentSummaryView()
-                .task(id: profile.id) {
-                    appState.applyRebuildProfile(profile)
-                }
+            }
+        }
+        .task(id: profile.id) {
+            bridge.prepare(profile, appState: appState)
         }
     }
 }

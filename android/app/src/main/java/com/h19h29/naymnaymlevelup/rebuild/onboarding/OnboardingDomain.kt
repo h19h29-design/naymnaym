@@ -1,5 +1,6 @@
 package com.h19h29.naymnaymlevelup.rebuild.onboarding
 
+import android.content.SharedPreferences
 import androidx.room.withTransaction
 import com.h19h29.naymnaymlevelup.BuildConfig
 import com.h19h29.naymnaymlevelup.rebuild.data.ProfileEntity
@@ -11,6 +12,8 @@ import java.io.IOException
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class OnboardingRole(val persistedValue: String) {
     Child("child"),
@@ -88,9 +91,12 @@ fun interface SchoolSearchClient {
 
 class RoomOnboardingProfileStore(
     private val database: RebuildDatabase,
+    private val schoolNameMetadata: SchoolNameMetadataStore,
 ) : OnboardingProfileStore {
-    override suspend fun load(): RebuildUserProfile? {
-        val entity = database.profileDao().load() ?: return null
+    private val transactionMutex = Mutex()
+
+    override suspend fun load(): RebuildUserProfile? = transactionMutex.withLock {
+        val entity = database.profileDao().load() ?: return@withLock null
         val role = when (entity.role) {
             OnboardingRole.Child.persistedValue -> OnboardingRole.Child
             OnboardingRole.Parent.persistedValue -> OnboardingRole.Parent
@@ -105,14 +111,18 @@ class RoomOnboardingProfileStore(
             !schoolCode.isNullOrBlank()
         ) {
             OnboardingSchool(
-                name = "등록한 학교",
+                name = schoolNameMetadata.name(
+                    profileID = entity.id,
+                    officeCode = officeCode,
+                    schoolCode = schoolCode,
+                ) ?: "등록한 학교",
                 officeCode = officeCode,
                 schoolCode = schoolCode,
             )
         } else {
             null
         }
-        return RebuildUserProfile(
+        RebuildUserProfile(
             id = entity.id,
             role = role,
             nickname = entity.nickname,
@@ -126,28 +136,43 @@ class RoomOnboardingProfileStore(
         )
     }
 
-    override suspend fun save(profile: RebuildUserProfile) {
-        database.withTransaction {
-            database.profileDao().deleteAll()
-            database.profileDao().upsert(
-                ProfileEntity(
-                    id = profile.id,
-                    role = profile.role.persistedValue,
-                    nickname = profile.nickname,
-                    officeCode = profile.school?.officeCode,
-                    schoolCode = profile.school?.schoolCode,
-                    allergyCodesJson = profile.allergyCodes.joinToString(
-                        prefix = "[",
-                        postfix = "]",
+    override suspend fun save(profile: RebuildUserProfile) = transactionMutex.withLock {
+        val metadataSnapshot = schoolNameMetadata.write(profile)
+        try {
+            database.withTransaction {
+                database.profileDao().deleteAll()
+                database.profileDao().upsert(
+                    ProfileEntity(
+                        id = profile.id,
+                        role = profile.role.persistedValue,
+                        nickname = profile.nickname,
+                        officeCode = profile.school?.officeCode,
+                        schoolCode = profile.school?.schoolCode,
+                        allergyCodesJson = profile.allergyCodes.joinToString(
+                            prefix = "[",
+                            postfix = "]",
+                        ),
                     ),
-                ),
-            )
+                )
+            }
+        } catch (error: Throwable) {
+            schoolNameMetadata.restore(metadataSnapshot)
+            throw error
         }
     }
 
-    override suspend fun removeIfCurrent(id: String) {
-        database.withTransaction {
-            database.profileDao().delete(id)
+    override suspend fun removeIfCurrent(id: String) = transactionMutex.withLock {
+        val removed = database.withTransaction {
+            val current = database.profileDao().find(id)
+            if (current != null) {
+                database.profileDao().delete(id)
+                true
+            } else {
+                false
+            }
+        }
+        if (removed) {
+            schoolNameMetadata.removeProfile(id)
         }
     }
 
@@ -165,6 +190,114 @@ class RoomOnboardingProfileStore(
             .distinct()
             .sorted()
     }
+}
+
+interface SchoolNameMetadataStore {
+    data class Snapshot(
+        val profileKey: String,
+        val previousProfileName: String?,
+        val schoolKey: String?,
+        val previousSchoolName: String?,
+    )
+
+    fun name(
+        profileID: String,
+        officeCode: String,
+        schoolCode: String,
+    ): String?
+
+    fun write(profile: RebuildUserProfile): Snapshot
+
+    fun restore(snapshot: Snapshot)
+
+    fun removeProfile(id: String)
+}
+
+class SharedPreferencesSchoolNameMetadataStore(
+    private val preferences: SharedPreferences,
+) : SchoolNameMetadataStore {
+    @Synchronized
+    override fun name(
+        profileID: String,
+        officeCode: String,
+        schoolCode: String,
+    ): String? {
+        return preferences.getString(profileKey(profileID), null)
+            ?: preferences.getString(schoolKey(officeCode, schoolCode), null)
+    }
+
+    @Synchronized
+    override fun write(profile: RebuildUserProfile): SchoolNameMetadataStore.Snapshot {
+        val profileKey = profileKey(profile.id)
+        val schoolKey = profile.school?.let {
+            schoolKey(it.officeCode, it.schoolCode)
+        }
+        val snapshot = SchoolNameMetadataStore.Snapshot(
+            profileKey = profileKey,
+            previousProfileName = preferences.getString(profileKey, null),
+            schoolKey = schoolKey,
+            previousSchoolName = schoolKey?.let {
+                preferences.getString(it, null)
+            },
+        )
+        val editor = preferences.edit()
+        if (profile.school == null) {
+            editor.remove(profileKey)
+        } else {
+            editor.putString(profileKey, profile.school.name)
+            editor.putString(requireNotNull(schoolKey), profile.school.name)
+        }
+        check(editor.commit()) {
+            "Could not persist the school display name"
+        }
+        return snapshot
+    }
+
+    @Synchronized
+    override fun restore(snapshot: SchoolNameMetadataStore.Snapshot) {
+        val editor = preferences.edit()
+        restore(
+            editor = editor,
+            key = snapshot.profileKey,
+            value = snapshot.previousProfileName,
+        )
+        snapshot.schoolKey?.let {
+            restore(
+                editor = editor,
+                key = it,
+                value = snapshot.previousSchoolName,
+            )
+        }
+        check(editor.commit()) {
+            "Could not restore the school display name"
+        }
+    }
+
+    @Synchronized
+    override fun removeProfile(id: String) {
+        check(preferences.edit().remove(profileKey(id)).commit()) {
+            "Could not remove the obsolete school display name"
+        }
+    }
+
+    private fun restore(
+        editor: SharedPreferences.Editor,
+        key: String,
+        value: String?,
+    ) {
+        if (value == null) {
+            editor.remove(key)
+        } else {
+            editor.putString(key, value)
+        }
+    }
+
+    private fun profileKey(id: String) = "rebuild.school-name.profile.$id"
+
+    private fun schoolKey(
+        officeCode: String,
+        schoolCode: String,
+    ) = "rebuild.school-name.codes.$officeCode.$schoolCode"
 }
 
 sealed class SchoolSearchException(message: String) : IOException(message) {
