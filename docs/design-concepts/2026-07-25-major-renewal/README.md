@@ -30,3 +30,4 @@
 - `character-motion-comparison.html`: 모션 성격 1/2/3 비교
 - `character-redesign-comparison.html`: 캐릭터 리디자인 범위 1/2/3 비교
 - `character-evolution-concepts.png`: 캐릭터 외형 콘셉트 시트
+- `character-evolution-generation-prompt.md`: 생성 방식과 최종 프롬프트

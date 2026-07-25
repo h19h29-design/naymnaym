@@ -237,11 +237,13 @@ Kotlin Multiplatform 등으로 도메인 로직을 공유할 수 있지만 현�
 
 ### 플랫폼 저장
 
-- iOS: SwiftData
+- iOS: Core Data
 - Android: Room
 - 양쪽 모두 UI와 저장소 사이에 Repository 계층을 둔다.
 - 화면은 네트워크 응답을 직접 렌더링하지 않고 로컬의 확정 상태를 관찰한다.
 - 서버 전송이 필요한 기록에는 고유 ID와 전송 상태를 둔다.
+
+현재 앱의 iOS 16 최소 지원 범위를 유지하기 위해 iOS 17 이상이 필요한 SwiftData 대신 Core Data를 사용한다. 최소 지원 버전을 높이는 결정은 별도 제품 판단 없이 재구축 과정에서 임의로 수행하지 않는다.
 
 ### 오프라인 우선 흐름
 
@@ -301,7 +303,7 @@ iOS UserDefaults와 Android SharedPreferences의 실제 키 및 JSON 버전별 �
 ### iOS
 
 - SwiftUI 기반 기능별 모듈 또는 폴더 구조
-- SwiftData 모델과 Repository
+- Core Data 모델과 Repository
 - `async/await` 기반 NEIS 및 부모 동기화 클라이언트
 - 앱 상태는 화면별 ViewModel과 도메인 서비스로 분리
 - 접근성 값과 Reduce Motion을 디자인 시스템에서 기본 지원
@@ -342,7 +344,7 @@ iOS UserDefaults와 Android SharedPreferences의 실제 키 및 JSON 버전별 �
 ### 1. 기반
 
 - 공통 계약, 디자인 토큰, 도메인 모델
-- iOS SwiftData 및 Android Room
+- iOS Core Data 및 Android Room
 - 역할별 내비게이션과 보호자 확인
 - 데이터 마이그레이션 골격
 
