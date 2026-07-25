@@ -471,8 +471,10 @@ def validate_meal_loop_fixtures(fixtures, rules, policy):
         errors.append("meal-loop-fixtures.json: duplicateEvent identity components must be strings")
     elif not is_canonical_date(duplicate["date"]):
         errors.append("meal-loop-fixtures.json: duplicateEvent date must be yyyy-MM-dd")
-    elif duplicate["status"] not in EXPECTED_ARRAYS["eatingStatuses"]:
-        errors.append("meal-loop-fixtures.json: duplicateEvent status must be an allowed eating status")
+    elif not isinstance(policy, dict) or not isinstance(policy.get("activeStatuses"), list):
+        errors.append("meal-loop-fixtures.json: cannot validate duplicateEvent without active XP statuses")
+    elif duplicate["status"] not in policy["activeStatuses"]:
+        errors.append("meal-loop-fixtures.json: duplicateEvent status must be an active eating status")
     else:
         normalized_menu_name = normalize_menu_name(duplicate["menuName"])
         if not normalized_menu_name or "|" in normalized_menu_name:

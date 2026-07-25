@@ -141,18 +141,24 @@ class NativeRebuildContractTests(unittest.TestCase):
         self.assertIn("xp-policy.json: caps", result.stderr)
 
     def test_validator_rejects_malformed_or_noncanonical_duplicate_event_identity(self):
-        invalid_fields = {
-            "date": "2026-7-25",
-            "status": "unknown",
-            "menuName": "시금치 나물|oneBite",
-            "recordID": "2026-07-25|시금치 나물|finished",
-            "eventID": "meal:2026-07-25|시금치 나물|finished",
-            "duplicateEventID": "meal:2026-07-25|시금치 나물|finished",
-        }
-        for field, invalid_value in invalid_fields.items():
-            with self.subTest(field=field):
+        invalid_mutations = [
+            {"date": "2026-7-25"},
+            {"status": "unknown"},
+            {
+                "status": "half",
+                "recordID": "2026-07-25|시금치 나물|half",
+                "eventID": "meal:2026-07-25|시금치 나물|half",
+                "duplicateEventID": "meal:2026-07-25|시금치 나물|half",
+            },
+            {"menuName": "시금치 나물|oneBite"},
+            {"recordID": "2026-07-25|시금치 나물|finished"},
+            {"eventID": "meal:2026-07-25|시금치 나물|finished"},
+            {"duplicateEventID": "meal:2026-07-25|시금치 나물|finished"},
+        ]
+        for mutations in invalid_mutations:
+            with self.subTest(mutations=mutations):
                 fixtures = json.loads((CONTRACTS / "meal-loop-fixtures.json").read_text())
-                fixtures["duplicateEvent"][field] = invalid_value
+                fixtures["duplicateEvent"].update(mutations)
 
                 result = self._run_validator_with(meal_loop_fixtures=fixtures)
 
