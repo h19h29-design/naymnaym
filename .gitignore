@@ -10,6 +10,7 @@ build/
 .swiftpm/
 node_modules/
 apps-in-toss/.env
+apps-in-toss/.granite/
 apps-in-toss/dist/
 apps-in-toss/*.ait
 apps-in-toss/*.tsbuildinfo
