@@ -388,6 +388,38 @@ Deno.test("calls only the fixed schoolInfo endpoint and normalizes school rows",
   });
 });
 
+Deno.test("does not send the application/json Accept header that NEIS rejects", async () => {
+  let acceptHeader: string | null = null;
+  const response = await createHandler(deps(async (_input, init) => {
+    acceptHeader = new Headers(init?.headers).get("accept");
+    return new Response(JSON.stringify({
+      schoolInfo: [
+        {
+          head: [
+            { list_total_count: 1 },
+            { RESULT: { CODE: "INFO-000" } },
+          ],
+        },
+        {
+          row: [{
+            SCHUL_NM: "가람중학교",
+            ATPT_OFCDC_SC_CODE: "B10",
+            SD_SCHUL_CODE: "7011234",
+            LCTN_SC_NM: "서울특별시",
+            ORG_RDNMA: "서울 중구 1",
+            SCHUL_KND_SC_NM: "중학교",
+          }],
+        },
+      ],
+    }));
+  }))(
+    request({ action: "searchSchools", payload: { keyword: "가람중" } }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(acceptHeader, null);
+});
+
 Deno.test("calls only the fixed meal endpoint and returns a normalized meal", async () => {
   let upstreamUrl: URL | undefined;
   const response = await createHandler(deps(async (input) => {

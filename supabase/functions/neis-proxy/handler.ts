@@ -352,7 +352,6 @@ export function createHandler(deps: HandlerDeps) {
       const upstream = await deps.fetch(
         neisUrl(parsed, deps.neisApiKey),
         {
-          headers: { accept: "application/json" },
           signal: timeoutSignal,
         },
       );

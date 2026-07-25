@@ -1,10 +1,8 @@
 import { createHandler } from "./handler.ts";
+import { resolveAllowedOrigins } from "./origin-config.ts";
 
-const allowedOrigins = new Set(
-  (Deno.env.get("NEIS_ALLOWED_ORIGINS") ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = resolveAllowedOrigins(
+  Deno.env.get("NEIS_ALLOWED_ORIGINS"),
 );
 const neisApiKey = Deno.env.get("NEIS_API_KEY") ?? "";
 
