@@ -38,6 +38,20 @@ EXPECTED_IDENTITY_RULES = {
     "recordIdentity": "{date}|{normalizedMenuName}|{status}",
     "progressEventIdentity": "meal:{recordIdentity}",
 }
+EXPECTED_RECORD_IDENTITIES = [
+    {
+        "date": "2026-07-25",
+        "menuName": " 시금치 나물 ",
+        "status": "oneBite",
+        "expected": "2026-07-25|시금치 나물|oneBite",
+    },
+    {
+        "date": "2026-07-25",
+        "menuName": "현미밥",
+        "status": "finished",
+        "expected": "2026-07-25|현미밥|finished",
+    },
+]
 
 
 def load_json(path):
@@ -92,6 +106,8 @@ def validate_fixtures(fixtures, eating_statuses):
         return errors + ["domain-fixtures.json: recordIdentities must be an array"]
     if not records:
         errors.append("domain-fixtures.json: recordIdentities must not be empty")
+    if records != EXPECTED_RECORD_IDENTITIES:
+        errors.append("domain-fixtures.json: recordIdentities must match the exact v1 fixtures")
 
     expected_identities = []
     for index, record in enumerate(records):
