@@ -101,6 +101,14 @@ NEIS_API_KEY = 발급받은_키
 2. iPhone 시뮬레이터를 선택합니다.
 3. Build & Run을 실행합니다.
 
+## Native rebuild 기반 단계 (로컬 검증 전용)
+
+Native rebuild는 아직 출시 또는 배포 활성화 대상이 아닙니다. 기본 경로와
+커밋된 feature flag는 모두 비활성 상태입니다. 로컬 디버그 확인 절차와 저장소,
+마이그레이션의 정확한 경계는
+[`docs/architecture/native-rebuild-foundation.md`](docs/architecture/native-rebuild-foundation.md)에
+기록되어 있습니다.
+
 ## 첫 실행 Lottie 애니메이션
 
 첫 실행 인트로는 `lottie-ios` 기반 재생 구조를 사용합니다. SwiftUI에서는 `LottieMascotView`가 Lottie JSON을 먼저 찾고, 파일이 없거나 로딩할 수 없으면 기존 PNG 에셋 기반 fallback을 보여줍니다.
