@@ -673,6 +673,7 @@ final class RebuildMigrationCoordinator {
                 expectedData: sourceData,
                 directoryDescriptor: descriptor
             ) {
+                try synchronizeTargetDirectory(descriptor)
                 return relativePath
             }
             try installTarget(
@@ -781,7 +782,6 @@ final class RebuildMigrationCoordinator {
         do {
             for component in components {
                 let name = String(component)
-                var createdComponent = false
                 var nextDescriptor = name.withCString {
                     openat(
                         currentDescriptor,
@@ -800,7 +800,6 @@ final class RebuildMigrationCoordinator {
                             code: errno
                         )
                     }
-                    createdComponent = createResult == 0
                     nextDescriptor = name.withCString {
                         openat(
                             currentDescriptor,
@@ -830,7 +829,7 @@ final class RebuildMigrationCoordinator {
                         code: code
                     )
                 }
-                if createdComponent {
+                if createIfMissing {
                     do {
                         try synchronizeCreatedDirectoryParent(
                             currentDescriptor,
@@ -1002,6 +1001,7 @@ final class RebuildMigrationCoordinator {
                     expectedData: data,
                     directoryDescriptor: directoryDescriptor
                ) {
+                try synchronizeTargetDirectory(directoryDescriptor)
                 return
             }
             throw posixError(

@@ -1,4 +1,5 @@
 import CoreData
+import Darwin
 import XCTest
 @testable import NaymNaymLevelUp
 
@@ -1363,13 +1364,97 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory,
-                syncCreatedDirectoryParent: { _ in
-                    parentSyncCount.withValue { $0 += 1 }
+                syncCreatedDirectoryParent: { descriptor in
+                    let path = try migrationDescriptorPath(descriptor)
+                    if path == targetRoot.path
+                        || path == targetDirectory.deletingLastPathComponent().path {
+                        parentSyncCount.withValue { $0 += 1 }
+                    }
                 }
             ).runIfNeeded(targetVersion: 1),
             .migrated
         )
         XCTAssertEqual(parentSyncCount.value, 2)
+    }
+
+    func testRetryResyncsRetainedCreatedDirectoryParentBeforeCompletion() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        let sourceDirectory = makeDirectory()
+        let targetRoot = makeDirectory()
+        let retainedDirectory = targetRoot.appendingPathComponent("retained")
+        let targetDirectory = retainedDirectory.appendingPathComponent("final")
+        let photo = MealPhotoRecord(
+            id: "mkdir-retry-sync",
+            fileName: "mkdir-retry-sync.jpg",
+            createdAt: Date(timeIntervalSince1970: 1_270),
+            isSharedWithParent: false
+        )
+        try Data("retry directory durability".utf8).write(
+            to: sourceDirectory.appendingPathComponent(photo.fileName)
+        )
+        MealPhotoMetadataStore(defaults: defaults).save([photo])
+        let container = try RebuildPersistentStore.makeInMemory()
+        let failRetainedParentSync: RebuildMigrationDirectorySync = { descriptor in
+            if try migrationDescriptorPath(descriptor) == targetRoot.path {
+                throw TestFailure.directorySync
+            }
+        }
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                syncCreatedDirectoryParent: failRetainedParentSync
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(error as? TestFailure, .directorySync)
+        }
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: retainedDirectory.path)
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: targetDirectory.path)
+        )
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                syncCreatedDirectoryParent: failRetainedParentSync
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(error as? TestFailure, .directorySync)
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: targetDirectory.path)
+        )
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+
+        let retrySyncedParents = MigrationLockedBox<[String]>([])
+        XCTAssertEqual(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                syncCreatedDirectoryParent: { descriptor in
+                    let path = try migrationDescriptorPath(descriptor)
+                    retrySyncedParents.withValue {
+                        $0.append(path)
+                    }
+                }
+            ).runIfNeeded(targetVersion: 1),
+            .migrated
+        )
+        XCTAssertTrue(retrySyncedParents.value.contains(targetRoot.path))
     }
 
     func testAssociationRemovesOnlyASCIISpaceAndPreservesUnicodeWhitespace() throws {
@@ -1822,16 +1907,40 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
             try FileManager.default.contentsOfDirectory(atPath: targetDirectory.path).count,
             1
         )
+        let failedReuseSyncCount = MigrationLockedBox(0)
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                syncTargetDirectory: { _ in
+                    failedReuseSyncCount.withValue { $0 += 1 }
+                    throw TestFailure.directorySync
+                }
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(error as? TestFailure, .directorySync)
+        }
+        XCTAssertEqual(failedReuseSyncCount.value, 1)
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+
+        let successfulReuseSyncCount = MigrationLockedBox(0)
         XCTAssertEqual(
             try RebuildMigrationCoordinator(
                 defaults: defaults,
                 legacyDefaultsDomainName: domainName,
                 container: container,
                 legacyPhotoDirectory: sourceDirectory,
-                rebuildPhotoDirectory: targetDirectory
+                rebuildPhotoDirectory: targetDirectory,
+                syncTargetDirectory: { _ in
+                    successfulReuseSyncCount.withValue { $0 += 1 }
+                }
             ).runIfNeeded(targetVersion: 1),
             .migrated
         )
+        XCTAssertEqual(successfulReuseSyncCount.value, 1)
     }
 
     private func makeDefaults(file: StaticString = #filePath, line: UInt = #line) -> UserDefaults {
@@ -1932,6 +2041,14 @@ private enum TestFailure: Error, Equatable {
     case verification
     case save
     case directorySync
+}
+
+private func migrationDescriptorPath(_ descriptor: Int32) throws -> String {
+    var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+    guard fcntl(descriptor, F_GETPATH, &buffer) == 0 else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+    }
+    return String(cString: buffer)
 }
 
 private final class MigrationLockedBox<Value>: @unchecked Sendable {
