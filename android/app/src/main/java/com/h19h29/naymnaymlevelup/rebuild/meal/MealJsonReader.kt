@@ -25,10 +25,16 @@ internal object MealJsonReader {
                     "JSON payload must start with an object",
                 )
             }
-            readValue(parser).objectValue()
+            val root = readValue(parser).objectValue()
                 ?: throw MealJsonFormatException(
                     "JSON payload must be an object",
                 )
+            if (parser.nextToken() != null) {
+                throw MealJsonFormatException(
+                    "JSON payload must contain exactly one root object",
+                )
+            }
+            root
         } catch (error: MealJsonFormatException) {
             throw error
         } catch (error: Exception) {

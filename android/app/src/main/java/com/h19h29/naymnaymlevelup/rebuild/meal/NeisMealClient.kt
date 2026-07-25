@@ -131,36 +131,44 @@ class NeisMealClient(
                 ?: throw NeisMealClientException.MalformedResponse()
             section.strictArrayIfPresent("row").orEmpty()
         }
-        val row = rows.map { rowValue ->
-            rowValue.objectValue()
+        val typedRows = rows.map { rowValue ->
+            val row = rowValue.objectValue()
                 ?: throw NeisMealClientException.MalformedResponse()
+            NeisMealRow(
+                date = row.requiredString("MLSV_YMD"),
+                dishText = row.requiredString("DDISH_NM"),
+                calorie = row.optionalString("CAL_INFO"),
+                nutrition = row.optionalString("NTR_INFO"),
+            )
         }
-            .firstOrNull { it.string("MLSV_YMD") == neisDate }
+        val result = root.strictObjectIfPresent("RESULT")?.let { value ->
+            NeisResult(
+                code = value.requiredString("CODE"),
+                message = value.optionalString("MESSAGE"),
+            )
+        }
+        val row = typedRows.firstOrNull { it.date == neisDate }
 
         if (row != null) {
-            val dishText = row.string("DDISH_NM")
-                ?: throw NeisMealClientException.MalformedResponse()
-            val menuItems = parseMealItems(dishText)
+            val menuItems = parseMealItems(row.dishText)
             if (menuItems.isEmpty()) {
                 throw NeisMealClientException.MalformedResponse()
             }
             return MealDay(
                 date = date.toString(),
                 menuItems = menuItems,
-                calorie = row.string("CAL_INFO") ?: "정보 없음",
-                nutrition = parseNutrition(row.string("NTR_INFO").orEmpty()),
+                calorie = row.calorie ?: "정보 없음",
+                nutrition = parseNutrition(row.nutrition.orEmpty()),
             )
         }
 
-        val result = root.objectValue("RESULT")
-        val code = result?.string("CODE")
-        if (code == "INFO-200") {
+        if (result?.code == "INFO-200") {
             return null
         }
-        if (code != null) {
+        if (result != null) {
             throw NeisMealClientException.ResultError(
-                code = code,
-                resultMessage = result.string("MESSAGE"),
+                code = result.code,
+                resultMessage = result.message,
             )
         }
         if (mealSections != null) {
@@ -251,14 +259,43 @@ class NeisMealClient(
         }
 
         @Suppress("UNCHECKED_CAST")
+        fun Map<String, Any?>.strictObjectIfPresent(
+            name: String,
+        ): Map<String, Any?>? {
+            if (!containsKey(name)) {
+                return null
+            }
+            return this[name] as? Map<String, Any?>
+                ?: throw NeisMealClientException.MalformedResponse()
+        }
+
+        @Suppress("UNCHECKED_CAST")
         fun Any?.objectValue(): Map<String, Any?>? =
             this as? Map<String, Any?>
 
-        @Suppress("UNCHECKED_CAST")
-        fun Map<String, Any?>.objectValue(name: String): Map<String, Any?>? =
-            this[name] as? Map<String, Any?>
-
-        fun Map<String, Any?>.string(name: String): String? =
+        fun Map<String, Any?>.requiredString(name: String): String =
             this[name] as? String
+                ?: throw NeisMealClientException.MalformedResponse()
+
+        fun Map<String, Any?>.optionalString(name: String): String? {
+            val value = this[name]
+            if (value == null) {
+                return null
+            }
+            return value as? String
+                ?: throw NeisMealClientException.MalformedResponse()
+        }
     }
 }
+
+private data class NeisMealRow(
+    val date: String,
+    val dishText: String,
+    val calorie: String?,
+    val nutrition: String?,
+)
+
+private data class NeisResult(
+    val code: String,
+    val message: String?,
+)

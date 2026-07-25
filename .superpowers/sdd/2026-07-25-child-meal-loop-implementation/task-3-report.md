@@ -170,6 +170,35 @@ The final `lintDebug` completed successfully in `9s` with `0` errors. Its `23`
 warnings are pre-existing, and none reference the meal implementation or its
 tests. `git diff --check` also passed.
 
+## Final Strictness Review
+
+The final re-review was also implemented as a separate fix commit.
+
+- `MealJsonReader` now requires EOF after exactly one root object for both
+  string and byte inputs. Trailing JSON tokens or non-JSON garbage are rejected
+  by both NEIS and Room cache decoding.
+- Every NEIS row is decoded into typed fields before date selection:
+  `MLSV_YMD` and `DDISH_NM` are required strings, while present `CAL_INFO` and
+  `NTR_INFO` values must be strings or null.
+- A present `RESULT` must be an object with a required string `CODE`; present
+  `MESSAGE` must be a string or null. Malformed rows and results can no longer
+  be interpreted as authoritative empty responses.
+- Repository regression coverage proves malformed row fields preserve an
+  existing valid cache.
+
+The focused RED run executed `25` tests and failed exactly the five new
+strictness regressions: shared-reader EOF, NEIS trailing content, typed
+row/result fields, repository cache preservation, and Room cache EOF. After the
+implementation, the same focused suite passed `25/25` with no skipped tests,
+failures, or errors.
+
+The final forced-clean `clean testDebugUnitTest assembleDebug` run passed `68`
+tests with `0` failures and `0` errors; all `50` tasks executed and the build
+completed successfully in `9s`. The debug APK was produced. The final
+`lintDebug` run also completed successfully in `9s` with `0` errors and the same
+`23` pre-existing warnings; none reference the meal implementation or tests.
+`git diff --check` passed.
+
 ## Residual Risk
 
 - Cache identity remains date-only because that is the foundation schema and

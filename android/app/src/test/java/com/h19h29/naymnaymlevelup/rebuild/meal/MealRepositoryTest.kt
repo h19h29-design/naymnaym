@@ -268,6 +268,42 @@ class MealRepositoryTest {
     }
 
     @Test
+    fun sharedJsonReaderRejectsTrailingContentForStringAndBytes() {
+        val payload = """{"RESULT":{"CODE":"INFO-200"}}garbage"""
+        val parsers = listOf<() -> Unit>(
+            { MealJsonReader.parseObject(payload) },
+            { MealJsonReader.parseObject(payload.toByteArray()) },
+        )
+
+        parsers.forEach { parse ->
+            try {
+                parse()
+                fail("Expected trailing JSON content to be rejected")
+            } catch (_: MealJsonFormatException) {
+                // Expected.
+            }
+        }
+    }
+
+    @Test
+    fun neisClientRejectsTrailingContentAfterNoDataResult() = runTest {
+        val client = NeisMealClient(
+            apiKey = "test-secret",
+            transport = NeisTransport {
+                """{"RESULT":{"CODE":"INFO-200"}}garbage""".toByteArray()
+            },
+            logger = {},
+        )
+
+        try {
+            client.fetch("2026-07-25", School.fixture)
+            fail("Expected trailing response content to be malformed")
+        } catch (_: NeisMealClientException.MalformedResponse) {
+            // Expected.
+        }
+    }
+
+    @Test
     fun neisClientRejectsImpossibleCalendarDateBeforeTransport() = runTest {
         var transportCalled = false
         val client = NeisMealClient(
@@ -311,6 +347,36 @@ class MealRepositoryTest {
     }
 
     @Test
+    fun neisClientRejectsMalformedTypedRowsAndResults() = runTest {
+        val malformedResponses = listOf(
+            """{"mealServiceDietInfo":[{"row":[{"DDISH_NM":"밥"}]}]}""",
+            """{"mealServiceDietInfo":[{"row":[{"MLSV_YMD":20260725,"DDISH_NM":"밥"}]}]}""",
+            """{"mealServiceDietInfo":[{"row":[{"MLSV_YMD":"20260725"}]}]}""",
+            """{"mealServiceDietInfo":[{"row":[{"MLSV_YMD":"20260725","DDISH_NM":7}]}]}""",
+            """{"mealServiceDietInfo":[{"row":[{"MLSV_YMD":"20260725","DDISH_NM":"밥","CAL_INFO":770}]}]}""",
+            """{"mealServiceDietInfo":[{"row":[{"MLSV_YMD":"20260725","DDISH_NM":"밥","NTR_INFO":[]}]}]}""",
+            """{"RESULT":"INFO-200"}""",
+            """{"RESULT":{"MESSAGE":"없음"}}""",
+            """{"RESULT":{"CODE":200}}""",
+            """{"RESULT":{"CODE":"INFO-200","MESSAGE":200}}""",
+        )
+
+        malformedResponses.forEach { response ->
+            val client = NeisMealClient(
+                apiKey = "test-secret",
+                transport = NeisTransport { response.toByteArray() },
+                logger = {},
+            )
+            try {
+                client.fetch("2026-07-25", School.fixture)
+                fail("Expected malformed typed response for $response")
+            } catch (_: NeisMealClientException.MalformedResponse) {
+                // Expected.
+            }
+        }
+    }
+
+    @Test
     fun malformedNeisResponsePreservesValidCache() = runTest {
         val date = LocalDate.parse("2026-07-25")
         val cachedMeal = MealDay.fixture(date.toString(), "저장된 급식")
@@ -319,6 +385,34 @@ class MealRepositoryTest {
             apiKey = "test-secret",
             transport = NeisTransport {
                 """{"mealServiceDietInfo":{"row":[]}}""".toByteArray()
+            },
+            logger = {},
+        )
+        val repository = MealRepository(store, client, backgroundScope)
+
+        repository.refresh(date, School.fixture)
+
+        assertEquals(
+            MealLoadState.Cached(cachedMeal, refreshedAt = null),
+            repository.currentState(date.toString()),
+        )
+        assertEquals(
+            CachedMealDay(cachedMeal, refreshedAt = null, source = "fixture"),
+            store.load(date.toString()),
+        )
+    }
+
+    @Test
+    fun malformedNeisRowFieldsPreserveValidCache() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val cachedMeal = MealDay.fixture(date.toString(), "저장된 급식")
+        val store = FakeMealDayStore(listOf(cachedMeal))
+        val client = NeisMealClient(
+            apiKey = "test-secret",
+            transport = NeisTransport {
+                """
+                {"mealServiceDietInfo":[{"row":[{"DDISH_NM":"날짜 없는 급식"}]}]}
+                """.trimIndent().toByteArray()
             },
             logger = {},
         )
@@ -373,6 +467,27 @@ class MealRepositoryTest {
         store.remove("2026-07-25")
 
         assertNull(store.load("2026-07-25"))
+    }
+
+    @Test
+    fun roomStoreRejectsTrailingContentAfterCachedMealObject() = runTest {
+        val date = "2026-07-25"
+        val dao = FakeRoomMealDayDao()
+        val store = RoomMealDayStore(dao)
+        store.save(
+            meal = MealDay.fixture(date),
+            refreshedAt = Instant.parse("2026-07-25T02:00:00Z"),
+            source = "neis",
+        )
+        val entity = requireNotNull(dao.observe(date).first())
+        dao.upsert(entity.copy(payloadJson = "${entity.payloadJson} garbage"))
+
+        try {
+            store.load(date)
+            fail("Expected trailing cache content to be rejected")
+        } catch (_: MealJsonFormatException) {
+            // Expected.
+        }
     }
 
     @Test
