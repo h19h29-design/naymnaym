@@ -154,6 +154,70 @@ final class RebuildMealRepositoryTests: XCTestCase {
         XCTAssertFalse(message.isEmpty)
         XCTAssertNil(cached)
     }
+
+    func testOlderRefreshCannotOverwriteNewerStateOrCache() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let store = CoreDataRebuildMealDayStore(
+            context: container.viewContext
+        )
+        let client = ControlledMealClient()
+        let newerMeal = RebuildMealDay.fixture(
+            date: "2026-07-25",
+            menuName: "최신 급식"
+        )
+        let olderMeal = RebuildMealDay.fixture(
+            date: "2026-07-25",
+            menuName: "이전 급식"
+        )
+        let refreshedAt = Date(timeIntervalSince1970: 1_753_405_200)
+        let repository = RebuildMealRepository(
+            store: store,
+            client: client,
+            now: { refreshedAt }
+        )
+
+        let olderRefresh = Task {
+            await repository.refresh(
+                date: "2026-07-25",
+                school: .fixture
+            )
+        }
+        await client.waitUntilRequestCount(1)
+
+        let newerRefresh = Task {
+            await repository.refresh(
+                date: "2026-07-25",
+                school: .fixture
+            )
+        }
+        await client.waitUntilRequestCount(2)
+
+        await client.complete(
+            requestID: 1,
+            with: .success(newerMeal)
+        )
+        await newerRefresh.value
+        await client.complete(
+            requestID: 0,
+            with: .success(olderMeal)
+        )
+        await olderRefresh.value
+
+        let state = await repository.currentState(date: "2026-07-25")
+        XCTAssertEqual(state, .live(newerMeal))
+
+        let restoredRepository = RebuildMealRepository(
+            store: store,
+            client: StubMealClient(result: .success(nil))
+        )
+        let restoredState = await restoredRepository.currentState(
+            date: "2026-07-25"
+        )
+        XCTAssertEqual(
+            restoredState,
+            .cached(newerMeal, refreshedAt: refreshedAt)
+        )
+    }
 }
 
 final class RebuildMealClientTests: XCTestCase {
@@ -346,6 +410,66 @@ private struct StubMealClient: RebuildMealClientProtocol {
         school: RebuildSchool
     ) async throws -> RebuildMealDay? {
         try result.get()
+    }
+}
+
+private actor ControlledMealClient: RebuildMealClientProtocol {
+    private struct RequestWaiter {
+        let count: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private var nextRequestID = 0
+    private var continuations:
+        [Int: CheckedContinuation<RebuildMealDay?, Error>] = [:]
+    private var requestCount = 0
+    private var waiters: [RequestWaiter] = []
+
+    func fetch(
+        date: String,
+        school: RebuildSchool
+    ) async throws -> RebuildMealDay? {
+        let requestID = nextRequestID
+        nextRequestID += 1
+        return try await withCheckedThrowingContinuation {
+            continuation in
+            continuations[requestID] = continuation
+            requestCount += 1
+            resumeReadyWaiters()
+        }
+    }
+
+    func waitUntilRequestCount(_ count: Int) async {
+        guard requestCount < count else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(
+                RequestWaiter(
+                    count: count,
+                    continuation: continuation
+                )
+            )
+        }
+    }
+
+    func complete(
+        requestID: Int,
+        with result: Result<RebuildMealDay?, Error>
+    ) {
+        guard let continuation = continuations.removeValue(forKey: requestID)
+        else {
+            preconditionFailure("Unknown request ID \(requestID)")
+        }
+        continuation.resume(with: result)
+    }
+
+    private func resumeReadyWaiters() {
+        let ready = waiters.filter { $0.count <= requestCount }
+        waiters.removeAll { $0.count <= requestCount }
+        for waiter in ready {
+            waiter.continuation.resume()
+        }
     }
 }
 

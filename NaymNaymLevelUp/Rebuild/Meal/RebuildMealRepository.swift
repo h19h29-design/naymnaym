@@ -8,6 +8,7 @@ actor RebuildMealRepository {
     private let client: RebuildMealClientProtocol
     private let now: Clock
     private var states: [String: MealLoadState] = [:]
+    private var refreshGenerations: [String: UInt64] = [:]
     private var observers:
         [String: [UUID: AsyncStream<MealLoadState>.Continuation]] = [:]
 
@@ -65,6 +66,7 @@ actor RebuildMealRepository {
     }
 
     func refresh(date: String, school: RebuildSchool) async {
+        let refreshGeneration = nextRefreshGeneration(for: date)
         let cached: RebuildCachedMealDay?
         do {
             cached = try store.load(date: date)
@@ -79,7 +81,11 @@ actor RebuildMealRepository {
         update(.refreshing(cached?.meal), date: date)
 
         do {
-            guard let meal = try await client.fetch(date: date, school: school)
+            let meal = try await client.fetch(date: date, school: school)
+            guard isLatestRefresh(refreshGeneration, for: date) else {
+                return
+            }
+            guard let meal
             else {
                 try store.remove(date: date)
                 update(.empty, date: date)
@@ -89,6 +95,9 @@ actor RebuildMealRepository {
             try store.save(meal, refreshedAt: refreshedAt, source: "neis")
             update(.live(meal), date: date)
         } catch {
+            guard isLatestRefresh(refreshGeneration, for: date) else {
+                return
+            }
             if let cached {
                 update(
                     .cached(
@@ -107,6 +116,19 @@ actor RebuildMealRepository {
                 )
             }
         }
+    }
+
+    private func nextRefreshGeneration(for date: String) -> UInt64 {
+        let generation = (refreshGenerations[date] ?? 0) + 1
+        refreshGenerations[date] = generation
+        return generation
+    }
+
+    private func isLatestRefresh(
+        _ generation: UInt64,
+        for date: String
+    ) -> Bool {
+        refreshGenerations[date] == generation
     }
 
     private func update(_ state: MealLoadState, date: String) {
