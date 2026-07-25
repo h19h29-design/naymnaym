@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "recordIdentities": [
+    {
+      "date": "2026-07-25",
+      "menuName": " 시금치 나물 ",
+      "status": "oneBite",
+      "expected": "2026-07-25|시금치 나물|oneBite"
+    },
+    {
+      "date": "2026-07-25",
+      "menuName": "현미밥",
+      "status": "finished",
+      "expected": "2026-07-25|현미밥|finished"
+    }
+  ]
+}
