@@ -36,6 +36,8 @@
 
 - 앱 로고:
   `apps-in-toss/release-assets/app-icon-600.png`
+  - 공개 URL:
+    `https://h19h29-design.github.io/naymnaym/app-icon-600.png`
   - 600 × 600 PNG
   - 불투명 배경
 - 썸네일:
