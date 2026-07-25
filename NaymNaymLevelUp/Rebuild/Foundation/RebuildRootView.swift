@@ -105,10 +105,10 @@ private struct RebuildBridgedDestinationView: View {
             case let .ready(readyProfile):
                 switch readyProfile.destination {
                 case .today:
-                    TodayMealView()
-                        .task(id: readyProfile.id) {
-                            await appState.loadMeals()
-                        }
+                    ChildNavigationView(
+                        profile: readyProfile,
+                        container: RebuildOnboardingAppStore.shared?.container
+                    )
                 case .parentConnection:
                     ParentSummaryView()
                 }

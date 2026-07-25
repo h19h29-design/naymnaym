@@ -14,6 +14,8 @@ enum RebuildEatingStatus: String, Codable, CaseIterable, Sendable {
 enum RebuildDifficultyReason: String, Codable, CaseIterable, Sendable {
     case texture
     case smell
+    case taste
+    case appearance
     case spicy
     case color
     case newFood

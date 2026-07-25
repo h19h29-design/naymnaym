@@ -77,6 +77,11 @@
 		C20000000000000000000068 /* RebuildSchoolSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000072 /* RebuildSchoolSearchView.swift */; };
 		C20000000000000000000069 /* RebuildAllergySelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000073 /* RebuildAllergySelectionView.swift */; };
 		C20000000000000000000070 /* RebuildOnboardingViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */; };
+		C20000000000000000000071 /* TodayForestViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000075 /* TodayForestViewModelTests.swift */; };
+		C20000000000000000000072 /* ChildNavigationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000076 /* ChildNavigationView.swift */; };
+		C20000000000000000000073 /* TodayForestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000077 /* TodayForestView.swift */; };
+		C20000000000000000000074 /* MealRecordingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000078 /* MealRecordingSheet.swift */; };
+		C20000000000000000000075 /* TodayForestViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000079 /* TodayForestViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -164,6 +169,11 @@
 		C10000000000000000000072 /* RebuildSchoolSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildSchoolSearchView.swift; sourceTree = "<group>"; };
 		C10000000000000000000073 /* RebuildAllergySelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildAllergySelectionView.swift; sourceTree = "<group>"; };
 		C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildOnboardingViewModelTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000075 /* TodayForestViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayForestViewModelTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000076 /* ChildNavigationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/ChildNavigationView.swift; sourceTree = "<group>"; };
+		C10000000000000000000077 /* TodayForestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/TodayForestView.swift; sourceTree = "<group>"; };
+		C10000000000000000000078 /* MealRecordingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/MealRecordingSheet.swift; sourceTree = "<group>"; };
+		C10000000000000000000079 /* TodayForestViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/TodayForestViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -251,6 +261,10 @@
 				C10000000000000000000071 /* RebuildOnboardingFlowView.swift */,
 				C10000000000000000000072 /* RebuildSchoolSearchView.swift */,
 				C10000000000000000000073 /* RebuildAllergySelectionView.swift */,
+				C10000000000000000000076 /* ChildNavigationView.swift */,
+				C10000000000000000000077 /* TodayForestView.swift */,
+				C10000000000000000000078 /* MealRecordingSheet.swift */,
+				C10000000000000000000079 /* TodayForestViewModel.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
@@ -276,6 +290,7 @@
 				C10000000000000000000062 /* RebuildMealRepositoryTests.swift */,
 				C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */,
 				C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */,
+				C10000000000000000000075 /* TodayForestViewModelTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -458,6 +473,10 @@
 				C20000000000000000000067 /* RebuildOnboardingFlowView.swift in Sources */,
 				C20000000000000000000068 /* RebuildSchoolSearchView.swift in Sources */,
 				C20000000000000000000069 /* RebuildAllergySelectionView.swift in Sources */,
+				C20000000000000000000072 /* ChildNavigationView.swift in Sources */,
+				C20000000000000000000073 /* TodayForestView.swift in Sources */,
+				C20000000000000000000074 /* MealRecordingSheet.swift in Sources */,
+				C20000000000000000000075 /* TodayForestViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -478,6 +497,7 @@
 				C20000000000000000000058 /* RebuildMealRepositoryTests.swift in Sources */,
 				C20000000000000000000062 /* RebuildRecordMealUseCaseTests.swift in Sources */,
 				C20000000000000000000070 /* RebuildOnboardingViewModelTests.swift in Sources */,
+				C20000000000000000000071 /* TodayForestViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
