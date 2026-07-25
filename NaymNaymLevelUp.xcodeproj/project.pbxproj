@@ -57,6 +57,10 @@
 		C20000000000000000000048 /* RebuildFeatureGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000052 /* RebuildFeatureGateTests.swift */; };
 		C20000000000000000000049 /* RebuildFeatureGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000053 /* RebuildFeatureGate.swift */; };
 		C20000000000000000000050 /* RebuildRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000054 /* RebuildRootView.swift */; };
+		C20000000000000000000051 /* RebuildPersistentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000055 /* RebuildPersistentStoreTests.swift */; };
+		C20000000000000000000052 /* RebuildManagedModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000056 /* RebuildManagedModel.swift */; };
+		C20000000000000000000053 /* RebuildPersistentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000057 /* RebuildPersistentStore.swift */; };
+		C20000000000000000000054 /* RebuildRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000058 /* RebuildRepositories.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -124,6 +128,10 @@
 		C10000000000000000000052 /* RebuildFeatureGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildFeatureGateTests.swift; sourceTree = "<group>"; };
 		C10000000000000000000053 /* RebuildFeatureGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Foundation/RebuildFeatureGate.swift; sourceTree = "<group>"; };
 		C10000000000000000000054 /* RebuildRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Foundation/RebuildRootView.swift; sourceTree = "<group>"; };
+		C10000000000000000000055 /* RebuildPersistentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildPersistentStoreTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000056 /* RebuildManagedModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Data/RebuildManagedModel.swift; sourceTree = "<group>"; };
+		C10000000000000000000057 /* RebuildPersistentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Data/RebuildPersistentStore.swift; sourceTree = "<group>"; };
+		C10000000000000000000058 /* RebuildRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Data/RebuildRepositories.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -196,6 +204,9 @@
 				C10000000000000000000050 /* RebuildDesignTokens.swift */,
 				C10000000000000000000053 /* RebuildFeatureGate.swift */,
 				C10000000000000000000054 /* RebuildRootView.swift */,
+				C10000000000000000000056 /* RebuildManagedModel.swift */,
+				C10000000000000000000057 /* RebuildPersistentStore.swift */,
+				C10000000000000000000058 /* RebuildRepositories.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
@@ -216,6 +227,7 @@
 				C10000000000000000000044 /* MascotAnimationStateTests.swift */,
 				C10000000000000000000049 /* RebuildDesignTokensTests.swift */,
 				C10000000000000000000052 /* RebuildFeatureGateTests.swift */,
+				C10000000000000000000055 /* RebuildPersistentStoreTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -383,6 +395,9 @@
 				C20000000000000000000046 /* RebuildDesignTokens.swift in Sources */,
 				C20000000000000000000049 /* RebuildFeatureGate.swift in Sources */,
 				C20000000000000000000050 /* RebuildRootView.swift in Sources */,
+				C20000000000000000000052 /* RebuildManagedModel.swift in Sources */,
+				C20000000000000000000053 /* RebuildPersistentStore.swift in Sources */,
+				C20000000000000000000054 /* RebuildRepositories.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -398,6 +413,7 @@
 				C20000000000000000000039 /* MascotAnimationStateTests.swift in Sources */,
 				C20000000000000000000045 /* RebuildDesignTokensTests.swift in Sources */,
 				C20000000000000000000048 /* RebuildFeatureGateTests.swift in Sources */,
+				C20000000000000000000051 /* RebuildPersistentStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
