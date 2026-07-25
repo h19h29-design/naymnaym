@@ -1,4 +1,5 @@
 import CoreData
+import CoreFoundation
 import Foundation
 
 enum RebuildEatingStatus: String, Codable, CaseIterable, Sendable {
@@ -55,9 +56,8 @@ enum RecordMealError: Error, Equatable {
 }
 
 final class RecordMealUseCase: @unchecked Sendable {
-    private static let transactionLock = NSRecursiveLock()
-
     private let container: NSPersistentContainer
+    private let ledgerSerializer: RebuildProgressLedgerSerializer
     private let policy: XPPolicyDocument
 
     init(
@@ -65,6 +65,7 @@ final class RecordMealUseCase: @unchecked Sendable {
         bundle: Bundle = .main
     ) throws {
         self.container = container
+        ledgerSerializer = .shared
         policy = try Self.decodePolicy(
             try loadRebuildContractData(named: "xp-policy.json", bundle: bundle)
         )
@@ -72,9 +73,11 @@ final class RecordMealUseCase: @unchecked Sendable {
 
     init(
         container: NSPersistentContainer,
-        policyData: Data
+        policyData: Data,
+        ledgerSerializer: RebuildProgressLedgerSerializer = .shared
     ) throws {
         self.container = container
+        self.ledgerSerializer = ledgerSerializer
         policy = try Self.decodePolicy(policyData)
     }
 
@@ -85,75 +88,84 @@ final class RecordMealUseCase: @unchecked Sendable {
         let encodedPhotoIDs = try encode(command.photoIDs)
         let eventID = "meal:\(command.recordID)"
 
-        Self.transactionLock.lock()
-        defer { Self.transactionLock.unlock() }
-
-        let context = container.newBackgroundContext()
-        context.mergePolicy = NSErrorMergePolicy
-        return try context.performAndWait {
-            do {
-                let existingRecord = try fetchRecord(
-                    id: command.recordID,
-                    in: context
-                )
-                let existingEvent = try fetchEvent(id: eventID, in: context)
-                let dailyBaseXP = try sumXP(
-                    date: command.date,
-                    eventPrefix: "meal:",
-                    in: context
-                )
-                let dailyTotalXP = try sumXP(
-                    date: command.date,
-                    eventPrefix: nil,
-                    in: context
-                )
-                let xpGranted = try grantedXP(
-                    command: command,
-                    existingRecord: existingRecord,
-                    existingEvent: existingEvent,
-                    dailyBaseXP: dailyBaseXP,
-                    dailyTotalXP: dailyTotalXP
-                )
-
-                let record = try existingRecord ?? insert(
-                    RebuildMealRecordManagedObject.self,
-                    entityName: RebuildEntityName.mealRecord,
-                    in: context
-                )
-                record.id = command.recordID
-                record.date = command.date
-                record.menuName = command.menuName
-                record.normalizedMenuName = normalizedMenuName
-                record.status = command.status.rawValue
-                record.difficultyReasonsJSON = encodedDifficultyReasons
-                record.allergyCodesJSON = encodedAllergyCodes
-                record.photoIDsJSON = encodedPhotoIDs
-                record.parentShareEnabled = command.parentShareEnabled
-                record.updatedAt = command.occurredAt
-                record.deletedAt = nil
-
-                if existingEvent == nil {
-                    let event = try insert(
-                        RebuildProgressEventManagedObject.self,
-                        entityName: RebuildEntityName.progressEvent,
+        return try ledgerSerializer.serialize {
+            let context = container.newBackgroundContext()
+            context.mergePolicy = NSErrorMergePolicy
+            return try context.performAndWait {
+                do {
+                    let existingRecord = try fetchRecord(
+                        id: command.recordID,
                         in: context
                     )
-                    event.id = eventID
-                    event.amount = Int64(xpGranted)
-                    event.occurredAt = command.occurredAt
-                    event.sourceRecordID = command.recordID
-                }
+                    let existingEvent = try fetchEvent(id: eventID, in: context)
+                    let awardAlreadyRecorded =
+                        try hasAwardRecord(
+                            date: command.date,
+                            normalizedMenuName: normalizedMenuName,
+                            in: context
+                        )
+                        || hasAwardEvent(
+                            date: command.date,
+                            normalizedMenuName: normalizedMenuName,
+                            in: context
+                        )
+                    let dailyBaseXP = try sumXP(
+                        date: command.date,
+                        eventPrefix: "meal:",
+                        in: context
+                    )
+                    let dailyTotalXP = try sumXP(
+                        date: command.date,
+                        eventPrefix: nil,
+                        in: context
+                    )
+                    let xpGranted = try grantedXP(
+                        command: command,
+                        awardAlreadyRecorded: awardAlreadyRecorded,
+                        dailyBaseXP: dailyBaseXP,
+                        dailyTotalXP: dailyTotalXP
+                    )
 
-                try context.save()
-                let totalXP = try sumAllXP(in: context)
-                return RecordMealResult(
-                    xpGranted: xpGranted,
-                    totalXP: totalXP,
-                    motion: command.status == .difficultToday ? .comfort : .mealSuccess
-                )
-            } catch {
-                context.rollback()
-                throw error
+                    let record = try existingRecord ?? insert(
+                        RebuildMealRecordManagedObject.self,
+                        entityName: RebuildEntityName.mealRecord,
+                        in: context
+                    )
+                    record.id = command.recordID
+                    record.date = command.date
+                    record.menuName = command.menuName
+                    record.normalizedMenuName = normalizedMenuName
+                    record.status = command.status.rawValue
+                    record.difficultyReasonsJSON = encodedDifficultyReasons
+                    record.allergyCodesJSON = encodedAllergyCodes
+                    record.photoIDsJSON = encodedPhotoIDs
+                    record.parentShareEnabled = command.parentShareEnabled
+                    record.updatedAt = command.occurredAt
+                    record.deletedAt = nil
+
+                    if existingEvent == nil {
+                        let event = try insert(
+                            RebuildProgressEventManagedObject.self,
+                            entityName: RebuildEntityName.progressEvent,
+                            in: context
+                        )
+                        event.id = eventID
+                        event.amount = Int64(xpGranted)
+                        event.occurredAt = command.occurredAt
+                        event.sourceRecordID = command.recordID
+                    }
+
+                    let totalXP = try sumAllXP(in: context)
+                    try context.save()
+                    return RecordMealResult(
+                        xpGranted: xpGranted,
+                        totalXP: totalXP,
+                        motion: command.status == .difficultToday ? .comfort : .mealSuccess
+                    )
+                } catch {
+                    context.rollback()
+                    throw error
+                }
             }
         }
     }
@@ -181,12 +193,11 @@ final class RecordMealUseCase: @unchecked Sendable {
 
     private func grantedXP(
         command: RecordMealCommand,
-        existingRecord: RebuildMealRecordManagedObject?,
-        existingEvent: RebuildProgressEventManagedObject?,
+        awardAlreadyRecorded: Bool,
         dailyBaseXP: Int,
         dailyTotalXP: Int
     ) throws -> Int {
-        guard existingRecord == nil, existingEvent == nil else {
+        guard !awardAlreadyRecorded else {
             return 0
         }
         guard let requested = policy.statusXP[command.status.rawValue] else {
@@ -221,18 +232,76 @@ final class RecordMealUseCase: @unchecked Sendable {
         return try context.fetch(request).first
     }
 
+    private func hasAwardRecord(
+        date: String,
+        normalizedMenuName: String,
+        in context: NSManagedObjectContext
+    ) throws -> Bool {
+        let request = NSFetchRequest<NSFetchRequestResult>(
+            entityName: RebuildEntityName.mealRecord
+        )
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "date == %@", date),
+            NSPredicate(
+                format: "normalizedMenuName == %@",
+                normalizedMenuName
+            ),
+        ])
+        request.fetchLimit = 1
+        return try context.count(for: request) > 0
+    }
+
+    private func hasAwardEvent(
+        date: String,
+        normalizedMenuName: String,
+        in context: NSManagedObjectContext
+    ) throws -> Bool {
+        let awardPrefix = "\(date)|\(normalizedMenuName)|"
+        let request = NSFetchRequest<NSFetchRequestResult>(
+            entityName: RebuildEntityName.progressEvent
+        )
+        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            NSPredicate(format: "id BEGINSWITH %@", "meal:"),
+            NSCompoundPredicate(orPredicateWithSubpredicates: [
+                NSPredicate(
+                    format: "id BEGINSWITH %@",
+                    "meal:\(awardPrefix)"
+                ),
+                NSPredicate(
+                    format: "sourceRecordID BEGINSWITH %@",
+                    awardPrefix
+                ),
+            ]),
+        ])
+        request.fetchLimit = 1
+        return try context.count(for: request) > 0
+    }
+
     private func sumXP(
         date: String,
         eventPrefix: String?,
         in context: NSManagedObjectContext
     ) throws -> Int {
+        let dayInterval = try seoulDayInterval(for: date)
         let request = NSFetchRequest<RebuildProgressEventManagedObject>(
             entityName: RebuildEntityName.progressEvent
         )
-        let datePredicate = NSPredicate(
-            format: "sourceRecordID BEGINSWITH %@",
-            "\(date)|"
-        )
+        let datePredicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
+            NSPredicate(
+                format: "sourceRecordID BEGINSWITH %@",
+                "\(date)|"
+            ),
+            NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(
+                    format: "occurredAt >= %@",
+                    dayInterval.start as NSDate
+                ),
+                NSPredicate(
+                    format: "occurredAt < %@",
+                    dayInterval.end as NSDate
+                ),
+            ]),
+        ])
         if let eventPrefix {
             request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
                 datePredicate,
@@ -254,7 +323,7 @@ final class RecordMealUseCase: @unchecked Sendable {
     private func checkedSum(_ amounts: [Int64]) throws -> Int {
         var result = Int64(0)
         for amount in amounts {
-            let addition = result.addingReportingOverflow(amount)
+            let addition = result.addingReportingOverflow(max(amount, 0))
             guard !addition.overflow else {
                 throw RecordMealError.xpOverflow
             }
@@ -264,6 +333,29 @@ final class RecordMealUseCase: @unchecked Sendable {
             throw RecordMealError.xpOverflow
         }
         return exact
+    }
+
+    private func seoulDayInterval(for date: String) throws -> DateInterval {
+        let components = date.split(separator: "-").compactMap {
+            Int($0)
+        }
+        guard components.count == 3,
+              let timeZone = TimeZone(identifier: "Asia/Seoul") else {
+            throw RecordMealError.invalidRecordIdentity
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let startComponents = DateComponents(
+            timeZone: timeZone,
+            year: components[0],
+            month: components[1],
+            day: components[2]
+        )
+        guard let start = calendar.date(from: startComponents),
+              let end = calendar.date(byAdding: .day, value: 1, to: start) else {
+            throw RecordMealError.invalidRecordIdentity
+        }
+        return DateInterval(start: start, end: end)
     }
 
     private func encode<Value: Encodable>(_ value: Value) throws -> String {
@@ -294,13 +386,47 @@ final class RecordMealUseCase: @unchecked Sendable {
     }
 
     private static func decodePolicy(_ data: Data) throws -> XPPolicyDocument {
-        guard let policy = try? JSONDecoder().decode(
+        guard hasStrictPolicyNumbers(data),
+              let policy = try? JSONDecoder().decode(
             XPPolicyDocument.self,
             from: data
         ), policy.isValid else {
             throw RebuildContractLoadError.invalid("xp-policy.json")
         }
         return policy
+    }
+
+    private static func hasStrictPolicyNumbers(_ data: Data) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: data)
+            as? [String: Any],
+              Set(root.keys) == Set([
+                "version",
+                "activeStatuses",
+                "legacyReadCompatibleStatuses",
+                "awardIdentityComponents",
+                "awardIdentity",
+                "statusTransitionsGrantAdditionalXP",
+                "statusXP",
+                "caps",
+              ]),
+              isJSONInteger(root["version"]),
+              let statusXP = root["statusXP"] as? [String: Any],
+              statusXP.values.allSatisfy(isJSONInteger),
+              let caps = root["caps"] as? [String: Any],
+              Set(caps.keys) == Set(["base", "challengeBonus", "total"]),
+              caps.values.allSatisfy(isJSONInteger) else {
+            return false
+        }
+        return true
+    }
+
+    private static func isJSONInteger(_ value: Any?) -> Bool {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            return false
+        }
+        let type = String(cString: number.objCType)
+        return type != "f" && type != "d"
     }
 }
 
@@ -314,6 +440,9 @@ private struct XPPolicyDocument: Decodable {
     let version: Int
     let activeStatuses: [String]
     let legacyReadCompatibleStatuses: [String]
+    let awardIdentityComponents: [String]
+    let awardIdentity: String
+    let statusTransitionsGrantAdditionalXP: Bool
     let statusXP: [String: Int]
     let caps: Caps
 
@@ -328,6 +457,9 @@ private struct XPPolicyDocument: Decodable {
             && active.isDisjoint(with: legacy)
             && legacy == Set([RebuildEatingStatus.half.rawValue])
             && active.union(legacy) == knownStatuses
+            && awardIdentityComponents == ["date", "normalizedMenuName"]
+            && awardIdentity == "{date}|{normalizedMenuName}"
+            && !statusTransitionsGrantAdditionalXP
             && Set(statusXP.keys) == active.union(legacy)
             && statusXP.values.allSatisfy { $0 >= 0 }
             && caps.base >= 0

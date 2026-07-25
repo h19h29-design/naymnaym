@@ -52,6 +52,32 @@ class NativeRebuildContractTests(unittest.TestCase):
             ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
         )
         self.assertEqual(policy["legacyReadCompatibleStatuses"], ["half"])
+        self.assertEqual(
+            policy["awardIdentityComponents"],
+            ["date", "normalizedMenuName"],
+        )
+        self.assertEqual(
+            policy["awardIdentity"],
+            "{date}|{normalizedMenuName}",
+        )
+        self.assertIs(policy["statusTransitionsGrantAdditionalXP"], False)
+
+    def test_validator_rejects_xp_policy_that_allows_status_transition_farming(self):
+        invalid_mutations = [
+            {"awardIdentityComponents": ["date", "normalizedMenuName", "status"]},
+            {"awardIdentity": "{date}|{normalizedMenuName}|{status}"},
+            {"statusTransitionsGrantAdditionalXP": True},
+        ]
+
+        for mutation in invalid_mutations:
+            with self.subTest(mutation=mutation):
+                policy = json.loads((CONTRACTS / "xp-policy.json").read_text())
+                policy.update(mutation)
+
+                result = self._run_validator_with(xp_policy=policy)
+
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("xp-policy.json", result.stderr)
 
     def test_nutrition_fixture_is_deterministic(self):
         fixtures = json.loads((CONTRACTS / "meal-loop-fixtures.json").read_text())

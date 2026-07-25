@@ -39,6 +39,19 @@ interface MealRecordDao {
     @Query("SELECT * FROM meal_records WHERE id = :id LIMIT 1")
     suspend fun find(id: String): MealRecordEntity?
 
+    @Query(
+        """
+        SELECT * FROM meal_records
+        WHERE date = :date
+          AND normalizedMenuName = :normalizedMenuName
+        LIMIT 1
+        """,
+    )
+    suspend fun findAwardRecord(
+        date: String,
+        normalizedMenuName: String,
+    ): MealRecordEntity?
+
     @Query("SELECT COUNT(*) FROM meal_records WHERE id IN (:ids)")
     suspend fun count(ids: List<String>): Int
 }
@@ -66,25 +79,82 @@ interface ProgressDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(event: ProgressEventEntity): Long
 
-    @Query("SELECT COALESCE(SUM(amount), 0) FROM progress_events")
-    suspend fun totalXp(): Int
+    @Query(
+        """
+        SELECT COALESCE(
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),
+            0
+        )
+        FROM progress_events
+        """,
+    )
+    suspend fun totalXp(): Long
 
     @Query(
         """
-        SELECT COALESCE(SUM(amount), 0) FROM progress_events
+        SELECT COALESCE(
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),
+            0
+        )
+        FROM progress_events
         WHERE id LIKE 'meal:%'
-          AND sourceRecordId LIKE :datePrefix || '%'
+          AND (
+            sourceRecordId LIKE :datePrefix || '%'
+            OR (
+              occurredAtEpochMillis >= :dayStartEpochMillis
+              AND occurredAtEpochMillis < :nextDayStartEpochMillis
+            )
+          )
         """,
     )
-    suspend fun dailyBaseXp(datePrefix: String): Int
+    suspend fun dailyBaseXp(
+        datePrefix: String,
+        dayStartEpochMillis: Long,
+        nextDayStartEpochMillis: Long,
+    ): Long
 
     @Query(
         """
-        SELECT COALESCE(SUM(amount), 0) FROM progress_events
+        SELECT COALESCE(
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),
+            0
+        )
+        FROM progress_events
         WHERE sourceRecordId LIKE :datePrefix || '%'
+           OR (
+             occurredAtEpochMillis >= :dayStartEpochMillis
+             AND occurredAtEpochMillis < :nextDayStartEpochMillis
+           )
         """,
     )
-    suspend fun dailyTotalXp(datePrefix: String): Int
+    suspend fun dailyTotalXp(
+        datePrefix: String,
+        dayStartEpochMillis: Long,
+        nextDayStartEpochMillis: Long,
+    ): Long
+
+    @Query(
+        """
+        SELECT * FROM progress_events
+        WHERE id LIKE 'meal:%'
+          AND (
+            substr(
+              id,
+              1,
+              length('meal:' || :awardPrefix)
+            ) = 'meal:' || :awardPrefix
+            OR substr(
+              sourceRecordId,
+              1,
+              length(:awardPrefix)
+            ) = :awardPrefix
+          )
+        LIMIT 1
+        """,
+    )
+    suspend fun findAwardEvent(
+        awardPrefix: String,
+    ): ProgressEventEntity?
 
     @Query("SELECT * FROM progress_events WHERE id = :id LIMIT 1")
     suspend fun find(id: String): ProgressEventEntity?

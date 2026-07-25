@@ -72,7 +72,7 @@ data class MigrationVerification(
     val profileCount: Int,
     val mealRecordCount: Int,
     val progressEventCount: Int,
-    val totalXp: Int,
+    val totalXp: Long,
 )
 
 interface MigrationTarget {

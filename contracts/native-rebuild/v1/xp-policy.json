@@ -2,6 +2,9 @@
   "version": 1,
   "activeStatuses": ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
   "legacyReadCompatibleStatuses": ["half"],
+  "awardIdentityComponents": ["date", "normalizedMenuName"],
+  "awardIdentity": "{date}|{normalizedMenuName}",
+  "statusTransitionsGrantAdditionalXP": false,
   "statusXP": {
     "finished": 10,
     "half": 12,

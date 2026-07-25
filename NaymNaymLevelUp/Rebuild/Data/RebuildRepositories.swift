@@ -44,6 +44,26 @@ typealias RebuildProgressAppendSerializer = (
     _ operation: () throws -> Bool
 ) throws -> Bool
 
+final class RebuildProgressLedgerSerializer: @unchecked Sendable {
+    static let shared = RebuildProgressLedgerSerializer()
+
+    private let lock = NSRecursiveLock()
+    private let didEnter: (() -> Void)?
+
+    init(didEnter: (() -> Void)? = nil) {
+        self.didEnter = didEnter
+    }
+
+    func serialize<Result>(
+        _ operation: () throws -> Result
+    ) rethrows -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        didEnter?()
+        return try operation()
+    }
+}
+
 final class RebuildProfileRepository {
     private let context: NSManagedObjectContext
 
@@ -104,14 +124,23 @@ final class RebuildProfileRepository {
 }
 
 final class RebuildProgressRepository {
-    private static let appendSerializationLock = NSLock()
-
     private let context: NSManagedObjectContext
-    private let serializeAppend: RebuildProgressAppendSerializer
+    private let ledgerSerializer: RebuildProgressLedgerSerializer?
+    private let injectedSerializeAppend: RebuildProgressAppendSerializer?
 
     init(context: NSManagedObjectContext) {
         self.context = context
-        serializeAppend = Self.serializeAppendTransaction
+        ledgerSerializer = .shared
+        injectedSerializeAppend = nil
+    }
+
+    init(
+        context: NSManagedObjectContext,
+        ledgerSerializer: RebuildProgressLedgerSerializer
+    ) {
+        self.context = context
+        self.ledgerSerializer = ledgerSerializer
+        injectedSerializeAppend = nil
     }
 
     init(
@@ -119,28 +148,24 @@ final class RebuildProgressRepository {
         serializeAppend: @escaping RebuildProgressAppendSerializer
     ) {
         self.context = context
-        self.serializeAppend = serializeAppend
+        ledgerSerializer = nil
+        injectedSerializeAppend = serializeAppend
     }
 
     func appendIfAbsent(_ event: RebuildProgressEvent) throws -> Bool {
-        try context.performAndWait {
-            try serializeAppend {
-                let request = requestForEvent(id: event.id)
-                guard try context.count(for: request) == 0 else {
-                    return false
+        if let ledgerSerializer {
+            return try ledgerSerializer.serialize {
+                try context.performAndWait {
+                    try appendInContext(event)
                 }
-
-                let object = try insertManagedObject(
-                    RebuildProgressEventManagedObject.self,
-                    entityName: RebuildEntityName.progressEvent,
-                    in: context
-                )
-                object.id = event.id
-                object.amount = event.amount
-                object.occurredAt = event.occurredAt
-                object.sourceRecordID = event.sourceRecordID
-                try context.save()
-                return true
+            }
+        }
+        guard let injectedSerializeAppend else {
+            preconditionFailure("Missing progress append serializer")
+        }
+        return try context.performAndWait {
+            try injectedSerializeAppend {
+                try appendInContext(event)
             }
         }
     }
@@ -152,7 +177,9 @@ final class RebuildProgressRepository {
             )
             var total = Int64(0)
             for event in try context.fetch(request) {
-                let (nextTotal, overflow) = total.addingReportingOverflow(event.amount)
+                let (nextTotal, overflow) = total.addingReportingOverflow(
+                    max(event.amount, 0)
+                )
                 guard !overflow else {
                     throw RebuildRepositoryError.totalXPOverflow
                 }
@@ -191,12 +218,25 @@ final class RebuildProgressRepository {
         return request
     }
 
-    private static func serializeAppendTransaction(
-        _ operation: () throws -> Bool
-    ) rethrows -> Bool {
-        appendSerializationLock.lock()
-        defer { appendSerializationLock.unlock() }
-        return try operation()
+    private func appendInContext(
+        _ event: RebuildProgressEvent
+    ) throws -> Bool {
+        let request = requestForEvent(id: event.id)
+        guard try context.count(for: request) == 0 else {
+            return false
+        }
+
+        let object = try insertManagedObject(
+            RebuildProgressEventManagedObject.self,
+            entityName: RebuildEntityName.progressEvent,
+            in: context
+        )
+        object.id = event.id
+        object.amount = event.amount
+        object.occurredAt = event.occurredAt
+        object.sourceRecordID = event.sourceRecordID
+        try context.save()
+        return true
     }
 }
 

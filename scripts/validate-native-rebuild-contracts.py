@@ -337,7 +337,16 @@ def validate_xp_policy(policy, eating_statuses, recordable_statuses):
         return ["xp-policy.json: root must be an object"]
 
     errors = []
-    if set(policy) != {"version", "activeStatuses", "legacyReadCompatibleStatuses", "statusXP", "caps"}:
+    if set(policy) != {
+        "version",
+        "activeStatuses",
+        "legacyReadCompatibleStatuses",
+        "awardIdentityComponents",
+        "awardIdentity",
+        "statusTransitionsGrantAdditionalXP",
+        "statusXP",
+        "caps",
+    }:
         errors.append("xp-policy.json: must contain only the v1 schema fields")
     if policy.get("version") != 1 or not is_integer(policy.get("version")):
         errors.append("xp-policy.json: version must be exactly integer 1")
@@ -355,6 +364,12 @@ def validate_xp_policy(policy, eating_statuses, recordable_statuses):
             errors.append("xp-policy.json: active and legacy statuses must not overlap")
         if set(active) | set(legacy) != set(eating_statuses):
             errors.append("xp-policy.json: active and legacy statuses must cover allowed eating statuses")
+    if policy.get("awardIdentityComponents") != ["date", "normalizedMenuName"]:
+        errors.append("xp-policy.json: awardIdentityComponents must exclude status")
+    if policy.get("awardIdentity") != "{date}|{normalizedMenuName}":
+        errors.append("xp-policy.json: awardIdentity must exclude status")
+    if policy.get("statusTransitionsGrantAdditionalXP") is not False:
+        errors.append("xp-policy.json: status transitions must not grant additional XP")
 
     status_xp = policy.get("statusXP")
     if not isinstance(status_xp, dict):

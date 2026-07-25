@@ -56,8 +56,35 @@ class RebuildDatabaseTest {
 
         assertEquals(1, appended.count { it })
         assertEquals(1, appended.count { !it })
-        assertEquals(18, repository.totalXp())
+        assertEquals(18L, repository.totalXp())
         assertEquals(event, database.progressDao().find(event.id))
+    }
+
+    @Test
+    fun awardPrefixTreatsPercentAndUnderscoreAsLiteralMenuCharacters() = runBlocking {
+        database.progressDao().insert(
+            ProgressEventEntity(
+                id = "meal:2026-07-25|axb|finished",
+                amount = 10,
+                occurredAtEpochMillis = 1_785_000_000_000,
+                sourceRecordId = "2026-07-25|axb|finished",
+            ),
+        )
+        database.progressDao().insert(
+            ProgressEventEntity(
+                id = "meal:2026-07-25|axxb|finished",
+                amount = 10,
+                occurredAtEpochMillis = 1_785_000_000_000,
+                sourceRecordId = "2026-07-25|axxb|finished",
+            ),
+        )
+
+        assertNull(
+            database.progressDao().findAwardEvent("2026-07-25|a_b|"),
+        )
+        assertNull(
+            database.progressDao().findAwardEvent("2026-07-25|a%b|"),
+        )
     }
 
     @Test

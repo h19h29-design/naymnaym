@@ -7,9 +7,9 @@ import com.h19h29.naymnaymlevelup.rebuild.data.ProgressEventEntity
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import java.util.Locale
-import kotlin.math.max
 
 private const val XP_POLICY_FILENAME = "xp-policy.json"
 
@@ -67,6 +67,7 @@ enum class RecordMealFailure {
     InvalidRecordIdentity,
     InactiveStatus,
     AllergySafetyRequired,
+    XpOverflow,
 }
 
 class RecordMealException(
@@ -81,12 +82,25 @@ internal interface MealRecordingStore {
 
 internal interface MealRecordingTransaction {
     suspend fun findRecord(id: String): MealRecordEntity?
+    suspend fun findAwardRecord(
+        date: String,
+        normalizedMenuName: String,
+    ): MealRecordEntity?
     suspend fun upsertRecord(record: MealRecordEntity)
     suspend fun findProgressEvent(id: String): ProgressEventEntity?
+    suspend fun findAwardEvent(awardPrefix: String): ProgressEventEntity?
     suspend fun insertProgressEvent(event: ProgressEventEntity): Boolean
-    suspend fun dailyBaseXp(date: String): Int
-    suspend fun dailyTotalXp(date: String): Int
-    suspend fun totalXp(): Int
+    suspend fun dailyBaseXp(
+        date: String,
+        dayStartEpochMillis: Long,
+        nextDayStartEpochMillis: Long,
+    ): Long
+    suspend fun dailyTotalXp(
+        date: String,
+        dayStartEpochMillis: Long,
+        nextDayStartEpochMillis: Long,
+    ): Long
+    suspend fun totalXp(): Long
 }
 
 class RecordMealUseCase internal constructor(
@@ -109,23 +123,47 @@ class RecordMealUseCase internal constructor(
     suspend fun execute(command: RecordMealCommand): RecordMealResult {
         val normalizedMenuName = validate(command)
         val eventId = "meal:${command.recordID}"
+        val awardPrefix = "${command.date}|$normalizedMenuName|"
+        val seoulDate = LocalDate.parse(command.date)
+        val seoulZone = ZoneId.of("Asia/Seoul")
+        val dayStartEpochMillis = seoulDate
+            .atStartOfDay(seoulZone)
+            .toInstant()
+            .toEpochMilli()
+        val nextDayStartEpochMillis = seoulDate
+            .plusDays(1)
+            .atStartOfDay(seoulZone)
+            .toInstant()
+            .toEpochMilli()
         return store.withTransaction {
             val existingRecord = findRecord(command.recordID)
             val existingEvent = findProgressEvent(eventId)
-            val dailyBase = dailyBaseXp(command.date)
-            val dailyTotal = dailyTotalXp(command.date)
+            val awardAlreadyRecorded =
+                findAwardRecord(command.date, normalizedMenuName) != null ||
+                    findAwardEvent(awardPrefix) != null
+            val dailyBase = dailyBaseXp(
+                command.date,
+                dayStartEpochMillis,
+                nextDayStartEpochMillis,
+            )
+            val dailyTotal = dailyTotalXp(
+                command.date,
+                dayStartEpochMillis,
+                nextDayStartEpochMillis,
+            )
             val statusXp = policy.statusXp[command.status.wireValue]
                 ?: throw RecordMealException(RecordMealFailure.InactiveStatus)
             var xpGranted =
-                if (existingRecord != null || existingEvent != null) {
+                if (awardAlreadyRecorded) {
                     0
                 } else {
-                    val baseGranted = minOf(
-                        statusXp,
-                        max(0, policy.baseCap - max(0, dailyBase)),
-                        max(0, policy.totalCap - max(0, dailyTotal)),
-                    )
-                    baseGranted
+                    minOf(
+                        statusXp.toLong(),
+                        (policy.baseCap.toLong() - dailyBase.coerceAtLeast(0L))
+                            .coerceAtLeast(0L),
+                        (policy.totalCap.toLong() - dailyTotal.coerceAtLeast(0L))
+                            .coerceAtLeast(0L),
+                    ).toInt()
                 }
 
             upsertRecord(
@@ -159,7 +197,7 @@ class RecordMealUseCase internal constructor(
                 }
             }
 
-            val total = max(0, totalXp())
+            val total = checkedXp(totalXp())
             RecordMealResult(
                 xpGranted = xpGranted,
                 totalXP = total,
@@ -170,6 +208,13 @@ class RecordMealUseCase internal constructor(
                 },
             )
         }
+    }
+
+    private fun checkedXp(value: Long): Int {
+        if (value !in 0L..Int.MAX_VALUE.toLong()) {
+            throw RecordMealException(RecordMealFailure.XpOverflow)
+        }
+        return value.toInt()
     }
 
     private fun validate(command: RecordMealCommand): String {
@@ -213,6 +258,15 @@ private class RoomMealRecordingStore(
             override suspend fun findRecord(id: String): MealRecordEntity? =
                 database.mealRecordDao().find(id)
 
+            override suspend fun findAwardRecord(
+                date: String,
+                normalizedMenuName: String,
+            ): MealRecordEntity? =
+                database.mealRecordDao().findAwardRecord(
+                    date,
+                    normalizedMenuName,
+                )
+
             override suspend fun upsertRecord(record: MealRecordEntity) {
                 database.mealRecordDao().upsert(record)
             }
@@ -220,16 +274,37 @@ private class RoomMealRecordingStore(
             override suspend fun findProgressEvent(id: String): ProgressEventEntity? =
                 database.progressDao().find(id)
 
+            override suspend fun findAwardEvent(
+                awardPrefix: String,
+            ): ProgressEventEntity? =
+                database.progressDao().findAwardEvent(awardPrefix)
+
             override suspend fun insertProgressEvent(event: ProgressEventEntity): Boolean =
                 database.progressDao().insert(event) != INSERT_IGNORED
 
-            override suspend fun dailyBaseXp(date: String): Int =
-                database.progressDao().dailyBaseXp("$date|")
+            override suspend fun dailyBaseXp(
+                date: String,
+                dayStartEpochMillis: Long,
+                nextDayStartEpochMillis: Long,
+            ): Long =
+                database.progressDao().dailyBaseXp(
+                    "$date|",
+                    dayStartEpochMillis,
+                    nextDayStartEpochMillis,
+                )
 
-            override suspend fun dailyTotalXp(date: String): Int =
-                database.progressDao().dailyTotalXp("$date|")
+            override suspend fun dailyTotalXp(
+                date: String,
+                dayStartEpochMillis: Long,
+                nextDayStartEpochMillis: Long,
+            ): Long =
+                database.progressDao().dailyTotalXp(
+                    "$date|",
+                    dayStartEpochMillis,
+                    nextDayStartEpochMillis,
+                )
 
-            override suspend fun totalXp(): Int =
+            override suspend fun totalXp(): Long =
                 database.progressDao().totalXp()
         }
         transaction.block()
@@ -250,9 +325,27 @@ private data class XpPolicy(
         fun decode(bytes: ByteArray): XpPolicy =
             try {
                 val root = RebuildContractReader.parse(bytes)
+                val expectedKeys = setOf(
+                    "version",
+                    "activeStatuses",
+                    "legacyReadCompatibleStatuses",
+                    "awardIdentityComponents",
+                    "awardIdentity",
+                    "statusTransitionsGrantAdditionalXP",
+                    "statusXP",
+                    "caps",
+                )
                 val version = root.policyInt("version")
                 val active = root.policyStringList("activeStatuses")
                 val legacy = root.policyStringList("legacyReadCompatibleStatuses")
+                val awardComponents = root.policyStringList(
+                    "awardIdentityComponents",
+                )
+                val awardIdentity = root["awardIdentity"] as? String
+                    ?: throw ContractLoadException(XP_POLICY_FILENAME)
+                val statusTransitionsGrantAdditionalXP =
+                    root["statusTransitionsGrantAdditionalXP"] as? Boolean
+                        ?: throw ContractLoadException(XP_POLICY_FILENAME)
                 val statusObject = root.policyObject("statusXP")
                 val statusXp = statusObject.mapValues { (_, value) ->
                     (value as? Long)?.toInt()?.takeIf { it.toLong() == value }
@@ -267,13 +360,17 @@ private data class XpPolicy(
                 val knownStatuses = EatingStatus.entries
                     .map(EatingStatus::wireValue)
                     .toSet()
-                val valid = version == 1 &&
+                val valid = root.keys == expectedKeys &&
+                    version == 1 &&
                     active.isNotEmpty() &&
                     activeSet.size == active.size &&
                     legacySet.size == legacy.size &&
                     activeSet.intersect(legacySet).isEmpty() &&
                     legacySet == setOf(EatingStatus.Half.wireValue) &&
                     activeSet + legacySet == knownStatuses &&
+                    awardComponents == listOf("date", "normalizedMenuName") &&
+                    awardIdentity == "{date}|{normalizedMenuName}" &&
+                    !statusTransitionsGrantAdditionalXP &&
                     statusXp.keys == activeSet + legacySet &&
                     statusXp.values.all { it >= 0 } &&
                     base >= 0 &&

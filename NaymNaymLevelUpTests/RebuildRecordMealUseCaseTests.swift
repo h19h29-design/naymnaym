@@ -138,6 +138,123 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         XCTAssertEqual(result, RecordMealResult(xpGranted: 0, totalXP: 100, motion: .mealSuccess))
     }
 
+    func testStatusTransitionRepairsCanonicalRowsWithoutAdditionalXP() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let useCase = try RecordMealUseCase(container: container)
+
+        let first = try useCase.execute(command())
+        let transitioned = try useCase.execute(
+            command(
+                recordID: "2026-07-25|시금치나물|finished",
+                status: .finished
+            )
+        )
+
+        XCTAssertEqual(first.xpGranted, 18)
+        XCTAssertEqual(transitioned.xpGranted, 0)
+        XCTAssertEqual(transitioned.totalXP, 18)
+        XCTAssertEqual(try count(RebuildEntityName.mealRecord, in: container), 2)
+        XCTAssertEqual(try count(RebuildEntityName.progressEvent, in: container), 2)
+        XCTAssertEqual(try eventAmounts(in: container).sorted(), [0, 18])
+    }
+
+    func testCrossStatusRecordOrEventAloneSealsAward() throws {
+        let recordContainer = try RebuildPersistentStore.makeInMemory()
+        try seedRecord(
+            command(
+                recordID: "2026-07-25|시금치나물|finished",
+                status: .finished
+            ),
+            in: recordContainer
+        )
+        let recordSealed = try RecordMealUseCase(
+            container: recordContainer
+        ).execute(command())
+
+        XCTAssertEqual(recordSealed.xpGranted, 0)
+        XCTAssertEqual(recordSealed.totalXP, 0)
+        XCTAssertEqual(
+            try count(RebuildEntityName.mealRecord, in: recordContainer),
+            2
+        )
+        XCTAssertEqual(
+            try count(RebuildEntityName.progressEvent, in: recordContainer),
+            1
+        )
+
+        let eventContainer = try RebuildPersistentStore.makeInMemory()
+        try seedEvent(
+            id: "meal:2026-07-25|시금치나물|finished",
+            amount: 10,
+            sourceRecordID: "2026-07-25|시금치나물|finished",
+            in: eventContainer
+        )
+        let eventSealed = try RecordMealUseCase(
+            container: eventContainer
+        ).execute(command())
+
+        XCTAssertEqual(eventSealed.xpGranted, 0)
+        XCTAssertEqual(eventSealed.totalXP, 10)
+        XCTAssertEqual(
+            try count(RebuildEntityName.mealRecord, in: eventContainer),
+            1
+        )
+        XCTAssertEqual(
+            try count(RebuildEntityName.progressEvent, in: eventContainer),
+            2
+        )
+    }
+
+    func testMigratedMealEventWithUUIDSourceCountsTowardSeoulDailyBaseCap() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        try seedEvent(
+            id: "meal:migrated-uuid",
+            amount: 45,
+            sourceRecordID: "550e8400-e29b-41d4-a716-446655440000",
+            occurredAt: Date(timeIntervalSince1970: 1_784_948_400),
+            in: container
+        )
+
+        let result = try RecordMealUseCase(container: container).execute(command())
+
+        XCTAssertEqual(result, RecordMealResult(xpGranted: 5, totalXP: 50, motion: .mealSuccess))
+    }
+
+    func testMigratedChallengeEventWithNilSourceCountsTowardSeoulDailyTotalCap() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        try seedEvent(
+            id: "challenge:migrated-no-source",
+            amount: 95,
+            sourceRecordID: nil,
+            occurredAt: Date(timeIntervalSince1970: 1_784_948_400),
+            in: container
+        )
+
+        let result = try RecordMealUseCase(container: container).execute(command())
+
+        XCTAssertEqual(result, RecordMealResult(xpGranted: 5, totalXP: 100, motion: .mealSuccess))
+    }
+
+    func testNegativeCorrectionsNeverCancelPositiveDailyOrLifetimeXP() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        try seedEvent(
+            id: "meal:positive",
+            amount: 45,
+            sourceRecordID: "2026-07-25|기존|finished",
+            in: container
+        )
+        try seedEvent(
+            id: "meal:negative-correction",
+            amount: -40,
+            sourceRecordID: "2026-07-25|교정|finished",
+            in: container
+        )
+
+        let result = try RecordMealUseCase(container: container).execute(command())
+
+        XCTAssertEqual(result, RecordMealResult(xpGranted: 5, totalXP: 50, motion: .mealSuccess))
+    }
+
     func testLegacyHalfAndMismatchedCanonicalIdentityAreRejectedWithoutWrites() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let useCase = try RecordMealUseCase(container: container)
@@ -265,6 +382,24 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         XCTAssertEqual(try count(RebuildEntityName.progressEvent, in: container), 0)
     }
 
+    func testTotalOverflowBeforeSaveRollsBackNewRecordAndEvent() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        try seedEvent(
+            id: "legacy:overflow-max",
+            amount: .max,
+            sourceRecordID: "2025-07-25|legacy|finished",
+            in: container
+        )
+
+        XCTAssertThrowsError(
+            try RecordMealUseCase(container: container).execute(command())
+        ) { error in
+            XCTAssertEqual(error as? RecordMealError, .xpOverflow)
+        }
+        XCTAssertEqual(try count(RebuildEntityName.mealRecord, in: container), 0)
+        XCTAssertEqual(try count(RebuildEntityName.progressEvent, in: container), 1)
+    }
+
     func testConcurrentDuplicateCommandsHaveOneWinner() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let first = try RecordMealUseCase(container: container)
@@ -291,6 +426,69 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         XCTAssertEqual(try count(RebuildEntityName.mealRecord, in: container), 1)
         XCTAssertEqual(try count(RebuildEntityName.progressEvent, in: container), 1)
         XCTAssertEqual(try onlyEvent(in: container).amount, 18)
+    }
+
+    func testConcurrentRepositoryWriterIsSerializedBeforeMealCapReadAndWrite() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let serializerEntered = expectation(description: "repository owns ledger serializer")
+        let releaseRepository = DispatchSemaphore(value: 0)
+        let entryCount = Task4LockedBox(0)
+        let serializer = RebuildProgressLedgerSerializer {
+            let isFirstEntry = entryCount.withValue { count in
+                defer { count += 1 }
+                return count == 0
+            }
+            if isFirstEntry {
+                serializerEntered.fulfill()
+                _ = releaseRepository.wait(timeout: .now() + 2)
+            }
+        }
+        let repository = RebuildProgressRepository(
+            context: container.newBackgroundContext(),
+            ledgerSerializer: serializer
+        )
+        let useCase = try RecordMealUseCase(
+            container: container,
+            policyData: try contractData(named: "xp-policy.json"),
+            ledgerSerializer: serializer
+        )
+        let repositoryOutcome = Task4LockedBox<Result<Bool, Error>?>(nil)
+        let mealOutcome = Task4LockedBox<Result<RecordMealResult, Error>?>(nil)
+        let repositoryCompleted = expectation(description: "repository completed")
+        let mealCompleted = expectation(description: "meal completed")
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            repositoryOutcome.withValue {
+                $0 = Result {
+                    try repository.appendIfAbsent(
+                        RebuildProgressEvent(
+                            id: "challenge:concurrent-cap",
+                            amount: 90,
+                            occurredAt: Date(timeIntervalSince1970: 1_753_430_400),
+                            sourceRecordID: "2026-07-25|challenge|finished"
+                        )
+                    )
+                }
+            }
+            repositoryCompleted.fulfill()
+        }
+        wait(for: [serializerEntered], timeout: 2)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            mealOutcome.withValue {
+                $0 = Result { try useCase.execute(self.command()) }
+            }
+            mealCompleted.fulfill()
+        }
+        releaseRepository.signal()
+        wait(for: [repositoryCompleted, mealCompleted], timeout: 5)
+
+        XCTAssertTrue(try XCTUnwrap(repositoryOutcome.value).get())
+        XCTAssertEqual(
+            try XCTUnwrap(mealOutcome.value).get(),
+            RecordMealResult(xpGranted: 10, totalXP: 100, motion: .mealSuccess)
+        )
+        XCTAssertEqual(try repository.totalXP(), 100)
     }
 
     func testMalformedXPPolicyFailsBeforeAnyWrite() throws {
@@ -334,6 +532,63 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         }
     }
 
+    func testXPPolicyCannotEnableStatusTransitionAwards() throws {
+        var policy = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try contractData(named: "xp-policy.json")
+            ) as? [String: Any]
+        )
+        policy["statusTransitionsGrantAdditionalXP"] = true
+
+        XCTAssertThrowsError(
+            try RecordMealUseCase(
+                container: try RebuildPersistentStore.makeInMemory(),
+                policyData: try JSONSerialization.data(withJSONObject: policy)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? RebuildContractLoadError,
+                .invalid("xp-policy.json")
+            )
+        }
+    }
+
+    func testXPPolicyRejectsIntegralFloatingPointNumbers() throws {
+        let canonical = try XCTUnwrap(
+            String(
+                data: try contractData(named: "xp-policy.json"),
+                encoding: .utf8
+            )
+        )
+        let replacements = [
+            (#""version": 1"#, #""version": 1.0"#),
+            (#""oneBite": 18"#, #""oneBite": 18.0"#),
+            (#""base": 50"#, #""base": 50.0"#),
+        ]
+
+        for (source, replacement) in replacements {
+            let floatingPointPolicy = Data(
+                canonical.replacingOccurrences(
+                    of: source,
+                    with: replacement
+                ).utf8
+            )
+
+            XCTAssertThrowsError(
+                try RecordMealUseCase(
+                    container: try RebuildPersistentStore.makeInMemory(),
+                    policyData: floatingPointPolicy
+                ),
+                "Expected \(replacement) to be rejected"
+            ) { error in
+                XCTAssertEqual(
+                    error as? RebuildContractLoadError,
+                    .invalid("xp-policy.json")
+                )
+            }
+        }
+    }
+
     private func command(
         recordID: String = "2026-07-25|시금치나물|oneBite",
         date: String = "2026-07-25",
@@ -364,7 +619,8 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
     private func seedEvent(
         id: String,
         amount: Int64,
-        sourceRecordID: String,
+        sourceRecordID: String?,
+        occurredAt: Date = Date(timeIntervalSince1970: 1_753_430_400),
         in container: NSPersistentContainer
     ) throws {
         try container.viewContext.performAndWait {
@@ -376,7 +632,7 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
             )
             event.id = id
             event.amount = amount
-            event.occurredAt = Date(timeIntervalSince1970: 1_753_430_400)
+            event.occurredAt = occurredAt
             event.sourceRecordID = sourceRecordID
             try container.viewContext.save()
         }
@@ -416,6 +672,17 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         return try XCTUnwrap(container.viewContext.performAndWait {
             try container.viewContext.fetch(request).first
         })
+    }
+
+    private func eventAmounts(
+        in container: NSPersistentContainer
+    ) throws -> [Int64] {
+        let request = NSFetchRequest<RebuildProgressEventManagedObject>(
+            entityName: RebuildEntityName.progressEvent
+        )
+        return try container.viewContext.performAndWait {
+            try container.viewContext.fetch(request).map(\.amount)
+        }
     }
 
     private func count(
@@ -473,9 +740,10 @@ private final class Task4LockedBox<Value>: @unchecked Sendable {
         return storage
     }
 
-    func withValue(_ operation: (inout Value) -> Void) {
+    @discardableResult
+    func withValue<Result>(_ operation: (inout Value) -> Result) -> Result {
         lock.lock()
-        operation(&storage)
-        lock.unlock()
+        defer { lock.unlock() }
+        return operation(&storage)
     }
 }

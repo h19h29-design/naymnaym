@@ -145,6 +145,111 @@ class RecordMealUseCaseTest {
     }
 
     @Test
+    fun statusTransitionRepairsCanonicalRowsWithoutAdditionalXp() = runTest {
+        val store = FakeMealRecordingStore()
+        val useCase = useCase(store)
+
+        val first = useCase.execute(command())
+        val transitioned = useCase.execute(
+            command(
+                recordID = "2026-07-25|시금치나물|finished",
+                status = EatingStatus.Finished,
+            ),
+        )
+
+        assertEquals(18, first.xpGranted)
+        assertEquals(0, transitioned.xpGranted)
+        assertEquals(18, transitioned.totalXP)
+        assertEquals(2, store.records.size)
+        assertEquals(2, store.events.size)
+        assertEquals(listOf(0, 18), store.events.values.map { it.amount }.sorted())
+    }
+
+    @Test
+    fun crossStatusRecordOrEventAloneSealsAward() = runTest {
+        val recordStore = FakeMealRecordingStore().apply {
+            seedRecord(
+                command(
+                    recordID = "2026-07-25|시금치나물|finished",
+                    status = EatingStatus.Finished,
+                ),
+            )
+        }
+        val recordSealed = useCase(recordStore).execute(command())
+
+        assertEquals(0, recordSealed.xpGranted)
+        assertEquals(0, recordSealed.totalXP)
+        assertEquals(2, recordStore.records.size)
+        assertEquals(1, recordStore.events.size)
+
+        val eventStore = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "meal:2026-07-25|시금치나물|finished",
+                amount = 10,
+                sourceRecordId = "2026-07-25|시금치나물|finished",
+            )
+        }
+        val eventSealed = useCase(eventStore).execute(command())
+
+        assertEquals(0, eventSealed.xpGranted)
+        assertEquals(10, eventSealed.totalXP)
+        assertEquals(1, eventStore.records.size)
+        assertEquals(2, eventStore.events.size)
+    }
+
+    @Test
+    fun migratedMealEventWithUuidSourceCountsTowardSeoulDailyBaseCap() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "meal:migrated-uuid",
+                amount = 45,
+                sourceRecordId = "550e8400-e29b-41d4-a716-446655440000",
+                occurredAt = Instant.ofEpochSecond(1_784_948_400),
+            )
+        }
+
+        val result = useCase(store).execute(command())
+
+        assertEquals(RecordMealResult(5, 50, MotionState.MealSuccess), result)
+    }
+
+    @Test
+    fun migratedChallengeEventWithNilSourceCountsTowardSeoulDailyTotalCap() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "challenge:migrated-no-source",
+                amount = 95,
+                sourceRecordId = null,
+                occurredAt = Instant.ofEpochSecond(1_784_948_400),
+            )
+        }
+
+        val result = useCase(store).execute(command())
+
+        assertEquals(RecordMealResult(5, 100, MotionState.MealSuccess), result)
+    }
+
+    @Test
+    fun negativeCorrectionsNeverCancelPositiveDailyOrLifetimeXp() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "meal:positive",
+                amount = 45,
+                sourceRecordId = "2026-07-25|기존|finished",
+            )
+            seedEvent(
+                id = "meal:negative-correction",
+                amount = -40,
+                sourceRecordId = "2026-07-25|교정|finished",
+            )
+        }
+
+        val result = useCase(store).execute(command())
+
+        assertEquals(RecordMealResult(5, 50, MotionState.MealSuccess), result)
+    }
+
+    @Test
     fun legacyHalfAndMismatchedCanonicalIdentityAreRejectedWithoutWrites() = runTest {
         val store = FakeMealRecordingStore()
         val useCase = useCase(store)
@@ -273,6 +378,25 @@ class RecordMealUseCaseTest {
     }
 
     @Test
+    fun totalOverflowRollsBackNewRecordAndEvent() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "legacy:overflow-max",
+                amount = Int.MAX_VALUE,
+                sourceRecordId = "2025-07-25|legacy|finished",
+            )
+        }
+
+        val error = expectFailure<RecordMealException> {
+            useCase(store).execute(command())
+        }
+
+        assertEquals(RecordMealFailure.XpOverflow, error.failure)
+        assertTrue(store.records.isEmpty())
+        assertEquals(1, store.events.size)
+    }
+
+    @Test
     fun concurrentDuplicateCommandsHaveOneWinner() = runTest {
         val store = FakeMealRecordingStore()
         val first = useCase(store)
@@ -346,6 +470,44 @@ class RecordMealUseCaseTest {
         assertEquals("xp-policy.json", error.contractName)
     }
 
+    @Test
+    fun xpPolicyCannotEnableStatusTransitionAwards() {
+        val policy = JSONObject(contractBytes("xp-policy.json").decodeToString())
+        policy.put("statusTransitionsGrantAdditionalXP", true)
+
+        val error = expectFailure<ContractLoadException> {
+            RecordMealUseCase(
+                store = FakeMealRecordingStore(),
+                policyBytes = policy.toString().encodeToByteArray(),
+            )
+        }
+
+        assertEquals("xp-policy.json", error.contractName)
+    }
+
+    @Test
+    fun xpPolicyRejectsIntegralFloatingPointNumbers() {
+        val canonical = contractBytes("xp-policy.json").decodeToString()
+        val replacements = listOf(
+            "\"version\": 1" to "\"version\": 1.0",
+            "\"oneBite\": 18" to "\"oneBite\": 18.0",
+            "\"base\": 50" to "\"base\": 50.0",
+        )
+
+        replacements.forEach { (source, replacement) ->
+            val error = expectFailure<ContractLoadException> {
+                RecordMealUseCase(
+                    store = FakeMealRecordingStore(),
+                    policyBytes = canonical
+                        .replace(source, replacement)
+                        .encodeToByteArray(),
+                )
+            }
+
+            assertEquals("xp-policy.json", error.contractName)
+        }
+    }
+
     private fun contractBytes(name: String): ByteArray {
         val candidates = listOf(
             File("src/main/assets/rebuild-contracts/$name"),
@@ -415,12 +577,32 @@ private class FakeMealRecordingStore(
             override suspend fun findRecord(id: String): MealRecordEntity? =
                 workingRecords[id]
 
+            override suspend fun findAwardRecord(
+                date: String,
+                normalizedMenuName: String,
+            ): MealRecordEntity? =
+                workingRecords.values.firstOrNull {
+                    it.date == date &&
+                        it.normalizedMenuName == normalizedMenuName
+                }
+
             override suspend fun upsertRecord(record: MealRecordEntity) {
                 workingRecords[record.id] = record
             }
 
             override suspend fun findProgressEvent(id: String): ProgressEventEntity? =
                 workingEvents[id]
+
+            override suspend fun findAwardEvent(
+                awardPrefix: String,
+            ): ProgressEventEntity? =
+                workingEvents.values.firstOrNull {
+                    it.id.startsWith("meal:") &&
+                        (
+                            it.id.startsWith("meal:$awardPrefix") ||
+                                it.sourceRecordId?.startsWith(awardPrefix) == true
+                            )
+                }
 
             override suspend fun insertProgressEvent(event: ProgressEventEntity): Boolean {
                 if (failProgressInsert) {
@@ -437,21 +619,39 @@ private class FakeMealRecordingStore(
                 return true
             }
 
-            override suspend fun dailyBaseXp(date: String): Int =
+            override suspend fun dailyBaseXp(
+                date: String,
+                dayStartEpochMillis: Long,
+                nextDayStartEpochMillis: Long,
+            ): Long =
                 workingEvents.values
                     .filter { event ->
                         event.id.startsWith("meal:") &&
-                            event.sourceRecordId?.startsWith("$date|") == true
+                            (
+                                event.sourceRecordId?.startsWith("$date|") == true ||
+                                    event.occurredAtEpochMillis in
+                                    dayStartEpochMillis..<nextDayStartEpochMillis
+                                )
                     }
-                    .sumOf { it.amount }
+                    .sumOf { it.amount.coerceAtLeast(0).toLong() }
 
-            override suspend fun dailyTotalXp(date: String): Int =
+            override suspend fun dailyTotalXp(
+                date: String,
+                dayStartEpochMillis: Long,
+                nextDayStartEpochMillis: Long,
+            ): Long =
                 workingEvents.values
-                    .filter { it.sourceRecordId?.startsWith("$date|") == true }
-                    .sumOf { it.amount }
+                    .filter { event ->
+                        event.sourceRecordId?.startsWith("$date|") == true ||
+                            event.occurredAtEpochMillis in
+                            dayStartEpochMillis..<nextDayStartEpochMillis
+                    }
+                    .sumOf { it.amount.coerceAtLeast(0).toLong() }
 
-            override suspend fun totalXp(): Int =
-                workingEvents.values.sumOf { it.amount }
+            override suspend fun totalXp(): Long =
+                workingEvents.values.sumOf {
+                    it.amount.coerceAtLeast(0).toLong()
+                }
         }
 
         val result = transaction.block()
@@ -481,12 +681,13 @@ private class FakeMealRecordingStore(
     fun seedEvent(
         id: String,
         amount: Int,
-        sourceRecordId: String,
+        sourceRecordId: String?,
+        occurredAt: Instant = Instant.ofEpochSecond(1_753_430_400),
     ) {
         events[id] = ProgressEventEntity(
             id = id,
             amount = amount,
-            occurredAtEpochMillis = Instant.ofEpochSecond(1_753_430_400).toEpochMilli(),
+            occurredAtEpochMillis = occurredAt.toEpochMilli(),
             sourceRecordId = sourceRecordId,
         )
     }

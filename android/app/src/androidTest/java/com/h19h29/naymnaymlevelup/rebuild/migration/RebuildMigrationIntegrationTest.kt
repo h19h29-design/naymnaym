@@ -86,7 +86,7 @@ class RebuildMigrationIntegrationTest {
         assertEquals("냠냠 도전자", database.profileDao().find("legacy-android-profile")?.nickname)
         val identity = "2026-07-25|현미밥|finished"
         assertEquals(identity, database.mealRecordDao().find(identity)?.id)
-        assertEquals(18, database.progressDao().totalXp())
+        assertEquals(18L, database.progressDao().totalXp())
         assertEquals("meal:$identity", database.progressDao().find("meal:$identity")?.id)
         val migratedChildLink = database.parentLinkDao().find("child-1")
         assertEquals("child-1", migratedChildLink?.id)
@@ -248,7 +248,7 @@ class RebuildMigrationIntegrationTest {
 
         assertEquals(MigrationOutcome.Migrated, coordinator.runIfNeeded(1))
         assertEquals(MigrationOutcome.AlreadyCompleted, coordinator.runIfNeeded(1))
-        assertEquals(18, database.progressDao().totalXp())
+        assertEquals(18L, database.progressDao().totalXp())
         assertEquals(1, database.migrationStateDao().version(MigrationStateRepository.STATE_ID))
         assertEquals(before, preferences.all)
     }
@@ -269,7 +269,7 @@ class RebuildMigrationIntegrationTest {
         assertEquals(1, outcomes.count { it == MigrationOutcome.Migrated })
         assertEquals(1, outcomes.count { it == MigrationOutcome.AlreadyCompleted })
         assertEquals(1, database.migrationStateDao().version(MigrationStateRepository.STATE_ID))
-        assertEquals(18, database.progressDao().totalXp())
+        assertEquals(18L, database.progressDao().totalXp())
         assertFalse(preferences.all.isEmpty())
     }
 
@@ -297,7 +297,7 @@ class RebuildMigrationIntegrationTest {
         assertNull(database.progressDao().find("meal:2026-07-25|현미밥|finished"))
         assertNull(database.profileDao().find("legacy-android-profile"))
         assertNull(database.migrationStateDao().find(MigrationStateRepository.STATE_ID))
-        assertEquals(1, database.progressDao().totalXp())
+        assertEquals(1L, database.progressDao().totalXp())
     }
 
     @Test

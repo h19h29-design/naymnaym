@@ -6,7 +6,7 @@ class ProgressRepository(
     suspend fun appendIfAbsent(event: ProgressEventEntity): Boolean =
         progressDao.insert(event) != INSERT_IGNORED
 
-    suspend fun totalXp(): Int = progressDao.totalXp()
+    suspend fun totalXp(): Long = progressDao.totalXp()
 
     private companion object {
         const val INSERT_IGNORED = -1L
