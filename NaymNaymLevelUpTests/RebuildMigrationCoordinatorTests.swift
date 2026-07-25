@@ -628,6 +628,114 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         )
     }
 
+    func testMigrationAndRecordWriterShareInjectedLedgerSerializer() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        ChallengeStore(defaults: defaults).save([
+            ChallengeRecord(
+                date: "2026-07-24",
+                menuName: "기존 메뉴",
+                action: .oneBite,
+                gainedExp: 5,
+                badgeName: nil,
+                nutrients: [],
+                createdAt: Date(timeIntervalSince1970: 1_784_862_000),
+                eatingStatus: .oneBite,
+                xpBreakdown: XPBreakdown(challenge: 5)
+            ),
+        ])
+        let container = try RebuildPersistentStore.makeInMemory()
+        let firstEntry = MigrationLockedBox(true)
+        let serializerEntered = expectation(
+            description: "migration owns ledger serializer"
+        )
+        let releaseMigration = DispatchSemaphore(value: 0)
+        let serializer = RebuildProgressLedgerSerializer {
+            var shouldBlock = false
+            firstEntry.withValue {
+                shouldBlock = $0
+                $0 = false
+            }
+            if shouldBlock {
+                serializerEntered.fulfill()
+                _ = releaseMigration.wait(timeout: .now() + 2)
+            }
+        }
+        let coordinator = RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName,
+            container: container,
+            ledgerSerializer: serializer
+        )
+        let useCase = try RecordMealUseCase(
+            container: container,
+            policyData: try loadRebuildContractData(named: "xp-policy.json"),
+            ledgerSerializer: serializer
+        )
+        let migrationOutcome = MigrationLockedBox<
+            Result<MigrationOutcome, Error>?
+        >(nil)
+        let mealOutcome = MigrationLockedBox<
+            Result<RecordMealResult, Error>?
+        >(nil)
+        let migrationCompleted = DispatchSemaphore(value: 0)
+        let mealCompleted = DispatchSemaphore(value: 0)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            migrationOutcome.withValue {
+                $0 = Result { try coordinator.runIfNeeded(targetVersion: 1) }
+            }
+            migrationCompleted.signal()
+        }
+        wait(for: [serializerEntered], timeout: 2)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            mealOutcome.withValue {
+                $0 = Result {
+                    try useCase.execute(
+                        RecordMealCommand(
+                            recordID: "2026-07-25|시금치나물|oneBite",
+                            date: "2026-07-25",
+                            menuName: "시금치나물",
+                            status: .oneBite,
+                            difficultyReasons: [],
+                            allergyCodes: [],
+                            photoIDs: [],
+                            parentShareEnabled: false,
+                            occurredAt: Date(timeIntervalSince1970: 1_784_948_400)
+                        )
+                    )
+                }
+            }
+            mealCompleted.signal()
+        }
+
+        XCTAssertEqual(
+            mealCompleted.wait(timeout: .now() + 0.2),
+            .timedOut
+        )
+        releaseMigration.signal()
+        XCTAssertEqual(
+            migrationCompleted.wait(timeout: .now() + 3),
+            .success
+        )
+        XCTAssertEqual(
+            mealCompleted.wait(timeout: .now() + 3),
+            .success
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(migrationOutcome.value).get(),
+            .migrated
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(mealOutcome.value).get(),
+            RecordMealResult(
+                xpGranted: 18,
+                totalXP: 23,
+                motion: .mealSuccess
+            )
+        )
+    }
+
     func testCorruptPresentLegacyPayloadThrowsAndWritesNothing() throws {
         let defaults = makeDefaults()
         let corruptData = Data("{not-json".utf8)

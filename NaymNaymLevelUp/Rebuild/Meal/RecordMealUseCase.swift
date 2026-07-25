@@ -88,10 +88,10 @@ final class RecordMealUseCase: @unchecked Sendable {
         let encodedPhotoIDs = try encode(command.photoIDs)
         let eventID = "meal:\(command.recordID)"
 
-        return try ledgerSerializer.serialize {
-            let context = container.newBackgroundContext()
-            context.mergePolicy = NSErrorMergePolicy
-            return try context.performAndWait {
+        let context = container.newBackgroundContext()
+        context.mergePolicy = NSErrorMergePolicy
+        return try context.performAndWait {
+            try ledgerSerializer.serialize {
                 do {
                     let existingRecord = try fetchRecord(
                         id: command.recordID,
@@ -286,31 +286,22 @@ final class RecordMealUseCase: @unchecked Sendable {
         let request = NSFetchRequest<RebuildProgressEventManagedObject>(
             entityName: RebuildEntityName.progressEvent
         )
-        let datePredicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
-            NSPredicate(
-                format: "sourceRecordID BEGINSWITH %@",
-                "\(date)|"
-            ),
-            NSCompoundPredicate(andPredicateWithSubpredicates: [
-                NSPredicate(
-                    format: "occurredAt >= %@",
-                    dayInterval.start as NSDate
-                ),
-                NSPredicate(
-                    format: "occurredAt < %@",
-                    dayInterval.end as NSDate
-                ),
-            ]),
-        ])
         if let eventPrefix {
-            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-                datePredicate,
-                NSPredicate(format: "id BEGINSWITH %@", eventPrefix),
-            ])
-        } else {
-            request.predicate = datePredicate
+            request.predicate = NSPredicate(
+                format: "id BEGINSWITH %@",
+                eventPrefix
+            )
         }
-        return try checkedSum(try context.fetch(request).map(\.amount))
+        let amounts = try context.fetch(request).compactMap { event in
+            if let sourceDate = canonicalSourceDate(event.sourceRecordID) {
+                return sourceDate == date ? event.amount : nil
+            }
+            return event.occurredAt >= dayInterval.start
+                && event.occurredAt < dayInterval.end
+                ? event.amount
+                : nil
+        }
+        return try checkedSum(amounts)
     }
 
     private func sumAllXP(in context: NSManagedObjectContext) throws -> Int {
@@ -356,6 +347,25 @@ final class RecordMealUseCase: @unchecked Sendable {
             throw RecordMealError.invalidRecordIdentity
         }
         return DateInterval(start: start, end: end)
+    }
+
+    private func canonicalSourceDate(_ sourceRecordID: String?) -> String? {
+        guard let sourceRecordID,
+              sourceRecordID.count > 11 else {
+            return nil
+        }
+        let separator = sourceRecordID.index(
+            sourceRecordID.startIndex,
+            offsetBy: 10
+        )
+        guard sourceRecordID[separator] == "|" else {
+            return nil
+        }
+        let date = String(sourceRecordID.prefix(10))
+        return date.range(
+            of: #"^\d{4}-\d{2}-\d{2}$"#,
+            options: .regularExpression
+        ) == nil ? nil : date
     }
 
     private func encode<Value: Encodable>(_ value: Value) throws -> String {

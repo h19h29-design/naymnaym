@@ -104,6 +104,30 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         }
     }
 
+    func testNutritionContractRejectsIntegralFloatingPointVersion() throws {
+        let canonical = try XCTUnwrap(
+            String(
+                data: try contractData(named: "nutrition-rules.json"),
+                encoding: .utf8
+            )
+        )
+        let floatingPointVersion = Data(
+            canonical.replacingOccurrences(
+                of: #""version": 1"#,
+                with: #""version": 1.0"#
+            ).utf8
+        )
+
+        XCTAssertThrowsError(
+            try NutritionRuleEngine(ruleData: floatingPointVersion)
+        ) { error in
+            XCTAssertEqual(
+                error as? RebuildContractLoadError,
+                .invalid("nutrition-rules.json")
+            )
+        }
+    }
+
     func testNearBaseCapGrantsOnlyRemainingFiveXP() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         try seedEvent(
@@ -233,6 +257,24 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         let result = try RecordMealUseCase(container: container).execute(command())
 
         XCTAssertEqual(result, RecordMealResult(xpGranted: 5, totalXP: 100, motion: .mealSuccess))
+    }
+
+    func testCanonicalSourceDateWinsOverBackfilledOccurredAtDate() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        try seedEvent(
+            id: "meal:backfilled-canonical-source",
+            amount: 100,
+            sourceRecordID: "2026-07-24|기존|finished",
+            occurredAt: Date(timeIntervalSince1970: 1_784_948_400),
+            in: container
+        )
+
+        let result = try RecordMealUseCase(container: container).execute(command())
+
+        XCTAssertEqual(
+            result,
+            RecordMealResult(xpGranted: 18, totalXP: 118, motion: .mealSuccess)
+        )
     }
 
     func testNegativeCorrectionsNeverCancelPositiveDailyOrLifetimeXP() throws {

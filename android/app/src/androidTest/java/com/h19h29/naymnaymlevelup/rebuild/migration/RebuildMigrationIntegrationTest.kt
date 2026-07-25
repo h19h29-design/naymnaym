@@ -100,6 +100,40 @@ class RebuildMigrationIntegrationTest {
     }
 
     @Test
+    fun signedReconciliationVerifiesMigrationWhileRuntimeTotalStaysPositiveOnly() = runBlocking {
+        val positive = ProgressEventEntity(
+            id = "legacy:positive",
+            amount = 18,
+            occurredAtEpochMillis = 100,
+            sourceRecordId = null,
+        )
+        val reconciliation = ProgressEventEntity(
+            id = "legacy:progress-reconciliation",
+            amount = -8,
+            occurredAtEpochMillis = 200,
+            sourceRecordId = null,
+        )
+        val plan = MigrationPlan(
+            profile = null,
+            mealRecords = emptyList(),
+            mealPhotos = emptyList(),
+            progressEvents = listOf(positive, reconciliation),
+            parentLinks = emptyList(),
+            expectedTotalXp = 10,
+        )
+
+        val outcome = RoomMigrationTarget(database).migrate(
+            plan = plan,
+            targetVersion = 1,
+            sourceDigest = "sha256:signed-reconciliation",
+        )
+
+        assertEquals(MigrationOutcome.Migrated, outcome)
+        assertEquals(reconciliation, database.progressDao().find(reconciliation.id))
+        assertEquals(18L, database.progressDao().totalXp())
+    }
+
+    @Test
     fun corruptPresentJsonOrWrongPreferenceTypeWritesNothingAndPreservesSource() {
         preferences.edit()
             .putString(LegacyPreferencesReader.MEAL_SNAPSHOT_LEDGER, """{"latestMeals":{}}""")

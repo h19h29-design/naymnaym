@@ -90,6 +90,9 @@ interface ProgressDao {
     )
     suspend fun totalXp(): Long
 
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM progress_events")
+    suspend fun signedTotalXp(): Long
+
     @Query(
         """
         SELECT COALESCE(
@@ -101,7 +104,12 @@ interface ProgressDao {
           AND (
             sourceRecordId LIKE :datePrefix || '%'
             OR (
-              occurredAtEpochMillis >= :dayStartEpochMillis
+              (
+                sourceRecordId IS NULL
+                OR sourceRecordId NOT GLOB
+                  '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|?*'
+              )
+              AND occurredAtEpochMillis >= :dayStartEpochMillis
               AND occurredAtEpochMillis < :nextDayStartEpochMillis
             )
           )
@@ -122,7 +130,12 @@ interface ProgressDao {
         FROM progress_events
         WHERE sourceRecordId LIKE :datePrefix || '%'
            OR (
-             occurredAtEpochMillis >= :dayStartEpochMillis
+             (
+               sourceRecordId IS NULL
+               OR sourceRecordId NOT GLOB
+                 '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|?*'
+             )
+             AND occurredAtEpochMillis >= :dayStartEpochMillis
              AND occurredAtEpochMillis < :nextDayStartEpochMillis
            )
         """,

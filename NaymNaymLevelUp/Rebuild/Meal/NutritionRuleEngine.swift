@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 enum RebuildContractLoadError: Error, Equatable {
@@ -32,7 +33,8 @@ struct NutritionRuleEngine {
 
     init(ruleData: Data) throws {
         let filename = "nutrition-rules.json"
-        guard let decoded = try? JSONDecoder().decode(
+        guard Self.hasStrictIntegerVersion(ruleData),
+              let decoded = try? JSONDecoder().decode(
             NutritionRulesDocument.self,
             from: ruleData
         ), decoded.isValid else {
@@ -67,6 +69,17 @@ struct NutritionRuleEngine {
             omissionCopy: rules.omissionCopy,
             educationNotice: rules.educationNotice
         )
+    }
+
+    private static func hasStrictIntegerVersion(_ data: Data) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: data)
+            as? [String: Any],
+              let number = root["version"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            return false
+        }
+        let type = String(cString: number.objCType)
+        return type != "f" && type != "d"
     }
 }
 

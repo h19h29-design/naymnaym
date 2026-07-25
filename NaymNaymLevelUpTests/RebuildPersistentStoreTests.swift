@@ -332,6 +332,77 @@ final class RebuildPersistentStoreTests: XCTestCase {
         )
     }
 
+    func testDefaultSharedSerializerDoesNotLockBeforeViewContextQueue() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let viewContextRepository = RebuildProgressRepository(
+            context: container.viewContext
+        )
+        let backgroundRepository = RebuildProgressRepository(
+            context: container.newBackgroundContext()
+        )
+        let viewWriterStarted = DispatchSemaphore(value: 0)
+        let viewWriterCompleted = expectation(
+            description: "view-context writer completed"
+        )
+        let backgroundWriterCompleted = expectation(
+            description: "background-context writer completed"
+        )
+        let backgroundWriterSignal = DispatchSemaphore(value: 0)
+        let viewOutcome = RebuildLockedBox<Result<Bool, Error>?>(nil)
+        let backgroundOutcome = RebuildLockedBox<Result<Bool, Error>?>(nil)
+        var contenderResult: DispatchTimeoutResult = .timedOut
+
+        container.viewContext.performAndWait {
+            DispatchQueue.global(qos: .userInitiated).async {
+                viewWriterStarted.signal()
+                viewOutcome.withValue {
+                    $0 = Result {
+                        try viewContextRepository.appendIfAbsent(
+                            RebuildProgressEvent(
+                                id: "lock-order:view-context",
+                                amount: 1,
+                                occurredAt: Date(timeIntervalSince1970: 100)
+                            )
+                        )
+                    }
+                }
+                viewWriterCompleted.fulfill()
+            }
+            XCTAssertEqual(
+                viewWriterStarted.wait(timeout: .now() + 1),
+                .success
+            )
+            Thread.sleep(forTimeInterval: 0.1)
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                backgroundOutcome.withValue {
+                    $0 = Result {
+                        try backgroundRepository.appendIfAbsent(
+                            RebuildProgressEvent(
+                                id: "lock-order:background-context",
+                                amount: 2,
+                                occurredAt: Date(timeIntervalSince1970: 200)
+                            )
+                        )
+                    }
+                }
+                backgroundWriterSignal.signal()
+                backgroundWriterCompleted.fulfill()
+            }
+            contenderResult = backgroundWriterSignal.wait(
+                timeout: .now() + 0.5
+            )
+        }
+
+        wait(
+            for: [viewWriterCompleted, backgroundWriterCompleted],
+            timeout: 2
+        )
+        XCTAssertEqual(contenderResult, .success)
+        XCTAssertTrue(try XCTUnwrap(viewOutcome.value).get())
+        XCTAssertTrue(try XCTUnwrap(backgroundOutcome.value).get())
+    }
+
     func testProgressTotalAccumulatesDistinctEvents() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let repository = RebuildProgressRepository(context: container.viewContext)

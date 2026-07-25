@@ -110,6 +110,20 @@ class RecordMealUseCaseTest {
     }
 
     @Test
+    fun nutritionContractRejectsIntegralFloatingPointVersion() {
+        val floatingPointVersion = contractBytes("nutrition-rules.json")
+            .decodeToString()
+            .replace("\"version\": 1", "\"version\": 1.0")
+            .encodeToByteArray()
+
+        val error = expectFailure<ContractLoadException> {
+            NutritionRuleEngine(floatingPointVersion)
+        }
+
+        assertEquals("nutrition-rules.json", error.contractName)
+    }
+
+    @Test
     fun nearBaseCapGrantsOnlyRemainingFiveXp() = runTest {
         val store = FakeMealRecordingStore().apply {
             seedEvent(
@@ -227,6 +241,22 @@ class RecordMealUseCaseTest {
         val result = useCase(store).execute(command())
 
         assertEquals(RecordMealResult(5, 100, MotionState.MealSuccess), result)
+    }
+
+    @Test
+    fun canonicalSourceDateWinsOverBackfilledOccurredAtDate() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "meal:backfilled-canonical-source",
+                amount = 100,
+                sourceRecordId = "2026-07-24|기존|finished",
+                occurredAt = Instant.ofEpochSecond(1_784_948_400),
+            )
+        }
+
+        val result = useCase(store).execute(command())
+
+        assertEquals(RecordMealResult(18, 118, MotionState.MealSuccess), result)
     }
 
     @Test
@@ -627,11 +657,12 @@ private class FakeMealRecordingStore(
                 workingEvents.values
                     .filter { event ->
                         event.id.startsWith("meal:") &&
-                            (
-                                event.sourceRecordId?.startsWith("$date|") == true ||
-                                    event.occurredAtEpochMillis in
-                                    dayStartEpochMillis..<nextDayStartEpochMillis
-                                )
+                            countsForDate(
+                                event,
+                                date,
+                                dayStartEpochMillis,
+                                nextDayStartEpochMillis,
+                            )
                     }
                     .sumOf { it.amount.coerceAtLeast(0).toLong() }
 
@@ -642,9 +673,12 @@ private class FakeMealRecordingStore(
             ): Long =
                 workingEvents.values
                     .filter { event ->
-                        event.sourceRecordId?.startsWith("$date|") == true ||
-                            event.occurredAtEpochMillis in
-                            dayStartEpochMillis..<nextDayStartEpochMillis
+                        countsForDate(
+                            event,
+                            date,
+                            dayStartEpochMillis,
+                            nextDayStartEpochMillis,
+                        )
                     }
                     .sumOf { it.amount.coerceAtLeast(0).toLong() }
 
@@ -660,6 +694,38 @@ private class FakeMealRecordingStore(
         events.clear()
         events.putAll(workingEvents)
         result
+    }
+
+    private fun countsForDate(
+        event: ProgressEventEntity,
+        date: String,
+        dayStartEpochMillis: Long,
+        nextDayStartEpochMillis: Long,
+    ): Boolean {
+        val sourceDate = canonicalSourceDate(event.sourceRecordId)
+        return if (sourceDate != null) {
+            sourceDate == date
+        } else {
+            event.occurredAtEpochMillis in
+                dayStartEpochMillis..<nextDayStartEpochMillis
+        }
+    }
+
+    private fun canonicalSourceDate(sourceRecordId: String?): String? {
+        if (
+            sourceRecordId == null ||
+            sourceRecordId.length < 12 ||
+            sourceRecordId[4] != '-' ||
+            sourceRecordId[7] != '-' ||
+            sourceRecordId[10] != '|'
+        ) {
+            return null
+        }
+        val date = sourceRecordId.substring(0, 10)
+        return date
+            .filterIndexed { index, _ -> index != 4 && index != 7 }
+            .takeIf { digits -> digits.all(Char::isDigit) }
+            ?.let { date }
     }
 
     fun seedRecord(command: RecordMealCommand) {

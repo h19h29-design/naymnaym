@@ -59,6 +59,7 @@ final class RebuildMigrationCoordinator {
 
     private let reader: LegacyDefaultsReader?
     private let container: NSPersistentContainer
+    private let ledgerSerializer: RebuildProgressLedgerSerializer
     private let legacyPhotoDirectory: URL
     private let rebuildPhotoDirectory: URL
     private let now: () -> Date
@@ -79,6 +80,7 @@ final class RebuildMigrationCoordinator {
         defaults: UserDefaults = .standard,
         legacyDefaultsDomainName: String? = nil,
         container: NSPersistentContainer,
+        ledgerSerializer: RebuildProgressLedgerSerializer = .shared,
         legacyPhotoDirectory: URL? = nil,
         rebuildPhotoDirectory: URL? = nil,
         fileManager: FileManager = .default,
@@ -94,6 +96,7 @@ final class RebuildMigrationCoordinator {
             LegacyDefaultsReader(defaults: defaults, persistentDomainName: $0)
         }
         self.container = container
+        self.ledgerSerializer = ledgerSerializer
         let documents = fileManager.urls(
             for: .documentDirectory,
             in: .userDomainMask
@@ -150,41 +153,43 @@ final class RebuildMigrationCoordinator {
         var attemptWarnings: [MigrationWarning] = []
 
         let outcome: MigrationOutcome = try context.performAndWait {
-            do {
-                let mappedProfile = try insertProfile(from: snapshot, into: context)
-                let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
-                try insertParentLinks(from: snapshot, into: context)
-                try insertPhotos(
-                    snapshot.mealPhotoRecords,
-                    mealRecords: mappedMeals,
-                    into: context,
-                    warnings: &attemptWarnings
-                )
-                try insertProgressEvents(
-                    from: snapshot,
-                    mealRecords: mappedMeals,
-                    into: context
-                )
+            try ledgerSerializer.serialize {
+                do {
+                    let mappedProfile = try insertProfile(from: snapshot, into: context)
+                    let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
+                    try insertParentLinks(from: snapshot, into: context)
+                    try insertPhotos(
+                        snapshot.mealPhotoRecords,
+                        mealRecords: mappedMeals,
+                        into: context,
+                        warnings: &attemptWarnings
+                    )
+                    try insertProgressEvents(
+                        from: snapshot,
+                        mealRecords: mappedMeals,
+                        into: context
+                    )
 
-                let expectedXP = try expectedXP(from: snapshot)
-                let verification = try verifyInsertedRows(
-                    expectedProfileCount: mappedProfile == nil ? 0 : 1,
-                    expectedMealCount: snapshot.mealRecords.count,
-                    expectedPhotoCount: snapshot.mealPhotoRecords.count,
-                    expectedXP: expectedXP,
-                    in: context
-                )
-                try verify(verification)
-                try insertMigrationState(
-                    version: targetVersion,
-                    sourceDigest: sourceDigest,
-                    into: context
-                )
-                try save(context)
-                return .migrated
-            } catch {
-                context.rollback()
-                throw error
+                    let expectedXP = try expectedXP(from: snapshot)
+                    let verification = try verifyInsertedRows(
+                        expectedProfileCount: mappedProfile == nil ? 0 : 1,
+                        expectedMealCount: snapshot.mealRecords.count,
+                        expectedPhotoCount: snapshot.mealPhotoRecords.count,
+                        expectedXP: expectedXP,
+                        in: context
+                    )
+                    try verify(verification)
+                    try insertMigrationState(
+                        version: targetVersion,
+                        sourceDigest: sourceDigest,
+                        into: context
+                    )
+                    try save(context)
+                    return .migrated
+                } catch {
+                    context.rollback()
+                    throw error
+                }
             }
         }
         publishWarnings(attemptWarnings)

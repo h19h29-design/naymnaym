@@ -153,18 +153,16 @@ final class RebuildProgressRepository {
     }
 
     func appendIfAbsent(_ event: RebuildProgressEvent) throws -> Bool {
-        if let ledgerSerializer {
-            return try ledgerSerializer.serialize {
-                try context.performAndWait {
+        try context.performAndWait {
+            if let ledgerSerializer {
+                return try ledgerSerializer.serialize {
                     try appendInContext(event)
                 }
             }
-        }
-        guard let injectedSerializeAppend else {
-            preconditionFailure("Missing progress append serializer")
-        }
-        return try context.performAndWait {
-            try injectedSerializeAppend {
+            guard let injectedSerializeAppend else {
+                preconditionFailure("Missing progress append serializer")
+            }
+            return try injectedSerializeAppend {
                 try appendInContext(event)
             }
         }

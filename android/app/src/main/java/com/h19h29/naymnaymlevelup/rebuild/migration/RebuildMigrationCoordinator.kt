@@ -261,7 +261,7 @@ class RoomMigrationTarget(
             expected = plan.progressEvents.size.toString(),
             actual = progressCount.toString(),
         )
-        val totalXp = database.progressDao().totalXp()
+        val totalXp = database.progressDao().signedTotalXp()
         requireMatch(
             field = "totalXp",
             expected = plan.expectedTotalXp.toString(),

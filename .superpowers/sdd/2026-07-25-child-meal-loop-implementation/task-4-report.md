@@ -6,6 +6,8 @@
 - Commit message: `feat: record meals with shared XP semantics`
 - Review-fix commit message:
   `fix: harden meal XP identity and ledger accounting`
+- Re-review-fix commit message:
+  `fix: serialize migration and preserve signed XP verification`
 - Added equivalent Swift and Kotlin nutrition rule engines and record-meal use
   cases.
 - Both runtimes load the synced bundled `nutrition-rules.json` and
@@ -37,19 +39,26 @@
   and event identities retain status. A record or meal event in any status
   seals later status transitions at zero XP. Missing canonical counterparts are
   still repaired atomically with a zero-amount event.
-- Daily caps include each event once when either its canonical source starts
-  with the requested date or its timestamp falls within that date's
-  Asia/Seoul day interval. This includes migrated UUID and nil-source events
-  without requiring the command timestamp to match the command date.
+- Daily caps classify an event by its canonical source date when present.
+  Timestamp classification into the Asia/Seoul day interval is a fallback only
+  for nil or noncanonical source IDs. This keeps migrated UUID and nil-source
+  events classifiable without letting a backfilled timestamp override a
+  canonical source date.
 - iOS serializes the complete operation through the same global ledger
-  serializer used by `RebuildProgressRepository`, uses a new background
-  context, computes a checked positive total before its single save, and rolls
-  the context back on overflow or save failure.
+  serializer used by `RebuildProgressRepository` and
+  `RebuildMigrationCoordinator`. Every writer first enters its managed-object
+  context queue and only then enters the serializer, preventing lock inversion.
+  Meal recording uses a new background context, computes a checked positive
+  total before its single save, and rolls the context back on overflow or save
+  failure.
 - Android performs every identity check, cap query, record upsert, event insert,
   and total query inside Room `withTransaction`. An ignored insert reports zero
-  rather than uncommitted XP. Room sums into `Long`; the use case performs a
-  checked conversion to its `Int` result and rolls the transaction back on
-  overflow.
+  rather than uncommitted XP. Runtime totals remain positive-only, while
+  migration reconciliation uses a separate signed `Long` aggregate. The use
+  case performs a checked conversion to its `Int` result and rolls the
+  transaction back on overflow.
+- Both nutrition engines reject an integral floating-point contract version
+  such as `1.0`; the version must be encoded as a JSON integer.
 
 ## TDD Evidence
 
@@ -265,6 +274,118 @@ plutil -lint NaymNaymLevelUp.xcodeproj/project.pbxproj
 
 Result: no whitespace errors, bundled contracts are byte-identical, and the
 project file reported `OK`.
+
+### Re-review RED
+
+- Android Room migration rejected a valid `+18/-8` legacy ledger because
+  verification incorrectly used the runtime positive-only total and observed
+  18 instead of the signed expected value 10.
+- The bounded iOS default-shared-serializer regression timed out while a
+  view-context writer held the serializer before it could enter the context
+  queue.
+- The new iOS migration concurrency test initially failed to compile because
+  the coordinator did not accept an injectable ledger serializer.
+- On both platforms, an event with canonical source date `2026-07-24` and a
+  backfilled `occurredAt` on `2026-07-25` incorrectly consumed the latter day's
+  cap.
+- Swift accepted nutrition contract version `1.0`, unlike Kotlin.
+
+The bounded iOS lock-order RED log is:
+
+```text
+~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-25T08-48-52-932Z_pid22004_748d22c0.log
+```
+
+The iOS timestamp and nutrition RED log is:
+
+```text
+~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-25T08-49-02-133Z_pid22004_a5a168dd.log
+```
+
+### Re-review GREEN
+
+Shared contract tests and validator:
+
+```text
+python3 -m unittest scripts.tests.test_native_rebuild_contracts
+python3 scripts/validate-native-rebuild-contracts.py
+```
+
+Result: 21 tests passed; validator reported `PASS`.
+
+Focused iOS:
+
+```text
+test_sim extraArgs=[
+  "-only-testing:NaymNaymLevelUpTests/RebuildMigrationCoordinatorTests",
+  "-only-testing:NaymNaymLevelUpTests/RebuildPersistentStoreTests",
+  "-only-testing:NaymNaymLevelUpTests/RebuildRecordMealUseCaseTests"
+]
+```
+
+Result: 79 passed, 0 failed, 0 skipped.
+
+Log:
+
+```text
+~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-25T08-51-37-843Z_pid22004_d8c3d187.log
+```
+
+Focused Android JVM:
+
+```text
+testDebugUnitTest \
+  --tests '*RecordMealUseCaseTest' \
+  --tests '*RebuildMigrationCoordinatorTest'
+```
+
+Result: 28 meal-recording and 12 migration tests passed, with no failures or
+errors.
+
+Android instrumentation:
+
+```text
+connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class='com.h19h29.naymnaymlevelup.rebuild.migration.RebuildMigrationIntegrationTest'
+connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class='com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabaseTest'
+```
+
+Result: all 11 migration integration tests and all 3 Room database tests
+passed on `naym_android_test(AVD)`. The migration suite includes signed
+`+18/-8 = 10` reconciliation while confirming runtime `totalXp()` remains 18.
+
+Full iOS:
+
+```text
+test_sim
+```
+
+Result: 227 passed, 0 failed, 0 skipped.
+
+Log:
+
+```text
+~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-25T08-52-46-766Z_pid22004_1700a254.log
+```
+
+Forced-clean Android:
+
+```text
+clean testDebugUnitTest compileDebugAndroidTestKotlin assembleDebug
+```
+
+Result: 96 unit tests passed, 0 failures, 0 errors; all 61 tasks executed;
+Android instrumentation sources compiled; `app-debug.apk` was produced.
+
+Re-review static checks:
+
+```text
+git diff --check
+plutil -lint NaymNaymLevelUp.xcodeproj/project.pbxproj
+```
+
+Result: no whitespace errors; the project file reported `OK`.
 
 ## Residual Risk
 
