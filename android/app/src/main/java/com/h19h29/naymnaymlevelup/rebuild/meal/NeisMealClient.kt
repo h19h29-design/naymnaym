@@ -1,9 +1,6 @@
 package com.h19h29.naymnaymlevelup.rebuild.meal
 
 import android.util.Log
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.core.JsonToken
 import com.h19h29.naymnaymlevelup.BuildConfig
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -14,6 +11,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 fun interface NeisTransport {
@@ -23,23 +21,34 @@ fun interface NeisTransport {
 class HttpUrlConnectionNeisTransport : NeisTransport {
     override suspend fun get(url: URL): ByteArray = withContext(Dispatchers.IO) {
         val connection = url.openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "GET"
-            connection.connectTimeout = CONNECT_TIMEOUT_MILLIS
-            connection.readTimeout = READ_TIMEOUT_MILLIS
-            val status = connection.responseCode
-            val stream = if (status in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream
+        suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation {
+                connection.disconnect()
             }
-            val body = stream?.use { it.readBytes() } ?: ByteArray(0)
-            if (status !in 200..299) {
-                throw NeisMealClientException.HttpStatus(status)
+            try {
+                connection.requestMethod = "GET"
+                connection.connectTimeout = CONNECT_TIMEOUT_MILLIS
+                connection.readTimeout = READ_TIMEOUT_MILLIS
+                val status = connection.responseCode
+                val stream = if (status in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+                val body = stream?.use { it.readBytes() } ?: ByteArray(0)
+                if (status !in 200..299) {
+                    throw NeisMealClientException.HttpStatus(status)
+                }
+                if (continuation.isActive) {
+                    continuation.resumeWith(Result.success(body))
+                }
+            } catch (error: Throwable) {
+                if (continuation.isActive) {
+                    continuation.resumeWith(Result.failure(error))
+                }
+            } finally {
+                connection.disconnect()
             }
-            body
-        } finally {
-            connection.disconnect()
         }
     }
 
@@ -111,11 +120,21 @@ class NeisMealClient(
             ),
         )
         logger(redacted(url))
-        val root = parseJson(transport.get(url))
-        val rows = root.array("mealServiceDietInfo")
-            .flatMap { it.objectValue()?.array("row").orEmpty() }
-        val row = rows
-            .mapNotNull { it.objectValue() }
+        val root = try {
+            MealJsonReader.parseObject(transport.get(url))
+        } catch (_: MealJsonFormatException) {
+            throw NeisMealClientException.MalformedResponse()
+        }
+        val mealSections = root.strictArrayIfPresent("mealServiceDietInfo")
+        val rows = mealSections.orEmpty().flatMap { sectionValue ->
+            val section = sectionValue.objectValue()
+                ?: throw NeisMealClientException.MalformedResponse()
+            section.strictArrayIfPresent("row").orEmpty()
+        }
+        val row = rows.map { rowValue ->
+            rowValue.objectValue()
+                ?: throw NeisMealClientException.MalformedResponse()
+        }
             .firstOrNull { it.string("MLSV_YMD") == neisDate }
 
         if (row != null) {
@@ -144,7 +163,7 @@ class NeisMealClient(
                 resultMessage = result.string("MESSAGE"),
             )
         }
-        if (root.containsKey("mealServiceDietInfo")) {
+        if (mealSections != null) {
             return null
         }
         throw NeisMealClientException.MalformedResponse()
@@ -169,8 +188,6 @@ class NeisMealClient(
         const val LOG_TAG = "NeisMealClient"
         val NEIS_DATE_FORMAT: DateTimeFormatter =
             DateTimeFormatter.ofPattern("yyyyMMdd")
-        val JSON_FACTORY = JsonFactory()
-
         fun encode(value: String): String =
             URLEncoder.encode(value, StandardCharsets.UTF_8.name())
 
@@ -223,48 +240,15 @@ class NeisMealClient(
         }
 
         @Suppress("UNCHECKED_CAST")
-        fun parseJson(bytes: ByteArray): Map<String, Any?> =
-            try {
-                JSON_FACTORY.createParser(bytes).use { parser ->
-                    if (parser.nextToken() != JsonToken.START_OBJECT) {
-                        throw NeisMealClientException.MalformedResponse()
-                    }
-                    readJsonValue(parser) as? Map<String, Any?>
-                        ?: throw NeisMealClientException.MalformedResponse()
-                }
-            } catch (error: NeisMealClientException) {
-                throw error
-            } catch (error: Exception) {
-                throw NeisMealClientException.MalformedResponse()
+        fun Map<String, Any?>.strictArrayIfPresent(
+            name: String,
+        ): List<Any?>? {
+            if (!containsKey(name)) {
+                return null
             }
-
-        @Suppress("UNCHECKED_CAST")
-        fun readJsonValue(parser: JsonParser): Any? =
-            when (parser.currentToken()) {
-                JsonToken.START_OBJECT -> buildMap<String, Any?> {
-                    while (parser.nextToken() != JsonToken.END_OBJECT) {
-                        val fieldName = parser.currentName()
-                        parser.nextToken()
-                        put(fieldName, readJsonValue(parser))
-                    }
-                }
-                JsonToken.START_ARRAY -> buildList {
-                    while (parser.nextToken() != JsonToken.END_ARRAY) {
-                        add(readJsonValue(parser))
-                    }
-                }
-                JsonToken.VALUE_STRING -> parser.text
-                JsonToken.VALUE_NUMBER_INT -> parser.longValue
-                JsonToken.VALUE_NUMBER_FLOAT -> parser.doubleValue
-                JsonToken.VALUE_TRUE -> true
-                JsonToken.VALUE_FALSE -> false
-                JsonToken.VALUE_NULL -> null
-                else -> throw NeisMealClientException.MalformedResponse()
-            }
-
-        @Suppress("UNCHECKED_CAST")
-        fun Map<String, Any?>.array(name: String): List<Any?> =
-            this[name] as? List<Any?> ?: emptyList()
+            return this[name] as? List<Any?>
+                ?: throw NeisMealClientException.MalformedResponse()
+        }
 
         @Suppress("UNCHECKED_CAST")
         fun Any?.objectValue(): Map<String, Any?>? =

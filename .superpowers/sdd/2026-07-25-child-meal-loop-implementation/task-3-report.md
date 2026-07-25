@@ -117,6 +117,59 @@ Result: no whitespace errors; scope contains only the Task 3 report, Android
 build configuration, the minimal meal DAO delete query, three meal production
 files, and the focused test file.
 
+## Review Fix
+
+The follow-up review was implemented as a separate fix commit.
+
+### Behavior hardened
+
+- Cancellation after `Refreshing` now reconciles from the persistent store in
+  `NonCancellable`, publishes the truthful cached, empty, or failed state for
+  the current generation, and then rethrows the original cancellation.
+- The cancellation path is deterministic both before and after a blocked store
+  mutation completes. Store suspension remains outside the global state mutex.
+- Present NEIS `mealServiceDietInfo` and `row` fields must have their documented
+  array types. Wrong types are malformed responses rather than authoritative
+  empty results, so a valid cache is preserved.
+- A corrupt cached JSON row no longer aborts refresh. A successful network
+  result replaces it; a network failure publishes `Failed` and leaves the row
+  untouched.
+- The default `HttpURLConnection` transport disconnects from its cancellation
+  handler, while retaining configured timeouts and final cleanup.
+- NEIS and Room decoding now share `MealJsonReader`; the duplicated Jackson
+  token walkers were removed.
+
+### Review TDD evidence
+
+Focused RED cycles first demonstrated:
+
+- all three cancellation cases remaining stuck in `Refreshing`;
+- wrong-type NEIS containers being treated as empty and evicting cache;
+- corrupt cached JSON preventing both replacement and truthful network failure;
+- cancellation of a blocked default transport not disconnecting promptly.
+
+After the fixes, the focused command:
+
+```text
+testDebugUnitTest --tests '*MealRepositoryTest'
+```
+
+passed `20` tests with `0` failures and `0` errors.
+
+The final forced-clean command:
+
+```text
+clean testDebugUnitTest assembleDebug
+```
+
+passed `63` tests with `0` failures and `0` errors; all `50` tasks executed and
+the build completed successfully in `9s`. Desugaring tasks ran and the debug APK
+was produced.
+
+The final `lintDebug` completed successfully in `9s` with `0` errors. Its `23`
+warnings are pre-existing, and none reference the meal implementation or its
+tests. `git diff --check` also passed.
+
 ## Residual Risk
 
 - Cache identity remains date-only because that is the foundation schema and

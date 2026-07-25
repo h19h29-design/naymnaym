@@ -1,8 +1,6 @@
 package com.h19h29.naymnaymlevelup.rebuild.meal
 
 import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.core.JsonToken
 import com.h19h29.naymnaymlevelup.rebuild.data.MealDayDao
 import com.h19h29.naymnaymlevelup.rebuild.data.MealDayEntity
 import java.io.StringWriter
@@ -11,6 +9,7 @@ import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -19,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 class MealRepository(
     private val store: MealDayStore,
@@ -73,21 +73,25 @@ class MealRepository(
                 loaded
             }
         } catch (error: Throwable) {
-            if (error is CancellationException) throw error
+            if (error is CancellationException) {
+                reconcileCancellation(
+                    date = dateKey,
+                    generation = generation,
+                    operationLock = operationLock,
+                    cancellation = error,
+                )
+            }
             operationLock.withLock {
                 mutex.withLock {
                     if (refreshGenerations[dateKey] == generation) {
                         updateLocked(
                             dateKey,
-                            MealLoadState.Failed(
-                                message(error),
-                                cached = null,
-                            ),
+                            MealLoadState.Refreshing(cached = null),
                         )
                     }
                 }
             }
-            return
+            null
         }
 
         try {
@@ -117,7 +121,14 @@ class MealRepository(
                 }
             }
         } catch (error: Throwable) {
-            if (error is CancellationException) throw error
+            if (error is CancellationException) {
+                reconcileCancellation(
+                    date = dateKey,
+                    generation = generation,
+                    operationLock = operationLock,
+                    cancellation = error,
+                )
+            }
             operationLock.withLock {
                 mutex.withLock stateLock@{
                     if (refreshGenerations[dateKey] != generation) {
@@ -159,6 +170,37 @@ class MealRepository(
 
     private suspend fun isLatest(date: String, generation: Long): Boolean =
         mutex.withLock { refreshGenerations[date] == generation }
+
+    private suspend fun reconcileCancellation(
+        date: String,
+        generation: Long,
+        operationLock: Mutex,
+        cancellation: CancellationException,
+    ): Nothing {
+        withContext(NonCancellable) {
+            operationLock.withLock {
+                if (!isLatest(date, generation)) {
+                    return@withLock
+                }
+                val state = try {
+                    store.load(date)?.let {
+                        MealLoadState.Cached(it.meal, it.refreshedAt)
+                    } ?: MealLoadState.Empty
+                } catch (error: Throwable) {
+                    MealLoadState.Failed(
+                        message = message(error),
+                        cached = null,
+                    )
+                }
+                mutex.withLock {
+                    if (refreshGenerations[date] == generation) {
+                        updateLocked(date, state)
+                    }
+                }
+            }
+        }
+        throw cancellation
+    }
 
     private fun dateLock(date: String): Mutex =
         dateLocks.computeIfAbsent(date) { Mutex() }
@@ -251,13 +293,7 @@ private object MealDayJsonCodec {
     }
 
     fun decode(raw: String): MealDay {
-        val root = factory.createParser(raw).use { parser ->
-            check(parser.nextToken() == JsonToken.START_OBJECT) {
-                "Meal cache payload must be a JSON object"
-            }
-            readValue(parser).objectValue()
-                ?: error("Meal cache payload must be a JSON object")
-        }
+        val root = MealJsonReader.parseObject(raw)
         val menuItems = root.array("menuItems").map { value ->
             val item = value.objectValue()
                 ?: error("Meal cache menu item must be an object")
@@ -310,29 +346,6 @@ private object MealDayJsonCodec {
         values.forEach(::writeString)
         writeEndArray()
     }
-
-    private fun readValue(parser: JsonParser): Any? =
-        when (parser.currentToken()) {
-            JsonToken.START_OBJECT -> buildMap<String, Any?> {
-                while (parser.nextToken() != JsonToken.END_OBJECT) {
-                    val fieldName = parser.currentName()
-                    parser.nextToken()
-                    put(fieldName, readValue(parser))
-                }
-            }
-            JsonToken.START_ARRAY -> buildList {
-                while (parser.nextToken() != JsonToken.END_ARRAY) {
-                    add(readValue(parser))
-                }
-            }
-            JsonToken.VALUE_STRING -> parser.text
-            JsonToken.VALUE_NUMBER_INT -> parser.longValue
-            JsonToken.VALUE_NUMBER_FLOAT -> parser.doubleValue
-            JsonToken.VALUE_TRUE -> true
-            JsonToken.VALUE_FALSE -> false
-            JsonToken.VALUE_NULL -> null
-            else -> error("Unsupported meal cache JSON token")
-        }
 
     @Suppress("UNCHECKED_CAST")
     private fun Any?.objectValue(): Map<String, Any?>? =

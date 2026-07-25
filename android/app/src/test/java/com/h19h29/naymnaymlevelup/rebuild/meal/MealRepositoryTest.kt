@@ -3,12 +3,19 @@ package com.h19h29.naymnaymlevelup.rebuild.meal
 import com.h19h29.naymnaymlevelup.rebuild.data.MealDayDao
 import com.h19h29.naymnaymlevelup.rebuild.data.MealDayEntity
 import java.io.IOException
+import java.io.InputStream
+import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLConnection
+import java.net.URLStreamHandler
 import java.time.Instant
 import java.time.LocalDate
+import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -281,6 +289,54 @@ class MealRepositoryTest {
     }
 
     @Test
+    fun presentMealContainersWithWrongTypesAreMalformed() = runTest {
+        val malformedResponses = listOf(
+            """{"mealServiceDietInfo":{"row":[]}}""",
+            """{"mealServiceDietInfo":[{"row":{"MLSV_YMD":"20260725"}}]}""",
+        )
+
+        malformedResponses.forEach { response ->
+            val client = NeisMealClient(
+                apiKey = "test-secret",
+                transport = NeisTransport { response.toByteArray() },
+                logger = {},
+            )
+            try {
+                client.fetch("2026-07-25", School.fixture)
+                fail("Expected malformed response for $response")
+            } catch (_: NeisMealClientException.MalformedResponse) {
+                // Expected.
+            }
+        }
+    }
+
+    @Test
+    fun malformedNeisResponsePreservesValidCache() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val cachedMeal = MealDay.fixture(date.toString(), "저장된 급식")
+        val store = FakeMealDayStore(listOf(cachedMeal))
+        val client = NeisMealClient(
+            apiKey = "test-secret",
+            transport = NeisTransport {
+                """{"mealServiceDietInfo":{"row":[]}}""".toByteArray()
+            },
+            logger = {},
+        )
+        val repository = MealRepository(store, client, backgroundScope)
+
+        repository.refresh(date, School.fixture)
+
+        assertEquals(
+            MealLoadState.Cached(cachedMeal, refreshedAt = null),
+            repository.currentState(date.toString()),
+        )
+        assertEquals(
+            CachedMealDay(cachedMeal, refreshedAt = null, source = "fixture"),
+            store.load(date.toString()),
+        )
+    }
+
+    @Test
     fun roomStoreRoundTripsMealPayloadAndEvictsByDate() = runTest {
         val dao = FakeRoomMealDayDao()
         val store = RoomMealDayStore(dao)
@@ -320,6 +376,96 @@ class MealRepositoryTest {
     }
 
     @Test
+    fun successfulRefreshReplacesCorruptRoomCache() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val liveMeal = MealDay.fixture(date.toString(), "새 급식")
+        val refreshedAt = Instant.parse("2026-07-25T02:00:00Z")
+        val dao = FakeRoomMealDayDao()
+        dao.upsert(
+            MealDayEntity(
+                date = date.toString(),
+                payloadJson = "{",
+                fetchedAtEpochMillis = 1L,
+                source = "corrupt",
+            ),
+        )
+        val store = RoomMealDayStore(dao)
+        val repository = MealRepository(
+            store = store,
+            client = FakeMealClient(Result.success(liveMeal)),
+            scope = backgroundScope,
+            now = { refreshedAt },
+        )
+
+        repository.refresh(date, School.fixture)
+
+        assertEquals(
+            MealLoadState.Live(liveMeal),
+            repository.currentState(date.toString()),
+        )
+        assertEquals(
+            CachedMealDay(liveMeal, refreshedAt, "neis"),
+            store.load(date.toString()),
+        )
+    }
+
+    @Test
+    fun networkFailureAfterCorruptCacheLoadStaysFailedAndKeepsRow() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val corruptEntity = MealDayEntity(
+            date = date.toString(),
+            payloadJson = "{",
+            fetchedAtEpochMillis = 1L,
+            source = "corrupt",
+        )
+        val dao = FakeRoomMealDayDao()
+        dao.upsert(corruptEntity)
+        val repository = MealRepository(
+            store = RoomMealDayStore(dao),
+            client = FakeMealClient(Result.failure(IOException("offline"))),
+            scope = backgroundScope,
+        )
+
+        repository.refresh(date, School.fixture)
+
+        val state = repository.currentState(date.toString())
+        assertTrue(state is MealLoadState.Failed)
+        state as MealLoadState.Failed
+        assertTrue(state.message.contains("offline"))
+        assertNull(state.cached)
+        assertEquals(corruptEntity, dao.observe(date.toString()).first())
+    }
+
+    @Test
+    fun cancellingHttpTransportDisconnectsBlockedConnectionPromptly() = runTest {
+        val connection = BlockingHttpURLConnection(URL("https://example.test"))
+        val url = URL(
+            null,
+            "test://meal",
+            object : URLStreamHandler() {
+                override fun openConnection(url: URL): URLConnection =
+                    connection
+            },
+        )
+        val request = launch {
+            HttpUrlConnectionNeisTransport().get(url)
+        }
+        connection.awaitReadStarted()
+
+        request.cancel()
+        val disconnectedOnCancellation = connection.disconnectCount > 0
+        if (!disconnectedOnCancellation) {
+            connection.forceRelease()
+        }
+        request.join()
+
+        assertTrue(
+            "Cancellation must disconnect the active connection immediately",
+            disconnectedOnCancellation,
+        )
+    }
+
+    @Test
     fun suspendedCacheReadForOneDateDoesNotBlockAnotherDate() = runTest {
         val blockedDate = "2026-07-25"
         val store = BlockingLoadMealDayStore(blockedDate)
@@ -340,6 +486,89 @@ class MealRepositoryTest {
         assertEquals(MealLoadState.Empty, otherState)
         store.releaseBlockedLoad()
         assertEquals(MealLoadState.Empty, blockedRead.await())
+    }
+
+    @Test
+    fun cancellingCurrentRefreshRestoresCachedState() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val cachedMeal = MealDay.fixture(date.toString(), "저장된 급식")
+        val client = ControlledMealClient()
+        val repository = MealRepository(
+            FakeMealDayStore(listOf(cachedMeal)),
+            client,
+            backgroundScope,
+        )
+        val refresh = launch {
+            repository.refresh(date, School.fixture)
+        }
+        client.awaitRequest()
+        assertEquals(
+            MealLoadState.Refreshing(cachedMeal),
+            repository.currentState(date.toString()),
+        )
+
+        refresh.cancelAndJoin()
+
+        assertEquals(
+            MealLoadState.Cached(cachedMeal, refreshedAt = null),
+            repository.currentState(date.toString()),
+        )
+    }
+
+    @Test
+    fun cancellingCurrentRefreshWithoutCacheBecomesEmpty() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val client = ControlledMealClient()
+        val repository = MealRepository(
+            FakeMealDayStore(),
+            client,
+            backgroundScope,
+        )
+        val refresh = launch {
+            repository.refresh(date, School.fixture)
+        }
+        client.awaitRequest()
+        assertEquals(
+            MealLoadState.Refreshing(cached = null),
+            repository.currentState(date.toString()),
+        )
+
+        refresh.cancelAndJoin()
+
+        assertEquals(
+            MealLoadState.Empty,
+            repository.currentState(date.toString()),
+        )
+    }
+
+    @Test
+    fun cancellationAfterStoreMutationReconcilesPersistedMeal() = runTest {
+        val date = LocalDate.parse("2026-07-25")
+        val cachedMeal = MealDay.fixture(date.toString(), "저장된 급식")
+        val liveMeal = MealDay.fixture(date.toString(), "새 급식")
+        val refreshedAt = Instant.parse("2026-07-25T02:00:00Z")
+        val store = PersistThenBlockMealDayStore(cachedMeal)
+        val repository = MealRepository(
+            store = store,
+            client = FakeMealClient(Result.success(liveMeal)),
+            scope = backgroundScope,
+            now = { refreshedAt },
+        )
+        val refresh = launch {
+            repository.refresh(date, School.fixture)
+        }
+        store.awaitSaveMutation()
+        assertEquals(
+            MealLoadState.Refreshing(cachedMeal),
+            repository.currentState(date.toString()),
+        )
+
+        refresh.cancelAndJoin()
+
+        assertEquals(
+            MealLoadState.Cached(liveMeal, refreshedAt),
+            repository.currentState(date.toString()),
+        )
     }
 }
 
@@ -441,6 +670,75 @@ private class BlockingLoadMealDayStore(
 
     fun releaseBlockedLoad() {
         releaseLoad.complete(Unit)
+    }
+}
+
+private class PersistThenBlockMealDayStore(
+    meal: MealDay,
+) : MealDayStore {
+    private var entry: CachedMealDay? = CachedMealDay(
+        meal = meal,
+        refreshedAt = null,
+        source = "fixture",
+    )
+    private val saveMutated = CompletableDeferred<Unit>()
+
+    override suspend fun load(date: String): CachedMealDay? = entry
+
+    override suspend fun save(
+        meal: MealDay,
+        refreshedAt: Instant,
+        source: String,
+    ) {
+        entry = CachedMealDay(meal, refreshedAt, source)
+        saveMutated.complete(Unit)
+        awaitCancellation()
+    }
+
+    override suspend fun remove(date: String) {
+        entry = null
+    }
+
+    suspend fun awaitSaveMutation() {
+        saveMutated.await()
+    }
+}
+
+private class BlockingHttpURLConnection(
+    url: URL,
+) : HttpURLConnection(url) {
+    private val readStarted = CompletableDeferred<Unit>()
+    private val releaseRead = CountDownLatch(1)
+
+    @Volatile
+    var disconnectCount: Int = 0
+        private set
+
+    override fun connect() = Unit
+
+    override fun disconnect() {
+        disconnectCount += 1
+        releaseRead.countDown()
+    }
+
+    override fun usingProxy(): Boolean = false
+
+    override fun getResponseCode(): Int = HTTP_OK
+
+    override fun getInputStream(): InputStream = object : InputStream() {
+        override fun read(): Int {
+            readStarted.complete(Unit)
+            releaseRead.await()
+            return -1
+        }
+    }
+
+    suspend fun awaitReadStarted() {
+        readStarted.await()
+    }
+
+    fun forceRelease() {
+        releaseRead.countDown()
     }
 }
 
