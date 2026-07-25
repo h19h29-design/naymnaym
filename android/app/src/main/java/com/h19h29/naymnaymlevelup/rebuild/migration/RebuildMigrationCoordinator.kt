@@ -12,7 +12,6 @@ import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
-import org.json.JSONException
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.text.ParsePosition
@@ -53,6 +52,11 @@ sealed class LegacyMigrationException(
     ) : LegacyMigrationException(
         "migration verification failed for $field: expected $expected, got $actual",
     )
+
+    class TargetCollision(
+        val table: String,
+        val id: String,
+    ) : LegacyMigrationException("migration target collision in $table for id '$id'")
 }
 
 data class MigrationPlan(
@@ -135,6 +139,7 @@ class RoomMigrationTarget(
             return@withTransaction MigrationOutcome.AlreadyCompleted
         }
 
+        preflight(plan)
         plan.profile?.let { database.profileDao().upsert(it) }
         plan.mealRecords.forEach { database.mealRecordDao().upsert(it) }
         plan.mealPhotos.forEach { database.mealPhotoDao().upsert(it) }
@@ -152,6 +157,52 @@ class RoomMigrationTarget(
             ),
         )
         MigrationOutcome.Migrated
+    }
+
+    private suspend fun preflight(plan: MigrationPlan) {
+        plan.profile?.let { incoming ->
+            requireCompatible(
+                table = "profiles",
+                id = incoming.id,
+                existing = database.profileDao().find(incoming.id),
+                incoming = incoming,
+            )
+        }
+        plan.mealRecords.forEach { incoming ->
+            requireCompatible(
+                table = "meal_records",
+                id = incoming.id,
+                existing = database.mealRecordDao().find(incoming.id),
+                incoming = incoming,
+            )
+        }
+        plan.mealPhotos.forEach { incoming ->
+            requireCompatible(
+                table = "meal_photos",
+                id = incoming.id,
+                existing = database.mealPhotoDao().find(incoming.id),
+                incoming = incoming,
+            )
+        }
+        plan.parentLinks.forEach { incoming ->
+            requireCompatible(
+                table = "parent_links",
+                id = incoming.id,
+                existing = database.parentLinkDao().find(incoming.id),
+                incoming = incoming,
+            )
+        }
+    }
+
+    private fun <T> requireCompatible(
+        table: String,
+        id: String,
+        existing: T?,
+        incoming: T,
+    ) {
+        if (existing != null && existing != incoming) {
+            throw LegacyMigrationException.TargetCollision(table, id)
+        }
     }
 
     private suspend fun verify(plan: MigrationPlan): MigrationVerification {
@@ -188,11 +239,13 @@ class RoomMigrationTarget(
             )
         }
         plan.parentLinks.forEach { expected ->
-            requireMatch(
-                field = "parentLink:${expected.id}",
-                expected = expected.toString(),
-                actual = database.parentLinkDao().find(expected.id).toString(),
-            )
+            if (database.parentLinkDao().find(expected.id) != expected) {
+                throw LegacyMigrationException.VerificationMismatch(
+                    field = "parentLink:${expected.id}",
+                    expected = "matching parent-link row",
+                    actual = "missing or different parent-link row",
+                )
+            }
         }
 
         plan.progressEvents.forEach { expected ->
@@ -490,6 +543,8 @@ private object LegacySnapshotMapper {
             inviteCode = inviteCode,
             connectionState = "connected",
             connectedAtEpochMillis = value.optionalTimestamp("connectedAt", path),
+            inviteSecret = value.optionalString("inviteSecret", path),
+            registeredAtEpochMillis = value.optionalTimestamp("registeredAt", path),
         )
     }
 
@@ -502,11 +557,15 @@ private object LegacySnapshotMapper {
             "parentConnectedAt",
             "childLink",
         )
+        val inviteSecret = objectValue.optionalString("inviteSecret", "childLink")
+        val registeredAt = objectValue.optionalTimestamp("registeredAt", "childLink")
         return ParentLinkEntity(
             id = id.ifBlank { invalid("childLink", "id must not be blank") },
             inviteCode = inviteCode,
             connectionState = if (connectedAt == null) "invitePending" else "connected",
             connectedAtEpochMillis = connectedAt,
+            inviteSecret = inviteSecret,
+            registeredAtEpochMillis = registeredAt,
         )
     }
 
@@ -518,14 +577,22 @@ private object LegacySnapshotMapper {
         val idByInvite = mutableMapOf<String, String>()
         (parentLinks + listOfNotNull(childLink)).forEach { link ->
             val normalizedInvite = link.inviteCode.trim().uppercase(Locale.ROOT)
-            val previousId = idByInvite[normalizedInvite]
-            if (previousId != null && previousId != link.id) {
-                byId.remove(previousId)
+            val normalizedLink = link.copy(inviteCode = normalizedInvite)
+            val existingById = byId[link.id]
+            if (existingById != null) {
+                if (existingById != normalizedLink) {
+                    invalid("parentLinks", "id '${link.id}' has conflicting records")
+                }
+                return@forEach
             }
-            byId[link.id]?.let { previous ->
-                idByInvite.remove(previous.inviteCode.trim().uppercase(Locale.ROOT))
+            val existingIdForInvite = idByInvite[normalizedInvite]
+            if (existingIdForInvite != null && existingIdForInvite != link.id) {
+                invalid(
+                    "parentLinks",
+                    "invite code '$normalizedInvite' belongs to multiple IDs",
+                )
             }
-            byId[link.id] = link.copy(inviteCode = normalizedInvite)
+            byId[link.id] = normalizedLink
             idByInvite[normalizedInvite] = link.id
         }
         return byId.values.sortedBy { it.id }
@@ -637,15 +704,17 @@ private object LegacySnapshotMapper {
 
 private fun parseObject(raw: String, payload: String): JSONObject =
     try {
+        StrictJsonValidator.validate(raw)
         JSONObject(raw)
-    } catch (error: JSONException) {
+    } catch (error: Exception) {
         invalid(payload, "expected a JSON object", error)
     }
 
 private fun parseArray(raw: String, payload: String): JSONArray =
     try {
+        StrictJsonValidator.validate(raw)
         JSONArray(raw)
-    } catch (error: JSONException) {
+    } catch (error: Exception) {
         invalid(payload, "expected a JSON array", error)
     }
 
@@ -757,6 +826,17 @@ private fun parseIsoTimestamp(value: String, path: String): Long {
         if (date != null && position.index == normalized.length) {
             return date.time
         }
+    }
+    val legacyFormatter = SimpleDateFormat(
+        "EEE MMM dd HH:mm:ss zzz yyyy",
+        Locale.US,
+    ).apply {
+        isLenient = false
+    }
+    val legacyPosition = ParsePosition(0)
+    val legacyDate = legacyFormatter.parse(value, legacyPosition)
+    if (legacyDate != null && legacyPosition.index == value.length) {
+        return legacyDate.time
     }
     invalid(path, "invalid ISO-8601 timestamp")
 }

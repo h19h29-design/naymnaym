@@ -2,6 +2,8 @@ package com.h19h29.naymnaymlevelup.rebuild.migration
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.core.StreamReadFeature
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -111,6 +113,7 @@ class LegacyPreferencesReader(
             return null
         }
         var total = 0L
+        val dailyXpEntries = JSONArray()
         keys.forEach { key ->
             val value = values[key]
             if (value !is Int || value < 0) {
@@ -126,9 +129,17 @@ class LegacyPreferencesReader(
                     reason = "XP total overflow",
                 )
             }
+            dailyXpEntries.put(
+                JSONObject()
+                    .put("key", key)
+                    .put("value", value),
+            )
         }
         sourceKeys += keys
-        return JSONObject().put("totalXp", total.toInt()).toString()
+        return JSONObject()
+            .put("dailyXpEntries", dailyXpEntries)
+            .put("totalXp", total.toInt())
+            .toString()
     }
 
     private fun readLedger(
@@ -182,7 +193,10 @@ class LegacyPreferencesReader(
         sourceKey: String,
     ): JSONArray {
         if (!root.has(key)) {
-            return JSONArray()
+            throw LegacyMigrationException.InvalidSourcePreference(
+                key = sourceKey,
+                reason = "missing required $key array",
+            )
         }
         val value = root.opt(key)
         if (value !is JSONArray) {
@@ -228,8 +242,9 @@ class LegacyPreferencesReader(
 
     private fun parseObject(raw: String, key: String): JSONObject =
         try {
+            StrictJsonValidator.validate(raw)
             JSONObject(raw)
-        } catch (error: JSONException) {
+        } catch (error: Exception) {
             throw LegacyMigrationException.InvalidSourcePreference(
                 key = key,
                 reason = "invalid JSON object",
@@ -239,8 +254,9 @@ class LegacyPreferencesReader(
 
     private fun parseArray(raw: String, key: String): JSONArray =
         try {
+            StrictJsonValidator.validate(raw)
             JSONArray(raw)
-        } catch (error: JSONException) {
+        } catch (error: Exception) {
             throw LegacyMigrationException.InvalidSourcePreference(
                 key = key,
                 reason = "invalid JSON array",
@@ -283,6 +299,24 @@ class LegacyPreferencesReader(
             REGISTERED_AT,
             PARENT_CONNECTED_AT,
         )
+    }
+}
+
+object StrictJsonValidator {
+    private val factory = JsonFactory.builder()
+        .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+        .build()
+
+    fun validate(raw: String) {
+        factory.createParser(raw).use { parser ->
+            if (parser.nextToken() == null) {
+                throw JSONException("empty JSON input")
+            }
+            parser.skipChildren()
+            if (parser.nextToken() != null) {
+                throw JSONException("trailing JSON input")
+            }
+        }
     }
 }
 

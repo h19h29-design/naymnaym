@@ -138,6 +138,8 @@ class RebuildDatabaseTest {
             inviteCode = "ABC123",
             connectionState = "connected",
             connectedAtEpochMillis = 1_785_000_300_000,
+            inviteSecret = "exact-legacy-secret",
+            registeredAtEpochMillis = 1_785_000_250_000,
         )
         database.parentLinkDao().upsert(parentLink)
         assertEquals(parentLink, database.parentLinkDao().load())

@@ -5,7 +5,11 @@ import android.content.SharedPreferences
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.h19h29.naymnaymlevelup.rebuild.data.MealPhotoEntity
+import com.h19h29.naymnaymlevelup.rebuild.data.MealRecordEntity
 import com.h19h29.naymnaymlevelup.rebuild.data.MigrationStateRepository
+import com.h19h29.naymnaymlevelup.rebuild.data.ParentLinkEntity
+import com.h19h29.naymnaymlevelup.rebuild.data.ProfileEntity
 import com.h19h29.naymnaymlevelup.rebuild.data.ProgressEventEntity
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +61,11 @@ class RebuildMigrationIntegrationTest {
         val snapshot = reader.readSnapshot()
 
         assertNotNull(snapshot.profileJson)
-        assertEquals("""{"totalXp":18}""", snapshot.progressJson)
+        val progressJson = org.json.JSONObject(requireNotNull(snapshot.progressJson))
+        assertEquals(18, progressJson.getInt("totalXp"))
+        val dailyXp = progressJson.getJSONArray("dailyXpEntries").getJSONObject(0)
+        assertEquals("dailyBaseXp-20260725", dailyXp.getString("key"))
+        assertEquals(18, dailyXp.getInt("value"))
         assertTrue(requireNotNull(snapshot.mealsJson).contains("\"mealId\":\"meal-1\""))
         assertTrue(requireNotNull(snapshot.challengesJson).contains("\"gainedExp\":18"))
         assertNull(snapshot.mealPhotosJson)
@@ -80,7 +88,10 @@ class RebuildMigrationIntegrationTest {
         assertEquals(identity, database.mealRecordDao().find(identity)?.id)
         assertEquals(18, database.progressDao().totalXp())
         assertEquals("meal:$identity", database.progressDao().find("meal:$identity")?.id)
-        assertEquals("child-1", database.parentLinkDao().find("child-1")?.id)
+        val migratedChildLink = database.parentLinkDao().find("child-1")
+        assertEquals("child-1", migratedChildLink?.id)
+        assertEquals("secret", migratedChildLink?.inviteSecret)
+        assertEquals(1_784_937_600_000L, migratedChildLink?.registeredAtEpochMillis)
         val state = database.migrationStateDao().find(MigrationStateRepository.STATE_ID)
         assertEquals(1, state?.version)
         assertEquals(1234L, state?.completedAtEpochMillis)
@@ -119,6 +130,53 @@ class RebuildMigrationIntegrationTest {
             LegacyPreferencesReader(context).readSnapshot()
         }
         assertEquals(beforeWrongType, preferences.all)
+    }
+
+    @Test
+    fun ledgerRequiresStrictJsonAndBothNamedArrays() {
+        listOf(
+            "{}",
+            """{"latestMeals":[],"actions":[],"actions":[]}""",
+            """{/*comment*/"latestMeals":[],"actions":[]}""",
+            """{latestMeals:[],actions:[]}""",
+            """{'latestMeals':[],'actions':[]}""",
+            """{"latestMeals":[];"actions":[]}""",
+            """{"latestMeals":[],"actions":[]} trailing""",
+            """{"latestMeals":[]}""",
+            """{"actions":[]}""",
+        ).forEach { raw ->
+            preferences.edit().clear()
+                .putString(LegacyPreferencesReader.MEAL_SNAPSHOT_LEDGER, raw)
+                .commit()
+            val before = HashMap(preferences.all)
+
+            assertThrows(LegacyMigrationException::class.java) {
+                LegacyPreferencesReader(context).readSnapshot()
+            }
+            assertEquals(before, preferences.all)
+        }
+    }
+
+    @Test
+    fun dailyXpDigestIncludesEachDateAndValueNotOnlyTheAggregate() {
+        preferences.edit()
+            .putInt("dailyBaseXp-20260724", 10)
+            .putInt("dailyBaseXp-20260725", 20)
+            .commit()
+        val reader = LegacyPreferencesReader(context)
+        val firstSnapshot = reader.readSnapshot()
+        val firstDigest = reader.sourceDigest(firstSnapshot)
+
+        preferences.edit()
+            .putInt("dailyBaseXp-20260724", 20)
+            .putInt("dailyBaseXp-20260725", 10)
+            .commit()
+        val secondSnapshot = reader.readSnapshot()
+        val secondDigest = reader.sourceDigest(secondSnapshot)
+
+        assertEquals(30, org.json.JSONObject(firstSnapshot.progressJson!!).getInt("totalXp"))
+        assertEquals(30, org.json.JSONObject(secondSnapshot.progressJson!!).getInt("totalXp"))
+        assertFalse(firstDigest == secondDigest)
     }
 
     @Test
@@ -200,6 +258,123 @@ class RebuildMigrationIntegrationTest {
         assertEquals(1, database.progressDao().totalXp())
     }
 
+    @Test
+    fun differingTargetRowsCausePreflightRollbackAndPreserveUnrelatedRows() = runBlocking {
+        val plan = collisionTestPlan()
+        listOf("profile", "meal", "photo", "parent").forEach { collisionType ->
+            val targetDatabase = Room.inMemoryDatabaseBuilder(
+                context,
+                RebuildDatabase::class.java,
+            ).build()
+            try {
+                val unrelated = ProfileEntity(
+                    id = "unrelated-profile",
+                    role = "parent",
+                    nickname = "그대로",
+                    officeCode = null,
+                    schoolCode = null,
+                    allergyCodesJson = "[]",
+                )
+                targetDatabase.profileDao().upsert(unrelated)
+                when (collisionType) {
+                    "profile" -> targetDatabase.profileDao().upsert(
+                        requireNotNull(plan.profile).copy(nickname = "충돌"),
+                    )
+                    "meal" -> targetDatabase.mealRecordDao().upsert(
+                        plan.mealRecords.single().copy(menuName = "충돌"),
+                    )
+                    "photo" -> targetDatabase.mealPhotoDao().upsert(
+                        plan.mealPhotos.single().copy(relativePath = "different.jpg"),
+                    )
+                    "parent" -> targetDatabase.parentLinkDao().upsert(
+                        plan.parentLinks.single().copy(inviteSecret = "different-secret"),
+                    )
+                }
+
+                assertThrows(LegacyMigrationException.TargetCollision::class.java) {
+                    runBlocking {
+                        RoomMigrationTarget(targetDatabase).migrate(
+                            plan = plan,
+                            targetVersion = 1,
+                            sourceDigest = "sha256:collision",
+                        )
+                    }
+                }
+                assertEquals(unrelated, targetDatabase.profileDao().find(unrelated.id))
+                assertNull(
+                    targetDatabase.migrationStateDao()
+                        .find(MigrationStateRepository.STATE_ID),
+                )
+            } finally {
+                targetDatabase.close()
+            }
+        }
+    }
+
+    @Test
+    fun exactEqualTargetRowsAreAccepted() = runBlocking {
+        val plan = collisionTestPlan()
+        database.profileDao().upsert(requireNotNull(plan.profile))
+        plan.mealRecords.forEach { database.mealRecordDao().upsert(it) }
+        plan.mealPhotos.forEach { database.mealPhotoDao().upsert(it) }
+        plan.parentLinks.forEach { database.parentLinkDao().upsert(it) }
+
+        assertEquals(
+            MigrationOutcome.Migrated,
+            RoomMigrationTarget(database).migrate(
+                plan = plan,
+                targetVersion = 1,
+                sourceDigest = "sha256:equal",
+            ),
+        )
+        assertEquals(1, database.migrationStateDao().version(MigrationStateRepository.STATE_ID))
+    }
+
+    private fun collisionTestPlan(): MigrationPlan {
+        val profile = ProfileEntity(
+            id = "planned-profile",
+            role = "child",
+            nickname = "계획",
+            officeCode = "B10",
+            schoolCode = "123",
+            allergyCodesJson = "[]",
+        )
+        val meal = MealRecordEntity(
+            id = "2026-07-25|나물|oneBite",
+            date = "2026-07-25",
+            menuName = "나물",
+            normalizedMenuName = "나물",
+            status = "oneBite",
+            difficultyReasonsJson = "[]",
+            allergyCodesJson = "[]",
+            photoIdsJson = """["planned-photo"]""",
+            updatedAtEpochMillis = 1L,
+            deletedAtEpochMillis = null,
+        )
+        val photo = MealPhotoEntity(
+            id = "planned-photo",
+            recordId = meal.id,
+            relativePath = "planned-photo.jpg",
+            createdAtEpochMillis = 2L,
+        )
+        val parent = ParentLinkEntity(
+            id = "planned-parent",
+            inviteCode = "PLAN-1",
+            connectionState = "invitePending",
+            connectedAtEpochMillis = null,
+            inviteSecret = "exact-secret",
+            registeredAtEpochMillis = 3L,
+        )
+        return MigrationPlan(
+            profile = profile,
+            mealRecords = listOf(meal),
+            mealPhotos = listOf(photo),
+            progressEvents = emptyList(),
+            parentLinks = listOf(parent),
+            expectedTotalXp = 0,
+        )
+    }
+
     private fun seedCompleteLegacyPreferences() {
         val entry =
             """
@@ -235,7 +410,10 @@ class RebuildMigrationIntegrationTest {
             .putString(LegacyPreferencesReader.CHILD_LINK_ID, "child-1")
             .putString(LegacyPreferencesReader.INVITE_CODE, "CHILD-1")
             .putString(LegacyPreferencesReader.INVITE_SECRET, "secret")
-            .putString(LegacyPreferencesReader.REGISTERED_AT, "2026-07-25T00:00:00Z")
+            .putString(
+                LegacyPreferencesReader.REGISTERED_AT,
+                "Sat Jul 25 09:00:00 GMT+09:00 2026",
+            )
             .putString(LegacyPreferencesReader.PARENT_CONNECTED_AT, "2026-07-25T00:01:00Z")
             .putBoolean("unrelated", true)
             .commit()

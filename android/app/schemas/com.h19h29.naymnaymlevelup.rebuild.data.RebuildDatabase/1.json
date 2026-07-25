@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "b4e4ad6c4640614c83c32c5686837d83",
+    "identityHash": "a89790b6f662b222dab445371af1a0fe",
     "entities": [
       {
         "tableName": "profiles",
@@ -285,7 +285,7 @@
       },
       {
         "tableName": "parent_links",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `inviteCode` TEXT NOT NULL, `connectionState` TEXT NOT NULL, `connectedAtEpochMillis` INTEGER, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `inviteCode` TEXT NOT NULL, `connectionState` TEXT NOT NULL, `connectedAtEpochMillis` INTEGER, `inviteSecret` TEXT, `registeredAtEpochMillis` INTEGER, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -308,6 +308,16 @@
           {
             "fieldPath": "connectedAtEpochMillis",
             "columnName": "connectedAtEpochMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "inviteSecret",
+            "columnName": "inviteSecret",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "registeredAtEpochMillis",
+            "columnName": "registeredAtEpochMillis",
             "affinity": "INTEGER"
           }
         ],
@@ -356,7 +366,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b4e4ad6c4640614c83c32c5686837d83')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a89790b6f662b222dab445371af1a0fe')"
     ]
   }
 }

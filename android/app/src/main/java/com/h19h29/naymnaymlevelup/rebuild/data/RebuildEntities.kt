@@ -69,6 +69,8 @@ data class ParentLinkEntity(
     val inviteCode: String,
     val connectionState: String,
     val connectedAtEpochMillis: Long?,
+    val inviteSecret: String? = null,
+    val registeredAtEpochMillis: Long? = null,
 )
 
 @Entity(tableName = "migration_states")

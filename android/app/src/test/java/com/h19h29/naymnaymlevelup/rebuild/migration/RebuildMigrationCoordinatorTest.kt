@@ -83,6 +83,33 @@ class RebuildMigrationCoordinatorTest {
     }
 
     @Test
+    fun nonStandardOrAmbiguousJsonIsRejectedForEveryLogicalPayload() {
+        listOf(
+            LegacySnapshot(profileJson = """{'nickname':'single quotes'}"""),
+            LegacySnapshot(progressJson = """{totalXp:1}"""),
+            LegacySnapshot(mealsJson = """[/*comment*/]"""),
+            LegacySnapshot(mealPhotosJson = """[] trailing"""),
+            LegacySnapshot(challengesJson = """[{"gainedExp":0x10}]"""),
+            LegacySnapshot(parentJson = """[{"inviteCode":"A";"id":"x"}]"""),
+            LegacySnapshot(
+                childLinkJson =
+                    """{"childLinkId":"x","inviteCode":"A","inviteCode":"B"}""",
+            ),
+        ).forEach { snapshot ->
+            val target = FakeMigrationTarget()
+            assertThrows(LegacyMigrationException.InvalidPayload::class.java) {
+                runBlocking {
+                    RebuildMigrationCoordinator(
+                        FakeLegacySource(snapshot = snapshot),
+                        target,
+                    ).runIfNeeded(1)
+                }
+            }
+            assertEquals(0, target.migrateAttempts)
+        }
+    }
+
+    @Test
     fun partialFailureRollsBackAndRetryCommitsOnce() = runBlocking {
         val source = FakeLegacySource(
             profileJson = """{"nickname":"재시도"}""",
@@ -203,6 +230,8 @@ class RebuildMigrationCoordinatorTest {
                 {
                   "childLinkId":"child-1",
                   "inviteCode":" child-1 ",
+                  "inviteSecret":"  exact secret  ",
+                  "registeredAt":"Sat Jul 25 01:02:03 GMT+09:00 2026",
                   "parentConnectedAt":"2026-07-25T01:03:00Z"
                 }
                 """.trimIndent(),
@@ -221,6 +250,52 @@ class RebuildMigrationCoordinatorTest {
         assertEquals(1, plan.progressEvents.size)
         assertEquals(2, plan.parentLinks.size)
         assertEquals(listOf("CHILD-1", "PARENT-1"), plan.parentLinks.map { it.inviteCode })
+        val childLink = plan.parentLinks.single { it.id == "child-1" }
+        assertEquals("  exact secret  ", childLink.inviteSecret)
+        assertEquals(1_784_908_923_000L, childLink.registeredAtEpochMillis)
+    }
+
+    @Test
+    fun conflictingParentLinksAreRejectedAndOnlyExactDuplicatesDeduplicate() = runBlocking {
+        listOf(
+            LegacySnapshot(
+                parentJson = """[{"id":"parent-a","inviteCode":" SAME "}]""",
+                childLinkJson = """{"childLinkId":"child-b","inviteCode":"same"}""",
+            ),
+            LegacySnapshot(
+                parentJson = """[{"id":"same-id","inviteCode":"FIRST"}]""",
+                childLinkJson = """{"childLinkId":"same-id","inviteCode":"SECOND"}""",
+            ),
+        ).forEach { snapshot ->
+            val target = FakeMigrationTarget()
+            assertThrows(LegacyMigrationException.InvalidPayload::class.java) {
+                runBlocking {
+                    RebuildMigrationCoordinator(
+                        FakeLegacySource(snapshot = snapshot),
+                        target,
+                    ).runIfNeeded(1)
+                }
+            }
+            assertEquals(0, target.migrateAttempts)
+        }
+
+        val exactDuplicateTarget = FakeMigrationTarget()
+        assertEquals(
+            MigrationOutcome.Migrated,
+            RebuildMigrationCoordinator(
+                FakeLegacySource(
+                    parentJson =
+                        """
+                        [
+                          {"id":"same-id","inviteCode":"SAME"},
+                          {"id":"same-id","inviteCode":"SAME"}
+                        ]
+                        """.trimIndent(),
+                ),
+                exactDuplicateTarget,
+            ).runIfNeeded(1),
+        )
+        assertEquals(1, exactDuplicateTarget.committedPlan?.parentLinks?.size)
     }
 
     @Test

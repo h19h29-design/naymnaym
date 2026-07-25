@@ -45,6 +45,9 @@ interface MealPhotoDao {
     @Upsert
     suspend fun upsert(photo: MealPhotoEntity)
 
+    @Query("SELECT * FROM meal_photos WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): MealPhotoEntity?
+
     @Query(
         """
         SELECT * FROM meal_photos
