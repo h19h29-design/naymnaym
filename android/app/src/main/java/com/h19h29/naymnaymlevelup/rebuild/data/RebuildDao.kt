@@ -26,6 +26,9 @@ interface MealDayDao {
 
     @Upsert
     suspend fun upsert(mealDay: MealDayEntity)
+
+    @Query("DELETE FROM meal_days WHERE date = :date")
+    suspend fun delete(date: String)
 }
 
 @Dao

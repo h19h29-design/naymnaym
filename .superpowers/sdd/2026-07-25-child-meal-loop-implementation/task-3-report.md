@@ -1,0 +1,125 @@
+# Task 3 Report: Android Cache-First Meal Repository
+
+## Result
+
+- Scope: Task 3 only in the `major-native-rebuild` worktree.
+- Commit message: `feat: add cached Android meal repository`
+- Added the Android meal domain, injected NEIS client/transport, cache-first
+  repository, Room-backed store adapter, and focused JVM tests.
+- Added the minimal `MealDayDao.delete(date)` query required for authoritative
+  no-meal cache eviction.
+
+## Behavior
+
+- `observe(LocalDate)` is a collector-owned `Flow` with a replayed initial
+  cached/empty state and ordered refresh transitions.
+- Observer cancellation directly cancels its SharedFlow subscription; the
+  repository does not retain per-observer jobs or continuations.
+- Successful meals persist through `MealDayDao`; a new repository restores the
+  JSON payload, fetch timestamp, and source.
+- An authoritative no-meal response deletes the date row before publishing
+  `Empty`.
+- Network, parse, and persistence failures re-publish the existing cached meal;
+  a failure without cache publishes `Failed`.
+- Per-date generations enforce latest-request-wins for stale meal, no-meal, and
+  error completions, protecting both state and persisted cache.
+- State snapshots are read under the state mutex. Suspending store operations
+  use per-date operation locks and never hold the global state mutex, so a
+  blocked date does not block other dates.
+- The constructor keeps the brief's `CoroutineScope` argument for API
+  compatibility, but observation is deliberately collector-owned rather than
+  launched in an external scope.
+- `HttpURLConnection` is hidden behind `NeisTransport`; no networking or
+  tracking SDK was added.
+- The client parses `DDISH_NM`, allergy codes, `CAL_INFO`, and numeric
+  `NTR_INFO`; it recognizes `INFO-200` as authoritative empty.
+- String date entry uses strict `LocalDate` parsing before transport.
+- Request logs replace the API key value with `KEY=<redacted>`.
+- Core-library desugaring is enabled for `LocalDate`/`Instant` on minSdk 23.
+
+## TDD Evidence
+
+All Gradle commands used:
+
+```text
+JAVA_HOME=$HOME/.cache/codex-jdk17/extracted/Contents/Home
+ANDROID_HOME=$HOME/Library/Android/sdk
+ANDROID_SDK_ROOT=$ANDROID_HOME
+./gradlew --init-script /tmp/task9-ascii-build.init.gradle \
+  -Dorg.gradle.jvmargs='-Xmx3g -Dfile.encoding=UTF-8' \
+  --max-workers=1 ...
+```
+
+### RED
+
+Initial focused command:
+
+```text
+testDebugUnitTest --tests '*MealRepositoryTest'
+```
+
+Result: compilation failed as expected with unresolved `MealDay`,
+`MealRepository`, `MealLoadState`, `MealDayStore`, and `MealClient`.
+
+Subsequent focused RED cycles:
+
+- Cache/flow lifecycle: failed for missing `observe` and injected clock.
+- Latest request wins:
+  `staleRefreshCompletionsCannotReplaceNewerStateOrCache` failed with an
+  assertion after the older completion replaced the newer result.
+- NEIS boundary: compilation failed for missing `NeisMealClient` and
+  `NeisTransport`.
+- Room adapter: compilation failed for missing `RoomMealDayStore` and the
+  missing DAO delete contract.
+- Cross-date synchronization:
+  `suspendedCacheReadForOneDateDoesNotBlockAnotherDate` failed with
+  `TimeoutCancellationException` while the old global mutex held a suspended
+  cache read.
+
+### GREEN
+
+Focused Task 3 command:
+
+```text
+testDebugUnitTest --tests '*MealRepositoryTest'
+```
+
+Result: `12` tests, `0` failures, `0` errors; `BUILD SUCCESSFUL`.
+
+Forced-clean full Android command:
+
+```text
+clean testDebugUnitTest assembleDebug
+```
+
+Result: `55` tests, `0` failures, `0` errors; `50` tasks executed;
+`BUILD SUCCESSFUL in 41s`. The build ran `l8DexDesugarLibDebug` and
+`desugarDebugFileDependencies`, and produced `app-debug.apk`.
+
+Lint command:
+
+```text
+lintDebug
+```
+
+Result: `BUILD SUCCESSFUL in 19s`; `0` errors. The report contains `23`
+pre-existing warnings and no issue referencing the Task 3 meal files,
+`RebuildDao.kt`, coroutine-test, or desugaring.
+
+Static checks:
+
+```text
+git diff --check
+git status --short
+```
+
+Result: no whitespace errors; scope contains only the Task 3 report, Android
+build configuration, the minimal meal DAO delete query, three meal production
+files, and the focused test file.
+
+## Residual Risk
+
+- Cache identity remains date-only because that is the foundation schema and
+  the cross-platform Task 2 contract. A later school-switch integration must
+  clear or migrate date caches to prevent cross-school reuse.
+- Lint's existing project warnings remain outside Task 3 scope.
