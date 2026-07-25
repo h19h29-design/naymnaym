@@ -14,6 +14,9 @@ interface ProfileDao {
 
     @Query("SELECT * FROM profiles ORDER BY id ASC LIMIT 1")
     suspend fun load(): ProfileEntity?
+
+    @Query("SELECT * FROM profiles WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): ProfileEntity?
 }
 
 @Dao
@@ -32,6 +35,9 @@ interface MealRecordDao {
 
     @Query("SELECT * FROM meal_records WHERE id = :id LIMIT 1")
     suspend fun find(id: String): MealRecordEntity?
+
+    @Query("SELECT COUNT(*) FROM meal_records WHERE id IN (:ids)")
+    suspend fun count(ids: List<String>): Int
 }
 
 @Dao
@@ -59,6 +65,9 @@ interface ProgressDao {
 
     @Query("SELECT * FROM progress_events WHERE id = :id LIMIT 1")
     suspend fun find(id: String): ProgressEventEntity?
+
+    @Query("SELECT COUNT(*) FROM progress_events WHERE id IN (:ids)")
+    suspend fun count(ids: List<String>): Int
 }
 
 @Dao
@@ -83,6 +92,9 @@ interface ParentLinkDao {
 
     @Query("SELECT * FROM parent_links ORDER BY id ASC LIMIT 1")
     suspend fun load(): ParentLinkEntity?
+
+    @Query("SELECT * FROM parent_links WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): ParentLinkEntity?
 }
 
 @Dao
