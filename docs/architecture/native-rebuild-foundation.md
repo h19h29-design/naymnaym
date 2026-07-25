@@ -60,7 +60,7 @@ record is written; it does not alter the source.
 | `meal-photo-records` | Each metadata record becomes a `RebuildMealPhoto`; its ID and time are preserved. A present, verified source photo is copied into the rebuild cache without deleting the source photo; a missing source photo produces a warning and deterministic target metadata. |
 | `challenge-records` | Each challenge becomes a `RebuildProgressEvent` retaining its source challenge ID, XP amount, and time. |
 | `parent-profile` | It supplies a parent `RebuildProfile` only when `user-profile` is absent and supplies parent links; target links are deduplicated by ID/normalized invite code. |
-| `child-share-link` | It becomes a `RebuildParentLink` retaining its UUID, invite data, and connection receipt. |
+| `child-share-link` | It becomes a `RebuildParentLink` retaining exactly `id`, `inviteCode`, `connectionState`, and `connectedAt`. `inviteSecret` and registration metadata remain only in the untouched legacy source; iOS rebuild v1 does not store them. |
 
 ### Android SharedPreferences source keys
 
@@ -69,7 +69,7 @@ record is written; it does not alter the source.
 
 | Source keys | Target preservation / mapping |
 | --- | --- |
-| `schoolName`, `officeCode`, `schoolCode`, `region`, `address`, `schoolType` | One child `ProfileEntity` retaining the school fields; the legacy profile ID and nickname are deterministic because this schema did not store them. |
+| `schoolName`, `officeCode`, `schoolCode`, `region`, `address`, `schoolType` | All six keys are read and included in the logical source and digest. v1 `ProfileEntity` persists only `officeCode` and `schoolCode`; `schoolName`, `region`, `address`, and `schoolType` remain only in the untouched legacy source. The legacy profile ID and nickname are deterministic because this schema did not store them. |
 | Every `dailyBaseXp-*` key | The non-negative `Int` entries provide stored total XP and are retained in the migration source digest. |
 | `mealSnapshotLedger` | Its `latestMeals` array becomes meal records and its `actions` array becomes challenge-derived progress events. |
 | `parentChildren` | Its JSON array becomes parent links. |
