@@ -62,11 +62,13 @@ npm test
 npm run typecheck
 npm run build:web
 npm run verify:web
-npm run build:ait
+AIT_APP_NAME=nyam-mvp AIT_ICON_URL=https://example.invalid/icon.png VITE_NEIS_PROXY_URL=https://example.invalid/functions/v1/neis-proxy VITE_SUPABASE_ANON_KEY=public-placeholder npm run build:ait
 npm run verify:release
 ```
 
-`verify:web`는 빠른 웹 preflight입니다. `verify:release`는 최종 `.ait`가 없으면 실패하며, 설치된 공식 AIT reader로 magic과 인덱스를 확인하고 모든 항목을 실제로 읽습니다. 압축 해제 합계 100 MiB 이상, 중복·경로 탈출·symlink 유사 항목, 미허용 형식, 깨진 HTML 자산, 모든 웹/RN bundle·map·JSON·HTML·CSS 및 허용된 산출물의 금지 표식, 빈/누락/추가된 레벨 PNG 또는 PNG 서명을 실패시킵니다. 소스맵과 문서는 검사에서 제외하지 않으며 오류는 발견한 값이나 환경 변수를 출력하지 않습니다.
+위 `AIT_APP_NAME=nyam-mvp`, `AIT_ICON_URL=https://example.invalid/icon.png`, `VITE_NEIS_PROXY_URL=https://example.invalid/functions/v1/neis-proxy`, `VITE_SUPABASE_ANON_KEY=public-placeholder`는 재현 가능한 로컬 패키징 증거만을 위한 비밀이 아닌 placeholder이며 QR/운영 빌드 값이 아닙니다. 운영 빌드에는 앞 절의 실제 설정을 process 환경 또는 커밋되지 않은 `.env`로 제공합니다. 산출물 byte 크기는 환경 값, dependency, 빌드 도구 버전에 따라 달라질 수 있으므로 고정 불변값으로 판정하지 않고, 각 실행의 verifier 출력과 100 MiB 미만 여부를 보관합니다.
+
+`verify:web`는 빠른 웹 preflight입니다. `verify:release`는 최종 `.ait`가 없으면 실패하며, 설치된 공식 AIT reader로 magic과 인덱스를 확인하고 모든 항목을 실제로 읽습니다. 압축 해제 합계 100 MiB 이상, 중복·경로 탈출·symlink 유사 항목, 미허용 형식, 깨진 HTML 자산, ZIP local/central header 불일치·data descriptor·ZIP64·malformed extra/comment, 모든 AIT metadata/entry 이름/comment와 웹/RN bundle·map·JSON·HTML·CSS 및 허용된 산출물의 금지 표식, 빈/누락/추가되거나 IHDR 의미가 잘못된 레벨 PNG를 실패시킵니다. 소스맵과 문서는 검사에서 제외하지 않으며 오류는 발견한 값이나 환경 변수를 출력하지 않습니다.
 
 웹 빌드는 `index.html`을 직접 진입점으로 사용하며 내부 화면 전환은 WebView의 클라이언트 라우터가 처리합니다. 앱인토스 배포 외의 정적 호스트나 `/today` 같은 딥링크를 지원하려면 호스트의 SPA fallback을 별도로 검증합니다. 이 MVP는 앱인토스가 번들을 제공하는 흐름 외의 호스팅을 전제로 하지 않습니다.
 

@@ -30,11 +30,11 @@ function pngChunk(type, data) {
   return chunk;
 }
 
-function validPng() {
+function validPng({ bitDepth = 8, colorType = 6, compression = 0, filter = 0, interlace = 0 } = {}) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(1, 0);
   ihdr.writeUInt32BE(1, 4);
-  ihdr.set([8, 6, 0, 0, 0], 8);
+  ihdr.set([bitDepth, colorType, compression, filter, interlace], 8);
   return Buffer.concat([
     PNG_SIGNATURE,
     pngChunk('IHDR', ihdr),
@@ -123,6 +123,25 @@ function mutateZipEntry(zip, name, mutate) {
   const entry = zipCentralEntries(copy).entries.find((candidate) => candidate.name === name);
   assert.ok(entry, `fixture ZIP has ${name}`);
   mutate(copy, entry);
+  return copy;
+}
+
+function addZipEntryComment(zip, name, comment) {
+  const { eocd, entries } = zipCentralEntries(zip);
+  const entry = entries.find((candidate) => candidate.name === name);
+  assert.ok(entry, `fixture ZIP has ${name}`);
+  const insertAt = entry.offset + 46 + entry.nameLength + entry.extraLength + entry.commentLength;
+  const copy = Buffer.concat([zip.subarray(0, insertAt), comment, zip.subarray(insertAt)]);
+  copy.writeUInt16LE(entry.commentLength + comment.length, entry.offset + 32);
+  copy.writeUInt32LE(zip.readUInt32LE(eocd + 12) + comment.length, eocd + comment.length + 12);
+  return copy;
+}
+
+function addZipEocdComment(zip, comment) {
+  const { eocd } = zipCentralEntries(zip);
+  assert.equal(zip.readUInt16LE(eocd + 20), 0, 'fixture ZIP has no EOCD comment');
+  const copy = Buffer.concat([zip, comment]);
+  copy.writeUInt16LE(comment.length, eocd + 20);
   return copy;
 }
 
@@ -307,7 +326,7 @@ test('rejects central-directory size and digest mismatches', async () => {
       copy.writeUInt32LE(copy.readUInt32LE(entry.offset + 24) + 1, entry.offset + 24);
     });
     await writeFile(sizeArtifact, replaceZip(original, wrongSize));
-    await assert.rejects(() => verifyRelease(sizeArtifact), /invalid ZIP entry size/);
+    await assert.rejects(() => verifyRelease(sizeArtifact), /local ZIP header mismatch/);
 
     const digestArtifact = join(root, 'digest.ait');
     await writeAit(digestArtifact, validEntries());
@@ -330,6 +349,77 @@ test('rejects metadata secrets and non-anon JWT roles without echoing values', a
     entries.set('web/assets/app.js', Buffer.from(jwtForRole('authenticated')));
     await writeAit(jwt, entries);
     await assert.rejects(() => verifyRelease(jwt), /Forbidden JWT role detected/);
+  });
+});
+
+test('rejects secrets in deployment metadata, entry names, and ZIP comments', async () => {
+  await withTemporaryDirectory(async (root) => {
+    const deployment = join(root, 'deployment.ait');
+    await writeAit(deployment, validEntries());
+    const deploymentOriginal = await readFile(deployment);
+    const deploymentBundle = AppsInTossBundle.reader(deploymentOriginal).bundle;
+    deploymentBundle.deploymentId = 'sb_secret_example';
+    await writeFile(deployment, replaceBundle(deploymentOriginal, deploymentBundle));
+    await assert.rejects(() => verifyRelease(deployment), expectsSafeFailure(/Forbidden release marker detected/));
+
+    const filename = join(root, 'filename.ait');
+    const filenameEntries = validEntries();
+    filenameEntries.set('web/assets/sb_secret_example.js', Buffer.from('safe'));
+    await writeAit(filename, filenameEntries);
+    await assert.rejects(() => verifyRelease(filename), expectsSafeFailure(/Forbidden release marker detected/));
+
+    const entryComment = join(root, 'entry-comment.ait');
+    await writeAit(entryComment, validEntries());
+    const entryCommentOriginal = await readFile(entryComment);
+    const entryCommentParts = aitParts(entryCommentOriginal);
+    const entryCommentZip = entryCommentOriginal.subarray(entryCommentParts.zipOffset, entryCommentParts.tailOffset);
+    await writeFile(
+      entryComment,
+      replaceZip(entryCommentOriginal, addZipEntryComment(entryCommentZip, 'web/assets/app.js', Buffer.from('sb_secret_example'))),
+    );
+    await assert.rejects(() => verifyRelease(entryComment), expectsSafeFailure(/Forbidden release marker detected/));
+
+    const eocdComment = join(root, 'eocd-comment.ait');
+    await writeAit(eocdComment, validEntries());
+    const eocdCommentOriginal = await readFile(eocdComment);
+    const eocdCommentParts = aitParts(eocdCommentOriginal);
+    const eocdCommentZip = eocdCommentOriginal.subarray(eocdCommentParts.zipOffset, eocdCommentParts.tailOffset);
+    await writeFile(
+      eocdComment,
+      replaceZip(eocdCommentOriginal, addZipEocdComment(eocdCommentZip, Buffer.from('sb_secret_example'))),
+    );
+    await assert.rejects(() => verifyRelease(eocdComment), expectsSafeFailure(/Forbidden release marker detected/));
+  });
+});
+
+test('rejects local ZIP header CRC and size mismatches and data descriptors', async () => {
+  await withTemporaryDirectory(async (root) => {
+    for (const [label, fieldOffset] of [['crc', 14], ['compressed-size', 18], ['uncompressed-size', 22]]) {
+      const artifact = join(root, `${label}.ait`);
+      await writeAit(artifact, validEntries());
+      const original = await readFile(artifact);
+      const parts = aitParts(original);
+      const zip = Buffer.from(original.subarray(parts.zipOffset, parts.tailOffset));
+      const tampered = mutateZipEntry(zip, 'web/assets/app.js', (copy, entry) => {
+        const localOffset = copy.readUInt32LE(entry.offset + 42);
+        copy.writeUInt32LE(copy.readUInt32LE(localOffset + fieldOffset) + 1, localOffset + fieldOffset);
+      });
+      await writeFile(artifact, replaceZip(original, tampered));
+      await assert.rejects(() => verifyRelease(artifact), /local ZIP header mismatch/);
+    }
+
+    const descriptor = join(root, 'data-descriptor.ait');
+    await writeAit(descriptor, validEntries());
+    const descriptorOriginal = await readFile(descriptor);
+    const descriptorParts = aitParts(descriptorOriginal);
+    const descriptorZip = Buffer.from(descriptorOriginal.subarray(descriptorParts.zipOffset, descriptorParts.tailOffset));
+    const descriptorFlags = mutateZipEntry(descriptorZip, 'web/assets/app.js', (copy, entry) => {
+      const localOffset = copy.readUInt32LE(entry.offset + 42);
+      copy.writeUInt16LE(copy.readUInt16LE(entry.offset + 8) | 0x0008, entry.offset + 8);
+      copy.writeUInt16LE(copy.readUInt16LE(localOffset + 6) | 0x0008, localOffset + 6);
+    });
+    await writeFile(descriptor, replaceZip(descriptorOriginal, descriptorFlags));
+    await assert.rejects(() => verifyRelease(descriptor), /unsupported ZIP entry/);
   });
 });
 
@@ -359,6 +449,12 @@ test('rejects corrupt, truncated, and malformed PNG assets', async () => {
     const truncatedArtifact = join(root, 'truncated.ait');
     await writeAit(truncatedArtifact, truncated);
     await assert.rejects(() => verifyRelease(truncatedArtifact), /invalid level PNG/);
+
+    const invalidBitDepth = validEntries();
+    invalidBitDepth.set('web/growth/level-1.png', validPng({ bitDepth: 0 }));
+    const invalidBitDepthArtifact = join(root, 'invalid-bit-depth.ait');
+    await writeAit(invalidBitDepthArtifact, invalidBitDepth);
+    await assert.rejects(() => verifyRelease(invalidBitDepthArtifact), /invalid level PNG/);
   });
 });
 

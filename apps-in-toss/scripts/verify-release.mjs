@@ -27,6 +27,13 @@ const JWT_PATTERN = /[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 const ZIP_LOCAL_SIGNATURE = 0x04034b50;
 const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const PNG_BIT_DEPTHS = new Map([
+  [0, new Set([1, 2, 4, 8, 16])],
+  [2, new Set([8, 16])],
+  [3, new Set([1, 2, 4, 8])],
+  [4, new Set([8, 16])],
+  [6, new Set([8, 16])],
+]);
 
 function releaseError(message) {
   return new Error(message);
@@ -53,6 +60,7 @@ function safeEntryPath(name) {
   ) {
     throw releaseError('Release bundle contains an unsafe entry path');
   }
+  assertSafeContent(Buffer.from(name));
   return name;
 }
 
@@ -132,6 +140,8 @@ function validatePng(content) {
     if (crc32(content.subarray(offset + 4, offset + 8 + length)) !== content.readUInt32BE(offset + 8 + length)) return false;
     if (!sawIhdr) {
       if (type !== 'IHDR' || length !== 13 || data.readUInt32BE(0) === 0 || data.readUInt32BE(4) === 0) return false;
+      const bitDepths = PNG_BIT_DEPTHS.get(data[9]);
+      if (!bitDepths?.has(data[8]) || data[10] !== 0 || data[11] !== 0 || data[12] > 1) return false;
       sawIhdr = true;
     } else if (type === 'IHDR') {
       return false;
@@ -252,9 +262,23 @@ function findEocd(zip) {
   throw releaseError('Final AIT artifact has malformed ZIP bounds');
 }
 
+function assertZipExtra(extra) {
+  assertSafeContent(extra);
+  let offset = 0;
+  while (offset < extra.length) {
+    if (offset + 4 > extra.length) throw releaseError('Final AIT artifact has malformed ZIP extra fields');
+    const id = extra.readUInt16LE(offset);
+    const length = extra.readUInt16LE(offset + 2);
+    if (offset + 4 + length > extra.length) throw releaseError('Final AIT artifact has malformed ZIP extra fields');
+    if (id === 0x0001) throw releaseError('Final AIT artifact uses unsupported ZIP64 or multidisk fields');
+    offset += 4 + length;
+  }
+}
+
 function parseZipEntries(zip) {
   if (zip.length < 22) throw releaseError('Final AIT artifact has malformed ZIP bounds');
   const eocd = findEocd(zip);
+  assertSafeContent(zip.subarray(eocd + 22));
   const disk = zip.readUInt16LE(eocd + 4);
   const centralDisk = zip.readUInt16LE(eocd + 6);
   const diskCount = zip.readUInt16LE(eocd + 8);
@@ -268,6 +292,7 @@ function parseZipEntries(zip) {
     throw releaseError('Final AIT artifact has malformed ZIP bounds');
   }
   const actual = new Map();
+  const localRecords = [];
   let offset = centralOffset;
   for (let index = 0; index < count; index += 1) {
     if (offset + 46 > eocd || zip.readUInt32LE(offset) !== ZIP_CENTRAL_SIGNATURE) throw releaseError('Final AIT artifact has malformed ZIP bounds');
@@ -289,18 +314,41 @@ function parseZipEntries(zip) {
     if ((flags & 0x0009) !== 0 || (method !== 0 && method !== 8) || ((externalAttrs >>> 16) & 0o170000) === 0o120000 || (externalAttrs & 0x10) !== 0) {
       throw releaseError('Final AIT artifact contains an unsupported ZIP entry');
     }
-    const name = safeEntryPath(zip.subarray(offset + 46, offset + 46 + nameLength).toString('utf8'));
+    const centralName = zip.subarray(offset + 46, offset + 46 + nameLength);
+    const centralExtra = zip.subarray(offset + 46 + nameLength, offset + 46 + nameLength + extraLength);
+    const comment = zip.subarray(offset + 46 + nameLength + extraLength, recordEnd);
+    assertSafeContent(centralName);
+    const name = safeEntryPath(centralName.toString('utf8'));
+    assertZipExtra(centralExtra);
+    assertSafeContent(comment);
     if (actual.has(name)) throw releaseError('Final AIT artifact contains a duplicate ZIP entry');
     if (localOffset + 30 > centralOffset || zip.readUInt32LE(localOffset) !== ZIP_LOCAL_SIGNATURE) throw releaseError('Final AIT artifact has malformed ZIP bounds');
     const localFlags = zip.readUInt16LE(localOffset + 6);
     const localMethod = zip.readUInt16LE(localOffset + 8);
+    const localCrc = zip.readUInt32LE(localOffset + 14);
+    const localCompressedSize = zip.readUInt32LE(localOffset + 18);
+    const localUncompressedSize = zip.readUInt32LE(localOffset + 22);
     const localNameLength = zip.readUInt16LE(localOffset + 26);
     const localExtraLength = zip.readUInt16LE(localOffset + 28);
     const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
     const dataEnd = dataOffset + compressedSize;
-    if (dataEnd > centralOffset || localFlags !== flags || localMethod !== method || zip.subarray(localOffset + 30, localOffset + 30 + localNameLength).toString('utf8') !== name) {
+    if (dataOffset > centralOffset || dataEnd > centralOffset) {
       throw releaseError('Final AIT artifact has malformed ZIP bounds');
     }
+    const localName = zip.subarray(localOffset + 30, localOffset + 30 + localNameLength);
+    const localExtra = zip.subarray(localOffset + 30 + localNameLength, dataOffset);
+    assertZipExtra(localExtra);
+    if (
+      localFlags !== flags
+      || localMethod !== method
+      || localCrc !== crc
+      || localCompressedSize !== compressedSize
+      || localUncompressedSize !== uncompressedSize
+      || !localName.equals(centralName)
+    ) {
+      throw releaseError('Final AIT artifact has a local ZIP header mismatch');
+    }
+    localRecords.push({ start: localOffset, end: dataEnd });
     let content;
     try {
       content = method === 0 ? Buffer.from(zip.subarray(dataOffset, dataEnd)) : Buffer.from(inflateSync(zip.subarray(dataOffset, dataEnd)));
@@ -313,6 +361,13 @@ function parseZipEntries(zip) {
     offset = recordEnd;
   }
   if (offset !== eocd) throw releaseError('Final AIT artifact has malformed ZIP bounds');
+  localRecords.sort((left, right) => left.start - right.start);
+  let localEnd = 0;
+  for (const record of localRecords) {
+    if (record.start !== localEnd || record.end < record.start) throw releaseError('Final AIT artifact has malformed ZIP bounds');
+    localEnd = record.end;
+  }
+  if (localEnd !== centralOffset) throw releaseError('Final AIT artifact has malformed ZIP bounds');
   return actual;
 }
 
@@ -368,10 +423,24 @@ export async function verifyRelease(artifactPath) {
   try {
     entries = parseZipEntries(Buffer.from(reader.readZipBlob()));
   } catch (error) {
-    if (error instanceof Error && (error.message.startsWith('Final AIT') || error.message.startsWith('Release bundle'))) throw error;
+    if (
+      error instanceof Error
+      && (
+        error.message.startsWith('Final AIT')
+        || error.message.startsWith('Release bundle')
+        || error.message.startsWith('Forbidden ')
+      )
+    ) throw error;
     throw releaseError('Final AIT artifact cannot be read');
   }
-  assertSafeMetadata({ appName: reader.appName, createdBy: reader.bundle.createdBy, metadata: reader.metadata, permissions: reader.permissions });
+  assertSafeMetadata({
+    appName: reader.appName,
+    deploymentId: reader.bundle.deploymentId,
+    createdBy: reader.bundle.createdBy,
+    metadata: reader.metadata,
+    permissions: reader.permissions,
+    packageMetadata: reader.bundle,
+  });
   assertIndexMatchesZip(reader.bundle.index ?? [], entries);
   const totalBytes = [...entries.values()].reduce((total, content) => total + content.length, 0);
   if (totalBytes >= RELEASE_LIMIT_BYTES) throw releaseError(`Uncompressed release bundle is ${totalBytes} bytes; it must be below ${RELEASE_LIMIT_BYTES} bytes`);
