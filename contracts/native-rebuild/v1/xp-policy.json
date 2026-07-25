@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "activeStatuses": ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
+  "legacyReadCompatibleStatuses": ["half"],
+  "statusXP": {
+    "finished": 10,
+    "half": 12,
+    "oneBite": 18,
+    "smelledOnly": 10,
+    "difficultToday": 3,
+    "allergyAvoided": 8
+  },
+  "caps": {"base": 50, "challengeBonus": 70, "total": 100}
+}

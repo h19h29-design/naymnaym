@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "nutrition": [
+    {"menuName": "시금치나물", "nutrients": ["fiber", "vitamin"]},
+    {"menuName": "닭고기", "nutrients": ["protein", "iron"]},
+    {"menuName": "우유", "nutrients": ["calcium"]},
+    {"menuName": "현미밥", "nutrients": ["carbohydrate"]},
+    {"menuName": "알 수 없는 메뉴", "nutrients": []}
+  ],
+  "xpNearDailyCap": {
+    "usedBaseXP": 45,
+    "status": "oneBite",
+    "expectedGrantedXP": 5
+  },
+  "duplicateEvent": {
+    "eventId": "meal:2026-07-25|시금치 나물|oneBite",
+    "duplicateEventId": "meal:2026-07-25|시금치 나물|oneBite",
+    "expectedGrantedXP": 0
+  }
+}

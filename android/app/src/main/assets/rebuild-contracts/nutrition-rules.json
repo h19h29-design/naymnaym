@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "matching": "caseInsensitiveSubstring",
+  "deduplicateNutrientIds": true,
+  "educationNotice": "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요.",
+  "nutrientOrder": ["fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate"],
+  "nutrients": {
+    "fiber": {"childName": "식이섬유", "alternatives": ["사과", "고구마"]},
+    "vitamin": {"childName": "비타민", "alternatives": ["귤", "토마토"]},
+    "protein": {"childName": "단백질", "alternatives": ["달걀", "두부"]},
+    "iron": {"childName": "철분", "alternatives": ["소고기", "두부"]},
+    "calcium": {"childName": "칼슘", "alternatives": ["우유", "멸치"]},
+    "carbohydrate": {"childName": "탄수화물", "alternatives": ["밥", "고구마"]}
+  },
+  "rules": [
+    {
+      "keywords": ["나물", "시금치", "콩나물", "채소", "샐러드", "오이", "상추", "깻잎", "브로콜리"],
+      "nutrients": ["fiber", "vitamin"]
+    },
+    {
+      "keywords": ["닭", "돼지", "소", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"],
+      "nutrients": ["protein", "iron"]
+    },
+    {
+      "keywords": ["우유", "멸치", "치즈", "요구르트", "요거트"],
+      "nutrients": ["calcium"]
+    },
+    {
+      "keywords": ["밥", "면", "빵", "떡", "잡채", "국수"],
+      "nutrients": ["carbohydrate"]
+    },
+    {
+      "keywords": ["김치", "과일", "토마토", "귤", "사과", "배추"],
+      "nutrients": ["vitamin"]
+    }
+  ]
+}

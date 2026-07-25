@@ -31,6 +31,103 @@ EXPECTED_RECORD_IDENTITIES = [
 
 
 class NativeRebuildContractTests(unittest.TestCase):
+    def test_xp_policy_preserves_existing_values(self):
+        policy = json.loads((CONTRACTS / "xp-policy.json").read_text())
+
+        self.assertEqual(policy["statusXP"], {
+            "finished": 10,
+            "half": 12,
+            "oneBite": 18,
+            "smelledOnly": 10,
+            "difficultToday": 3,
+            "allergyAvoided": 8,
+        })
+        self.assertEqual(policy["caps"], {"base": 50, "challengeBonus": 70, "total": 100})
+        self.assertEqual(
+            policy["activeStatuses"],
+            ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
+        )
+        self.assertEqual(policy["legacyReadCompatibleStatuses"], ["half"])
+
+    def test_nutrition_fixture_is_deterministic(self):
+        fixtures = json.loads((CONTRACTS / "meal-loop-fixtures.json").read_text())
+
+        expected_nutrients = {
+            "시금치나물": ["fiber", "vitamin"],
+            "닭고기": ["protein", "iron"],
+            "우유": ["calcium"],
+            "현미밥": ["carbohydrate"],
+            "알 수 없는 메뉴": [],
+        }
+        self.assertEqual(
+            {item["menuName"]: item["nutrients"] for item in fixtures["nutrition"]},
+            expected_nutrients,
+        )
+        self.assertEqual(fixtures["xpNearDailyCap"], {
+            "usedBaseXP": 45,
+            "status": "oneBite",
+            "expectedGrantedXP": 5,
+        })
+        self.assertEqual(fixtures["duplicateEvent"], {
+            "eventId": "meal:2026-07-25|시금치 나물|oneBite",
+            "duplicateEventId": "meal:2026-07-25|시금치 나물|oneBite",
+            "expectedGrantedXP": 0,
+        })
+
+    def test_validator_rejects_unsafe_or_ambiguous_meal_loop_contracts(self):
+        policy = {
+            "version": 1,
+            "activeStatuses": ["oneBite", "finished", "half", "smelledOnly", "difficultToday"],
+            "legacyReadCompatibleStatuses": ["half"],
+            "statusXP": {
+                "finished": 10,
+                "half": 12,
+                "oneBite": -18,
+                "smelledOnly": 10,
+                "difficultToday": 3,
+                "allergyAvoided": 8,
+            },
+            "caps": {"base": 50, "challengeBonus": 70, "total": 100},
+        }
+        nutrition_rules = {
+            "version": 1,
+            "matching": "caseInsensitiveSubstring",
+            "deduplicateNutrientIds": True,
+            "educationNotice": "이 음식은 병을 치료해요.",
+            "nutrientOrder": ["fiber", "fiber"],
+            "nutrients": {
+                "fiber": {"childName": "식이섬유", "alternatives": ["사과", "사과"]},
+            },
+            "rules": [{"keywords": ["나물", "나물"], "nutrients": ["fiber", "fiber"]}],
+        }
+
+        result = self._run_validator_with(
+            xp_policy=policy,
+            nutrition_rules=nutrition_rules,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_validator_rejects_malformed_nutrition_rule_without_a_traceback(self):
+        nutrition_rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())
+        nutrition_rules["rules"] = ["not a rule"]
+
+        result = self._run_validator_with(nutrition_rules=nutrition_rules)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("nutrition-rules.json: rules[0]", result.stderr)
+
+    def test_validator_rejects_malformed_xp_policy_without_a_traceback(self):
+        policy = json.loads((CONTRACTS / "xp-policy.json").read_text())
+        policy["caps"] = {}
+
+        result = self._run_validator_with(xp_policy=policy)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("xp-policy.json: caps", result.stderr)
+
     def test_contract_has_exact_v1_values(self):
         contract = json.loads((CONTRACTS / "domain-contract.json").read_text())
         self.assertEqual(contract["version"], 1)
@@ -178,7 +275,15 @@ class NativeRebuildContractTests(unittest.TestCase):
             self.assertEqual(outside_file.read_text(encoding="utf-8"), "outside\n")
             self.assertFalse((project / "android/app/src/main/assets/rebuild-contracts").exists())
 
-    def _run_validator_with(self, contract=None, fixtures=None, design_tokens=None):
+    def _run_validator_with(
+        self,
+        contract=None,
+        fixtures=None,
+        design_tokens=None,
+        nutrition_rules=None,
+        xp_policy=None,
+        meal_loop_fixtures=None,
+    ):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project = pathlib.Path(temporary_directory)
             shutil.copytree(CONTRACTS.parent, project / "contracts/native-rebuild")
@@ -196,6 +301,18 @@ class NativeRebuildContractTests(unittest.TestCase):
             if design_tokens is not None:
                 (project / "contracts/native-rebuild/v1/design-tokens.json").write_text(
                     json.dumps(design_tokens), encoding="utf-8"
+                )
+            if nutrition_rules is not None:
+                (project / "contracts/native-rebuild/v1/nutrition-rules.json").write_text(
+                    json.dumps(nutrition_rules), encoding="utf-8"
+                )
+            if xp_policy is not None:
+                (project / "contracts/native-rebuild/v1/xp-policy.json").write_text(
+                    json.dumps(xp_policy), encoding="utf-8"
+                )
+            if meal_loop_fixtures is not None:
+                (project / "contracts/native-rebuild/v1/meal-loop-fixtures.json").write_text(
+                    json.dumps(meal_loop_fixtures), encoding="utf-8"
                 )
             return subprocess.run(
                 [sys.executable, "scripts/validate-native-rebuild-contracts.py"],

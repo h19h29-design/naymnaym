@@ -69,12 +69,52 @@ EXPECTED_DESIGN_TOKENS = {
     "minimumActionSize": 48,
     "fontPolicy": "system-scalable",
 }
+EXPECTED_NUTRIENT_ORDER = ["fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate"]
+EXPECTED_NUTRITION_RULES = [
+    {
+        "keywords": ["나물", "시금치", "콩나물", "채소", "샐러드", "오이", "상추", "깻잎", "브로콜리"],
+        "nutrients": ["fiber", "vitamin"],
+    },
+    {
+        "keywords": ["닭", "돼지", "소", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"],
+        "nutrients": ["protein", "iron"],
+    },
+    {"keywords": ["우유", "멸치", "치즈", "요구르트", "요거트"], "nutrients": ["calcium"]},
+    {"keywords": ["밥", "면", "빵", "떡", "잡채", "국수"], "nutrients": ["carbohydrate"]},
+    {"keywords": ["김치", "과일", "토마토", "귤", "사과", "배추"], "nutrients": ["vitamin"]},
+]
+EXPECTED_NUTRIENTS = {
+    "fiber": {"childName": "식이섬유", "alternatives": ["사과", "고구마"]},
+    "vitamin": {"childName": "비타민", "alternatives": ["귤", "토마토"]},
+    "protein": {"childName": "단백질", "alternatives": ["달걀", "두부"]},
+    "iron": {"childName": "철분", "alternatives": ["소고기", "두부"]},
+    "calcium": {"childName": "칼슘", "alternatives": ["우유", "멸치"]},
+    "carbohydrate": {"childName": "탄수화물", "alternatives": ["밥", "고구마"]},
+}
+EXPECTED_STATUS_XP = {
+    "finished": 10,
+    "half": 12,
+    "oneBite": 18,
+    "smelledOnly": 10,
+    "difficultToday": 3,
+    "allergyAvoided": 8,
+}
+EXPECTED_CAPS = {"base": 50, "challengeBonus": 70, "total": 100}
+SAFE_EDUCATION_NOTICE = "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
 
 
 def load_json(path):
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key {key!r}")
+            result[key] = value
+        return result
+
     try:
         with path.open(encoding="utf-8") as file:
-            return json.load(file)
+            return json.load(file, object_pairs_hook=reject_duplicate_keys)
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError(f"{path.relative_to(ROOT)}: {error}") from error
 
@@ -180,11 +220,239 @@ def validate_design_tokens(tokens):
     return []
 
 
+def is_integer(value):
+    return type(value) is int
+
+
+def validate_unique_strings(value, name, errors):
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        errors.append(f"{name} must be a non-empty string array")
+        return False
+    if len(value) != len(set(value)):
+        errors.append(f"{name} values must be unique")
+        return False
+    return True
+
+
+def estimate_nutrients(menu_name, rules):
+    lowered = menu_name.lower()
+    nutrients = []
+    for rule in rules:
+        if any(keyword in lowered for keyword in rule["keywords"]):
+            for nutrient in rule["nutrients"]:
+                if nutrient not in nutrients:
+                    nutrients.append(nutrient)
+    return nutrients
+
+
+def validate_nutrition_rules(rules):
+    if not isinstance(rules, dict):
+        return ["nutrition-rules.json: root must be an object"]
+
+    errors = []
+    expected_keys = {
+        "version", "matching", "deduplicateNutrientIds", "educationNotice", "nutrientOrder", "nutrients", "rules"
+    }
+    if set(rules) != expected_keys:
+        errors.append("nutrition-rules.json: must contain only the v1 schema fields")
+    if rules.get("version") != 1 or not is_integer(rules.get("version")):
+        errors.append("nutrition-rules.json: version must be exactly integer 1")
+    if rules.get("matching") != "caseInsensitiveSubstring":
+        errors.append("nutrition-rules.json: matching must be caseInsensitiveSubstring")
+    if rules.get("deduplicateNutrientIds") is not True:
+        errors.append("nutrition-rules.json: deduplicateNutrientIds must be true")
+    if rules.get("educationNotice") != SAFE_EDUCATION_NOTICE:
+        errors.append("nutrition-rules.json: educationNotice must use the safe educational wording")
+
+    nutrient_order = rules.get("nutrientOrder")
+    if validate_unique_strings(nutrient_order, "nutrition-rules.json: nutrientOrder", errors):
+        if nutrient_order != EXPECTED_NUTRIENT_ORDER:
+            errors.append("nutrition-rules.json: nutrientOrder must match the exact v1 nutrient IDs")
+
+    nutrients = rules.get("nutrients")
+    if not isinstance(nutrients, dict):
+        errors.append("nutrition-rules.json: nutrients must be an object")
+    else:
+        if list(nutrients) != EXPECTED_NUTRIENT_ORDER:
+            errors.append("nutrition-rules.json: nutrients must use the deterministic v1 order")
+        if nutrients != EXPECTED_NUTRIENTS:
+            errors.append("nutrition-rules.json: nutrients must match the child-safe v1 alternatives")
+        for nutrient_id, nutrient in nutrients.items():
+            if not isinstance(nutrient, dict) or set(nutrient) != {"childName", "alternatives"}:
+                errors.append(f"nutrition-rules.json: nutrients.{nutrient_id} must contain childName and alternatives")
+                continue
+            if not isinstance(nutrient["childName"], str) or not nutrient["childName"]:
+                errors.append(f"nutrition-rules.json: nutrients.{nutrient_id}.childName must be a non-empty string")
+            alternatives = nutrient["alternatives"]
+            if validate_unique_strings(alternatives, f"nutrition-rules.json: nutrients.{nutrient_id}.alternatives", errors):
+                if not 1 <= len(alternatives) <= 2:
+                    errors.append(f"nutrition-rules.json: nutrients.{nutrient_id}.alternatives must contain one or two foods")
+
+    keyword_rules = rules.get("rules")
+    if not isinstance(keyword_rules, list):
+        return errors + ["nutrition-rules.json: rules must be an array"]
+    if keyword_rules != EXPECTED_NUTRITION_RULES:
+        errors.append("nutrition-rules.json: rules must preserve the ordered iOS keyword rules")
+    nutrient_ids = set(nutrients) if isinstance(nutrients, dict) else set()
+    for index, rule in enumerate(keyword_rules):
+        if not isinstance(rule, dict) or set(rule) != {"keywords", "nutrients"}:
+            errors.append(f"nutrition-rules.json: rules[{index}] must contain keywords and nutrients")
+            continue
+        validate_unique_strings(rule["keywords"], f"nutrition-rules.json: rules[{index}].keywords", errors)
+        if validate_unique_strings(rule["nutrients"], f"nutrition-rules.json: rules[{index}].nutrients", errors):
+            unknown = set(rule["nutrients"]) - nutrient_ids
+            if unknown:
+                errors.append(f"nutrition-rules.json: rules[{index}] references unknown nutrient IDs")
+    return errors
+
+
+def validate_xp_policy(policy, eating_statuses, recordable_statuses):
+    if not isinstance(policy, dict):
+        return ["xp-policy.json: root must be an object"]
+
+    errors = []
+    if set(policy) != {"version", "activeStatuses", "legacyReadCompatibleStatuses", "statusXP", "caps"}:
+        errors.append("xp-policy.json: must contain only the v1 schema fields")
+    if policy.get("version") != 1 or not is_integer(policy.get("version")):
+        errors.append("xp-policy.json: version must be exactly integer 1")
+
+    active = policy.get("activeStatuses")
+    legacy = policy.get("legacyReadCompatibleStatuses")
+    active_is_valid = validate_unique_strings(active, "xp-policy.json: activeStatuses", errors)
+    legacy_is_valid = validate_unique_strings(legacy, "xp-policy.json: legacyReadCompatibleStatuses", errors)
+    if active_is_valid and active != recordable_statuses:
+        errors.append("xp-policy.json: activeStatuses must match recordable eating statuses")
+    if legacy_is_valid and legacy != ["half"]:
+        errors.append("xp-policy.json: half is the only legacy read-compatible status")
+    if active_is_valid and legacy_is_valid:
+        if set(active) & set(legacy):
+            errors.append("xp-policy.json: active and legacy statuses must not overlap")
+        if set(active) | set(legacy) != set(eating_statuses):
+            errors.append("xp-policy.json: active and legacy statuses must cover allowed eating statuses")
+
+    status_xp = policy.get("statusXP")
+    if not isinstance(status_xp, dict):
+        errors.append("xp-policy.json: statusXP must be an object")
+    else:
+        if status_xp != EXPECTED_STATUS_XP:
+            errors.append("xp-policy.json: statusXP must match the exact v1 rewards")
+        if set(status_xp) != set(eating_statuses):
+            errors.append("xp-policy.json: statusXP keys must be the allowed eating statuses")
+        for status, xp in status_xp.items():
+            if not is_integer(xp) or xp < 0:
+                errors.append(f"xp-policy.json: statusXP.{status} must be a non-negative integer")
+
+    caps = policy.get("caps")
+    if not isinstance(caps, dict):
+        errors.append("xp-policy.json: caps must be an object")
+    else:
+        if caps != EXPECTED_CAPS:
+            errors.append("xp-policy.json: caps must match the exact v1 limits")
+        if set(caps) != {"base", "challengeBonus", "total"}:
+            errors.append("xp-policy.json: caps must contain base, challengeBonus, and total")
+        elif not all(is_integer(value) and value >= 0 for value in caps.values()):
+            errors.append("xp-policy.json: caps must be non-negative integers")
+        elif caps["base"] > caps["total"] or caps["challengeBonus"] > caps["total"]:
+            errors.append("xp-policy.json: component caps must not exceed total")
+    return errors
+
+
+def validate_meal_loop_fixtures(fixtures, rules, policy):
+    if not isinstance(fixtures, dict):
+        return ["meal-loop-fixtures.json: root must be an object"]
+
+    errors = []
+    if set(fixtures) != {"version", "nutrition", "xpNearDailyCap", "duplicateEvent"}:
+        errors.append("meal-loop-fixtures.json: must contain only the v1 schema fields")
+    if fixtures.get("version") != 1 or not is_integer(fixtures.get("version")):
+        errors.append("meal-loop-fixtures.json: version must be exactly integer 1")
+    nutrition = fixtures.get("nutrition")
+    expected_menus = ["시금치나물", "닭고기", "우유", "현미밥", "알 수 없는 메뉴"]
+    if not isinstance(nutrition, list):
+        errors.append("meal-loop-fixtures.json: nutrition must be an array")
+    else:
+        menu_names = []
+        for index, fixture in enumerate(nutrition):
+            if not isinstance(fixture, dict) or set(fixture) != {"menuName", "nutrients"}:
+                errors.append(f"meal-loop-fixtures.json: nutrition[{index}] must contain menuName and nutrients")
+                continue
+            menu_name = fixture["menuName"]
+            expected_nutrients = fixture["nutrients"]
+            if not isinstance(menu_name, str) or not menu_name:
+                errors.append(f"meal-loop-fixtures.json: nutrition[{index}].menuName must be a non-empty string")
+                continue
+            if not isinstance(expected_nutrients, list) or not all(isinstance(item, str) for item in expected_nutrients):
+                errors.append(f"meal-loop-fixtures.json: nutrition[{index}].nutrients must be a string array")
+                continue
+            if len(expected_nutrients) != len(set(expected_nutrients)):
+                errors.append(f"meal-loop-fixtures.json: nutrition[{index}].nutrients must be unique")
+            rule_entries = rules.get("rules") if isinstance(rules, dict) else None
+            can_estimate = isinstance(rule_entries, list) and all(
+                isinstance(rule, dict)
+                and set(rule) == {"keywords", "nutrients"}
+                and isinstance(rule["keywords"], list)
+                and all(isinstance(keyword, str) for keyword in rule["keywords"])
+                and isinstance(rule["nutrients"], list)
+                and all(isinstance(nutrient, str) for nutrient in rule["nutrients"])
+                for rule in rule_entries
+            )
+            if can_estimate:
+                if expected_nutrients != estimate_nutrients(menu_name, rule_entries):
+                    errors.append(f"meal-loop-fixtures.json: nutrition[{index}] must match the ordered rules")
+            menu_names.append(menu_name)
+        if menu_names != expected_menus:
+            errors.append("meal-loop-fixtures.json: nutrition must cover the deterministic v1 menu set")
+
+    near_cap = fixtures.get("xpNearDailyCap")
+    if not isinstance(near_cap, dict) or set(near_cap) != {"usedBaseXP", "status", "expectedGrantedXP"}:
+        errors.append("meal-loop-fixtures.json: xpNearDailyCap must contain usedBaseXP, status, and expectedGrantedXP")
+    elif not all(is_integer(near_cap[key]) for key in ("usedBaseXP", "expectedGrantedXP")):
+        errors.append("meal-loop-fixtures.json: xpNearDailyCap XP values must be integers")
+    elif not isinstance(policy, dict):
+        errors.append("meal-loop-fixtures.json: cannot validate XP fixture without a valid policy")
+    else:
+        status_xp = policy.get("statusXP")
+        caps = policy.get("caps")
+        active_statuses = policy.get("activeStatuses")
+        can_apply_caps = (
+            isinstance(status_xp, dict)
+            and isinstance(caps, dict)
+            and isinstance(active_statuses, list)
+            and {"base", "challengeBonus", "total"}.issubset(caps)
+            and all(is_integer(caps[key]) for key in ("base", "challengeBonus", "total"))
+            and near_cap["status"] in status_xp
+        )
+        if not can_apply_caps:
+            errors.append("meal-loop-fixtures.json: cannot validate XP fixture without a valid policy")
+        elif near_cap["status"] not in active_statuses:
+            errors.append("meal-loop-fixtures.json: xpNearDailyCap status must be active")
+        elif near_cap["usedBaseXP"] < 0 or near_cap["usedBaseXP"] >= caps["base"]:
+            errors.append("meal-loop-fixtures.json: xpNearDailyCap must be immediately below the base cap")
+        elif near_cap["expectedGrantedXP"] != min(
+            status_xp[near_cap["status"]], caps["base"] - near_cap["usedBaseXP"]
+        ):
+            errors.append("meal-loop-fixtures.json: xpNearDailyCap expectedGrantedXP must apply the base cap")
+
+    duplicate = fixtures.get("duplicateEvent")
+    if not isinstance(duplicate, dict) or set(duplicate) != {"eventId", "duplicateEventId", "expectedGrantedXP"}:
+        errors.append("meal-loop-fixtures.json: duplicateEvent must contain both event IDs and expectedGrantedXP")
+    elif not all(isinstance(duplicate[key], str) and duplicate[key] for key in ("eventId", "duplicateEventId")):
+        errors.append("meal-loop-fixtures.json: duplicate event IDs must be non-empty strings")
+    elif duplicate["eventId"] != duplicate["duplicateEventId"] or not duplicate["eventId"].startswith("meal:"):
+        errors.append("meal-loop-fixtures.json: duplicateEvent must reuse one meal event ID")
+    elif not is_integer(duplicate["expectedGrantedXP"]) or duplicate["expectedGrantedXP"] != 0:
+        errors.append("meal-loop-fixtures.json: duplicateEvent must grant zero XP")
+    return errors
+
+
 def main():
     try:
         contract = load_json(CONTRACTS / "domain-contract.json")
         fixtures = load_json(CONTRACTS / "domain-fixtures.json")
         design_tokens = load_json(CONTRACTS / "design-tokens.json")
+        nutrition_rules = load_json(CONTRACTS / "nutrition-rules.json")
+        xp_policy = load_json(CONTRACTS / "xp-policy.json")
+        meal_loop_fixtures = load_json(CONTRACTS / "meal-loop-fixtures.json")
     except ValueError as error:
         print(f"native-rebuild-contract-validation: FAIL\n{error}", file=sys.stderr)
         return 1
@@ -192,6 +460,13 @@ def main():
     errors = validate_contract(contract)
     errors.extend(validate_fixtures(fixtures, contract.get("eatingStatuses", [])))
     errors.extend(validate_design_tokens(design_tokens))
+    errors.extend(validate_nutrition_rules(nutrition_rules))
+    errors.extend(validate_xp_policy(
+        xp_policy,
+        contract.get("eatingStatuses", []),
+        contract.get("recordableEatingStatuses", []),
+    ))
+    errors.extend(validate_meal_loop_fixtures(meal_loop_fixtures, nutrition_rules, xp_policy))
     if errors:
         print("native-rebuild-contract-validation: FAIL", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
