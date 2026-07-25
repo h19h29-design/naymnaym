@@ -155,19 +155,51 @@ final class RebuildMealRepositoryTests: XCTestCase {
         XCTAssertNil(cached)
     }
 
-    func testOlderRefreshCannotOverwriteNewerStateOrCache() async throws {
+    func testStaleRefreshCompletionsCannotReplaceNewerStateOrCache() async throws {
+        let staleMeal = RebuildMealDay.fixture(
+            date: "2026-07-25",
+            menuName: "이전 급식"
+        )
+        let cases: [StaleRefreshCompletionCase] = [
+            StaleRefreshCompletionCase(
+                name: "stale meal",
+                result: .success(staleMeal)
+            ),
+            StaleRefreshCompletionCase(
+                name: "stale no-meal",
+                result: .success(nil)
+            ),
+            StaleRefreshCompletionCase(
+                name: "stale failure",
+                result: .failure(NEISClientError.serverStatus(503))
+            ),
+        ]
+
+        for testCase in cases {
+            try await assertStaleCompletionCannotReplaceNewerMeal(testCase)
+        }
+    }
+
+    private func assertStaleCompletionCannotReplaceNewerMeal(
+        _ testCase: StaleRefreshCompletionCase
+    ) async throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let store = CoreDataRebuildMealDayStore(
             context: container.viewContext
         )
         let client = ControlledMealClient()
+        let initialMeal = RebuildMealDay.fixture(
+            date: "2026-07-25",
+            menuName: "초기 캐시"
+        )
         let newerMeal = RebuildMealDay.fixture(
             date: "2026-07-25",
             menuName: "최신 급식"
         )
-        let olderMeal = RebuildMealDay.fixture(
-            date: "2026-07-25",
-            menuName: "이전 급식"
+        try store.save(
+            initialMeal,
+            refreshedAt: Date(timeIntervalSince1970: 1_753_401_600),
+            source: "neis"
         )
         let refreshedAt = Date(timeIntervalSince1970: 1_753_405_200)
         let repository = RebuildMealRepository(
@@ -199,12 +231,16 @@ final class RebuildMealRepositoryTests: XCTestCase {
         await newerRefresh.value
         await client.complete(
             requestID: 0,
-            with: .success(olderMeal)
+            with: testCase.result
         )
         await olderRefresh.value
 
         let state = await repository.currentState(date: "2026-07-25")
-        XCTAssertEqual(state, .live(newerMeal))
+        XCTAssertEqual(
+            state,
+            .live(newerMeal),
+            testCase.name
+        )
 
         let restoredRepository = RebuildMealRepository(
             store: store,
@@ -215,7 +251,8 @@ final class RebuildMealRepositoryTests: XCTestCase {
         )
         XCTAssertEqual(
             restoredState,
-            .cached(newerMeal, refreshedAt: refreshedAt)
+            .cached(newerMeal, refreshedAt: refreshedAt),
+            testCase.name
         )
     }
 }
@@ -411,6 +448,11 @@ private struct StubMealClient: RebuildMealClientProtocol {
     ) async throws -> RebuildMealDay? {
         try result.get()
     }
+}
+
+private struct StaleRefreshCompletionCase {
+    let name: String
+    let result: Result<RebuildMealDay?, Error>
 }
 
 private actor ControlledMealClient: RebuildMealClientProtocol {
