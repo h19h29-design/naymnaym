@@ -52,6 +52,23 @@ EXPECTED_RECORD_IDENTITIES = [
         "expected": "2026-07-25|현미밥|finished",
     },
 ]
+EXPECTED_DESIGN_TOKENS = {
+    "version": 1,
+    "colors": {
+        "forest700": "#1F5E43",
+        "forest500": "#2F8A61",
+        "leaf300": "#CBEA78",
+        "cream50": "#FFF9EC",
+        "cream100": "#F5EEDC",
+        "ink900": "#183127",
+        "muted600": "#627168",
+        "danger700": "#A33A35",
+    },
+    "spacing": [4, 8, 12, 16, 24, 32],
+    "radii": [12, 20, 28],
+    "minimumActionSize": 48,
+    "fontPolicy": "system-scalable",
+}
 
 
 def load_json(path):
@@ -142,16 +159,24 @@ def validate_fixtures(fixtures, eating_statuses):
     return errors
 
 
+def validate_design_tokens(tokens):
+    if tokens != EXPECTED_DESIGN_TOKENS:
+        return ["design-tokens.json: must match the exact v1 content"]
+    return []
+
+
 def main():
     try:
         contract = load_json(CONTRACTS / "domain-contract.json")
         fixtures = load_json(CONTRACTS / "domain-fixtures.json")
+        design_tokens = load_json(CONTRACTS / "design-tokens.json")
     except ValueError as error:
         print(f"native-rebuild-contract-validation: FAIL\n{error}", file=sys.stderr)
         return 1
 
     errors = validate_contract(contract)
     errors.extend(validate_fixtures(fixtures, contract.get("eatingStatuses", [])))
+    errors.extend(validate_design_tokens(design_tokens))
     if errors:
         print("native-rebuild-contract-validation: FAIL", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)

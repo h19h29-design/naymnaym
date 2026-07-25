@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "colors": {
+    "forest700": "#1F5E43",
+    "forest500": "#2F8A61",
+    "leaf300": "#CBEA78",
+    "cream50": "#FFF9EC",
+    "cream100": "#F5EEDC",
+    "ink900": "#183127",
+    "muted600": "#627168",
+    "danger700": "#A33A35"
+  },
+  "spacing": [4, 8, 12, 16, 24, 32],
+  "radii": [12, 20, 28],
+  "minimumActionSize": 48,
+  "fontPolicy": "system-scalable"
+}
