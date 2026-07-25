@@ -11,8 +11,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "contracts/native-rebuild/v1"
 
 EXPECTED_IDENTITY_RULES = {
+    "dateFormat": "yyyy-MM-dd",
+    "normalizedMenuName": "trimAndLowercase",
+    "recordIdentityComponents": ["date", "normalizedMenuName", "status"],
     "recordIdentity": "{date}|{normalizedMenuName}|{status}",
     "progressEventIdentity": "meal:{recordIdentity}",
+    "progressEventSourceRecordIdentity": "{recordIdentity}",
 }
 EXPECTED_RECORD_IDENTITIES = [
     {
@@ -51,6 +55,7 @@ class NativeRebuildContractTests(unittest.TestCase):
 
     def test_nutrition_fixture_is_deterministic(self):
         fixtures = json.loads((CONTRACTS / "meal-loop-fixtures.json").read_text())
+        rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())
 
         expected_nutrients = {
             "시금치나물": ["fiber", "vitamin"],
@@ -69,10 +74,17 @@ class NativeRebuildContractTests(unittest.TestCase):
             "expectedGrantedXP": 5,
         })
         self.assertEqual(fixtures["duplicateEvent"], {
-            "eventId": "meal:2026-07-25|시금치 나물|oneBite",
-            "duplicateEventId": "meal:2026-07-25|시금치 나물|oneBite",
+            "date": "2026-07-25",
+            "menuName": " 시금치 나물 ",
+            "normalizedMenuName": "시금치 나물",
+            "status": "oneBite",
+            "recordID": "2026-07-25|시금치 나물|oneBite",
+            "eventID": "meal:2026-07-25|시금치 나물|oneBite",
+            "duplicateEventID": "meal:2026-07-25|시금치 나물|oneBite",
             "expectedGrantedXP": 0,
         })
+        self.assertEqual(rules["omissionCopy"], "영양소를 조금 놓칠 수 있어요.")
+        self.assertIn("의학 진단이나 치료를 대신하지 않는", rules["educationNotice"])
 
     def test_validator_rejects_unsafe_or_ambiguous_meal_loop_contracts(self):
         policy = {
@@ -127,6 +139,36 @@ class NativeRebuildContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertNotIn("Traceback", result.stderr)
         self.assertIn("xp-policy.json: caps", result.stderr)
+
+    def test_validator_rejects_malformed_or_noncanonical_duplicate_event_identity(self):
+        invalid_fields = {
+            "date": "2026-7-25",
+            "status": "unknown",
+            "menuName": "시금치 나물|oneBite",
+            "recordID": "2026-07-25|시금치 나물|finished",
+            "eventID": "meal:2026-07-25|시금치 나물|finished",
+            "duplicateEventID": "meal:2026-07-25|시금치 나물|finished",
+        }
+        for field, invalid_value in invalid_fields.items():
+            with self.subTest(field=field):
+                fixtures = json.loads((CONTRACTS / "meal-loop-fixtures.json").read_text())
+                fixtures["duplicateEvent"][field] = invalid_value
+
+                result = self._run_validator_with(meal_loop_fixtures=fixtures)
+
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertIn("duplicateEvent", result.stderr)
+
+    def test_validator_rejects_non_string_xp_fixture_status_without_a_traceback(self):
+        fixtures = json.loads((CONTRACTS / "meal-loop-fixtures.json").read_text())
+        fixtures["xpNearDailyCap"]["status"] = 18
+
+        result = self._run_validator_with(meal_loop_fixtures=fixtures)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("xpNearDailyCap status", result.stderr)
 
     def test_contract_has_exact_v1_values(self):
         contract = json.loads((CONTRACTS / "domain-contract.json").read_text())

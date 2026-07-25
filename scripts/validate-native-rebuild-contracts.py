@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json
 import pathlib
+import datetime
+import re
 import sys
 
 
@@ -35,8 +37,12 @@ EXPECTED_ARRAYS = {
     ],
 }
 EXPECTED_IDENTITY_RULES = {
+    "dateFormat": "yyyy-MM-dd",
+    "normalizedMenuName": "trimAndLowercase",
+    "recordIdentityComponents": ["date", "normalizedMenuName", "status"],
     "recordIdentity": "{date}|{normalizedMenuName}|{status}",
     "progressEventIdentity": "meal:{recordIdentity}",
+    "progressEventSourceRecordIdentity": "{recordIdentity}",
 }
 EXPECTED_RECORD_IDENTITIES = [
     {
@@ -101,6 +107,7 @@ EXPECTED_STATUS_XP = {
 }
 EXPECTED_CAPS = {"base": 50, "challengeBonus": 70, "total": 100}
 SAFE_EDUCATION_NOTICE = "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
+CHILD_OMISSION_COPY = "영양소를 조금 놓칠 수 있어요."
 
 
 def load_json(path):
@@ -122,7 +129,21 @@ def load_json(path):
 def normalize_menu_name(menu_name):
     if not isinstance(menu_name, str):
         raise ValueError("fixture menuName must be a string")
-    return menu_name.strip()
+    return menu_name.strip().lower()
+
+
+def is_canonical_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def record_identity(date, normalized_menu_name, status):
+    return f"{date}|{normalized_menu_name}|{status}"
 
 
 def validate_contract(contract):
@@ -174,8 +195,8 @@ def validate_fixtures(fixtures, eating_statuses):
         date = record.get("date")
         status = record.get("status")
         expected = record.get("expected")
-        if not isinstance(date, str) or not date:
-            errors.append(f"domain-fixtures.json: recordIdentities[{index}].date must be a non-empty string")
+        if not is_canonical_date(date):
+            errors.append(f"domain-fixtures.json: recordIdentities[{index}].date must be yyyy-MM-dd")
             continue
         if status not in eating_statuses:
             errors.append(f"domain-fixtures.json: recordIdentities[{index}].status must be an eating status")
@@ -184,7 +205,10 @@ def validate_fixtures(fixtures, eating_statuses):
             errors.append(f"domain-fixtures.json: recordIdentities[{index}].expected must be a string")
             continue
         try:
-            actual = f"{date}|{normalize_menu_name(record.get('menuName'))}|{status}"
+            normalized_menu_name = normalize_menu_name(record.get("menuName"))
+            if not normalized_menu_name or "|" in normalized_menu_name:
+                raise ValueError("fixture menuName must normalize to a non-empty pipe-free string")
+            actual = record_identity(date, normalized_menu_name, status)
         except ValueError as error:
             errors.append(f"domain-fixtures.json: recordIdentities[{index}]: {error}")
             continue
@@ -251,7 +275,7 @@ def validate_nutrition_rules(rules):
 
     errors = []
     expected_keys = {
-        "version", "matching", "deduplicateNutrientIds", "educationNotice", "nutrientOrder", "nutrients", "rules"
+        "version", "matching", "deduplicateNutrientIds", "omissionCopy", "educationNotice", "nutrientOrder", "nutrients", "rules"
     }
     if set(rules) != expected_keys:
         errors.append("nutrition-rules.json: must contain only the v1 schema fields")
@@ -261,6 +285,8 @@ def validate_nutrition_rules(rules):
         errors.append("nutrition-rules.json: matching must be caseInsensitiveSubstring")
     if rules.get("deduplicateNutrientIds") is not True:
         errors.append("nutrition-rules.json: deduplicateNutrientIds must be true")
+    if rules.get("omissionCopy") != CHILD_OMISSION_COPY:
+        errors.append("nutrition-rules.json: omissionCopy must use the child-facing '놓칠 수 있어요' wording")
     if rules.get("educationNotice") != SAFE_EDUCATION_NOTICE:
         errors.append("nutrition-rules.json: educationNotice must use the safe educational wording")
 
@@ -408,6 +434,8 @@ def validate_meal_loop_fixtures(fixtures, rules, policy):
         errors.append("meal-loop-fixtures.json: xpNearDailyCap must contain usedBaseXP, status, and expectedGrantedXP")
     elif not all(is_integer(near_cap[key]) for key in ("usedBaseXP", "expectedGrantedXP")):
         errors.append("meal-loop-fixtures.json: xpNearDailyCap XP values must be integers")
+    elif not isinstance(near_cap["status"], str):
+        errors.append("meal-loop-fixtures.json: xpNearDailyCap status must be a string")
     elif not isinstance(policy, dict):
         errors.append("meal-loop-fixtures.json: cannot validate XP fixture without a valid policy")
     else:
@@ -434,14 +462,36 @@ def validate_meal_loop_fixtures(fixtures, rules, policy):
             errors.append("meal-loop-fixtures.json: xpNearDailyCap expectedGrantedXP must apply the base cap")
 
     duplicate = fixtures.get("duplicateEvent")
-    if not isinstance(duplicate, dict) or set(duplicate) != {"eventId", "duplicateEventId", "expectedGrantedXP"}:
-        errors.append("meal-loop-fixtures.json: duplicateEvent must contain both event IDs and expectedGrantedXP")
-    elif not all(isinstance(duplicate[key], str) and duplicate[key] for key in ("eventId", "duplicateEventId")):
-        errors.append("meal-loop-fixtures.json: duplicate event IDs must be non-empty strings")
-    elif duplicate["eventId"] != duplicate["duplicateEventId"] or not duplicate["eventId"].startswith("meal:"):
-        errors.append("meal-loop-fixtures.json: duplicateEvent must reuse one meal event ID")
-    elif not is_integer(duplicate["expectedGrantedXP"]) or duplicate["expectedGrantedXP"] != 0:
-        errors.append("meal-loop-fixtures.json: duplicateEvent must grant zero XP")
+    duplicate_keys = {
+        "date", "menuName", "normalizedMenuName", "status", "recordID", "eventID", "duplicateEventID", "expectedGrantedXP"
+    }
+    if not isinstance(duplicate, dict) or set(duplicate) != duplicate_keys:
+        errors.append("meal-loop-fixtures.json: duplicateEvent must contain canonical record and event identity components")
+    elif not all(isinstance(duplicate[key], str) for key in duplicate_keys - {"expectedGrantedXP"}):
+        errors.append("meal-loop-fixtures.json: duplicateEvent identity components must be strings")
+    elif not is_canonical_date(duplicate["date"]):
+        errors.append("meal-loop-fixtures.json: duplicateEvent date must be yyyy-MM-dd")
+    elif duplicate["status"] not in EXPECTED_ARRAYS["eatingStatuses"]:
+        errors.append("meal-loop-fixtures.json: duplicateEvent status must be an allowed eating status")
+    else:
+        normalized_menu_name = normalize_menu_name(duplicate["menuName"])
+        if not normalized_menu_name or "|" in normalized_menu_name:
+            errors.append("meal-loop-fixtures.json: duplicateEvent menuName must normalize to a non-empty pipe-free string")
+        elif duplicate["normalizedMenuName"] != normalized_menu_name:
+            errors.append("meal-loop-fixtures.json: duplicateEvent normalizedMenuName must be canonical")
+        else:
+            expected_record_id = record_identity(
+                duplicate["date"], duplicate["normalizedMenuName"], duplicate["status"]
+            )
+            expected_event_id = f"meal:{expected_record_id}"
+            if duplicate["recordID"] != expected_record_id:
+                errors.append("meal-loop-fixtures.json: duplicateEvent recordID must use the canonical identity")
+            if duplicate["eventID"] != expected_event_id:
+                errors.append("meal-loop-fixtures.json: duplicateEvent eventID must prefix the canonical recordID")
+            if duplicate["duplicateEventID"] != expected_event_id:
+                errors.append("meal-loop-fixtures.json: duplicateEvent must reuse the canonical eventID")
+        if not is_integer(duplicate["expectedGrantedXP"]) or duplicate["expectedGrantedXP"] != 0:
+            errors.append("meal-loop-fixtures.json: duplicateEvent must grant zero XP")
     return errors
 
 

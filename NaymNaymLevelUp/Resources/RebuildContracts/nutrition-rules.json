@@ -2,6 +2,7 @@
   "version": 1,
   "matching": "caseInsensitiveSubstring",
   "deduplicateNutrientIds": true,
+  "omissionCopy": "영양소를 조금 놓칠 수 있어요.",
   "educationNotice": "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요.",
   "nutrientOrder": ["fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate"],
   "nutrients": {

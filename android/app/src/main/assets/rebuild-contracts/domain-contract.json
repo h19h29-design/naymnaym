@@ -6,7 +6,11 @@
   "syncStates": ["localOnly", "queued", "synced", "failed", "deleted"],
   "motionStates": ["idle", "tapReaction", "mealSuccess", "levelUp", "comfort", "reducedMotion"],
   "identityRules": {
+    "dateFormat": "yyyy-MM-dd",
+    "normalizedMenuName": "trimAndLowercase",
+    "recordIdentityComponents": ["date", "normalizedMenuName", "status"],
     "recordIdentity": "{date}|{normalizedMenuName}|{status}",
-    "progressEventIdentity": "meal:{recordIdentity}"
+    "progressEventIdentity": "meal:{recordIdentity}",
+    "progressEventSourceRecordIdentity": "{recordIdentity}"
   }
 }
