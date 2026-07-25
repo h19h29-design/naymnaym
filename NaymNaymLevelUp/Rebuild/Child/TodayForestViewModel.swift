@@ -17,6 +17,10 @@ protocol TodayMealPhotoMetadataStore: Sendable {
     ) async throws -> [String]
 }
 
+protocol TodayProgressProvider: Sendable {
+    func totalXP() async throws -> Int
+}
+
 extension RebuildMealRepository: TodayMealRepository {}
 
 struct LiveTodayMealRecorder: TodayMealRecorder {
@@ -35,6 +39,30 @@ struct EmptyTodayMealPhotoMetadataStore: TodayMealPhotoMetadataStore {
         normalizedMenuName: String
     ) async throws -> [String] {
         []
+    }
+}
+
+struct EmptyTodayProgressProvider: TodayProgressProvider {
+    func totalXP() async throws -> Int {
+        0
+    }
+}
+
+actor CoreDataTodayProgressProvider: TodayProgressProvider {
+    private let repository: RebuildProgressRepository
+
+    init(container: NSPersistentContainer) {
+        repository = RebuildProgressRepository(
+            context: container.newBackgroundContext()
+        )
+    }
+
+    func totalXP() async throws -> Int {
+        let storedTotal = try repository.totalXP()
+        guard let exactTotal = Int(exactly: storedTotal) else {
+            throw RebuildRepositoryError.totalXPOverflow
+        }
+        return exactTotal
     }
 }
 
@@ -129,14 +157,18 @@ final class TodayForestViewModel: ObservableObject {
     private let repository: any TodayMealRepository
     private let recorder: any TodayMealRecorder
     private let photoMetadataStore: any TodayMealPhotoMetadataStore
+    private let progressProvider: any TodayProgressProvider
     private let school: RebuildSchool?
     private let now: Clock
+    private var progressRevision = 0
 
     init(
         repository: any TodayMealRepository,
         recorder: any TodayMealRecorder,
         photoMetadataStore: any TodayMealPhotoMetadataStore =
             EmptyTodayMealPhotoMetadataStore(),
+        progressProvider: any TodayProgressProvider =
+            EmptyTodayProgressProvider(),
         school: RebuildSchool?,
         allergyCodes: [Int],
         date: Date = Date(),
@@ -146,6 +178,7 @@ final class TodayForestViewModel: ObservableObject {
         self.repository = repository
         self.recorder = recorder
         self.photoMetadataStore = photoMetadataStore
+        self.progressProvider = progressProvider
         self.school = school
         self.allergyCodes = Array(Set(allergyCodes)).sorted()
         self.now = now
@@ -172,10 +205,16 @@ final class TodayForestViewModel: ObservableObject {
 
     func load() async {
         isLoading = true
+        let progressRevisionAtStart = progressRevision
+        async let persistedTotalXP = try? progressProvider.totalXP()
         apply(await repository.currentState(date: dateKey))
         if let school {
             await repository.refresh(date: dateKey, school: school)
             apply(await repository.currentState(date: dateKey))
+        }
+        if let persistedTotalXP = await persistedTotalXP,
+           progressRevision == progressRevisionAtStart {
+            totalXP = persistedTotalXP
         }
         isLoading = false
     }
@@ -237,6 +276,7 @@ final class TodayForestViewModel: ObservableObject {
             occurredAt: now()
         )
         let result = try await recorder.execute(command)
+        progressRevision += 1
         totalXP = result.totalXP
         lastGrantedXP = result.xpGranted
         motion = result.motion

@@ -19,6 +19,19 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.meal, meal)
     }
 
+    func testFreshViewModelLoadsPersistedProgressTotal() async {
+        let progress = TodayProgressProviderStub(totalXP: 734)
+        let viewModel = makeViewModel(progressProvider: progress)
+
+        XCTAssertEqual(viewModel.totalXP, 0)
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.totalXP, 734)
+        let requestCount = await progress.requestCount
+        XCTAssertEqual(requestCount, 1)
+    }
+
     func testLiveAndUnavailableStatesExposeTruthfulSourceAndAction() async {
         let live = makeViewModel(
             repository: TodayMealRepositoryStub(
@@ -173,6 +186,8 @@ final class TodayForestViewModelTests: XCTestCase {
         recorder: TodayMealRecorderSpy = TodayMealRecorderSpy(),
         metadataStore: TodayMealPhotoMetadataStoreStub =
             TodayMealPhotoMetadataStoreStub(),
+        progressProvider: TodayProgressProviderStub =
+            TodayProgressProviderStub(totalXP: 0),
         school: RebuildSchool? = nil,
         allergyCodes: [Int] = []
     ) -> TodayForestViewModel {
@@ -182,6 +197,7 @@ final class TodayForestViewModelTests: XCTestCase {
             repository: repository,
             recorder: recorder,
             photoMetadataStore: metadataStore,
+            progressProvider: progressProvider,
             school: school,
             allergyCodes: allergyCodes,
             date: calendar.date(
@@ -194,6 +210,20 @@ final class TodayForestViewModelTests: XCTestCase {
             )!,
             calendar: calendar
         )
+    }
+}
+
+private actor TodayProgressProviderStub: TodayProgressProvider {
+    let storedTotalXP: Int
+    private(set) var requestCount = 0
+
+    init(totalXP: Int) {
+        storedTotalXP = totalXP
+    }
+
+    func totalXP() async throws -> Int {
+        requestCount += 1
+        return storedTotalXP
     }
 }
 

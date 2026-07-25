@@ -102,6 +102,9 @@ struct ChildNavigationView: View {
             photoMetadataStore: CoreDataTodayMealPhotoMetadataStore(
                 container: container
             ),
+            progressProvider: CoreDataTodayProgressProvider(
+                container: container
+            ),
             school: profile.school.map(Self.rebuildSchool),
             allergyCodes: profile.allergyCodes
         )
