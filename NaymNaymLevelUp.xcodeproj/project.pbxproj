@@ -68,6 +68,9 @@
 		C20000000000000000000059 /* MealDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000063 /* MealDomain.swift */; };
 		C20000000000000000000060 /* RebuildMealClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000064 /* RebuildMealClient.swift */; };
 		C20000000000000000000061 /* RebuildMealRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000065 /* RebuildMealRepository.swift */; };
+		C20000000000000000000062 /* RebuildRecordMealUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */; };
+		C20000000000000000000063 /* NutritionRuleEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000067 /* NutritionRuleEngine.swift */; };
+		C20000000000000000000064 /* RecordMealUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000068 /* RecordMealUseCase.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -146,6 +149,9 @@
 		C10000000000000000000063 /* MealDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/MealDomain.swift; sourceTree = "<group>"; };
 		C10000000000000000000064 /* RebuildMealClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/RebuildMealClient.swift; sourceTree = "<group>"; };
 		C10000000000000000000065 /* RebuildMealRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/RebuildMealRepository.swift; sourceTree = "<group>"; };
+		C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildRecordMealUseCaseTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000067 /* NutritionRuleEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/NutritionRuleEngine.swift; sourceTree = "<group>"; };
+		C10000000000000000000068 /* RecordMealUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/RecordMealUseCase.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -226,6 +232,8 @@
 				C10000000000000000000063 /* MealDomain.swift */,
 				C10000000000000000000064 /* RebuildMealClient.swift */,
 				C10000000000000000000065 /* RebuildMealRepository.swift */,
+				C10000000000000000000067 /* NutritionRuleEngine.swift */,
+				C10000000000000000000068 /* RecordMealUseCase.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
@@ -249,6 +257,7 @@
 				C10000000000000000000055 /* RebuildPersistentStoreTests.swift */,
 				C10000000000000000000061 /* RebuildMigrationCoordinatorTests.swift */,
 				C10000000000000000000062 /* RebuildMealRepositoryTests.swift */,
+				C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -424,6 +433,8 @@
 				C20000000000000000000059 /* MealDomain.swift in Sources */,
 				C20000000000000000000060 /* RebuildMealClient.swift in Sources */,
 				C20000000000000000000061 /* RebuildMealRepository.swift in Sources */,
+				C20000000000000000000063 /* NutritionRuleEngine.swift in Sources */,
+				C20000000000000000000064 /* RecordMealUseCase.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -442,6 +453,7 @@
 				C20000000000000000000051 /* RebuildPersistentStoreTests.swift in Sources */,
 				C20000000000000000000057 /* RebuildMigrationCoordinatorTests.swift in Sources */,
 				C20000000000000000000058 /* RebuildMealRepositoryTests.swift in Sources */,
+				C20000000000000000000062 /* RebuildRecordMealUseCaseTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

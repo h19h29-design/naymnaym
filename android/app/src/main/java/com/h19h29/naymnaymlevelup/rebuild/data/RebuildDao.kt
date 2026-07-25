@@ -69,6 +69,23 @@ interface ProgressDao {
     @Query("SELECT COALESCE(SUM(amount), 0) FROM progress_events")
     suspend fun totalXp(): Int
 
+    @Query(
+        """
+        SELECT COALESCE(SUM(amount), 0) FROM progress_events
+        WHERE id LIKE 'meal:%'
+          AND sourceRecordId LIKE :datePrefix || '%'
+        """,
+    )
+    suspend fun dailyBaseXp(datePrefix: String): Int
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(amount), 0) FROM progress_events
+        WHERE sourceRecordId LIKE :datePrefix || '%'
+        """,
+    )
+    suspend fun dailyTotalXp(datePrefix: String): Int
+
     @Query("SELECT * FROM progress_events WHERE id = :id LIMIT 1")
     suspend fun find(id: String): ProgressEventEntity?
 
