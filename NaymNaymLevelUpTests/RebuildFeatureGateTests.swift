@@ -30,6 +30,17 @@ final class RebuildFeatureGateTests: XCTestCase {
         )
     }
 
+    func testLowercaseYESLaunchArgumentEnablesRebuild() {
+        let defaults = makeDefaults()
+
+        XCTAssertTrue(
+            RebuildFeatureGate.isEnabled(
+                defaults: defaults,
+                arguments: ["-native-rebuild-enabled", "yes"]
+            )
+        )
+    }
+
     func testMissingLaunchArgumentValueFallsBackToDefaults() {
         let defaults = makeDefaults()
         defaults.set(true, forKey: "native-rebuild-enabled")
@@ -38,6 +49,18 @@ final class RebuildFeatureGateTests: XCTestCase {
             RebuildFeatureGate.isEnabled(
                 defaults: defaults,
                 arguments: ["-native-rebuild-enabled"]
+            )
+        )
+    }
+
+    func testExplicitNonYESLaunchArgumentOverridesEnabledDefaults() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: "native-rebuild-enabled")
+
+        XCTAssertFalse(
+            RebuildFeatureGate.isEnabled(
+                defaults: defaults,
+                arguments: ["-native-rebuild-enabled", "NO"]
             )
         )
     }
@@ -57,6 +80,9 @@ final class RebuildFeatureGateTests: XCTestCase {
         let suiteName = "RebuildFeatureGateTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
         return defaults
     }
 }
