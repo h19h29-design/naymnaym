@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "states": {
+    "idle": {"durationMs": 6000, "loop": true},
+    "tapReaction": {"durationMs": 420, "loop": false},
+    "mealSuccess": {"durationMs": 1400, "loop": false},
+    "levelUp": {"durationMs": 3000, "loop": false},
+    "comfort": {"durationMs": 1200, "loop": false},
+    "reducedMotion": {"durationMs": 250, "loop": false}
+  }
+}

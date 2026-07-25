@@ -364,6 +364,7 @@ class NativeRebuildContractTests(unittest.TestCase):
             scripts = project / "scripts"
             scripts.mkdir()
             shutil.copy2(ROOT / "scripts/validate-native-rebuild-contracts.py", scripts)
+            shutil.copy2(ROOT / "scripts/validate-mascot-rig.py", scripts)
             if contract is not None:
                 (project / "contracts/native-rebuild/v1/domain-contract.json").write_text(
                     json.dumps(contract), encoding="utf-8"

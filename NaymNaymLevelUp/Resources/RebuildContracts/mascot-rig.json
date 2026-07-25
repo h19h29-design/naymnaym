@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "levels": [
+    {
+      "level": 1,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    },
+    {
+      "level": 2,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    },
+    {
+      "level": 3,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    },
+    {
+      "level": 4,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    },
+    {
+      "level": 5,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    },
+    {
+      "level": 6,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    },
+    {
+      "level": 7,
+      "canvas": {"width": 1254, "height": 1254},
+      "parts": [
+        "tailBack", "body", "scarf", "head", "armLeft", "armRight",
+        "eyesOpen", "eyesClosed", "mouthNeutral", "mouthSmile", "sprout"
+      ],
+      "anchor": {"x": 627, "y": 1128}
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import json
 import pathlib
 import datetime
 import re
+import runpy
 import sys
 
 
@@ -520,6 +521,8 @@ def main():
         nutrition_rules = load_json(CONTRACTS / "nutrition-rules.json")
         xp_policy = load_json(CONTRACTS / "xp-policy.json")
         meal_loop_fixtures = load_json(CONTRACTS / "meal-loop-fixtures.json")
+        mascot_rig = load_json(CONTRACTS / "mascot-rig.json")
+        mascot_motion = load_json(CONTRACTS / "mascot-motion.json")
     except ValueError as error:
         print(f"native-rebuild-contract-validation: FAIL\n{error}", file=sys.stderr)
         return 1
@@ -534,6 +537,16 @@ def main():
         contract.get("recordableEatingStatuses", []),
     ))
     errors.extend(validate_meal_loop_fixtures(meal_loop_fixtures, nutrition_rules, xp_policy))
+    mascot_validator = runpy.run_path(
+        str(ROOT / "scripts/validate-mascot-rig.py")
+    )
+    errors.extend(
+        mascot_validator["validate_specs"](
+            mascot_rig,
+            mascot_motion,
+            contract.get("motionStates", []),
+        )
+    )
     if errors:
         print("native-rebuild-contract-validation: FAIL", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
