@@ -4,12 +4,12 @@ import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 
-internal class MealJsonFormatException(
+class MealJsonFormatException(
     message: String,
     cause: Throwable? = null,
 ) : IllegalArgumentException(message, cause)
 
-internal object MealJsonReader {
+object MealJsonReader {
     private val factory = JsonFactory()
 
     fun parseObject(bytes: ByteArray): Map<String, Any?> =

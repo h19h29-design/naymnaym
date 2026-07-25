@@ -71,6 +71,12 @@
 		C20000000000000000000062 /* RebuildRecordMealUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */; };
 		C20000000000000000000063 /* NutritionRuleEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000067 /* NutritionRuleEngine.swift */; };
 		C20000000000000000000064 /* RecordMealUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000068 /* RecordMealUseCase.swift */; };
+		C20000000000000000000065 /* RebuildOnboardingDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000069 /* RebuildOnboardingDomain.swift */; };
+		C20000000000000000000066 /* RebuildOnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000070 /* RebuildOnboardingViewModel.swift */; };
+		C20000000000000000000067 /* RebuildOnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000071 /* RebuildOnboardingFlowView.swift */; };
+		C20000000000000000000068 /* RebuildSchoolSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000072 /* RebuildSchoolSearchView.swift */; };
+		C20000000000000000000069 /* RebuildAllergySelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000073 /* RebuildAllergySelectionView.swift */; };
+		C20000000000000000000070 /* RebuildOnboardingViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -152,6 +158,12 @@
 		C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildRecordMealUseCaseTests.swift; sourceTree = "<group>"; };
 		C10000000000000000000067 /* NutritionRuleEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/NutritionRuleEngine.swift; sourceTree = "<group>"; };
 		C10000000000000000000068 /* RecordMealUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/RecordMealUseCase.swift; sourceTree = "<group>"; };
+		C10000000000000000000069 /* RebuildOnboardingDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildOnboardingDomain.swift; sourceTree = "<group>"; };
+		C10000000000000000000070 /* RebuildOnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildOnboardingViewModel.swift; sourceTree = "<group>"; };
+		C10000000000000000000071 /* RebuildOnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildOnboardingFlowView.swift; sourceTree = "<group>"; };
+		C10000000000000000000072 /* RebuildSchoolSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildSchoolSearchView.swift; sourceTree = "<group>"; };
+		C10000000000000000000073 /* RebuildAllergySelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildAllergySelectionView.swift; sourceTree = "<group>"; };
+		C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildOnboardingViewModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -234,6 +246,11 @@
 				C10000000000000000000065 /* RebuildMealRepository.swift */,
 				C10000000000000000000067 /* NutritionRuleEngine.swift */,
 				C10000000000000000000068 /* RecordMealUseCase.swift */,
+				C10000000000000000000069 /* RebuildOnboardingDomain.swift */,
+				C10000000000000000000070 /* RebuildOnboardingViewModel.swift */,
+				C10000000000000000000071 /* RebuildOnboardingFlowView.swift */,
+				C10000000000000000000072 /* RebuildSchoolSearchView.swift */,
+				C10000000000000000000073 /* RebuildAllergySelectionView.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
@@ -258,6 +275,7 @@
 				C10000000000000000000061 /* RebuildMigrationCoordinatorTests.swift */,
 				C10000000000000000000062 /* RebuildMealRepositoryTests.swift */,
 				C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */,
+				C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -435,6 +453,11 @@
 				C20000000000000000000061 /* RebuildMealRepository.swift in Sources */,
 				C20000000000000000000063 /* NutritionRuleEngine.swift in Sources */,
 				C20000000000000000000064 /* RecordMealUseCase.swift in Sources */,
+				C20000000000000000000065 /* RebuildOnboardingDomain.swift in Sources */,
+				C20000000000000000000066 /* RebuildOnboardingViewModel.swift in Sources */,
+				C20000000000000000000067 /* RebuildOnboardingFlowView.swift in Sources */,
+				C20000000000000000000068 /* RebuildSchoolSearchView.swift in Sources */,
+				C20000000000000000000069 /* RebuildAllergySelectionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -454,6 +477,7 @@
 				C20000000000000000000057 /* RebuildMigrationCoordinatorTests.swift in Sources */,
 				C20000000000000000000058 /* RebuildMealRepositoryTests.swift in Sources */,
 				C20000000000000000000062 /* RebuildRecordMealUseCaseTests.swift in Sources */,
+				C20000000000000000000070 /* RebuildOnboardingViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
