@@ -29,6 +29,8 @@ enum class DifficultyReason(
 ) {
     Texture("texture"),
     Smell("smell"),
+    Taste("taste"),
+    Appearance("appearance"),
     Spicy("spicy"),
     Color("color"),
     NewFood("newFood"),

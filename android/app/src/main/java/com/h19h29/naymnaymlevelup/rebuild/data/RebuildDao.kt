@@ -58,6 +58,20 @@ interface MealRecordDao {
         normalizedMenuName: String,
     ): MealRecordEntity?
 
+    @Query(
+        """
+        SELECT * FROM meal_records
+        WHERE date = :date
+          AND normalizedMenuName = :normalizedMenuName
+          AND deletedAtEpochMillis IS NULL
+        ORDER BY updatedAtEpochMillis ASC, id ASC
+        """,
+    )
+    suspend fun recordsForMenu(
+        date: String,
+        normalizedMenuName: String,
+    ): List<MealRecordEntity>
+
     @Query("SELECT COUNT(*) FROM meal_records WHERE id IN (:ids)")
     suspend fun count(ids: List<String>): Int
 }

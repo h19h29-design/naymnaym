@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.h19h29.naymnaymlevelup.rebuild.child.ChildNavigation
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.NeisSchoolSearchClient
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.OnboardingFlow
@@ -14,7 +15,6 @@ import com.h19h29.naymnaymlevelup.rebuild.onboarding.OnboardingRootState
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.OnboardingViewModel
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildParentConnectionDestinationScreen
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyDestinationLauncher
-import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildTodayDestinationScreen
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RoomOnboardingProfileStore
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.SharedPreferencesSchoolNameMetadataStore
 
@@ -59,9 +59,9 @@ fun RebuildApp(database: RebuildDatabase) {
                     state.profile.destination ==
                     com.h19h29.naymnaymlevelup.rebuild.onboarding.OnboardingDestination.Today
                 ) {
-                    RebuildTodayDestinationScreen(
+                    ChildNavigation(
                         profile = state.profile,
-                        onOpenMeal = destinationLauncher::launch,
+                        database = database,
                     )
                 } else {
                     RebuildParentConnectionDestinationScreen(
