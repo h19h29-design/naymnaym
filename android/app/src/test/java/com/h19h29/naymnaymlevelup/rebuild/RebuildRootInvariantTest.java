@@ -18,7 +18,9 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.h19h29.naymnaymlevelup.BuildConfig;
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.Test;
@@ -60,14 +62,7 @@ public final class RebuildRootInvariantTest {
                 rebuildActivity.getAttributeNS(ANDROID_NAMESPACE, "exported")));
         assertTrue(Boolean.parseBoolean(
                 mainActivity.getAttributeNS(ANDROID_NAMESPACE, "exported")));
-        assertTrue(hasIntentFilterValue(
-                mainActivity,
-                "action",
-                "android.intent.action.MAIN"));
-        assertTrue(hasIntentFilterValue(
-                mainActivity,
-                "category",
-                "android.intent.category.LAUNCHER"));
+        assertTrue(hasMainActionAndLauncherCategory(mainActivity));
     }
 
     @Test
@@ -80,26 +75,61 @@ public final class RebuildRootInvariantTest {
                 sourceFile.isFile());
 
         CompilationUnit unit = StaticJavaParser.parse(sourceFile);
-        ClassOrInterfaceDeclaration mainActivity = unit
-                .getClassByName("MainActivity")
-                .orElseThrow();
-        MethodDeclaration onCreate = mainActivity
-                .getMethodsByName("onCreate")
-                .stream()
-                .filter(method -> method.getParameters().size() == 1)
-                .findFirst()
-                .orElseThrow();
-        BlockStmt onCreateBody = onCreate.getBody().orElseThrow();
-        List<IfStmt> rebuildGuards = onCreateBody
-                .findAll(IfStmt.class)
-                .stream()
-                .filter(RebuildRootInvariantTest::isNativeRebuildFlag)
-                .toList();
+        assertTrue(hasCompiledFlagRebuildHandoff(unit));
+    }
 
-        assertTrue("Expected exactly one native rebuild guard", rebuildGuards.size() == 1);
-        IfStmt rebuildGuard = rebuildGuards.get(0);
-        assertFalse(rebuildGuard.getElseStmt().isPresent());
-        assertTrue(isCompleteRebuildHandoff(rebuildGuard.getThenStmt()));
+    @Test
+    public void lifecycleVerifierRejectsLegacyWorkBeforeTheRebuildGuard() {
+        CompilationUnit unit = StaticJavaParser.parse(
+                """
+                class MainActivity {
+                    void onCreate(Object savedInstanceState) {
+                        super.onCreate(savedInstanceState);
+                        renderHome();
+                        if (BuildConfig.NATIVE_REBUILD_ENABLED) {
+                            startActivity(new Intent(this, RebuildActivity.class));
+                            finish();
+                            return;
+                        }
+                    }
+                }
+                """);
+
+        assertFalse(hasCompiledFlagRebuildHandoff(unit));
+    }
+
+    @Test
+    public void manifestVerifierRejectsMainAndLauncherInSeparateIntentFilters()
+            throws Exception {
+        String manifest =
+                """
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                    <application>
+                        <activity
+                            android:name="com.h19h29.naymnaymlevelup.MainActivity"
+                            android:exported="true">
+                            <intent-filter>
+                                <action android:name="android.intent.action.MAIN" />
+                            </intent-filter>
+                            <intent-filter>
+                                <category android:name="android.intent.category.LAUNCHER" />
+                            </intent-filter>
+                        </activity>
+                    </application>
+                </manifest>
+                """;
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        Document document = factory
+                .newDocumentBuilder()
+                .parse(new ByteArrayInputStream(
+                        manifest.getBytes(StandardCharsets.UTF_8)));
+        Element mainActivity = findActivity(
+                document.getElementsByTagName("activity"),
+                "com.h19h29.naymnaymlevelup.MainActivity");
+
+        assertNotNull(mainActivity);
+        assertFalse(hasMainActionAndLauncherCategory(mainActivity));
     }
 
     private static Element findActivity(NodeList activities, String className) {
@@ -126,6 +156,72 @@ public final class RebuildRootInvariantTest {
             }
         }
         return false;
+    }
+
+    private static boolean hasMainActionAndLauncherCategory(Element activity) {
+        NodeList intentFilters = activity.getElementsByTagName("intent-filter");
+        for (int index = 0; index < intentFilters.getLength(); index++) {
+            Element intentFilter = (Element) intentFilters.item(index);
+            if (hasIntentFilterValue(
+                    intentFilter,
+                    "action",
+                    "android.intent.action.MAIN")
+                    && hasIntentFilterValue(
+                    intentFilter,
+                    "category",
+                    "android.intent.category.LAUNCHER")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasCompiledFlagRebuildHandoff(CompilationUnit unit) {
+        ClassOrInterfaceDeclaration mainActivity = unit
+                .getClassByName("MainActivity")
+                .orElseThrow();
+        MethodDeclaration onCreate = mainActivity
+                .getMethodsByName("onCreate")
+                .stream()
+                .filter(method -> method.getParameters().size() == 1)
+                .findFirst()
+                .orElseThrow();
+        BlockStmt onCreateBody = onCreate.getBody().orElseThrow();
+        List<Statement> statements = onCreateBody.getStatements();
+        if (statements.size() < 2
+                || !isSuperOnCreate(statements.get(0))
+                || !statements.get(1).isIfStmt()
+                || !isNativeRebuildFlag(statements.get(1).asIfStmt())) {
+            return false;
+        }
+        List<IfStmt> rebuildGuards = onCreateBody
+                .findAll(IfStmt.class)
+                .stream()
+                .filter(RebuildRootInvariantTest::isNativeRebuildFlag)
+                .toList();
+        if (rebuildGuards.size() != 1) {
+            return false;
+        }
+        IfStmt rebuildGuard = statements.get(1).asIfStmt();
+        return rebuildGuard.getElseStmt().isEmpty()
+                && isCompleteRebuildHandoff(rebuildGuard.getThenStmt());
+    }
+
+    private static boolean isSuperOnCreate(Statement statement) {
+        if (!statement.isExpressionStmt()
+                || !statement
+                .asExpressionStmt()
+                .getExpression()
+                .isMethodCallExpr()) {
+            return false;
+        }
+        MethodCallExpr call = statement
+                .asExpressionStmt()
+                .getExpression()
+                .asMethodCallExpr();
+        return call.getNameAsString().equals("onCreate")
+                && call.getScope().filter(scope -> scope.isSuperExpr()).isPresent()
+                && call.getArguments().size() == 1;
     }
 
     private static boolean isNativeRebuildFlag(IfStmt statement) {
