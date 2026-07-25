@@ -36,6 +36,12 @@ android {
         jvmTarget = "17"
     }
 
+    packaging {
+        jniLibs {
+            keepDebugSymbols += ["**/libandroidx.graphics.path.so"]
+        }
+    }
+
     defaultConfig {
         applicationId "com.h19h29.naymnaymlevelup"
         minSdk 23
@@ -95,4 +101,26 @@ dependencies {
     androidTestImplementation "androidx.test:runner:1.7.0"
     androidTestImplementation "androidx.test.ext:junit:1.3.0"
     testImplementation "junit:junit:4.13.2"
+    testImplementation "com.github.javaparser:javaparser-core:3.26.4"
+}
+
+tasks.withType(Test).configureEach {
+    if (name == "testDebugUnitTest") {
+        dependsOn "processDebugMainManifest"
+        systemProperty(
+            "rebuild.mergedManifest",
+            layout.buildDirectory
+                .file("intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+                .absolutePath
+        )
+        systemProperty(
+            "rebuild.mainActivitySource",
+            layout.projectDirectory
+                .file("src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java")
+                .asFile
+                .absolutePath
+        )
+    }
 }
