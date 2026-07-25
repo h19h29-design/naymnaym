@@ -46,6 +46,8 @@ import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.h19h29.naymnaymlevelup.rebuild.RebuildActivity;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -111,6 +113,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (BuildConfig.NATIVE_REBUILD_ENABLED) {
+            startActivity(new Intent(this, RebuildActivity.class));
+            finish();
+            return;
+        }
         prefs = getSharedPreferences("naymnaym-android", MODE_PRIVATE);
         selectedSchool = loadSchool();
         demoMode = prefs.getBoolean("demoMode", false);
