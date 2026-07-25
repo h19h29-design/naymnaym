@@ -19,10 +19,14 @@ enum RebuildMigrationError: Error, Equatable {
     case mealIdentityCollision(String)
     case photoIDCollision(String)
     case progressEventIdentityCollision(String)
+    case ambiguousPhotoReference(String)
     case unsafePhotoPath(String)
     case photoContentMismatch(String)
     case photoIOFailure(operation: String, path: String, code: Int32)
+    case rollbackOwnershipMismatch(String)
     case rollbackCleanupFailed(paths: [String], originalFailure: String)
+    case missingPersistentDefaultsDomain
+    case reentrantAttempt
     case unexpectedManagedObjectType(String)
     case xpOverflow
 }
@@ -37,6 +41,13 @@ struct MigrationVerification: Equatable {
 typealias RebuildMigrationVerifier = (MigrationVerification) throws -> Void
 typealias RebuildMigrationSaver = (NSManagedObjectContext) throws -> Void
 typealias RebuildMigrationFileRemover = (URL) throws -> Void
+typealias RebuildMigrationDirectorySync = (Int32) throws -> Void
+
+private struct InstalledPhoto {
+    let relativeName: String
+    let device: UInt64
+    let inode: UInt64
+}
 
 private struct MigratedMealRecords {
     let recordsByIdentity: [String: MealRecord]
@@ -51,19 +62,26 @@ private struct NormalizedLegacyMealName {
 final class RebuildMigrationCoordinator {
     private static let supportedTargetVersion = 1
     private static let reconciliationEventID = "legacy:progress-reconciliation"
-    private static let attemptLock = NSLock()
+    private static let attemptLock = NSRecursiveLock()
+    private static var attemptIsActive = false
 
-    private let reader: LegacyDefaultsReader
+    private let reader: LegacyDefaultsReader?
     private let container: NSPersistentContainer
     private let legacyPhotoDirectory: URL
     private let rebuildPhotoDirectory: URL
-    private let fileManager: FileManager
     private let now: () -> Date
     private let verify: RebuildMigrationVerifier
     private let save: RebuildMigrationSaver
-    private let removeCopiedFile: RebuildMigrationFileRemover
+    private let beforeRollbackFileRemoval: RebuildMigrationFileRemover
+    private let syncTargetDirectory: RebuildMigrationDirectorySync?
+    private let warningsLock = NSLock()
+    private var publishedWarnings: [MigrationWarning] = []
 
-    private(set) var warnings: [MigrationWarning] = []
+    var warnings: [MigrationWarning] {
+        warningsLock.lock()
+        defer { warningsLock.unlock() }
+        return publishedWarnings
+    }
 
     init(
         defaults: UserDefaults = .standard,
@@ -75,14 +93,15 @@ final class RebuildMigrationCoordinator {
         now: @escaping () -> Date = Date.init,
         verify: @escaping RebuildMigrationVerifier = { _ in },
         save: @escaping RebuildMigrationSaver = { try $0.save() },
-        removeCopiedFile: RebuildMigrationFileRemover? = nil
+        removeCopiedFile: RebuildMigrationFileRemover? = nil,
+        syncTargetDirectory: RebuildMigrationDirectorySync? = nil
     ) {
-        reader = LegacyDefaultsReader(
-            defaults: defaults,
-            persistentDomainName: legacyDefaultsDomainName
-        )
+        let domainName = legacyDefaultsDomainName
+            ?? (defaults === UserDefaults.standard ? Bundle.main.bundleIdentifier : nil)
+        reader = domainName.map {
+            LegacyDefaultsReader(defaults: defaults, persistentDomainName: $0)
+        }
         self.container = container
-        self.fileManager = fileManager
         let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         self.legacyPhotoDirectory = legacyPhotoDirectory
             ?? documents.appendingPathComponent("MealPhotos", isDirectory: true)
@@ -91,12 +110,18 @@ final class RebuildMigrationCoordinator {
         self.now = now
         self.verify = verify
         self.save = save
-        self.removeCopiedFile = removeCopiedFile ?? { try fileManager.removeItem(at: $0) }
+        self.beforeRollbackFileRemoval = removeCopiedFile ?? { _ in }
+        self.syncTargetDirectory = syncTargetDirectory
     }
 
     func runIfNeeded(targetVersion: Int = 1) throws -> MigrationOutcome {
         Self.attemptLock.lock()
         defer { Self.attemptLock.unlock() }
+        guard !Self.attemptIsActive else {
+            throw RebuildMigrationError.reentrantAttempt
+        }
+        Self.attemptIsActive = true
+        defer { Self.attemptIsActive = false }
         return try runSerialized(targetVersion: targetVersion)
     }
 
@@ -105,7 +130,9 @@ final class RebuildMigrationCoordinator {
             throw RebuildMigrationError.unsupportedTargetVersion(targetVersion)
         }
 
-        warnings = []
+        guard let reader else {
+            throw RebuildMigrationError.missingPersistentDefaultsDomain
+        }
         let context = container.newBackgroundContext()
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         context.transactionAuthor = "legacy-defaults-migration-v\(targetVersion)"
@@ -120,10 +147,11 @@ final class RebuildMigrationCoordinator {
         }
         try validateSourceIdentities(snapshot)
         let sourceDigest = try reader.sourceDigest(for: snapshot)
-        var newlyCopiedFiles: [URL] = []
+        var installedPhotos: [InstalledPhoto] = []
+        var attemptWarnings: [MigrationWarning] = []
 
         do {
-            return try context.performAndWait {
+            let outcome: MigrationOutcome = try context.performAndWait {
                 do {
                     let mappedProfile = try insertProfile(from: snapshot, into: context)
                     let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
@@ -132,7 +160,8 @@ final class RebuildMigrationCoordinator {
                         snapshot.mealPhotoRecords,
                         mealRecords: mappedMeals,
                         into: context,
-                        newlyCopiedFiles: &newlyCopiedFiles
+                        installedPhotos: &installedPhotos,
+                        warnings: &attemptWarnings
                     )
                     try insertProgressEvents(
                         from: snapshot,
@@ -161,19 +190,30 @@ final class RebuildMigrationCoordinator {
                     throw error
                 }
             }
+            publishWarnings(attemptWarnings)
+            return outcome
         } catch {
             var cleanupFailurePaths: [String] = []
-            for url in newlyCopiedFiles.reversed() {
+            var cleanupFailures: [String] = []
+            for installedPhoto in installedPhotos.reversed() {
                 do {
-                    try removeCopiedFile(url)
+                    try removeInstalledPhoto(installedPhoto)
                 } catch {
-                    cleanupFailurePaths.append(url.path)
+                    cleanupFailurePaths.append(
+                        rebuildPhotoDirectory
+                            .appendingPathComponent(installedPhoto.relativeName)
+                            .path
+                    )
+                    cleanupFailures.append(String(reflecting: error))
                 }
             }
             if !cleanupFailurePaths.isEmpty {
                 throw RebuildMigrationError.rollbackCleanupFailed(
                     paths: cleanupFailurePaths.sorted(),
-                    originalFailure: String(reflecting: error)
+                    originalFailure: [
+                        String(reflecting: error),
+                        "cleanup failures: \(cleanupFailures.sorted())",
+                    ].joined(separator: "; ")
                 )
             }
             throw error
@@ -197,6 +237,7 @@ final class RebuildMigrationCoordinator {
     private func validateSourceIdentities(_ snapshot: LegacySnapshot) throws {
         var mealIdentities = Set<String>()
         var mealAssociationKeys: [String: String] = [:]
+        var mealIdentityByPhotoID: [String: String] = [:]
         for record in snapshot.mealRecords {
             let normalizedName = normalizeMenuName(record.menuName)
             let identity = recordIdentity(
@@ -216,6 +257,13 @@ final class RebuildMigrationCoordinator {
                 throw RebuildMigrationError.mealIdentityCollision(previousIdentity)
             }
             mealAssociationKeys[associationKey] = identity
+            for photoID in Set(record.photoIds) {
+                if let previousIdentity = mealIdentityByPhotoID[photoID],
+                   previousIdentity != identity {
+                    throw RebuildMigrationError.ambiguousPhotoReference(photoID)
+                }
+                mealIdentityByPhotoID[photoID] = identity
+            }
         }
 
         var photoIDs = Set<String>()
@@ -386,14 +434,16 @@ final class RebuildMigrationCoordinator {
         _ photos: [MealPhotoRecord],
         mealRecords: MigratedMealRecords,
         into context: NSManagedObjectContext,
-        newlyCopiedFiles: inout [URL]
+        installedPhotos: inout [InstalledPhoto],
+        warnings: inout [MigrationWarning]
     ) throws {
         let sortedMealRecords = mealRecords.recordsByIdentity.sorted { $0.key < $1.key }
 
         for photo in photos {
             let relativePath = try migratePhotoFile(
                 photo,
-                newlyCopiedFiles: &newlyCopiedFiles
+                installedPhotos: &installedPhotos,
+                warnings: &warnings
             )
             let object = try insert(
                 RebuildMealPhotoManagedObject.self,
@@ -619,7 +669,8 @@ final class RebuildMigrationCoordinator {
 
     private func migratePhotoFile(
         _ photo: MealPhotoRecord,
-        newlyCopiedFiles: inout [URL]
+        installedPhotos: inout [InstalledPhoto],
+        warnings: inout [MigrationWarning]
     ) throws -> String {
         guard
             !photo.fileName.isEmpty,
@@ -640,24 +691,31 @@ final class RebuildMigrationCoordinator {
             return relativePath
         }
 
-        let targetDirectoryDescriptor = try openVerifiedTargetDirectory()
-        defer { Darwin.close(targetDirectoryDescriptor) }
-        let targetURL = rebuildPhotoDirectory.appendingPathComponent(relativePath)
-        if try validateExistingTarget(
-            named: relativePath,
-            expectedData: sourceData,
-            directoryDescriptor: targetDirectoryDescriptor
-        ) {
+        let targetDirectoryDescriptor = try openVerifiedTargetDirectory(
+            createIfMissing: true
+        )
+        return try withDescriptor(
+            targetDirectoryDescriptor,
+            path: rebuildPhotoDirectory.path,
+            closeOperation: "close target directory"
+        ) { descriptor in
+            let targetURL = rebuildPhotoDirectory.appendingPathComponent(relativePath)
+            if try validateExistingTarget(
+                named: relativePath,
+                expectedData: sourceData,
+                directoryDescriptor: descriptor
+            ) {
+                return relativePath
+            }
+            try installTarget(
+                named: relativePath,
+                data: sourceData,
+                directoryDescriptor: descriptor,
+                targetURL: targetURL,
+                installedPhotos: &installedPhotos
+            )
             return relativePath
         }
-        try installTarget(
-            named: relativePath,
-            data: sourceData,
-            directoryDescriptor: targetDirectoryDescriptor,
-            targetURL: targetURL
-        )
-        newlyCopiedFiles.append(targetURL)
-        return relativePath
     }
 
     private func safeDestinationName(for photo: MealPhotoRecord) -> String {
@@ -673,81 +731,175 @@ final class RebuildMigrationCoordinator {
     }
 
     private func readSourcePhoto(named fileName: String) throws -> Data? {
-        guard let directoryDescriptor = try openDirectoryNoFollow(
+        guard let directoryDescriptor = try openDirectoryByWalking(
             legacyPhotoDirectory,
-            missingIsAllowed: true
+            missingIsAllowed: true,
+            createIfMissing: false
         ) else {
             return nil
         }
-        defer { Darwin.close(directoryDescriptor) }
-
-        let descriptor = fileName.withCString {
-            openat(
-                directoryDescriptor,
-                $0,
-                O_RDONLY | O_CLOEXEC | O_NOFOLLOW
-            )
-        }
-        guard descriptor >= 0 else {
-            let code = errno
-            if code == ENOENT {
-                return nil
+        return try withDescriptor(
+            directoryDescriptor,
+            path: legacyPhotoDirectory.path,
+            closeOperation: "close source directory"
+        ) { directoryDescriptor in
+            let descriptor = fileName.withCString {
+                openat(
+                    directoryDescriptor,
+                    $0,
+                    O_RDONLY | O_CLOEXEC | O_NOFOLLOW
+                )
             }
-            if code == ELOOP || code == ENOTDIR {
-                throw RebuildMigrationError.unsafePhotoPath(fileName)
+            guard descriptor >= 0 else {
+                let code = errno
+                if code == ENOENT {
+                    return nil
+                }
+                if code == ELOOP || code == ENOTDIR {
+                    throw RebuildMigrationError.unsafePhotoPath(fileName)
+                }
+                throw posixError(operation: "open source photo", path: fileName, code: code)
             }
-            throw posixError(operation: "open source photo", path: fileName, code: code)
+            return try withDescriptor(
+                descriptor,
+                path: fileName,
+                closeOperation: "close source photo"
+            ) { descriptor in
+                try requireRegularFile(descriptor: descriptor, path: fileName)
+                return try readAll(descriptor: descriptor, path: fileName)
+            }
         }
-        defer { Darwin.close(descriptor) }
-        try requireRegularFile(descriptor: descriptor, path: fileName)
-        return try readAll(descriptor: descriptor, path: fileName)
     }
 
-    private func openVerifiedTargetDirectory() throws -> Int32 {
-        var metadata = stat()
-        let path = rebuildPhotoDirectory.path
-        if lstat(path, &metadata) == 0 {
-            guard !isSymbolicLink(metadata.st_mode) else {
-                throw RebuildMigrationError.unsafePhotoPath(path)
-            }
-        } else {
-            let code = errno
-            guard code == ENOENT else {
-                throw posixError(operation: "inspect target directory", path: path, code: code)
-            }
-            try fileManager.createDirectory(
-                at: rebuildPhotoDirectory,
-                withIntermediateDirectories: true
-            )
-        }
-        guard let descriptor = try openDirectoryNoFollow(
+    private func openVerifiedTargetDirectory(createIfMissing: Bool) throws -> Int32 {
+        guard let descriptor = try openDirectoryByWalking(
             rebuildPhotoDirectory,
-            missingIsAllowed: false
+            missingIsAllowed: false,
+            createIfMissing: createIfMissing
         ) else {
-            throw posixError(operation: "open target directory", path: path, code: ENOENT)
+            throw posixError(
+                operation: "open target directory",
+                path: rebuildPhotoDirectory.path,
+                code: ENOENT
+            )
         }
         return descriptor
     }
 
-    private func openDirectoryNoFollow(
+    private func openDirectoryByWalking(
         _ url: URL,
-        missingIsAllowed: Bool
+        missingIsAllowed: Bool,
+        createIfMissing: Bool
     ) throws -> Int32? {
-        let descriptor = open(
-            url.path,
+        let path = url.path
+        guard url.isFileURL, path.hasPrefix("/") else {
+            throw RebuildMigrationError.unsafePhotoPath(path)
+        }
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard !components.contains(where: { $0 == "." || $0 == ".." }) else {
+            throw RebuildMigrationError.unsafePhotoPath(path)
+        }
+
+        var currentDescriptor = open(
+            "/",
             O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW
         )
-        guard descriptor >= 0 else {
-            let code = errno
-            if missingIsAllowed, code == ENOENT {
-                return nil
-            }
-            if code == ELOOP || code == ENOTDIR {
-                throw RebuildMigrationError.unsafePhotoPath(url.path)
-            }
-            throw posixError(operation: "open directory", path: url.path, code: code)
+        guard currentDescriptor >= 0 else {
+            throw posixError(operation: "open filesystem root", path: "/", code: errno)
         }
-        return descriptor
+
+        do {
+            for component in components {
+                let name = String(component)
+                var nextDescriptor = name.withCString {
+                    openat(
+                        currentDescriptor,
+                        $0,
+                        O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW
+                    )
+                }
+                if nextDescriptor < 0, errno == ENOENT, createIfMissing {
+                    let createResult = name.withCString {
+                        mkdirat(currentDescriptor, $0, S_IRWXU)
+                    }
+                    if createResult != 0, errno != EEXIST {
+                        throw posixError(
+                            operation: "create directory component",
+                            path: path,
+                            code: errno
+                        )
+                    }
+                    nextDescriptor = name.withCString {
+                        openat(
+                            currentDescriptor,
+                            $0,
+                            O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW
+                        )
+                    }
+                }
+                guard nextDescriptor >= 0 else {
+                    let code = errno
+                    if missingIsAllowed, code == ENOENT {
+                        let descriptorToClose = currentDescriptor
+                        currentDescriptor = -1
+                        try closeDescriptor(
+                            descriptorToClose,
+                            path: path,
+                            operation: "close directory component"
+                        )
+                        return nil
+                    }
+                    if code == ELOOP || code == ENOTDIR {
+                        throw RebuildMigrationError.unsafePhotoPath(path)
+                    }
+                    throw posixError(
+                        operation: "open directory component",
+                        path: path,
+                        code: code
+                    )
+                }
+                let previousDescriptor = currentDescriptor
+                currentDescriptor = nextDescriptor
+                do {
+                    try closeDescriptor(
+                        previousDescriptor,
+                        path: path,
+                        operation: "close directory component"
+                    )
+                } catch {
+                    let closeFailure = error
+                    let descriptorToClose = currentDescriptor
+                    currentDescriptor = -1
+                    do {
+                        try closeDescriptor(
+                            descriptorToClose,
+                            path: path,
+                            operation: "close next directory after failure"
+                        )
+                    } catch {
+                        throw error
+                    }
+                    throw closeFailure
+                }
+            }
+            return currentDescriptor
+        } catch {
+            let traversalFailure = error
+            if currentDescriptor >= 0 {
+                let descriptorToClose = currentDescriptor
+                currentDescriptor = -1
+                do {
+                    try closeDescriptor(
+                        descriptorToClose,
+                        path: path,
+                        operation: "close directory after failure"
+                    )
+                } catch {
+                    throw error
+                }
+            }
+            throw traversalFailure
+        }
     }
 
     private func validateExistingTarget(
@@ -772,20 +924,26 @@ final class RebuildMigrationCoordinator {
             }
             throw posixError(operation: "open target photo", path: fileName, code: code)
         }
-        defer { Darwin.close(descriptor) }
-        try requireRegularFile(descriptor: descriptor, path: fileName)
-        let existingData = try readAll(descriptor: descriptor, path: fileName)
-        guard existingData == expectedData else {
-            throw RebuildMigrationError.photoContentMismatch(fileName)
+        return try withDescriptor(
+            descriptor,
+            path: fileName,
+            closeOperation: "close target photo"
+        ) { descriptor in
+            try requireRegularFile(descriptor: descriptor, path: fileName)
+            let existingData = try readAll(descriptor: descriptor, path: fileName)
+            guard existingData == expectedData else {
+                throw RebuildMigrationError.photoContentMismatch(fileName)
+            }
+            return true
         }
-        return true
     }
 
     private func installTarget(
         named fileName: String,
         data: Data,
         directoryDescriptor: Int32,
-        targetURL: URL
+        targetURL: URL,
+        installedPhotos: inout [InstalledPhoto]
     ) throws {
         let temporaryName = ".migration-\(UUID().uuidString)"
         let temporaryDescriptor = temporaryName.withCString {
@@ -814,8 +972,25 @@ final class RebuildMigrationCoordinator {
                     code: errno
                 )
             }
-            Darwin.close(temporaryDescriptor)
+            var metadata = stat()
+            guard fstat(temporaryDescriptor, &metadata) == 0 else {
+                throw posixError(
+                    operation: "inspect temporary photo",
+                    path: temporaryName,
+                    code: errno
+                )
+            }
+            let installedPhoto = InstalledPhoto(
+                relativeName: fileName,
+                device: UInt64(metadata.st_dev),
+                inode: UInt64(metadata.st_ino)
+            )
             descriptorIsOpen = false
+            try closeDescriptor(
+                temporaryDescriptor,
+                path: temporaryName,
+                operation: "close temporary photo"
+            )
 
             let renameResult = temporaryName.withCString { temporaryPointer in
                 fileName.withCString { targetPointer in
@@ -829,6 +1004,8 @@ final class RebuildMigrationCoordinator {
                 }
             }
             if renameResult == 0 {
+                installedPhotos.append(installedPhoto)
+                try synchronizeTargetDirectory(directoryDescriptor)
                 return
             }
 
@@ -856,15 +1033,25 @@ final class RebuildMigrationCoordinator {
                 code: renameCode
             )
         } catch {
+            var failure = error
             if descriptorIsOpen {
-                Darwin.close(temporaryDescriptor)
+                descriptorIsOpen = false
+                do {
+                    try closeDescriptor(
+                        temporaryDescriptor,
+                        path: temporaryName,
+                        operation: "close temporary photo after failure"
+                    )
+                } catch {
+                    failure = error
+                }
             }
             try removeTemporaryTarget(
                 named: temporaryName,
                 directoryDescriptor: directoryDescriptor,
-                originalFailure: error
+                originalFailure: failure
             )
-            throw error
+            throw failure
         }
     }
 
@@ -883,6 +1070,107 @@ final class RebuildMigrationCoordinator {
             paths: [rebuildPhotoDirectory.appendingPathComponent(fileName).path],
             originalFailure: String(reflecting: originalFailure)
         )
+    }
+
+    private func removeInstalledPhoto(_ installedPhoto: InstalledPhoto) throws {
+        let directoryDescriptor = try openVerifiedTargetDirectory(
+            createIfMissing: false
+        )
+        try withDescriptor(
+            directoryDescriptor,
+            path: rebuildPhotoDirectory.path,
+            closeOperation: "close rollback target directory"
+        ) { directoryDescriptor in
+            var metadata = stat()
+            let inspectResult = installedPhoto.relativeName.withCString {
+                fstatat(
+                    directoryDescriptor,
+                    $0,
+                    &metadata,
+                    AT_SYMLINK_NOFOLLOW
+                )
+            }
+            let targetURL = rebuildPhotoDirectory.appendingPathComponent(
+                installedPhoto.relativeName
+            )
+            guard inspectResult == 0,
+                  isRegularFile(metadata.st_mode),
+                  UInt64(metadata.st_dev) == installedPhoto.device,
+                  UInt64(metadata.st_ino) == installedPhoto.inode else {
+                throw RebuildMigrationError.rollbackOwnershipMismatch(
+                    targetURL.path
+                )
+            }
+            try beforeRollbackFileRemoval(targetURL)
+            let unlinkResult = installedPhoto.relativeName.withCString {
+                unlinkat(directoryDescriptor, $0, 0)
+            }
+            guard unlinkResult == 0 else {
+                throw posixError(
+                    operation: "remove installed photo during rollback",
+                    path: targetURL.path,
+                    code: errno
+                )
+            }
+        }
+    }
+
+    private func synchronizeTargetDirectory(_ descriptor: Int32) throws {
+        if let syncTargetDirectory {
+            try syncTargetDirectory(descriptor)
+            return
+        }
+        guard fsync(descriptor) == 0 else {
+            throw posixError(
+                operation: "sync target directory",
+                path: rebuildPhotoDirectory.path,
+                code: errno
+            )
+        }
+    }
+
+    private func withDescriptor<Value>(
+        _ descriptor: Int32,
+        path: String,
+        closeOperation: String,
+        body: (Int32) throws -> Value
+    ) throws -> Value {
+        var descriptorNeedsClose = true
+        do {
+            let value = try body(descriptor)
+            descriptorNeedsClose = false
+            try closeDescriptor(
+                descriptor,
+                path: path,
+                operation: closeOperation
+            )
+            return value
+        } catch {
+            let bodyFailure = error
+            if descriptorNeedsClose {
+                descriptorNeedsClose = false
+                do {
+                    try closeDescriptor(
+                        descriptor,
+                        path: path,
+                        operation: "\(closeOperation) after failure"
+                    )
+                } catch {
+                    throw error
+                }
+            }
+            throw bodyFailure
+        }
+    }
+
+    private func closeDescriptor(
+        _ descriptor: Int32,
+        path: String,
+        operation: String
+    ) throws {
+        guard Darwin.close(descriptor) == 0 else {
+            throw posixError(operation: operation, path: path, code: errno)
+        }
     }
 
     private func requireRegularFile(descriptor: Int32, path: String) throws {
@@ -939,10 +1227,6 @@ final class RebuildMigrationCoordinator {
         (mode & S_IFMT) == S_IFREG
     }
 
-    private func isSymbolicLink(_ mode: mode_t) -> Bool {
-        (mode & S_IFMT) == S_IFLNK
-    }
-
     private func posixError(
         operation: String,
         path: String,
@@ -955,14 +1239,19 @@ final class RebuildMigrationCoordinator {
         let canonical = value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        let associationKey = canonical.unicodeScalars
-            .filter { !CharacterSet.whitespacesAndNewlines.contains($0) }
-            .map(String.init)
-            .joined()
+        let associationKey = value
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
         return NormalizedLegacyMealName(
             canonical: canonical,
             associationKey: associationKey
         )
+    }
+
+    private func publishWarnings(_ warnings: [MigrationWarning]) {
+        warningsLock.lock()
+        publishedWarnings = warnings
+        warningsLock.unlock()
     }
 
     private func mealAssociationKey(

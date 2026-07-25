@@ -5,6 +5,7 @@ import XCTest
 final class RebuildMigrationCoordinatorTests: XCTestCase {
     private var cleanupURLs: [URL] = []
     private var suiteNames: [String] = []
+    private var domainNamesByDefaults: [ObjectIdentifier: String] = [:]
 
     override func tearDown() {
         for suiteName in suiteNames {
@@ -14,6 +15,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
             try? FileManager.default.removeItem(at: url)
         }
         suiteNames.removeAll()
+        domainNamesByDefaults.removeAll()
         cleanupURLs.removeAll()
         super.tearDown()
     }
@@ -24,7 +26,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         UserProfileStore(defaults: defaults).save(profile)
         let sourceBefore = defaults.dictionaryRepresentation()
         let container = try RebuildPersistentStore.makeInMemory()
-        let coordinator = RebuildMigrationCoordinator(defaults: defaults, container: container)
+        let coordinator = RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
+            container: container
+        )
 
         XCTAssertEqual(try coordinator.runIfNeeded(targetVersion: 1), .migrated)
         XCTAssertEqual(try coordinator.runIfNeeded(targetVersion: 1), .alreadyCompleted)
@@ -39,7 +45,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertEqual(
-            try RebuildMigrationCoordinator(defaults: defaults, container: container)
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
+                container: container
+            )
                 .runIfNeeded(targetVersion: 1),
             .noLegacyData
         )
@@ -54,7 +64,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
             .markCompleted(version: 1, sourceDigest: "existing")
 
         XCTAssertEqual(
-            try RebuildMigrationCoordinator(defaults: defaults, container: container)
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
+                container: container
+            )
                 .runIfNeeded(targetVersion: 1),
             .alreadyCompleted
         )
@@ -141,6 +155,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
 
         let outcome = try RebuildMigrationCoordinator(
             defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
             container: container,
             legacyPhotoDirectory: sourceDirectory,
             rebuildPhotoDirectory: targetDirectory,
@@ -217,6 +232,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
         let coordinator = RebuildMigrationCoordinator(
             defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
             container: container,
             legacyPhotoDirectory: sourceDirectory,
             rebuildPhotoDirectory: targetDirectory
@@ -257,6 +273,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(
             try RebuildMigrationCoordinator(
                 defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -282,6 +299,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
         let coordinator = RebuildMigrationCoordinator(
             defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
             container: container,
             legacyPhotoDirectory: sourceDirectory,
             rebuildPhotoDirectory: targetDirectory,
@@ -312,6 +330,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
         let coordinator = RebuildMigrationCoordinator(
             defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
             container: container,
             legacyPhotoDirectory: sourceDirectory,
             rebuildPhotoDirectory: targetDirectory,
@@ -335,7 +354,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let secondContainer = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertThrowsError(
-            try RebuildMigrationCoordinator(defaults: firstDefaults, container: firstContainer)
+            try RebuildMigrationCoordinator(
+                defaults: firstDefaults,
+                legacyDefaultsDomainName: domainName(for: firstDefaults),
+                container: firstContainer
+            )
                 .runIfNeeded(targetVersion: 2)
         ) { error in
             XCTAssertEqual(error as? RebuildMigrationError, .unsupportedTargetVersion(2))
@@ -343,12 +366,20 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(try totalObjectCount(in: firstContainer.viewContext), 0)
 
         XCTAssertEqual(
-            try RebuildMigrationCoordinator(defaults: firstDefaults, container: firstContainer)
+            try RebuildMigrationCoordinator(
+                defaults: firstDefaults,
+                legacyDefaultsDomainName: domainName(for: firstDefaults),
+                container: firstContainer
+            )
                 .runIfNeeded(targetVersion: 1),
             .migrated
         )
         XCTAssertEqual(
-            try RebuildMigrationCoordinator(defaults: secondDefaults, container: secondContainer)
+            try RebuildMigrationCoordinator(
+                defaults: secondDefaults,
+                legacyDefaultsDomainName: domainName(for: secondDefaults),
+                container: secondContainer
+            )
                 .runIfNeeded(targetVersion: 1),
             .migrated
         )
@@ -363,7 +394,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let changedDefaults = makeDefaults()
         UserProfileStore(defaults: changedDefaults).save(makeProfile(nickname: "다른 값"))
         let changedContainer = try RebuildPersistentStore.makeInMemory()
-        _ = try RebuildMigrationCoordinator(defaults: changedDefaults, container: changedContainer)
+        _ = try RebuildMigrationCoordinator(
+            defaults: changedDefaults,
+            legacyDefaultsDomainName: domainName(for: changedDefaults),
+            container: changedContainer
+        )
             .runIfNeeded(targetVersion: 1)
         let changedDigest = try XCTUnwrap(
             RebuildMigrationStateRepository(context: changedContainer.viewContext).load()?.sourceDigest
@@ -387,6 +422,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: traversalDefaults,
+                legacyDefaultsDomainName: domainName(for: traversalDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -417,6 +453,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: symlinkDefaults,
+                legacyDefaultsDomainName: domainName(for: symlinkDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -444,6 +481,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: danglingSymlinkDefaults,
+                legacyDefaultsDomainName: domainName(for: danglingSymlinkDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -469,6 +507,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         try photoData.write(to: sourceDirectory.appendingPathComponent(photo.fileName))
         MealPhotoMetadataStore(defaults: defaults).save([photo])
         let container = try RebuildPersistentStore.makeInMemory()
+        let defaultsDomainName = domainName(for: defaults)
         let raceGate = TimedRaceGate(participantCount: 2)
         let results = MigrationLockedBox<[Result<MigrationOutcome, Error>]>([])
         let start = DispatchSemaphore(value: 0)
@@ -480,6 +519,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
                 start.wait()
                 let coordinator = RebuildMigrationCoordinator(
                     defaults: defaults,
+                    legacyDefaultsDomainName: defaultsDomainName,
                     container: container,
                     legacyPhotoDirectory: sourceDirectory,
                     rebuildPhotoDirectory: targetDirectory,
@@ -526,7 +566,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertThrowsError(
-            try RebuildMigrationCoordinator(defaults: defaults, container: container)
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
+                container: container
+            )
                 .runIfNeeded(targetVersion: 1)
         )
         XCTAssertEqual(defaults.data(forKey: "user-profile"), corruptData)
@@ -571,7 +615,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let mealContainer = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertThrowsError(
-            try RebuildMigrationCoordinator(defaults: mealDefaults, container: mealContainer)
+            try RebuildMigrationCoordinator(
+                defaults: mealDefaults,
+                legacyDefaultsDomainName: domainName(for: mealDefaults),
+                container: mealContainer
+            )
                 .runIfNeeded(targetVersion: 1)
         ) { error in
             XCTAssertEqual(
@@ -599,7 +647,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let photoContainer = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertThrowsError(
-            try RebuildMigrationCoordinator(defaults: photoDefaults, container: photoContainer)
+            try RebuildMigrationCoordinator(
+                defaults: photoDefaults,
+                legacyDefaultsDomainName: domainName(for: photoDefaults),
+                container: photoContainer
+            )
                 .runIfNeeded(targetVersion: 1)
         ) { error in
             XCTAssertEqual(
@@ -634,7 +686,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertEqual(
-            try RebuildMigrationCoordinator(defaults: defaults, container: container)
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
+                container: container
+            )
                 .runIfNeeded(targetVersion: 1),
             .migrated
         )
@@ -679,6 +735,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: rootDefaults,
+                legacyDefaultsDomainName: domainName(for: rootDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -709,6 +766,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: sourceSymlinkDefaults,
+                legacyDefaultsDomainName: domainName(for: sourceSymlinkDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -725,6 +783,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let discoveryContainer = try RebuildPersistentStore.makeInMemory()
         _ = try RebuildMigrationCoordinator(
             defaults: discoveryDefaults,
+            legacyDefaultsDomainName: domainName(for: discoveryDefaults),
             container: discoveryContainer,
             legacyPhotoDirectory: sourceDirectory,
             rebuildPhotoDirectory: targetDirectory
@@ -745,6 +804,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: staleDefaults,
+                legacyDefaultsDomainName: domainName(for: staleDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -768,6 +828,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: targetLeafDefaults,
+                legacyDefaultsDomainName: domainName(for: targetLeafDefaults),
                 container: RebuildPersistentStore.makeInMemory(),
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -800,7 +861,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertThrowsError(
-            try RebuildMigrationCoordinator(defaults: defaults, container: container)
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
+                container: container
+            )
                 .runIfNeeded(targetVersion: 1)
         ) { error in
             XCTAssertEqual(error as? RebuildMigrationError, .xpOverflow)
@@ -827,6 +892,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
                 container: container,
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory,
@@ -878,7 +944,11 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         let container = try RebuildPersistentStore.makeInMemory()
 
         XCTAssertEqual(
-            try RebuildMigrationCoordinator(defaults: defaults, container: container)
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
+                container: container
+            )
                 .runIfNeeded(targetVersion: 1),
             .migrated
         )
@@ -919,6 +989,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertThrowsError(
             try RebuildMigrationCoordinator(
                 defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
                 container: container,
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory,
@@ -929,6 +1000,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(
             try RebuildMigrationCoordinator(
                 defaults: defaults,
+                legacyDefaultsDomainName: domainName(for: defaults),
                 container: container,
                 legacyPhotoDirectory: sourceDirectory,
                 rebuildPhotoDirectory: targetDirectory
@@ -938,6 +1010,547 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(try count(RebuildEntityName.mealPhoto, in: container.viewContext), 1)
         XCTAssertEqual(try count(RebuildEntityName.migrationState, in: container.viewContext), 1)
         XCTAssertEqual(try Data(contentsOf: sourceURL), data)
+    }
+
+    func testRollbackDoesNotDeleteReplacementAtInstalledPhotoPath() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        let sourceDirectory = makeDirectory()
+        let targetDirectory = makeDirectory()
+        let photo = MealPhotoRecord(
+            id: "replacement-photo",
+            fileName: "replacement.jpg",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            isSharedWithParent: false
+        )
+        let sourceData = Data("migration-owned".utf8)
+        let replacementData = Data("replacement-owned-elsewhere".utf8)
+        try sourceData.write(
+            to: sourceDirectory.appendingPathComponent(photo.fileName)
+        )
+        MealPhotoMetadataStore(defaults: defaults).save([photo])
+        let container = try RebuildPersistentStore.makeInMemory()
+        let replacedURL = MigrationLockedBox<URL?>(nil)
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                verify: { _ in
+                    let leaf = try XCTUnwrap(
+                        FileManager.default.contentsOfDirectory(
+                            at: targetDirectory,
+                            includingPropertiesForKeys: nil
+                        ).first
+                    )
+                    try FileManager.default.removeItem(at: leaf)
+                    try replacementData.write(to: leaf)
+                    replacedURL.withValue { $0 = leaf }
+                    throw TestFailure.verification
+                }
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            guard case let .rollbackCleanupFailed(paths, originalFailure) =
+                    error as? RebuildMigrationError else {
+                return XCTFail("Expected rollbackCleanupFailed, got \(error)")
+            }
+            XCTAssertEqual(paths, [replacedURL.value?.path].compactMap { $0 })
+            XCTAssertTrue(originalFailure.contains("verification"))
+        }
+        let replacementURL = try XCTUnwrap(replacedURL.value)
+        XCTAssertEqual(try Data(contentsOf: replacementURL), replacementData)
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+    }
+
+    func testRollbackNeverClaimsOrDeletesMatchingTargetAdoptedAfterEEXIST() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        let sourceDirectory = makeDirectory()
+        let targetDirectory = makeDirectory()
+        let photo = MealPhotoRecord(
+            id: "adopted-photo",
+            fileName: "adopted.jpg",
+            createdAt: Date(timeIntervalSince1970: 1_100),
+            isSharedWithParent: false
+        )
+        let data = Data("already durable".utf8)
+        try data.write(to: sourceDirectory.appendingPathComponent(photo.fileName))
+        MealPhotoMetadataStore(defaults: defaults).save([photo])
+
+        XCTAssertEqual(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: RebuildPersistentStore.makeInMemory(),
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory
+            ).runIfNeeded(targetVersion: 1),
+            .migrated
+        )
+        let adoptedURL = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: targetDirectory,
+                includingPropertiesForKeys: nil
+            ).first
+        )
+        let retryContainer = try RebuildPersistentStore.makeInMemory()
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: retryContainer,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                verify: { _ in throw TestFailure.verification }
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(error as? TestFailure, .verification)
+        }
+        XCTAssertEqual(try Data(contentsOf: adoptedURL), data)
+        XCTAssertEqual(try totalObjectCount(in: retryContainer.viewContext), 0)
+    }
+
+    func testQueuedAlreadyCompletedCallDoesNotClearSuccessfulAttemptWarnings() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        MealPhotoMetadataStore(defaults: defaults).save([
+            MealPhotoRecord(
+                id: "queued-warning",
+                fileName: "missing.jpg",
+                createdAt: Date(timeIntervalSince1970: 1_200),
+                isSharedWithParent: false
+            )
+        ])
+        let verifyEntered = DispatchSemaphore(value: 0)
+        let secondStarted = DispatchSemaphore(value: 0)
+        let results = MigrationLockedBox<[Result<MigrationOutcome, Error>]>([])
+        let group = DispatchGroup()
+        let coordinator = RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName,
+            container: try RebuildPersistentStore.makeInMemory(),
+            legacyPhotoDirectory: makeDirectory(),
+            rebuildPhotoDirectory: makeDirectory(),
+            verify: { _ in
+                verifyEntered.signal()
+                XCTAssertEqual(
+                    secondStarted.wait(timeout: .now() + 2),
+                    .success
+                )
+            }
+        )
+
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result {
+                try coordinator.runIfNeeded(targetVersion: 1)
+            }
+            results.withValue { $0.append(result) }
+            group.leave()
+        }
+        XCTAssertEqual(verifyEntered.wait(timeout: .now() + 2), .success)
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            secondStarted.signal()
+            let result = Result {
+                try coordinator.runIfNeeded(targetVersion: 1)
+            }
+            results.withValue { $0.append(result) }
+            group.leave()
+        }
+
+        XCTAssertEqual(group.wait(timeout: .now() + 5), .success)
+        let outcomes = results.value.compactMap { try? $0.get() }
+        XCTAssertEqual(outcomes.filter { $0 == .migrated }.count, 1)
+        XCTAssertEqual(outcomes.filter { $0 == .alreadyCompleted }.count, 1)
+        XCTAssertEqual(
+            coordinator.warnings,
+            [.missingPhotoFile(photoID: "queued-warning", fileName: "missing.jpg")]
+        )
+    }
+
+    func testSourceAndTargetDirectoryAncestorSymlinksAreRejected() throws {
+        let root = makeDirectory()
+        let outside = makeDirectory()
+        let sourceThroughLink = root.appendingPathComponent("source-link/source")
+        let outsideSource = outside.appendingPathComponent("source")
+        try FileManager.default.createDirectory(
+            at: outsideSource,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("source-link"),
+            withDestinationURL: outside
+        )
+        let photo = MealPhotoRecord(
+            id: "ancestor-symlink",
+            fileName: "photo.jpg",
+            createdAt: Date(timeIntervalSince1970: 1_300),
+            isSharedWithParent: false
+        )
+        try Data("outside source".utf8).write(
+            to: outsideSource.appendingPathComponent(photo.fileName)
+        )
+        let (sourceDefaults, sourceDomain) = makeDefaultsWithDomain()
+        MealPhotoMetadataStore(defaults: sourceDefaults).save([photo])
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: sourceDefaults,
+                legacyDefaultsDomainName: sourceDomain,
+                container: RebuildPersistentStore.makeInMemory(),
+                legacyPhotoDirectory: sourceThroughLink,
+                rebuildPhotoDirectory: makeDirectory()
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            guard case .unsafePhotoPath = error as? RebuildMigrationError else {
+                return XCTFail("Expected unsafePhotoPath, got \(error)")
+            }
+        }
+
+        let directSource = makeDirectory()
+        try Data("trusted source".utf8).write(
+            to: directSource.appendingPathComponent(photo.fileName)
+        )
+        let targetOutside = makeDirectory()
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("target-link"),
+            withDestinationURL: targetOutside
+        )
+        let targetThroughLink = root.appendingPathComponent("target-link/nested")
+        let (targetDefaults, targetDomain) = makeDefaultsWithDomain()
+        MealPhotoMetadataStore(defaults: targetDefaults).save([photo])
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: targetDefaults,
+                legacyDefaultsDomainName: targetDomain,
+                container: RebuildPersistentStore.makeInMemory(),
+                legacyPhotoDirectory: directSource,
+                rebuildPhotoDirectory: targetThroughLink
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            guard case .unsafePhotoPath = error as? RebuildMigrationError else {
+                return XCTFail("Expected unsafePhotoPath, got \(error)")
+            }
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: targetOutside.appendingPathComponent("nested").path
+            )
+        )
+    }
+
+    func testAssociationRemovesOnlyASCIISpaceAndPreservesUnicodeWhitespace() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        let nonBreakingSpace = "\u{00A0}"
+        let spacedName = "Bean\(nonBreakingSpace)Rice"
+        MealRecordStore(defaults: defaults).save([
+            MealRecord(
+                date: "2026-07-25",
+                menuName: spacedName,
+                eatingStatus: .oneBite
+            ),
+            MealRecord(
+                date: "2026-07-25",
+                menuName: "BeanRice",
+                eatingStatus: .oneBite
+            ),
+        ])
+        ChallengeStore(defaults: defaults).save([
+            ChallengeRecord(
+                date: "2026-07-25",
+                menuName: "Bean Rice",
+                action: .oneBite,
+                gainedExp: 5,
+                badgeName: nil,
+                nutrients: [],
+                eatingStatus: .oneBite,
+                xpBreakdown: XPBreakdown(challenge: 5)
+            )
+        ])
+        let container = try RebuildPersistentStore.makeInMemory()
+
+        XCTAssertEqual(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container
+            ).runIfNeeded(targetVersion: 1),
+            .migrated
+        )
+        let meals = try fetch(
+            RebuildMealRecordManagedObject.self,
+            RebuildEntityName.mealRecord,
+            in: container.viewContext
+        )
+        XCTAssertEqual(meals.count, 2)
+        XCTAssertTrue(
+            meals.contains {
+                $0.id == "2026-07-25|bean\(nonBreakingSpace)rice|oneBite"
+            }
+        )
+        let events = try fetch(
+            RebuildProgressEventManagedObject.self,
+            RebuildEntityName.progressEvent,
+            in: container.viewContext
+        )
+        XCTAssertNotNil(
+            events.first { $0.id == "meal:2026-07-25|beanrice|oneBite" }
+        )
+        XCTAssertNil(
+            events.first {
+                $0.id == "meal:2026-07-25|bean\(nonBreakingSpace)rice|oneBite"
+            }
+        )
+    }
+
+    func testAssociationPreservesEdgeUnicodeWhitespaceWhileCanonicalIdentityTrimsIt() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        let nonBreakingSpace = "\u{00A0}"
+        MealRecordStore(defaults: defaults).save([
+            MealRecord(
+                date: "2026-07-25",
+                menuName: "\(nonBreakingSpace)Bean Rice\(nonBreakingSpace)",
+                eatingStatus: .oneBite
+            )
+        ])
+        ChallengeStore(defaults: defaults).save([
+            ChallengeRecord(
+                date: "2026-07-25",
+                menuName: "BeanRice",
+                action: .oneBite,
+                gainedExp: 5,
+                badgeName: nil,
+                nutrients: [],
+                eatingStatus: .oneBite,
+                xpBreakdown: XPBreakdown(challenge: 5)
+            )
+        ])
+        let container = try RebuildPersistentStore.makeInMemory()
+
+        XCTAssertEqual(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container
+            ).runIfNeeded(targetVersion: 1),
+            .migrated
+        )
+        let meals = try fetch(
+            RebuildMealRecordManagedObject.self,
+            RebuildEntityName.mealRecord,
+            in: container.viewContext
+        )
+        XCTAssertEqual(meals.first?.id, "2026-07-25|bean rice|oneBite")
+        XCTAssertEqual(meals.first?.normalizedMenuName, "bean rice")
+        let events = try fetch(
+            RebuildProgressEventManagedObject.self,
+            RebuildEntityName.progressEvent,
+            in: container.viewContext
+        )
+        XCTAssertNotNil(
+            events.first { $0.id == "meal:2026-07-25|beanrice|oneBite" }
+        )
+        XCTAssertNil(
+            events.first { $0.id == "meal:2026-07-25|bean rice|oneBite" }
+        )
+    }
+
+    func testOldChallengePayloadHasStableDigestIdentityAndTimestampAcrossRetry() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        defaults.set(
+            Data("""
+            [
+              {
+                "date": "2026-07-25",
+                "menuName": "Old Payload",
+                "action": "oneBite",
+                "gainedExp": 7,
+                "badgeName": null,
+                "nutrients": []
+              }
+            ]
+            """.utf8),
+            forKey: LegacyDefaultsReader.Key.challenges
+        )
+        let reader = LegacyDefaultsReader(
+            defaults: defaults,
+            persistentDomainName: domainName
+        )
+        let firstSnapshot = try reader.readSnapshot()
+        let secondSnapshot = try reader.readSnapshot()
+        XCTAssertEqual(
+            try reader.sourceDigest(for: firstSnapshot),
+            try reader.sourceDigest(for: secondSnapshot)
+        )
+        XCTAssertEqual(firstSnapshot.challenges.first?.id, secondSnapshot.challenges.first?.id)
+        XCTAssertEqual(
+            firstSnapshot.challenges.first?.createdAt,
+            secondSnapshot.challenges.first?.createdAt
+        )
+
+        let container = try RebuildPersistentStore.makeInMemory()
+        let failedEvent = MigrationLockedBox<(String, Date)?>(nil)
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                save: { context in
+                    let request = NSFetchRequest<RebuildProgressEventManagedObject>(
+                        entityName: RebuildEntityName.progressEvent
+                    )
+                    let event = try XCTUnwrap(context.fetch(request).first)
+                    failedEvent.withValue {
+                        $0 = (event.sourceRecordID ?? "", event.occurredAt)
+                    }
+                    throw TestFailure.save
+                }
+            ).runIfNeeded(targetVersion: 1)
+        )
+        XCTAssertEqual(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container
+            ).runIfNeeded(targetVersion: 1),
+            .migrated
+        )
+        let migratedEvent = try XCTUnwrap(
+            fetch(
+                RebuildProgressEventManagedObject.self,
+                RebuildEntityName.progressEvent,
+                in: container.viewContext
+            ).first
+        )
+        XCTAssertEqual(failedEvent.value?.0, migratedEvent.sourceRecordID)
+        XCTAssertEqual(failedEvent.value?.1, migratedEvent.occurredAt)
+    }
+
+    func testSynchronousReentryThrowsWithoutDeadlockOrCorruption() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        UserProfileStore(defaults: defaults).save(makeProfile())
+        let container = try RebuildPersistentStore.makeInMemory()
+        let reentryError = MigrationLockedBox<RebuildMigrationError?>(nil)
+        var coordinator: RebuildMigrationCoordinator!
+        coordinator = RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName,
+            container: container,
+            save: { context in
+                do {
+                    _ = try coordinator.runIfNeeded(targetVersion: 1)
+                    XCTFail("Synchronous re-entry unexpectedly succeeded")
+                } catch {
+                    reentryError.withValue {
+                        $0 = error as? RebuildMigrationError
+                    }
+                }
+                try context.save()
+            }
+        )
+
+        XCTAssertEqual(try coordinator.runIfNeeded(targetVersion: 1), .migrated)
+        XCTAssertEqual(reentryError.value, .reentrantAttempt)
+        XCTAssertEqual(try count(RebuildEntityName.profile, in: container.viewContext), 1)
+        XCTAssertEqual(try count(RebuildEntityName.migrationState, in: container.viewContext), 1)
+    }
+
+    func testInjectedSuiteWithoutExplicitPersistentDomainIsRejected() throws {
+        let defaults = makeDefaults()
+        UserProfileStore(defaults: defaults).save(makeProfile())
+        let container = try RebuildPersistentStore.makeInMemory()
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                container: container
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(
+                error as? RebuildMigrationError,
+                .missingPersistentDefaultsDomain
+            )
+        }
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+    }
+
+    func testPhotoReferencedByMultipleMealsIsRejectedAsAmbiguous() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        MealRecordStore(defaults: defaults).save([
+            MealRecord(
+                date: "2026-07-25",
+                menuName: "First",
+                eatingStatus: .oneBite,
+                photoIds: ["shared-photo"]
+            ),
+            MealRecord(
+                date: "2026-07-25",
+                menuName: "Second",
+                eatingStatus: .oneBite,
+                photoIds: ["shared-photo"]
+            ),
+        ])
+        MealPhotoMetadataStore(defaults: defaults).save([
+            MealPhotoRecord(
+                id: "shared-photo",
+                fileName: "missing.jpg",
+                createdAt: Date(timeIntervalSince1970: 1_400),
+                isSharedWithParent: false
+            )
+        ])
+        let container = try RebuildPersistentStore.makeInMemory()
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(
+                error as? RebuildMigrationError,
+                .ambiguousPhotoReference("shared-photo")
+            )
+        }
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+    }
+
+    func testTargetDirectorySyncFailureRollsBackInstalledPhotoAndRows() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        let sourceDirectory = makeDirectory()
+        let targetDirectory = makeDirectory()
+        let photo = MealPhotoRecord(
+            id: "directory-sync",
+            fileName: "directory-sync.jpg",
+            createdAt: Date(timeIntervalSince1970: 1_500),
+            isSharedWithParent: false
+        )
+        try Data("sync before marker".utf8).write(
+            to: sourceDirectory.appendingPathComponent(photo.fileName)
+        )
+        MealPhotoMetadataStore(defaults: defaults).save([photo])
+        let container = try RebuildPersistentStore.makeInMemory()
+
+        XCTAssertThrowsError(
+            try RebuildMigrationCoordinator(
+                defaults: defaults,
+                legacyDefaultsDomainName: domainName,
+                container: container,
+                legacyPhotoDirectory: sourceDirectory,
+                rebuildPhotoDirectory: targetDirectory,
+                syncTargetDirectory: { _ in throw TestFailure.directorySync }
+            ).runIfNeeded(targetVersion: 1)
+        ) { error in
+            XCTAssertEqual(error as? TestFailure, .directorySync)
+        }
+        XCTAssertEqual(try totalObjectCount(in: container.viewContext), 0)
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: targetDirectory.path),
+            []
+        )
     }
 
     private func makeDefaults(file: StaticString = #filePath, line: UInt = #line) -> UserDefaults {
@@ -952,7 +1565,20 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         suiteNames.append(name)
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
+        domainNamesByDefaults[ObjectIdentifier(defaults)] = name
         return (defaults, name)
+    }
+
+    private func domainName(
+        for defaults: UserDefaults,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> String {
+        guard let domainName = domainNamesByDefaults[ObjectIdentifier(defaults)] else {
+            XCTFail("Missing explicit defaults domain for test fixture", file: file, line: line)
+            return ""
+        }
+        return domainName
     }
 
     private func makeDirectory() -> URL {
@@ -960,8 +1586,9 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
             .appendingPathComponent("RebuildMigrationCoordinatorTests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        cleanupURLs.append(url)
-        return url
+        let resolvedURL = url.resolvingSymlinksInPath()
+        cleanupURLs.append(resolvedURL)
+        return resolvedURL
     }
 
     private func makeProfile(nickname: String = "냠냠이") -> UserProfile {
@@ -1024,6 +1651,7 @@ private enum TestFailure: Error, Equatable {
     case verification
     case save
     case cleanup
+    case directorySync
 }
 
 private final class MigrationLockedBox<Value>: @unchecked Sendable {

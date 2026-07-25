@@ -67,15 +67,14 @@ struct LegacyDefaultsReader {
     }
 
     private let defaults: UserDefaults
-    private let persistentDomainName: String?
+    private let persistentDomainName: String
 
     init(
         defaults: UserDefaults = .standard,
-        persistentDomainName: String? = nil
+        persistentDomainName: String
     ) {
         self.defaults = defaults
         self.persistentDomainName = persistentDomainName
-            ?? (defaults === UserDefaults.standard ? Bundle.main.bundleIdentifier : nil)
     }
 
     func readSnapshot() throws -> LegacySnapshot {
