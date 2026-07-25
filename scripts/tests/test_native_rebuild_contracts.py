@@ -87,6 +87,40 @@ class NativeRebuildContractTests(unittest.TestCase):
         result = self._run_validator_with(contract=contract)
         self.assertEqual(result.returncode, 1, result.stderr)
 
+    def test_validator_rejects_boolean_design_token_version(self):
+        design_tokens = json.loads((CONTRACTS / "design-tokens.json").read_text())
+        design_tokens["version"] = True
+
+        result = self._run_validator_with(design_tokens=design_tokens)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_validator_rejects_float_design_token_version(self):
+        design_tokens = json.loads((CONTRACTS / "design-tokens.json").read_text())
+        design_tokens["version"] = 1.0
+
+        result = self._run_validator_with(design_tokens=design_tokens)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_validator_rejects_float_minimum_action_size(self):
+        design_tokens = json.loads((CONTRACTS / "design-tokens.json").read_text())
+        design_tokens["minimumActionSize"] = 48.0
+
+        result = self._run_validator_with(design_tokens=design_tokens)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_validator_rejects_float_members_in_integer_token_arrays(self):
+        for field in ("spacing", "radii"):
+            with self.subTest(field=field):
+                design_tokens = json.loads((CONTRACTS / "design-tokens.json").read_text())
+                design_tokens[field][0] = float(design_tokens[field][0])
+
+                result = self._run_validator_with(design_tokens=design_tokens)
+
+                self.assertEqual(result.returncode, 1, result.stderr)
+
     def test_sync_copies_all_json_and_preserves_non_json_files(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project = self._make_sync_project(pathlib.Path(temporary_directory))
@@ -144,7 +178,7 @@ class NativeRebuildContractTests(unittest.TestCase):
             self.assertEqual(outside_file.read_text(encoding="utf-8"), "outside\n")
             self.assertFalse((project / "android/app/src/main/assets/rebuild-contracts").exists())
 
-    def _run_validator_with(self, contract=None, fixtures=None):
+    def _run_validator_with(self, contract=None, fixtures=None, design_tokens=None):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project = pathlib.Path(temporary_directory)
             shutil.copytree(CONTRACTS.parent, project / "contracts/native-rebuild")
@@ -158,6 +192,10 @@ class NativeRebuildContractTests(unittest.TestCase):
             if fixtures is not None:
                 (project / "contracts/native-rebuild/v1/domain-fixtures.json").write_text(
                     json.dumps(fixtures), encoding="utf-8"
+                )
+            if design_tokens is not None:
+                (project / "contracts/native-rebuild/v1/design-tokens.json").write_text(
+                    json.dumps(design_tokens), encoding="utf-8"
                 )
             return subprocess.run(
                 [sys.executable, "scripts/validate-native-rebuild-contracts.py"],

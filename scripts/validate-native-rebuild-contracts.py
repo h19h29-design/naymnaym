@@ -159,8 +159,23 @@ def validate_fixtures(fixtures, eating_statuses):
     return errors
 
 
+def matches_exact_json_types(actual, expected):
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(
+            matches_exact_json_types(actual[key], value) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            matches_exact_json_types(actual_item, expected_item)
+            for actual_item, expected_item in zip(actual, expected)
+        )
+    return actual == expected
+
+
 def validate_design_tokens(tokens):
-    if tokens != EXPECTED_DESIGN_TOKENS:
+    if not matches_exact_json_types(tokens, EXPECTED_DESIGN_TOKENS):
         return ["design-tokens.json: must match the exact v1 content"]
     return []
 
