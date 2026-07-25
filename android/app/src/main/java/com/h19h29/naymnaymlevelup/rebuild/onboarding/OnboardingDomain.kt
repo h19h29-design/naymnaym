@@ -74,10 +74,12 @@ sealed interface SchoolSearchState {
     data class Failed(val message: String) : SchoolSearchState
 }
 
-fun interface OnboardingProfileStore {
+interface OnboardingProfileStore {
     suspend fun save(profile: RebuildUserProfile)
 
     suspend fun load(): RebuildUserProfile? = null
+
+    suspend fun removeIfCurrent(id: String)
 }
 
 fun interface SchoolSearchClient {
@@ -126,6 +128,7 @@ class RoomOnboardingProfileStore(
 
     override suspend fun save(profile: RebuildUserProfile) {
         database.withTransaction {
+            database.profileDao().deleteAll()
             database.profileDao().upsert(
                 ProfileEntity(
                     id = profile.id,
@@ -139,6 +142,12 @@ class RoomOnboardingProfileStore(
                     ),
                 ),
             )
+        }
+    }
+
+    override suspend fun removeIfCurrent(id: String) {
+        database.withTransaction {
+            database.profileDao().delete(id)
         }
     }
 
@@ -205,10 +214,15 @@ class NeisSchoolSearchClient(
         }
         val sections = root["schoolInfo"] as? List<*>
             ?: throw SchoolSearchException.MalformedResponse()
-        return sections.flatMap { sectionValue ->
+        if (sections.isEmpty()) {
+            throw SchoolSearchException.MalformedResponse()
+        }
+        var foundRows = false
+        val schools = sections.flatMap { sectionValue ->
             val section = sectionValue as? Map<*, *>
                 ?: throw SchoolSearchException.MalformedResponse()
             val rows = if (section.containsKey("row")) {
+                foundRows = true
                 section["row"] as? List<*>
                     ?: throw SchoolSearchException.MalformedResponse()
             } else {
@@ -229,6 +243,10 @@ class NeisSchoolSearchClient(
                 OnboardingSchool(name, officeCode, schoolCode)
             }
         }
+        if (!foundRows || schools.isEmpty()) {
+            throw SchoolSearchException.MalformedResponse()
+        }
+        return schools
     }
 
     private companion object {

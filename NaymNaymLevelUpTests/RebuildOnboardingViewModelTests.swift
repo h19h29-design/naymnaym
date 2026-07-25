@@ -194,6 +194,44 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         }
         XCTAssertNil(viewModel.completedProfile)
         XCTAssertEqual(viewModel.step, .role)
+
+        let restoredProfile = try? await store.load()
+        XCTAssertNil(restoredProfile)
+        let recreatedRoot = RebuildOnboardingBootstrapViewModel(
+            profileStore: store
+        )
+        await recreatedRoot.load()
+        XCTAssertEqual(recreatedRoot.state, .onboarding)
+    }
+
+    func testCancelledSaveCleanupNeverDeletesLaterProfile() async throws {
+        let store = RacingOnboardingProfileStore()
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: store,
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+        viewModel.selectRole(.parent)
+        viewModel.setNickname("취소할 보호자")
+
+        let cancelled = Task { try await viewModel.complete() }
+        await store.waitUntilFirstSaveStarts()
+        viewModel.cancel()
+        store.finishFirstSave()
+        await store.waitUntilRemovalStarts()
+
+        viewModel.selectRole(.parent)
+        viewModel.setNickname("최종 보호자")
+        let latest = try await viewModel.complete()
+        store.finishRemoval()
+
+        await XCTAssertThrowsErrorAsync(try await cancelled.value) { error in
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionCancelled
+            )
+        }
+        let restoredProfile = try await store.load()
+        XCTAssertEqual(restoredProfile, latest)
     }
 
     func testBootstrapLoadsPersistedProfilesAndRoutesWithoutOnboarding() async {
@@ -310,6 +348,51 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
                 .malformedResponse
             )
         }
+
+        let missingRowsWithoutResult = [
+            #"{"schoolInfo":[]}"#,
+            #"{"schoolInfo":[{"head":[{"list_total_count":1}]}]}"#,
+            #"{"schoolInfo":[{"head":[{"list_total_count":1}]},{"row":[]}]}"#,
+            #"{"schoolInfo":[{"head":[{"list_total_count":1}]},{"other":[]}]}"#
+        ]
+        for payload in missingRowsWithoutResult {
+            let client = makeSchoolClient(payload)
+            await XCTAssertThrowsErrorAsync(
+                try await client.search(query: "행 없는 학교")
+            ) { error in
+                XCTAssertEqual(
+                    error as? RebuildSchoolSearchError,
+                    .malformedResponse
+                )
+            }
+        }
+    }
+
+    func testRebuildProfileBridgeMakesLegacyDestinationsUseStoredRoleAndSchool() {
+        let suiteName = "RebuildProfileBridge-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults)
+        )
+
+        appState.applyRebuildProfile(.fixture(role: .child))
+
+        XCTAssertEqual(appState.currentMode, .elementary)
+        XCTAssertEqual(appState.profile?.nickname, "냠냠이")
+        XCTAssertEqual(appState.profile?.schoolName, "서울 냠냠초")
+        XCTAssertEqual(appState.profile?.officeCode, "B10")
+        XCTAssertEqual(appState.profile?.schoolCode, "7010111")
+        XCTAssertEqual(appState.profile?.selectedAllergyCodes, [1, 5])
+
+        appState.applyRebuildProfile(.fixture(role: .parent))
+
+        XCTAssertEqual(appState.currentMode, .parent)
+        XCTAssertEqual(appState.profile?.nickname, "보호자")
+        XCTAssertEqual(
+            UserProfileStore(defaults: defaults).load()?.effectiveMode,
+            .parent
+        )
     }
 }
 
@@ -336,22 +419,36 @@ private final class OnboardingProfileStoreSpy: RebuildOnboardingProfileStore {
         }
         savedProfiles.append(profile)
     }
+
+    func removeIfCurrent(id: String) async throws {
+        if savedProfiles.last?.id == id {
+            savedProfiles.removeLast()
+        }
+    }
 }
 
 @MainActor
 private final class ControlledOnboardingProfileStore:
     RebuildOnboardingProfileStore {
     private(set) var saveCount = 0
+    private var persistedProfile: RebuildUserProfile?
     private var saveContinuation: CheckedContinuation<Void, Error>?
 
     func load() async throws -> RebuildUserProfile? {
-        nil
+        persistedProfile
     }
 
     func save(_ profile: RebuildUserProfile) async throws {
         saveCount += 1
         try await withCheckedThrowingContinuation { continuation in
             saveContinuation = continuation
+        }
+        persistedProfile = profile
+    }
+
+    func removeIfCurrent(id: String) async throws {
+        if persistedProfile?.id == id {
+            persistedProfile = nil
         }
     }
 
@@ -364,6 +461,62 @@ private final class ControlledOnboardingProfileStore:
     func finishSave() {
         saveContinuation?.resume()
         saveContinuation = nil
+    }
+}
+
+@MainActor
+private final class RacingOnboardingProfileStore:
+    RebuildOnboardingProfileStore {
+    private var persistedProfile: RebuildUserProfile?
+    private var saveCount = 0
+    private var firstSaveContinuation: CheckedContinuation<Void, Never>?
+    private var removalContinuation: CheckedContinuation<Void, Never>?
+    private var removalStarted = false
+
+    func load() async throws -> RebuildUserProfile? {
+        persistedProfile
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
+        saveCount += 1
+        if saveCount == 1 {
+            await withCheckedContinuation { continuation in
+                firstSaveContinuation = continuation
+            }
+        }
+        persistedProfile = profile
+    }
+
+    func removeIfCurrent(id: String) async throws {
+        removalStarted = true
+        await withCheckedContinuation { continuation in
+            removalContinuation = continuation
+        }
+        if persistedProfile?.id == id {
+            persistedProfile = nil
+        }
+    }
+
+    func waitUntilFirstSaveStarts() async {
+        while firstSaveContinuation == nil {
+            await Task.yield()
+        }
+    }
+
+    func finishFirstSave() {
+        firstSaveContinuation?.resume()
+        firstSaveContinuation = nil
+    }
+
+    func waitUntilRemovalStarts() async {
+        while !removalStarted {
+            await Task.yield()
+        }
+    }
+
+    func finishRemoval() {
+        removalContinuation?.resume()
+        removalContinuation = nil
     }
 }
 

@@ -47,6 +47,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.h19h29.naymnaymlevelup.rebuild.RebuildActivity;
+import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyDestinationLauncher;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -113,7 +114,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (BuildConfig.NATIVE_REBUILD_ENABLED) {
+        String rebuildDestination = getIntent() == null
+            ? null
+            : getIntent().getStringExtra(RebuildLegacyDestinationLauncher.EXTRA_ROUTE);
+        if (BuildConfig.NATIVE_REBUILD_ENABLED && rebuildDestination == null) {
             startActivity(new Intent(this, RebuildActivity.class));
             finish();
             return;
@@ -132,6 +136,15 @@ public class MainActivity extends Activity {
         prefs.registerOnSharedPreferenceChangeListener(preferenceListener);
         handleDeepLink(getIntent());
         renderHome();
+        if (RebuildLegacyDestinationLauncher.ROUTE_TODAY_MEAL.equals(rebuildDestination)) {
+            loadTodayMeal(false);
+        } else if (
+            RebuildLegacyDestinationLauncher.ROUTE_PARENT_CONNECTION.equals(
+                rebuildDestination
+            )
+        ) {
+            renderParentConnections();
+        }
         mainHandler.postDelayed(this::retryPendingSnapshotIfNeeded, 600);
     }
 

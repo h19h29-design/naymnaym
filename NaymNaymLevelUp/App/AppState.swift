@@ -159,6 +159,28 @@ final class AppState: ObservableObject {
         profileStore.save(newProfile)
     }
 
+    func applyRebuildProfile(_ rebuildProfile: RebuildUserProfile) {
+        switch rebuildProfile.role {
+        case .child:
+            guard let school = rebuildProfile.school else { return }
+            draftUserMode = .elementary
+            saveProfile(
+                nickname: rebuildProfile.nickname,
+                school: School(
+                    name: school.name,
+                    officeCode: school.officeCode,
+                    schoolCode: school.schoolCode,
+                    region: "",
+                    address: "",
+                    schoolType: ""
+                ),
+                allergyCodes: Set(rebuildProfile.allergyCodes)
+            )
+        case .parent:
+            saveParentProfile(nickname: rebuildProfile.nickname)
+        }
+    }
+
     var currentMode: UserMode {
         profile?.effectiveMode ?? draftUserMode
     }

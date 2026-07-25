@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RebuildRootView: View {
+    @EnvironmentObject private var appState: AppState
     @StateObject private var bootstrap: RebuildOnboardingBootstrapViewModel
     @StateObject private var onboarding: RebuildOnboardingViewModel
 
@@ -56,8 +57,15 @@ struct RebuildRootView: View {
         switch profile.destination {
         case .today:
             TodayMealView()
+                .task(id: profile.id) {
+                    appState.applyRebuildProfile(profile)
+                    await appState.loadMeals()
+                }
         case .parentConnection:
             ParentSummaryView()
+                .task(id: profile.id) {
+                    appState.applyRebuildProfile(profile)
+                }
         }
     }
 }
@@ -69,6 +77,10 @@ private struct RebuildRootUnavailableProfileStore:
     }
 
     func save(_ profile: RebuildUserProfile) async throws {
+        throw RebuildOnboardingError.persistenceUnavailable
+    }
+
+    func removeIfCurrent(id: String) async throws {
         throw RebuildOnboardingError.persistenceUnavailable
     }
 }

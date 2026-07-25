@@ -3,6 +3,7 @@ package com.h19h29.naymnaymlevelup.rebuild.onboarding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.util.UUID
 import kotlinx.coroutines.delay
 
 class OnboardingViewModel(
@@ -106,7 +107,7 @@ class OnboardingViewModel(
             throw OnboardingException(OnboardingError.MissingSchoolIdentifiers)
         }
         val profile = RebuildUserProfile(
-            id = "current",
+            id = UUID.randomUUID().toString(),
             role = role,
             nickname = draft.nickname,
             school = if (role == OnboardingRole.Child) draft.school else null,
@@ -126,6 +127,7 @@ class OnboardingViewModel(
         try {
             profileStore.save(profile)
             if (generation != completionGeneration) {
+                profileStore.removeIfCurrent(profile.id)
                 throw OnboardingException(OnboardingError.CompletionCancelled)
             }
             completedProfile = profile
@@ -201,7 +203,13 @@ internal object ExtendedGraphemeCounter {
     private const val LINE_FEED = 0x000A
 
     fun count(value: String): Int {
-        val codePoints = value.codePoints().toArray()
+        val codePoints = mutableListOf<Int>()
+        var offset = 0
+        while (offset < value.length) {
+            val codePoint = Character.codePointAt(value, offset)
+            codePoints += codePoint
+            offset += Character.charCount(codePoint)
+        }
         var index = 0
         var count = 0
         var regionalIndicators = 0

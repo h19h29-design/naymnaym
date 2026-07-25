@@ -17,6 +17,12 @@ interface ProfileDao {
 
     @Query("SELECT * FROM profiles WHERE id = :id LIMIT 1")
     suspend fun find(id: String): ProfileEntity?
+
+    @Query("DELETE FROM profiles")
+    suspend fun deleteAll()
+
+    @Query("DELETE FROM profiles WHERE id = :id")
+    suspend fun delete(id: String)
 }
 
 @Dao

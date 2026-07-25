@@ -100,7 +100,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
         }
 
         let profile = RebuildUserProfile(
-            id: "current",
+            id: UUID().uuidString,
             role: role,
             nickname: draft.nickname,
             school: role == .child ? draft.school : nil,
@@ -116,6 +116,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
         }
         try await profileStore.save(profile)
         guard generation == completionGeneration else {
+            try await profileStore.removeIfCurrent(id: profile.id)
             throw RebuildOnboardingError.completionCancelled
         }
         completedProfile = profile

@@ -163,4 +163,8 @@ private struct RebuildUnavailableOnboardingProfileStore:
     func save(_ profile: RebuildUserProfile) async throws {
         throw RebuildOnboardingError.persistenceUnavailable
     }
+
+    func removeIfCurrent(id: String) async throws {
+        throw RebuildOnboardingError.persistenceUnavailable
+    }
 }

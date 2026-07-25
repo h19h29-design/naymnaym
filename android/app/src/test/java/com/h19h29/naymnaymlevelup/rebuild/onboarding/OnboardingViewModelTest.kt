@@ -177,6 +177,34 @@ class OnboardingViewModelTest {
         assertEquals(OnboardingError.CompletionCancelled, error.reason)
         assertNull(viewModel.completedProfile)
         assertEquals(OnboardingStep.Role, viewModel.step)
+        assertNull(store.load())
+
+        val recreatedRoot = OnboardingBootstrapper(store)
+        recreatedRoot.load()
+        assertEquals(OnboardingRootState.Onboarding, recreatedRoot.state)
+    }
+
+    @Test
+    fun cancelledSaveCleanupNeverDeletesLaterProfile() = runTest {
+        val store = RacingProfileStore()
+        val viewModel = OnboardingViewModel(store, SchoolSearchClientStub())
+        viewModel.selectRole(OnboardingRole.Parent)
+        viewModel.setNickname("취소할 보호자")
+
+        val cancelled = async { runCatching { viewModel.complete() } }
+        store.firstSaveStarted.await()
+        viewModel.cancel()
+        store.allowFirstSave.complete(Unit)
+        store.removalStarted.await()
+
+        viewModel.selectRole(OnboardingRole.Parent)
+        viewModel.setNickname("최종 보호자")
+        val latest = viewModel.complete()
+        store.allowRemoval.complete(Unit)
+
+        val error = cancelled.await().exceptionOrNull() as OnboardingException
+        assertEquals(OnboardingError.CompletionCancelled, error.reason)
+        assertEquals(latest, store.load())
     }
 
     @Test
@@ -294,6 +322,21 @@ class OnboardingViewModelTest {
         expectFailure<SchoolSearchException.MalformedResponse> {
             malformed.search("코드 없는 학교")
         }
+
+        listOf(
+            """{"schoolInfo":[]}""",
+            """{"schoolInfo":[{"head":[{"list_total_count":1}]}]}""",
+            """{"schoolInfo":[{"head":[{"list_total_count":1}]},{"row":[]}]}""",
+            """{"schoolInfo":[{"head":[{"list_total_count":1}]},{"other":[]}]}""",
+        ).forEach { payload ->
+            val missingRows = NeisSchoolSearchClient(
+                apiKey = "test-key",
+                transport = { payload.encodeToByteArray() },
+            )
+            expectFailure<SchoolSearchException.MalformedResponse> {
+                missingRows.search("행 없는 학교")
+            }
+        }
     }
 
     @Test
@@ -322,19 +365,61 @@ class OnboardingViewModelTest {
             error?.let { throw it }
             savedProfiles += profile
         }
+
+        override suspend fun removeIfCurrent(id: String) {
+            if (savedProfiles.lastOrNull()?.id == id) {
+                savedProfiles.removeLast()
+            }
+        }
     }
 
     private class ControlledProfileStore : OnboardingProfileStore {
         var saveCount = 0
+        var persistedProfile: RebuildUserProfile? = null
         val saveStarted = CompletableDeferred<Unit>()
         val allowSave = CompletableDeferred<Unit>()
 
-        override suspend fun load(): RebuildUserProfile? = null
+        override suspend fun load(): RebuildUserProfile? = persistedProfile
 
         override suspend fun save(profile: RebuildUserProfile) {
             saveCount += 1
             saveStarted.complete(Unit)
             allowSave.await()
+            persistedProfile = profile
+        }
+
+        override suspend fun removeIfCurrent(id: String) {
+            if (persistedProfile?.id == id) {
+                persistedProfile = null
+            }
+        }
+    }
+
+    private class RacingProfileStore : OnboardingProfileStore {
+        private var saveCount = 0
+        private var persistedProfile: RebuildUserProfile? = null
+        val firstSaveStarted = CompletableDeferred<Unit>()
+        val allowFirstSave = CompletableDeferred<Unit>()
+        val removalStarted = CompletableDeferred<Unit>()
+        val allowRemoval = CompletableDeferred<Unit>()
+
+        override suspend fun load(): RebuildUserProfile? = persistedProfile
+
+        override suspend fun save(profile: RebuildUserProfile) {
+            saveCount += 1
+            if (saveCount == 1) {
+                firstSaveStarted.complete(Unit)
+                allowFirstSave.await()
+            }
+            persistedProfile = profile
+        }
+
+        override suspend fun removeIfCurrent(id: String) {
+            removalStarted.complete(Unit)
+            allowRemoval.await()
+            if (persistedProfile?.id == id) {
+                persistedProfile = null
+            }
         }
     }
 

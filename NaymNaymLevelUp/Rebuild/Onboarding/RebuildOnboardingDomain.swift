@@ -64,6 +64,7 @@ enum RebuildSchoolSearchState: Equatable, Sendable {
 protocol RebuildOnboardingProfileStore {
     func load() async throws -> RebuildUserProfile?
     func save(_ profile: RebuildUserProfile) async throws
+    func removeIfCurrent(id: String) async throws
 }
 
 protocol RebuildSchoolSearchClient {
@@ -133,13 +134,22 @@ final class RebuildCoreDataOnboardingProfileStore:
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
                 )
-                request.predicate = NSPredicate(format: "id == %@", profile.id)
-                request.fetchLimit = 1
-                let object = try context.fetch(request).first
-                    ?? RebuildProfileManagedObject(
+                request.sortDescriptors = [
+                    NSSortDescriptor(key: "id", ascending: true)
+                ]
+                let existingProfiles = try context.fetch(request)
+                let object: RebuildProfileManagedObject
+                if let existing = existingProfiles.first {
+                    object = existing
+                } else {
+                    object = RebuildProfileManagedObject(
                         entity: try Self.profileEntity(in: context),
                         insertInto: context
                     )
+                }
+                for duplicate in existingProfiles.dropFirst() {
+                    context.delete(duplicate)
+                }
                 object.id = profile.id
                 object.role = profile.role.rawValue
                 object.nickname = profile.nickname
@@ -153,6 +163,22 @@ final class RebuildCoreDataOnboardingProfileStore:
             } catch {
                 context.rollback()
                 throw error
+            }
+        }
+    }
+
+    func removeIfCurrent(id: String) async throws {
+        let context = container.newBackgroundContext()
+        try await context.perform {
+            let request = NSFetchRequest<RebuildProfileManagedObject>(
+                entityName: RebuildEntityName.profile
+            )
+            request.predicate = NSPredicate(format: "id == %@", id)
+            for object in try context.fetch(request) {
+                context.delete(object)
+            }
+            if context.hasChanges {
+                try context.save()
             }
         }
     }
@@ -199,15 +225,22 @@ struct RebuildLiveSchoolSearchClient: RebuildSchoolSearchClient {
             guard let sections = response.schoolInfo else {
                 throw RebuildSchoolSearchError.malformedResponse
             }
-            return sections
-                .flatMap { $0.row ?? [] }
-                .map {
-                    RebuildOnboardingSchool(
-                        name: $0.SCHUL_NM,
-                        officeCode: $0.ATPT_OFCDC_SC_CODE,
-                        schoolCode: $0.SD_SCHUL_CODE
-                    )
-                }
+            let rowSections = sections.compactMap(\.row)
+            let rows = rowSections.flatMap { $0 }
+            guard
+                !sections.isEmpty,
+                !rowSections.isEmpty,
+                !rows.isEmpty
+            else {
+                throw RebuildSchoolSearchError.malformedResponse
+            }
+            return rows.map {
+                RebuildOnboardingSchool(
+                    name: $0.SCHUL_NM,
+                    officeCode: $0.ATPT_OFCDC_SC_CODE,
+                    schoolCode: $0.SD_SCHUL_CODE
+                )
+            }
         } catch let error as RebuildSchoolSearchError {
             throw error
         } catch is DecodingError {

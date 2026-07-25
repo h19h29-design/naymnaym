@@ -10,6 +10,7 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.ClassExpr;
+import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
@@ -66,7 +67,7 @@ public final class RebuildRootInvariantTest {
     }
 
     @Test
-    public void mainActivityAstUsesOnlyTheCompiledFlagForACompleteRebuildHandoff()
+    public void mainActivityAstAllowsOnlyTheInternalDestinationToBypassRebuildHandoff()
             throws Exception {
         File sourceFile = new File(
                 requireSystemProperty("rebuild.mainActivitySource"));
@@ -188,21 +189,21 @@ public final class RebuildRootInvariantTest {
                 .orElseThrow();
         BlockStmt onCreateBody = onCreate.getBody().orElseThrow();
         List<Statement> statements = onCreateBody.getStatements();
-        if (statements.size() < 2
+        if (statements.size() < 3
                 || !isSuperOnCreate(statements.get(0))
-                || !statements.get(1).isIfStmt()
-                || !isNativeRebuildFlag(statements.get(1).asIfStmt())) {
+                || !statements.get(2).isIfStmt()
+                || !isNativeRebuildGuard(statements.get(2).asIfStmt())) {
             return false;
         }
         List<IfStmt> rebuildGuards = onCreateBody
                 .findAll(IfStmt.class)
                 .stream()
-                .filter(RebuildRootInvariantTest::isNativeRebuildFlag)
+                .filter(RebuildRootInvariantTest::isNativeRebuildGuard)
                 .toList();
         if (rebuildGuards.size() != 1) {
             return false;
         }
-        IfStmt rebuildGuard = statements.get(1).asIfStmt();
+        IfStmt rebuildGuard = statements.get(2).asIfStmt();
         return rebuildGuard.getElseStmt().isEmpty()
                 && isCompleteRebuildHandoff(rebuildGuard.getThenStmt());
     }
@@ -224,19 +225,32 @@ public final class RebuildRootInvariantTest {
                 && call.getArguments().size() == 1;
     }
 
-    private static boolean isNativeRebuildFlag(IfStmt statement) {
-        if (!(statement.getCondition() instanceof FieldAccessExpr)) {
+    private static boolean isNativeRebuildGuard(IfStmt statement) {
+        if (!(statement.getCondition() instanceof BinaryExpr)) {
             return false;
         }
-        FieldAccessExpr flag = statement
-                .getCondition()
-                .asFieldAccessExpr();
+        BinaryExpr condition = statement.getCondition().asBinaryExpr();
+        if (condition.getOperator() != BinaryExpr.Operator.AND
+                || !(condition.getLeft() instanceof FieldAccessExpr)
+                || !condition.getRight().isBinaryExpr()) {
+            return false;
+        }
+        FieldAccessExpr flag = condition.getLeft().asFieldAccessExpr();
+        BinaryExpr destinationCheck = condition.getRight().asBinaryExpr();
         return flag.getNameAsString().equals("NATIVE_REBUILD_ENABLED")
                 && flag.getScope() instanceof NameExpr
                 && flag.getScope()
                 .asNameExpr()
                 .getNameAsString()
-                .equals("BuildConfig");
+                .equals("BuildConfig")
+                && destinationCheck.getOperator() == BinaryExpr.Operator.EQUALS
+                && destinationCheck.getLeft().isNameExpr()
+                && destinationCheck
+                .getLeft()
+                .asNameExpr()
+                .getNameAsString()
+                .equals("rebuildDestination")
+                && destinationCheck.getRight().isNullLiteralExpr();
     }
 
     private static boolean isCompleteRebuildHandoff(Statement statement) {
