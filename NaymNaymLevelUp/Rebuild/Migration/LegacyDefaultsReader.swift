@@ -67,21 +67,49 @@ struct LegacyDefaultsReader {
     }
 
     private let defaults: UserDefaults
+    private let persistentDomainName: String?
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        persistentDomainName: String? = nil
+    ) {
         self.defaults = defaults
+        self.persistentDomainName = persistentDomainName
+            ?? (defaults === UserDefaults.standard ? Bundle.main.bundleIdentifier : nil)
     }
 
     func readSnapshot() throws -> LegacySnapshot {
-        let presentKeys = Set(Key.all.filter { defaults.object(forKey: $0) != nil })
+        let profile = try UserProfileStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let progress = try ProgressStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let mealRecords = try MealRecordStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let mealPhotoRecords = try MealPhotoMetadataStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let challenges = try ChallengeStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let parentProfile = try ParentProfileStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let childLink = try ChildShareLinkStore(defaults: defaults)
+            .readPersisted(domainName: persistentDomainName)
+        let presentKeys = Set([
+            profile.isPresent ? Key.profile : nil,
+            progress.isPresent ? Key.progress : nil,
+            mealRecords.isPresent ? Key.mealRecords : nil,
+            mealPhotoRecords.isPresent ? Key.mealPhotoRecords : nil,
+            challenges.isPresent ? Key.challenges : nil,
+            parentProfile.isPresent ? Key.parentProfile : nil,
+            childLink.isPresent ? Key.childLink : nil,
+        ].compactMap { $0 })
         return LegacySnapshot(
-            profile: UserProfileStore(defaults: defaults).load(),
-            progress: ProgressStore(defaults: defaults).load(),
-            mealRecords: MealRecordStore(defaults: defaults).load(),
-            mealPhotoRecords: MealPhotoMetadataStore(defaults: defaults).load(),
-            challenges: ChallengeStore(defaults: defaults).load(),
-            parentProfile: ParentProfileStore(defaults: defaults).load(),
-            childLink: ChildShareLinkStore(defaults: defaults).load(),
+            profile: profile.value,
+            progress: progress.value ?? PlayerProgress(),
+            mealRecords: mealRecords.value ?? [],
+            mealPhotoRecords: mealPhotoRecords.value ?? [],
+            challenges: challenges.value ?? [],
+            parentProfile: parentProfile.value ?? ParentProfile(),
+            childLink: childLink.value,
             sourceKeys: presentKeys
         )
     }
@@ -90,7 +118,9 @@ struct LegacyDefaultsReader {
         let payload = DigestPayload(
             sourceKeys: snapshot.sourceKeys.sorted(),
             profile: snapshot.sourceKeys.contains(Key.profile) ? snapshot.profile : nil,
-            progress: snapshot.sourceKeys.contains(Key.progress) ? snapshot.progress : nil,
+            progress: snapshot.sourceKeys.contains(Key.progress)
+                ? DigestProgress(snapshot.progress)
+                : nil,
             mealRecords: snapshot.sourceKeys.contains(Key.mealRecords) ? snapshot.mealRecords : nil,
             mealPhotoRecords: snapshot.sourceKeys.contains(Key.mealPhotoRecords)
                 ? snapshot.mealPhotoRecords
@@ -112,10 +142,32 @@ struct LegacyDefaultsReader {
 private struct DigestPayload: Encodable {
     let sourceKeys: [String]
     let profile: UserProfile?
-    let progress: PlayerProgress?
+    let progress: DigestProgress?
     let mealRecords: [MealRecord]?
     let mealPhotoRecords: [MealPhotoRecord]?
     let challenges: [ChallengeRecord]?
     let parentProfile: ParentProfile?
     let childLink: ChildLink?
+}
+
+private struct DigestProgress: Encodable {
+    let level: Int
+    let recordExp: Int
+    let challengeExp: Int
+    let balanceExp: Int
+    let safetyExp: Int
+    let totalChallenges: Int
+    let badges: [String]
+    let currentSkinId: String
+
+    init(_ progress: PlayerProgress) {
+        level = progress.level
+        recordExp = progress.recordExp
+        challengeExp = progress.challengeExp
+        balanceExp = progress.balanceExp
+        safetyExp = progress.safetyExp
+        totalChallenges = progress.totalChallenges
+        badges = progress.badges
+        currentSkinId = progress.currentSkinId
+    }
 }

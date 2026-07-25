@@ -1,6 +1,29 @@
 import Foundation
 import CloudKit
 
+enum PersistedDefaultsValue<Value> {
+    case missing
+    case value(Value)
+
+    var isPresent: Bool {
+        if case .value = self {
+            return true
+        }
+        return false
+    }
+
+    var value: Value? {
+        guard case let .value(value) = self else {
+            return nil
+        }
+        return value
+    }
+}
+
+enum CodableUserDefaultsStoreReadError: Error {
+    case unexpectedStoredType(key: String)
+}
+
 final class CodableUserDefaultsStore<Value: Codable> {
     private let key: String
     private let defaults: UserDefaults
@@ -19,6 +42,25 @@ final class CodableUserDefaultsStore<Value: Codable> {
         return try? decoder.decode(Value.self, from: data)
     }
 
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<Value> {
+        switch try readPersistedData(domainName: domainName) {
+        case .missing:
+            return .missing
+        case .value(let data):
+            return .value(try decoder.decode(Value.self, from: data))
+        }
+    }
+
+    func readPersistedData(domainName: String? = nil) throws -> PersistedDefaultsValue<Data> {
+        guard let object = persistedObject(domainName: domainName) else {
+            return .missing
+        }
+        guard let data = object as? Data else {
+            throw CodableUserDefaultsStoreReadError.unexpectedStoredType(key: key)
+        }
+        return .value(data)
+    }
+
     func save(_ value: Value) {
         guard let data = try? encoder.encode(value) else { return }
         defaults.set(data, forKey: key)
@@ -26,6 +68,30 @@ final class CodableUserDefaultsStore<Value: Codable> {
 
     func clear() {
         defaults.removeObject(forKey: key)
+    }
+
+    private func persistedObject(domainName: String?) -> Any? {
+        if let domainName {
+            return defaults.persistentDomain(forName: domainName)?[key]
+        }
+
+        guard let resolved = defaults.object(forKey: key) else {
+            return nil
+        }
+        let registered = defaults.volatileDomain(
+            forName: UserDefaults.registrationDomain
+        )[key]
+        if let registered, valuesEqual(resolved, registered) {
+            return nil
+        }
+        return resolved
+    }
+
+    private func valuesEqual(_ lhs: Any, _ rhs: Any) -> Bool {
+        guard let left = lhs as? NSObject, let right = rhs as? NSObject else {
+            return false
+        }
+        return left.isEqual(right)
     }
 }
 
@@ -37,6 +103,9 @@ final class UserProfileStore {
     }
 
     func load() -> UserProfile? { store.load() }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<UserProfile> {
+        try store.readPersisted(domainName: domainName)
+    }
     func save(_ profile: UserProfile) { store.save(profile) }
     func clear() { store.clear() }
 }
@@ -49,8 +118,47 @@ final class ProgressStore {
     }
 
     func load() -> PlayerProgress { store.load() ?? PlayerProgress() }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<PlayerProgress> {
+        switch try store.readPersistedData(domainName: domainName) {
+        case .missing:
+            return .missing
+        case .value(let data):
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return .value(
+                try decoder.decode(MigrationPlayerProgressPayload.self, from: data)
+                    .playerProgress
+            )
+        }
+    }
     func save(_ progress: PlayerProgress) { store.save(progress) }
     func clear() { store.clear() }
+}
+
+private struct MigrationPlayerProgressPayload: Decodable {
+    let level: Int?
+    let exp: Int?
+    let recordExp: Int?
+    let challengeExp: Int?
+    let balanceExp: Int?
+    let safetyExp: Int?
+    let totalChallenges: Int?
+    let badges: [String]?
+    let currentSkinId: String?
+
+    var playerProgress: PlayerProgress {
+        PlayerProgress(
+            level: level ?? 1,
+            exp: exp ?? 0,
+            totalChallenges: totalChallenges ?? 0,
+            badges: badges ?? [],
+            currentSkinId: currentSkinId ?? "skin-1",
+            recordExp: recordExp,
+            challengeExp: challengeExp,
+            balanceExp: balanceExp,
+            safetyExp: safetyExp
+        )
+    }
 }
 
 final class ChallengeStore {
@@ -61,6 +169,9 @@ final class ChallengeStore {
     }
 
     func load() -> [ChallengeRecord] { store.load() ?? [] }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<[ChallengeRecord]> {
+        try store.readPersisted(domainName: domainName)
+    }
     func save(_ records: [ChallengeRecord]) { store.save(records) }
     func clear() { store.clear() }
 }
@@ -73,6 +184,9 @@ final class MealRecordStore {
     }
 
     func load() -> [MealRecord] { store.load() ?? [] }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<[MealRecord]> {
+        try store.readPersisted(domainName: domainName)
+    }
     func save(_ records: [MealRecord]) { store.save(records) }
     func clear() { store.clear() }
 }
@@ -85,6 +199,9 @@ final class MealPhotoMetadataStore {
     }
 
     func load() -> [MealPhotoRecord] { store.load() ?? [] }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<[MealPhotoRecord]> {
+        try store.readPersisted(domainName: domainName)
+    }
     func save(_ records: [MealPhotoRecord]) { store.save(records) }
     func clear() { store.clear() }
 }
@@ -97,6 +214,9 @@ final class ParentProfileStore {
     }
 
     func load() -> ParentProfile { store.load() ?? ParentProfile() }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<ParentProfile> {
+        try store.readPersisted(domainName: domainName)
+    }
     func save(_ profile: ParentProfile) { store.save(profile) }
     func clear() { store.clear() }
 }
@@ -109,6 +229,9 @@ final class ChildShareLinkStore {
     }
 
     func load() -> ChildLink? { store.load() }
+    func readPersisted(domainName: String? = nil) throws -> PersistedDefaultsValue<ChildLink> {
+        try store.readPersisted(domainName: domainName)
+    }
     func save(_ link: ChildLink) { store.save(link) }
     func clear() { store.clear() }
 }
