@@ -23,10 +23,9 @@ enum RebuildMigrationError: Error, Equatable {
     case unsafePhotoPath(String)
     case photoContentMismatch(String)
     case photoIOFailure(operation: String, path: String, code: Int32)
-    case rollbackOwnershipMismatch(String)
-    case rollbackCleanupFailed(paths: [String], originalFailure: String)
+    case temporaryPhotoCleanupFailed(path: String, originalFailure: String)
     case missingPersistentDefaultsDomain
-    case reentrantAttempt
+    case migrationInProgress
     case unexpectedManagedObjectType(String)
     case xpOverflow
 }
@@ -40,14 +39,7 @@ struct MigrationVerification: Equatable {
 
 typealias RebuildMigrationVerifier = (MigrationVerification) throws -> Void
 typealias RebuildMigrationSaver = (NSManagedObjectContext) throws -> Void
-typealias RebuildMigrationFileRemover = (URL) throws -> Void
 typealias RebuildMigrationDirectorySync = (Int32) throws -> Void
-
-private struct InstalledPhoto {
-    let relativeName: String
-    let device: UInt64
-    let inode: UInt64
-}
 
 private struct MigratedMealRecords {
     let recordsByIdentity: [String: MealRecord]
@@ -62,7 +54,7 @@ private struct NormalizedLegacyMealName {
 final class RebuildMigrationCoordinator {
     private static let supportedTargetVersion = 1
     private static let reconciliationEventID = "legacy:progress-reconciliation"
-    private static let attemptLock = NSRecursiveLock()
+    private static let admissionLock = NSLock()
     private static var attemptIsActive = false
 
     private let reader: LegacyDefaultsReader?
@@ -72,8 +64,8 @@ final class RebuildMigrationCoordinator {
     private let now: () -> Date
     private let verify: RebuildMigrationVerifier
     private let save: RebuildMigrationSaver
-    private let beforeRollbackFileRemoval: RebuildMigrationFileRemover
     private let syncTargetDirectory: RebuildMigrationDirectorySync?
+    private let syncCreatedDirectoryParent: RebuildMigrationDirectorySync?
     private let warningsLock = NSLock()
     private var publishedWarnings: [MigrationWarning] = []
 
@@ -93,8 +85,8 @@ final class RebuildMigrationCoordinator {
         now: @escaping () -> Date = Date.init,
         verify: @escaping RebuildMigrationVerifier = { _ in },
         save: @escaping RebuildMigrationSaver = { try $0.save() },
-        removeCopiedFile: RebuildMigrationFileRemover? = nil,
-        syncTargetDirectory: RebuildMigrationDirectorySync? = nil
+        syncTargetDirectory: RebuildMigrationDirectorySync? = nil,
+        syncCreatedDirectoryParent: RebuildMigrationDirectorySync? = nil
     ) {
         let domainName = legacyDefaultsDomainName
             ?? (defaults === UserDefaults.standard ? Bundle.main.bundleIdentifier : nil)
@@ -102,7 +94,10 @@ final class RebuildMigrationCoordinator {
             LegacyDefaultsReader(defaults: defaults, persistentDomainName: $0)
         }
         self.container = container
-        let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let documents = fileManager.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0].resolvingSymlinksInPath()
         self.legacyPhotoDirectory = legacyPhotoDirectory
             ?? documents.appendingPathComponent("MealPhotos", isDirectory: true)
         self.rebuildPhotoDirectory = rebuildPhotoDirectory
@@ -110,18 +105,23 @@ final class RebuildMigrationCoordinator {
         self.now = now
         self.verify = verify
         self.save = save
-        self.beforeRollbackFileRemoval = removeCopiedFile ?? { _ in }
         self.syncTargetDirectory = syncTargetDirectory
+        self.syncCreatedDirectoryParent = syncCreatedDirectoryParent
     }
 
     func runIfNeeded(targetVersion: Int = 1) throws -> MigrationOutcome {
-        Self.attemptLock.lock()
-        defer { Self.attemptLock.unlock() }
+        Self.admissionLock.lock()
         guard !Self.attemptIsActive else {
-            throw RebuildMigrationError.reentrantAttempt
+            Self.admissionLock.unlock()
+            throw RebuildMigrationError.migrationInProgress
         }
         Self.attemptIsActive = true
-        defer { Self.attemptIsActive = false }
+        Self.admissionLock.unlock()
+        defer {
+            Self.admissionLock.lock()
+            Self.attemptIsActive = false
+            Self.admissionLock.unlock()
+        }
         return try runSerialized(targetVersion: targetVersion)
     }
 
@@ -147,77 +147,48 @@ final class RebuildMigrationCoordinator {
         }
         try validateSourceIdentities(snapshot)
         let sourceDigest = try reader.sourceDigest(for: snapshot)
-        var installedPhotos: [InstalledPhoto] = []
         var attemptWarnings: [MigrationWarning] = []
 
-        do {
-            let outcome: MigrationOutcome = try context.performAndWait {
-                do {
-                    let mappedProfile = try insertProfile(from: snapshot, into: context)
-                    let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
-                    try insertParentLinks(from: snapshot, into: context)
-                    try insertPhotos(
-                        snapshot.mealPhotoRecords,
-                        mealRecords: mappedMeals,
-                        into: context,
-                        installedPhotos: &installedPhotos,
-                        warnings: &attemptWarnings
-                    )
-                    try insertProgressEvents(
-                        from: snapshot,
-                        mealRecords: mappedMeals,
-                        into: context
-                    )
-
-                    let expectedXP = try expectedXP(from: snapshot)
-                    let verification = try verifyInsertedRows(
-                        expectedProfileCount: mappedProfile == nil ? 0 : 1,
-                        expectedMealCount: snapshot.mealRecords.count,
-                        expectedPhotoCount: snapshot.mealPhotoRecords.count,
-                        expectedXP: expectedXP,
-                        in: context
-                    )
-                    try verify(verification)
-                    try insertMigrationState(
-                        version: targetVersion,
-                        sourceDigest: sourceDigest,
-                        into: context
-                    )
-                    try save(context)
-                    return .migrated
-                } catch {
-                    context.rollback()
-                    throw error
-                }
-            }
-            publishWarnings(attemptWarnings)
-            return outcome
-        } catch {
-            var cleanupFailurePaths: [String] = []
-            var cleanupFailures: [String] = []
-            for installedPhoto in installedPhotos.reversed() {
-                do {
-                    try removeInstalledPhoto(installedPhoto)
-                } catch {
-                    cleanupFailurePaths.append(
-                        rebuildPhotoDirectory
-                            .appendingPathComponent(installedPhoto.relativeName)
-                            .path
-                    )
-                    cleanupFailures.append(String(reflecting: error))
-                }
-            }
-            if !cleanupFailurePaths.isEmpty {
-                throw RebuildMigrationError.rollbackCleanupFailed(
-                    paths: cleanupFailurePaths.sorted(),
-                    originalFailure: [
-                        String(reflecting: error),
-                        "cleanup failures: \(cleanupFailures.sorted())",
-                    ].joined(separator: "; ")
+        let outcome: MigrationOutcome = try context.performAndWait {
+            do {
+                let mappedProfile = try insertProfile(from: snapshot, into: context)
+                let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
+                try insertParentLinks(from: snapshot, into: context)
+                try insertPhotos(
+                    snapshot.mealPhotoRecords,
+                    mealRecords: mappedMeals,
+                    into: context,
+                    warnings: &attemptWarnings
                 )
+                try insertProgressEvents(
+                    from: snapshot,
+                    mealRecords: mappedMeals,
+                    into: context
+                )
+
+                let expectedXP = try expectedXP(from: snapshot)
+                let verification = try verifyInsertedRows(
+                    expectedProfileCount: mappedProfile == nil ? 0 : 1,
+                    expectedMealCount: snapshot.mealRecords.count,
+                    expectedPhotoCount: snapshot.mealPhotoRecords.count,
+                    expectedXP: expectedXP,
+                    in: context
+                )
+                try verify(verification)
+                try insertMigrationState(
+                    version: targetVersion,
+                    sourceDigest: sourceDigest,
+                    into: context
+                )
+                try save(context)
+                return .migrated
+            } catch {
+                context.rollback()
+                throw error
             }
-            throw error
         }
+        publishWarnings(attemptWarnings)
+        return outcome
     }
 
     private func completedVersion(in context: NSManagedObjectContext) throws -> Int {
@@ -434,7 +405,6 @@ final class RebuildMigrationCoordinator {
         _ photos: [MealPhotoRecord],
         mealRecords: MigratedMealRecords,
         into context: NSManagedObjectContext,
-        installedPhotos: inout [InstalledPhoto],
         warnings: inout [MigrationWarning]
     ) throws {
         let sortedMealRecords = mealRecords.recordsByIdentity.sorted { $0.key < $1.key }
@@ -442,7 +412,6 @@ final class RebuildMigrationCoordinator {
         for photo in photos {
             let relativePath = try migratePhotoFile(
                 photo,
-                installedPhotos: &installedPhotos,
                 warnings: &warnings
             )
             let object = try insert(
@@ -669,7 +638,6 @@ final class RebuildMigrationCoordinator {
 
     private func migratePhotoFile(
         _ photo: MealPhotoRecord,
-        installedPhotos: inout [InstalledPhoto],
         warnings: inout [MigrationWarning]
     ) throws -> String {
         guard
@@ -683,13 +651,13 @@ final class RebuildMigrationCoordinator {
             throw RebuildMigrationError.unsafePhotoPath(photo.fileName)
         }
 
-        let relativePath = safeDestinationName(for: photo)
         guard let sourceData = try readSourcePhoto(named: photo.fileName) else {
             warnings.append(
                 .missingPhotoFile(photoID: photo.id, fileName: photo.fileName)
             )
-            return relativePath
+            return missingPhotoDestinationName(for: photo)
         }
+        let relativePath = contentAddressedDestinationName(for: sourceData)
 
         let targetDirectoryDescriptor = try openVerifiedTargetDirectory(
             createIfMissing: true
@@ -711,23 +679,25 @@ final class RebuildMigrationCoordinator {
                 named: relativePath,
                 data: sourceData,
                 directoryDescriptor: descriptor,
-                targetURL: targetURL,
-                installedPhotos: &installedPhotos
+                targetURL: targetURL
             )
             return relativePath
         }
     }
 
-    private func safeDestinationName(for photo: MealPhotoRecord) -> String {
+    private func contentAddressedDestinationName(for data: Data) -> String {
+        SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func missingPhotoDestinationName(for photo: MealPhotoRecord) -> String {
         let input = Data("\(photo.id)|\(photo.fileName)".utf8)
         let digest = SHA256.hash(data: input)
             .prefix(16)
             .map { String(format: "%02x", $0) }
             .joined()
-        let sourceExtension = URL(fileURLWithPath: photo.fileName).pathExtension
-            .lowercased()
-            .filter { $0.isLetter || $0.isNumber }
-        return sourceExtension.isEmpty ? digest : "\(digest).\(sourceExtension)"
+        return "missing-\(digest)"
     }
 
     private func readSourcePhoto(named fileName: String) throws -> Data? {
@@ -811,6 +781,7 @@ final class RebuildMigrationCoordinator {
         do {
             for component in components {
                 let name = String(component)
+                var createdComponent = false
                 var nextDescriptor = name.withCString {
                     openat(
                         currentDescriptor,
@@ -829,6 +800,7 @@ final class RebuildMigrationCoordinator {
                             code: errno
                         )
                     }
+                    createdComponent = createResult == 0
                     nextDescriptor = name.withCString {
                         openat(
                             currentDescriptor,
@@ -857,6 +829,26 @@ final class RebuildMigrationCoordinator {
                         path: path,
                         code: code
                     )
+                }
+                if createdComponent {
+                    do {
+                        try synchronizeCreatedDirectoryParent(
+                            currentDescriptor,
+                            path: path
+                        )
+                    } catch {
+                        let syncFailure = error
+                        do {
+                            try closeDescriptor(
+                                nextDescriptor,
+                                path: path,
+                                operation: "close created directory after sync failure"
+                            )
+                        } catch {
+                            throw error
+                        }
+                        throw syncFailure
+                    }
                 }
                 let previousDescriptor = currentDescriptor
                 currentDescriptor = nextDescriptor
@@ -942,8 +934,7 @@ final class RebuildMigrationCoordinator {
         named fileName: String,
         data: Data,
         directoryDescriptor: Int32,
-        targetURL: URL,
-        installedPhotos: inout [InstalledPhoto]
+        targetURL: URL
     ) throws {
         let temporaryName = ".migration-\(UUID().uuidString)"
         let temporaryDescriptor = temporaryName.withCString {
@@ -972,19 +963,6 @@ final class RebuildMigrationCoordinator {
                     code: errno
                 )
             }
-            var metadata = stat()
-            guard fstat(temporaryDescriptor, &metadata) == 0 else {
-                throw posixError(
-                    operation: "inspect temporary photo",
-                    path: temporaryName,
-                    code: errno
-                )
-            }
-            let installedPhoto = InstalledPhoto(
-                relativeName: fileName,
-                device: UInt64(metadata.st_dev),
-                inode: UInt64(metadata.st_ino)
-            )
             descriptorIsOpen = false
             try closeDescriptor(
                 temporaryDescriptor,
@@ -1004,7 +982,6 @@ final class RebuildMigrationCoordinator {
                 }
             }
             if renameResult == 0 {
-                installedPhotos.append(installedPhoto)
                 try synchronizeTargetDirectory(directoryDescriptor)
                 return
             }
@@ -1066,53 +1043,10 @@ final class RebuildMigrationCoordinator {
         guard result != 0, errno != ENOENT else {
             return
         }
-        throw RebuildMigrationError.rollbackCleanupFailed(
-            paths: [rebuildPhotoDirectory.appendingPathComponent(fileName).path],
+        throw RebuildMigrationError.temporaryPhotoCleanupFailed(
+            path: rebuildPhotoDirectory.appendingPathComponent(fileName).path,
             originalFailure: String(reflecting: originalFailure)
         )
-    }
-
-    private func removeInstalledPhoto(_ installedPhoto: InstalledPhoto) throws {
-        let directoryDescriptor = try openVerifiedTargetDirectory(
-            createIfMissing: false
-        )
-        try withDescriptor(
-            directoryDescriptor,
-            path: rebuildPhotoDirectory.path,
-            closeOperation: "close rollback target directory"
-        ) { directoryDescriptor in
-            var metadata = stat()
-            let inspectResult = installedPhoto.relativeName.withCString {
-                fstatat(
-                    directoryDescriptor,
-                    $0,
-                    &metadata,
-                    AT_SYMLINK_NOFOLLOW
-                )
-            }
-            let targetURL = rebuildPhotoDirectory.appendingPathComponent(
-                installedPhoto.relativeName
-            )
-            guard inspectResult == 0,
-                  isRegularFile(metadata.st_mode),
-                  UInt64(metadata.st_dev) == installedPhoto.device,
-                  UInt64(metadata.st_ino) == installedPhoto.inode else {
-                throw RebuildMigrationError.rollbackOwnershipMismatch(
-                    targetURL.path
-                )
-            }
-            try beforeRollbackFileRemoval(targetURL)
-            let unlinkResult = installedPhoto.relativeName.withCString {
-                unlinkat(directoryDescriptor, $0, 0)
-            }
-            guard unlinkResult == 0 else {
-                throw posixError(
-                    operation: "remove installed photo during rollback",
-                    path: targetURL.path,
-                    code: errno
-                )
-            }
-        }
     }
 
     private func synchronizeTargetDirectory(_ descriptor: Int32) throws {
@@ -1124,6 +1058,23 @@ final class RebuildMigrationCoordinator {
             throw posixError(
                 operation: "sync target directory",
                 path: rebuildPhotoDirectory.path,
+                code: errno
+            )
+        }
+    }
+
+    private func synchronizeCreatedDirectoryParent(
+        _ descriptor: Int32,
+        path: String
+    ) throws {
+        if let syncCreatedDirectoryParent {
+            try syncCreatedDirectoryParent(descriptor)
+            return
+        }
+        guard fsync(descriptor) == 0 else {
+            throw posixError(
+                operation: "sync created directory parent",
+                path: path,
                 code: errno
             )
         }
@@ -1239,9 +1190,7 @@ final class RebuildMigrationCoordinator {
         let canonical = value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        let associationKey = value
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "")
+        let associationKey = canonical.replacingOccurrences(of: " ", with: "")
         return NormalizedLegacyMealName(
             canonical: canonical,
             associationKey: associationKey

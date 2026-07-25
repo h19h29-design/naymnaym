@@ -201,21 +201,11 @@ private struct MigrationChallengeRecordPayload: Decodable {
 
     func challengeRecord(fallbackID: UUID) -> ChallengeRecord {
         let gainedExp = gainedExp ?? 0
-        let xpBreakdown: XPBreakdown?
-        if recordExp == nil,
-           challengeExp == nil,
-           balanceExp == nil,
-           safetyExp == nil {
-            xpBreakdown = nil
-        } else {
-            xpBreakdown = XPBreakdown(
-                record: recordExp ?? 0,
-                challenge: challengeExp ?? 0,
-                balance: balanceExp ?? 0,
-                safety: safetyExp ?? 0
-            )
-        }
-        return ChallengeRecord(
+        let hasExplicitComponents = recordExp != nil
+            || challengeExp != nil
+            || balanceExp != nil
+            || safetyExp != nil
+        var record = ChallengeRecord(
             id: id ?? fallbackID,
             date: date,
             menuName: menuName,
@@ -229,11 +219,17 @@ private struct MigrationChallengeRecordPayload: Decodable {
             photoIds: photoIds ?? [],
             childLinkId: childLinkId,
             parentShareEnabled: parentShareEnabled ?? false,
-            xpBreakdown: xpBreakdown,
             baseExp: baseExp ?? gainedExp,
             bonusExp: bonusExp ?? 0,
             xpNotes: xpNotes ?? []
         )
+        if hasExplicitComponents {
+            record.recordExp = recordExp ?? 0
+            record.challengeExp = challengeExp ?? 0
+            record.balanceExp = balanceExp ?? 0
+            record.safetyExp = safetyExp ?? 0
+        }
+        return record
     }
 }
 
