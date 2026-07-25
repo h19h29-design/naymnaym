@@ -1,0 +1,170 @@
+{
+  "sourceSha256": "e5469a7652dc91989ddbf6c11ccb6355724fb831b4dac90ee66f249939882cfa",
+  "canvas": {
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGBA"
+  },
+  "referenceVsRestChangedPixels": 0,
+  "parts": {
+    "tailBack": {
+      "nonzeroAlphaPixels": 61766,
+      "alphaBounds": [
+        749,
+        646,
+        1051,
+        1051
+      ]
+    },
+    "body": {
+      "nonzeroAlphaPixels": 112146,
+      "alphaBounds": [
+        333,
+        513,
+        847,
+        1126
+      ]
+    },
+    "scarf": {
+      "nonzeroAlphaPixels": 65928,
+      "alphaBounds": [
+        375,
+        626,
+        856,
+        880
+      ]
+    },
+    "head": {
+      "nonzeroAlphaPixels": 227408,
+      "alphaBounds": [
+        326,
+        202,
+        925,
+        702
+      ]
+    },
+    "armLeft": {
+      "nonzeroAlphaPixels": 25748,
+      "alphaBounds": [
+        220,
+        500,
+        426,
+        799
+      ]
+    },
+    "armRight": {
+      "nonzeroAlphaPixels": 15503,
+      "alphaBounds": [
+        708,
+        795,
+        876,
+        930
+      ]
+    },
+    "eyesOpen": {
+      "nonzeroAlphaPixels": 31238,
+      "alphaBounds": [
+        398,
+        429,
+        751,
+        590
+      ]
+    },
+    "eyesClosed": {
+      "nonzeroAlphaPixels": 2675,
+      "alphaBounds": [
+        405,
+        481,
+        742,
+        513
+      ]
+    },
+    "mouthNeutral": {
+      "nonzeroAlphaPixels": 464,
+      "alphaBounds": [
+        527,
+        605,
+        590,
+        620
+      ]
+    },
+    "mouthSmile": {
+      "nonzeroAlphaPixels": 6447,
+      "alphaBounds": [
+        516,
+        565,
+        604,
+        667
+      ]
+    },
+    "sprout": {
+      "nonzeroAlphaPixels": 20823,
+      "alphaBounds": [
+        495,
+        114,
+        775,
+        284
+      ]
+    }
+  },
+  "faceLandmarks": {
+    "leftEye": {
+      "openAnchor": [
+        458,
+        507
+      ],
+      "closedAnchor": [
+        458,
+        507
+      ],
+      "deltaPixels": 0,
+      "anchorDeltaPixels": 0
+    },
+    "rightEye": {
+      "openAnchor": [
+        685,
+        510
+      ],
+      "closedAnchor": [
+        685,
+        510
+      ],
+      "deltaPixels": 0,
+      "anchorDeltaPixels": 0
+    },
+    "mouth": {
+      "smileAnchor": [
+        559,
+        609
+      ],
+      "neutralAnchor": [
+        559,
+        609
+      ],
+      "deltaPixels": 0,
+      "anchorDeltaPixels": 0
+    },
+    "placementTolerancePixels": 4,
+    "anchorDeltaPixels": 0
+  },
+  "jointGapPixels": {
+    "restLeftShoulder": 0,
+    "restRightShoulder": 0,
+    "celebrateLeftShoulder": 0,
+    "celebrateRightShoulder": 0,
+    "celebrateTailBase": 0
+  },
+  "poses": {
+    "rest": "exact source pixels",
+    "blink": "eyes closed + neutral mouth",
+    "celebrate": {
+      "armLeftDegrees": 12,
+      "armRightDegrees": -12,
+      "tailDegrees": 8,
+      "bodyScale": [
+        1.04,
+        0.96
+      ]
+    }
+  }
+}
