@@ -3,8 +3,6 @@ package com.h19h29.naymnaymlevelup.rebuild.onboarding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import java.text.BreakIterator
-import java.util.Locale
 import kotlinx.coroutines.delay
 
 class OnboardingViewModel(
@@ -24,8 +22,11 @@ class OnboardingViewModel(
         private set
     var completedProfile by mutableStateOf<RebuildUserProfile?>(null)
         private set
+    var isCompleting by mutableStateOf(false)
+        private set
 
     private var searchGeneration = 0
+    private var completionGeneration = 0
 
     val progressText: String
         get() {
@@ -83,6 +84,9 @@ class OnboardingViewModel(
     }
 
     suspend fun complete(): RebuildUserProfile {
+        if (isCompleting) {
+            throw OnboardingException(OnboardingError.CompletionInProgress)
+        }
         if (step != OnboardingStep.Confirmation) {
             throw OnboardingException(OnboardingError.WrongStep)
         }
@@ -117,13 +121,26 @@ class OnboardingViewModel(
                 OnboardingDestination.ParentConnection
             },
         )
-        profileStore.save(profile)
-        completedProfile = profile
-        return profile
+        val generation = completionGeneration
+        isCompleting = true
+        try {
+            profileStore.save(profile)
+            if (generation != completionGeneration) {
+                throw OnboardingException(OnboardingError.CompletionCancelled)
+            }
+            completedProfile = profile
+            return profile
+        } finally {
+            if (generation == completionGeneration) {
+                isCompleting = false
+            }
+        }
     }
 
     fun cancel() {
         searchGeneration += 1
+        completionGeneration += 1
+        isCompleting = false
         step = OnboardingStep.Role
         draft = OnboardingDraft()
         validationMessage = null
@@ -170,21 +187,102 @@ class OnboardingViewModel(
         }
     }
 
-    private fun graphemeCount(value: String): Int {
-        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
-        iterator.setText(value)
+    private fun graphemeCount(value: String): Int =
+        ExtendedGraphemeCounter.count(value)
+
+    companion object {
+        const val SEARCH_DEBOUNCE_MILLIS = 300L
+    }
+}
+
+internal object ExtendedGraphemeCounter {
+    private const val ZERO_WIDTH_JOINER = 0x200D
+    private const val CARRIAGE_RETURN = 0x000D
+    private const val LINE_FEED = 0x000A
+
+    fun count(value: String): Int {
+        val codePoints = value.codePoints().toArray()
+        var index = 0
         var count = 0
-        var boundary = iterator.first()
-        while (boundary != BreakIterator.DONE) {
-            val next = iterator.next()
-            if (next == BreakIterator.DONE) break
+        var regionalIndicators = 0
+        while (index < codePoints.size) {
+            val current = codePoints[index]
+            if (
+                current == LINE_FEED &&
+                index > 0 &&
+                codePoints[index - 1] == CARRIAGE_RETURN
+            ) {
+                index += 1
+                continue
+            }
+            if (isRegionalIndicator(current)) {
+                if (regionalIndicators % 2 == 0) count += 1
+                regionalIndicators += 1
+                index += 1
+                continue
+            }
+            regionalIndicators = 0
             count += 1
-            boundary = next
+            index += 1
+            while (index < codePoints.size && isExtender(codePoints[index])) {
+                index += 1
+            }
+            while (
+                index < codePoints.size &&
+                codePoints[index] == ZERO_WIDTH_JOINER
+            ) {
+                index += 1
+                if (index >= codePoints.size) break
+                index += 1
+                while (index < codePoints.size && isExtender(codePoints[index])) {
+                    index += 1
+                }
+            }
         }
         return count
     }
 
-    companion object {
-        const val SEARCH_DEBOUNCE_MILLIS = 300L
+    private fun isExtender(codePoint: Int): Boolean {
+        val type = Character.getType(codePoint)
+        return type == Character.NON_SPACING_MARK.toInt() ||
+            type == Character.COMBINING_SPACING_MARK.toInt() ||
+            type == Character.ENCLOSING_MARK.toInt() ||
+            codePoint in 0xFE00..0xFE0F ||
+            codePoint in 0xE0100..0xE01EF ||
+            codePoint in 0x1F3FB..0x1F3FF ||
+            codePoint in 0xE0020..0xE007F
+    }
+
+    private fun isRegionalIndicator(codePoint: Int): Boolean =
+        codePoint in 0x1F1E6..0x1F1FF
+}
+
+sealed interface OnboardingRootState {
+    data object Loading : OnboardingRootState
+    data object Onboarding : OnboardingRootState
+    data class Destination(val profile: RebuildUserProfile) : OnboardingRootState
+    data object Failed : OnboardingRootState
+}
+
+class OnboardingBootstrapper(
+    private val profileStore: OnboardingProfileStore,
+) {
+    var state by mutableStateOf<OnboardingRootState>(OnboardingRootState.Loading)
+        private set
+    private var didLoad = false
+
+    suspend fun load() {
+        if (didLoad) return
+        didLoad = true
+        state = try {
+            profileStore.load()?.let(OnboardingRootState::Destination)
+                ?: OnboardingRootState.Onboarding
+        } catch (_: Throwable) {
+            OnboardingRootState.Failed
+        }
+    }
+
+    fun accept(profile: RebuildUserProfile) {
+        state = OnboardingRootState.Destination(profile)
     }
 }

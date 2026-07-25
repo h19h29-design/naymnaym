@@ -11,6 +11,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
     @Published private(set) var validationMessage: String?
     @Published private(set) var schoolSearchState: RebuildSchoolSearchState = .idle
     @Published private(set) var completedProfile: RebuildUserProfile?
+    @Published private(set) var isCompleting = false
 
     private let profileStore: RebuildOnboardingProfileStore
     private let schoolSearchClient: RebuildSchoolSearchClient
@@ -18,6 +19,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
     private let demoSchools: [RebuildOnboardingSchool]
     private let sleep: Sleep
     private var searchGeneration = 0
+    private var completionGeneration = 0
 
     init(
         profileStore: RebuildOnboardingProfileStore,
@@ -75,6 +77,9 @@ final class RebuildOnboardingViewModel: ObservableObject {
     }
 
     func complete() async throws -> RebuildUserProfile {
+        guard !isCompleting else {
+            throw RebuildOnboardingError.completionInProgress
+        }
         guard step == .confirmation else {
             throw RebuildOnboardingError.wrongStep
         }
@@ -102,13 +107,25 @@ final class RebuildOnboardingViewModel: ObservableObject {
             allergyCodes: role == .child ? draft.allergyCodes : [],
             destination: role == .child ? .today : .parentConnection
         )
-        try profileStore.save(profile)
+        let generation = completionGeneration
+        isCompleting = true
+        defer {
+            if generation == completionGeneration {
+                isCompleting = false
+            }
+        }
+        try await profileStore.save(profile)
+        guard generation == completionGeneration else {
+            throw RebuildOnboardingError.completionCancelled
+        }
         completedProfile = profile
         return profile
     }
 
     func cancel() {
         searchGeneration += 1
+        completionGeneration += 1
+        isCompleting = false
         draft = OnboardingDraft()
         step = .role
         validationMessage = nil
@@ -155,5 +172,42 @@ final class RebuildOnboardingViewModel: ObservableObject {
             return [.role, .nickname, .confirmation]
         }
         return RebuildOnboardingStep.allCases
+    }
+}
+
+enum RebuildOnboardingRootState: Equatable {
+    case loading
+    case onboarding
+    case destination(RebuildUserProfile)
+    case failed
+}
+
+@MainActor
+final class RebuildOnboardingBootstrapViewModel: ObservableObject {
+    @Published private(set) var state: RebuildOnboardingRootState = .loading
+
+    private let profileStore: RebuildOnboardingProfileStore
+    private var didLoad = false
+
+    init(profileStore: RebuildOnboardingProfileStore) {
+        self.profileStore = profileStore
+    }
+
+    func load() async {
+        guard !didLoad else { return }
+        didLoad = true
+        do {
+            if let profile = try await profileStore.load() {
+                state = .destination(profile)
+            } else {
+                state = .onboarding
+            }
+        } catch {
+            state = .failed
+        }
+    }
+
+    func accept(_ profile: RebuildUserProfile) {
+        state = .destination(profile)
     }
 }

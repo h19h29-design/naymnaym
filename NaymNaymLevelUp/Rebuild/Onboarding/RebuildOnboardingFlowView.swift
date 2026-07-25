@@ -4,8 +4,13 @@ struct RebuildOnboardingFlowView: View {
     @StateObject private var viewModel: RebuildOnboardingViewModel
     @State private var nickname = ""
     @State private var saveMessage: String?
+    private let onCompleted: (RebuildUserProfile) -> Void
 
-    init(viewModel: RebuildOnboardingViewModel? = nil) {
+    init(
+        viewModel: RebuildOnboardingViewModel? = nil,
+        onCompleted: @escaping (RebuildUserProfile) -> Void = { _ in }
+    ) {
+        self.onCompleted = onCompleted
         if let viewModel {
             _viewModel = StateObject(wrappedValue: viewModel)
         } else {
@@ -16,11 +21,7 @@ struct RebuildOnboardingFlowView: View {
     }
 
     var body: some View {
-        Group {
-            if let profile = viewModel.completedProfile {
-                destination(profile.destination)
-            } else {
-                VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
+        VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
                     Text(viewModel.progressText)
                         .font(RebuildDesignTokens.headlineFont)
                         .foregroundStyle(RebuildDesignTokens.forest700)
@@ -33,11 +34,9 @@ struct RebuildOnboardingFlowView: View {
                     }
                     .frame(minHeight: RebuildDesignTokens.minimumActionSize)
                     .accessibilityLabel("온보딩 처음부터 다시 시작")
-                }
-                .padding(RebuildDesignTokens.spacing[4])
-                .background(RebuildDesignTokens.cream50)
-            }
         }
+        .padding(RebuildDesignTokens.spacing[4])
+        .background(RebuildDesignTokens.cream50)
     }
 
     @ViewBuilder
@@ -73,11 +72,20 @@ struct RebuildOnboardingFlowView: View {
                 action("완료") {
                     Task {
                         do {
-                            _ = try await viewModel.complete()
+                            let profile = try await viewModel.complete()
+                            onCompleted(profile)
                         } catch {
-                            saveMessage = "저장하지 못했어요. 다시 시도해 주세요."
+                            if error as? RebuildOnboardingError
+                                != .completionCancelled {
+                                saveMessage = "저장하지 못했어요. 다시 시도해 주세요."
+                            }
                         }
                     }
+                }
+                .disabled(viewModel.isCompleting)
+                .opacity(viewModel.isCompleting ? 0.55 : 1)
+                if viewModel.isCompleting {
+                    ProgressView("프로필을 저장하고 있어요.")
                 }
                 if let saveMessage {
                     Text(saveMessage)
@@ -127,26 +135,14 @@ struct RebuildOnboardingFlowView: View {
         .clipShape(RoundedRectangle(cornerRadius: RebuildDesignTokens.radii[0]))
     }
 
-    @ViewBuilder
-    private func destination(
-        _ destination: RebuildOnboardingDestination
-    ) -> some View {
-        switch destination {
-        case .today:
-            Text("오늘 화면으로 이동할 준비가 되었어요.")
-        case .parentConnection:
-            Text("아이 연결 화면으로 이동할 준비가 되었어요.")
-        }
-    }
-
     @MainActor
     private static func makeLiveViewModel() -> RebuildOnboardingViewModel {
         do {
-            let container = try RebuildPersistentStore.makePersistent()
+            guard let appStore = RebuildOnboardingAppStore.shared else {
+                throw RebuildOnboardingError.persistenceUnavailable
+            }
             return RebuildOnboardingViewModel(
-                profileStore: RebuildCoreDataOnboardingProfileStore(
-                    container: container
-                ),
+                profileStore: appStore.profileStore,
                 schoolSearchClient: RebuildLiveSchoolSearchClient()
             )
         } catch {
@@ -160,7 +156,11 @@ struct RebuildOnboardingFlowView: View {
 
 private struct RebuildUnavailableOnboardingProfileStore:
     RebuildOnboardingProfileStore {
-    func save(_ profile: RebuildUserProfile) throws {
+    func load() async throws -> RebuildUserProfile? {
+        throw RebuildOnboardingError.persistenceUnavailable
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
         throw RebuildOnboardingError.persistenceUnavailable
     }
 }

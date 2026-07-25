@@ -26,7 +26,7 @@ fun AllergySelectionScreen(viewModel: OnboardingViewModel) {
     var selected by remember { mutableStateOf(emptySet<Int>()) }
     Column(verticalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[3].dp)) {
         QuestionTitle("확인이 필요한 알레르기가 있나요?")
-        LazyColumn {
+        LazyColumn(modifier = Modifier.weight(1f)) {
             items((1..19).toList()) { code ->
                 TextButton(
                     onClick = {

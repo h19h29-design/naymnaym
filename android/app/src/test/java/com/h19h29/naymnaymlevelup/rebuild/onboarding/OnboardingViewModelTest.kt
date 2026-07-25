@@ -1,6 +1,9 @@
 package com.h19h29.naymnaymlevelup.rebuild.onboarding
 
 import java.io.IOException
+import java.io.File
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -66,6 +69,23 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun nicknameCountsExtendedGraphemeClustersOnBothSidesOfLimit() {
+        val viewModel = OnboardingViewModel(ProfileStoreSpy(), SchoolSearchClientStub())
+        viewModel.selectRole(OnboardingRole.Child)
+
+        viewModel.setNickname("👨‍👩‍👧‍👦".repeat(12))
+        assertEquals(OnboardingStep.School, viewModel.step)
+
+        viewModel.cancel()
+        viewModel.selectRole(OnboardingRole.Child)
+        viewModel.setNickname("👨‍👩‍👧‍👦".repeat(13))
+        assertEquals(OnboardingStep.Nickname, viewModel.step)
+
+        viewModel.setNickname("🇰🇷e\u0301")
+        assertEquals(OnboardingStep.School, viewModel.step)
+    }
+
+    @Test
     fun childCompletionRequiresBothSchoolIdentifiers() = runTest {
         val store = ProfileStoreSpy()
         val viewModel = OnboardingViewModel(store, SchoolSearchClientStub())
@@ -117,6 +137,77 @@ class OnboardingViewModelTest {
         assertNull(viewModel.completedProfile)
         assertEquals(OnboardingStep.Confirmation, viewModel.step)
         assertTrue(store.savedProfiles.isEmpty())
+    }
+
+    @Test
+    fun duplicateCompletionTapStartsOnlyOneSave() = runTest {
+        val store = ControlledProfileStore()
+        val viewModel = OnboardingViewModel(store, SchoolSearchClientStub())
+        viewModel.selectRole(OnboardingRole.Parent)
+        viewModel.setNickname("보호자")
+
+        val first = async { viewModel.complete() }
+        store.saveStarted.await()
+        assertTrue(viewModel.isCompleting)
+
+        val error = expectFailure<OnboardingException> {
+            viewModel.complete()
+        }
+        assertEquals(OnboardingError.CompletionInProgress, error.reason)
+        assertEquals(1, store.saveCount)
+
+        store.allowSave.complete(Unit)
+        first.await()
+        assertTrue(!viewModel.isCompleting)
+    }
+
+    @Test
+    fun cancelDuringSaveNeverPublishesCompletion() = runTest {
+        val store = ControlledProfileStore()
+        val viewModel = OnboardingViewModel(store, SchoolSearchClientStub())
+        viewModel.selectRole(OnboardingRole.Parent)
+        viewModel.setNickname("보호자")
+
+        val completion = async { runCatching { viewModel.complete() } }
+        store.saveStarted.await()
+        viewModel.cancel()
+        store.allowSave.complete(Unit)
+
+        val error = completion.await().exceptionOrNull() as OnboardingException
+        assertEquals(OnboardingError.CompletionCancelled, error.reason)
+        assertNull(viewModel.completedProfile)
+        assertEquals(OnboardingStep.Role, viewModel.step)
+    }
+
+    @Test
+    fun bootstrapLoadsPersistedProfilesAcrossRootRecreation() = runTest {
+        val child = profile(OnboardingRole.Child)
+        val store = ProfileStoreSpy(loadedProfile = child)
+
+        val firstRoot = OnboardingBootstrapper(store)
+        firstRoot.load()
+        assertEquals(OnboardingRootState.Destination(child), firstRoot.state)
+
+        val recreatedRoot = OnboardingBootstrapper(store)
+        recreatedRoot.load()
+        assertEquals(OnboardingRootState.Destination(child), recreatedRoot.state)
+
+        val parent = profile(OnboardingRole.Parent)
+        val parentRoot = OnboardingBootstrapper(
+            ProfileStoreSpy(loadedProfile = parent),
+        )
+        parentRoot.load()
+        assertEquals(OnboardingRootState.Destination(parent), parentRoot.state)
+        assertEquals(OnboardingDestination.ParentConnection, parent.destination)
+    }
+
+    @Test
+    fun bootstrapShowsOnboardingOnlyWithoutPersistedProfile() = runTest {
+        val root = OnboardingBootstrapper(ProfileStoreSpy())
+
+        root.load()
+
+        assertEquals(OnboardingRootState.Onboarding, root.state)
     }
 
     @Test
@@ -172,14 +263,78 @@ class OnboardingViewModelTest {
         assertEquals(SchoolSearchState.DemoResults(listOf(SCHOOL)), demo.schoolSearchState)
     }
 
+    @Test
+    fun schoolSearchTreatsInfo200AsEmptyAndRejectsErrorsOrMalformedRows() = runTest {
+        val noData = NeisSchoolSearchClient(
+            apiKey = "test-key",
+            transport = { """{"RESULT":{"CODE":"INFO-200","MESSAGE":"none"}}""".encodeToByteArray() },
+        )
+        assertEquals(emptyList<OnboardingSchool>(), noData.search("없는학교"))
+
+        val serverError = NeisSchoolSearchClient(
+            apiKey = "test-key",
+            transport = {
+                """{"RESULT":{"CODE":"ERROR-300","MESSAGE":"auth failed"}}"""
+                    .encodeToByteArray()
+            },
+        )
+        val resultError = expectFailure<SchoolSearchException.ResultError> {
+            serverError.search("냠냠초")
+        }
+        assertEquals("ERROR-300", resultError.code)
+        assertEquals("auth failed", resultError.resultMessage)
+
+        val malformed = NeisSchoolSearchClient(
+            apiKey = "test-key",
+            transport = {
+                """{"schoolInfo":[{"row":[{"SCHUL_NM":"코드 없는 학교"}]}]}"""
+                    .encodeToByteArray()
+            },
+        )
+        expectFailure<SchoolSearchException.MalformedResponse> {
+            malformed.search("코드 없는 학교")
+        }
+    }
+
+    @Test
+    fun allergyListIsConstrainedSoNextActionRemainsOutsideScrollableItems() {
+        val source = File(
+            "src/main/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/" +
+                "AllergySelectionScreen.kt",
+        ).readText()
+
+        assertTrue(source.contains("LazyColumn(modifier = Modifier.weight(1f))"))
+        assertTrue(
+            source.indexOf("LazyColumn") <
+                source.indexOf("OnboardingAction(\"다음\")"),
+        )
+    }
+
     private class ProfileStoreSpy(
         private val error: Throwable? = null,
+        private val loadedProfile: RebuildUserProfile? = null,
     ) : OnboardingProfileStore {
         val savedProfiles = mutableListOf<RebuildUserProfile>()
+
+        override suspend fun load(): RebuildUserProfile? = loadedProfile
 
         override suspend fun save(profile: RebuildUserProfile) {
             error?.let { throw it }
             savedProfiles += profile
+        }
+    }
+
+    private class ControlledProfileStore : OnboardingProfileStore {
+        var saveCount = 0
+        val saveStarted = CompletableDeferred<Unit>()
+        val allowSave = CompletableDeferred<Unit>()
+
+        override suspend fun load(): RebuildUserProfile? = null
+
+        override suspend fun save(profile: RebuildUserProfile) {
+            saveCount += 1
+            saveStarted.complete(Unit)
+            allowSave.await()
         }
     }
 
@@ -210,6 +365,19 @@ class OnboardingViewModelTest {
             name = "서울 냠냠초",
             officeCode = "B10",
             schoolCode = "7010111",
+        )
+
+        fun profile(role: OnboardingRole) = RebuildUserProfile(
+            id = "current",
+            role = role,
+            nickname = if (role == OnboardingRole.Child) "냠냠이" else "보호자",
+            school = if (role == OnboardingRole.Child) SCHOOL else null,
+            allergyCodes = if (role == OnboardingRole.Child) listOf(1, 5) else emptyList(),
+            destination = if (role == OnboardingRole.Child) {
+                OnboardingDestination.Today
+            } else {
+                OnboardingDestination.ParentConnection
+            },
         )
     }
 }

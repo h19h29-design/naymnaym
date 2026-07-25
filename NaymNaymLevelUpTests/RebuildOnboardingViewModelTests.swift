@@ -1,4 +1,5 @@
 import XCTest
+import Foundation
 @testable import NaymNaymLevelUp
 
 @MainActor
@@ -66,6 +67,26 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.validationMessage)
     }
 
+    func testNicknameCountsExtendedGraphemeClustersOnBothSidesOfLimit() {
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: OnboardingProfileStoreSpy(),
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+        viewModel.selectRole(.child)
+
+        viewModel.setNickname(String(repeating: "👨‍👩‍👧‍👦", count: 12))
+        XCTAssertEqual(viewModel.step, .school)
+
+        viewModel.cancel()
+        viewModel.selectRole(.child)
+        viewModel.setNickname(String(repeating: "👨‍👩‍👧‍👦", count: 13))
+        XCTAssertEqual(viewModel.step, .nickname)
+
+        viewModel.setNickname("🇰🇷e\u{301}")
+        XCTAssertEqual(viewModel.step, .school)
+        XCTAssertEqual(viewModel.draft.nickname.count, 2)
+    }
+
     func testChildCompletionRequiresBothSchoolIdentifiers() async {
         let store = OnboardingProfileStoreSpy()
         let viewModel = RebuildOnboardingViewModel(
@@ -125,6 +146,90 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertTrue(store.savedProfiles.isEmpty)
     }
 
+    func testDuplicateCompletionTapStartsOnlyOneSave() async throws {
+        let store = ControlledOnboardingProfileStore()
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: store,
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+        viewModel.selectRole(.parent)
+        viewModel.setNickname("보호자")
+
+        let first = Task { try await viewModel.complete() }
+        await store.waitUntilSaveStarts()
+        XCTAssertTrue(viewModel.isCompleting)
+
+        await XCTAssertThrowsErrorAsync(try await viewModel.complete()) { error in
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionInProgress
+            )
+        }
+        XCTAssertEqual(store.saveCount, 1)
+
+        store.finishSave()
+        _ = try await first.value
+        XCTAssertFalse(viewModel.isCompleting)
+    }
+
+    func testCancelDuringSaveNeverPublishesCompletion() async {
+        let store = ControlledOnboardingProfileStore()
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: store,
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+        viewModel.selectRole(.parent)
+        viewModel.setNickname("보호자")
+
+        let completion = Task { try await viewModel.complete() }
+        await store.waitUntilSaveStarts()
+        viewModel.cancel()
+        store.finishSave()
+
+        await XCTAssertThrowsErrorAsync(try await completion.value) { error in
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionCancelled
+            )
+        }
+        XCTAssertNil(viewModel.completedProfile)
+        XCTAssertEqual(viewModel.step, .role)
+    }
+
+    func testBootstrapLoadsPersistedProfilesAndRoutesWithoutOnboarding() async {
+        let child = RebuildUserProfile.fixture(role: .child)
+        let childStore = OnboardingProfileStoreSpy(loadedProfile: child)
+        let firstLaunch = RebuildOnboardingBootstrapViewModel(
+            profileStore: childStore
+        )
+        await firstLaunch.load()
+        XCTAssertEqual(firstLaunch.state, .destination(child))
+
+        let recreatedRoot = RebuildOnboardingBootstrapViewModel(
+            profileStore: childStore
+        )
+        await recreatedRoot.load()
+        XCTAssertEqual(recreatedRoot.state, .destination(child))
+
+        let parent = RebuildUserProfile.fixture(role: .parent)
+        let parentRoot = RebuildOnboardingBootstrapViewModel(
+            profileStore: OnboardingProfileStoreSpy(loadedProfile: parent)
+        )
+        await parentRoot.load()
+        XCTAssertEqual(parentRoot.state, .destination(parent))
+        XCTAssertEqual(parent.destination, .parentConnection)
+    }
+
+    func testBootstrapShowsOnboardingOnlyWhenNoProfileExists() async {
+        let bootstrap = RebuildOnboardingBootstrapViewModel(
+            profileStore: OnboardingProfileStoreSpy()
+        )
+
+        await bootstrap.load()
+
+        XCTAssertEqual(bootstrap.state, .onboarding)
+    }
+
     func testSchoolSearchDebouncesAndDistinguishesResultsEmptyAndFailure() async {
         let delay = DelayRecorder()
         let results = RebuildOnboardingViewModel(
@@ -174,21 +279,91 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         await demo.searchSchools(query: "냠냠")
         XCTAssertEqual(demo.schoolSearchState, .demoResults([.fixture]))
     }
+
+    func testSchoolSearchTreatsInfo200AsEmptyAndRejectsErrorOrMalformedRows() async throws {
+        let noData = makeSchoolClient(
+            #"{"RESULT":{"CODE":"INFO-200","MESSAGE":"no data"}}"#
+        )
+        let noDataResults = try await noData.search(query: "없는학교")
+        XCTAssertEqual(noDataResults, [])
+
+        let serverError = makeSchoolClient(
+            #"{"RESULT":{"CODE":"ERROR-300","MESSAGE":"auth failed"}}"#
+        )
+        await XCTAssertThrowsErrorAsync(
+            try await serverError.search(query: "냠냠초")
+        ) { error in
+            XCTAssertEqual(
+                error as? RebuildSchoolSearchError,
+                .result(code: "ERROR-300", message: "auth failed")
+            )
+        }
+
+        let malformed = makeSchoolClient(
+            #"{"schoolInfo":[{"row":[{"SCHUL_NM":"코드 없는 학교"}]}]}"#
+        )
+        await XCTAssertThrowsErrorAsync(
+            try await malformed.search(query: "코드 없는 학교")
+        ) { error in
+            XCTAssertEqual(
+                error as? RebuildSchoolSearchError,
+                .malformedResponse
+            )
+        }
+    }
 }
 
 private final class OnboardingProfileStoreSpy: RebuildOnboardingProfileStore {
     private(set) var savedProfiles: [RebuildUserProfile] = []
     private let error: Error?
+    private let loadedProfile: RebuildUserProfile?
 
-    init(error: Error? = nil) {
+    init(
+        error: Error? = nil,
+        loadedProfile: RebuildUserProfile? = nil
+    ) {
         self.error = error
+        self.loadedProfile = loadedProfile
     }
 
-    func save(_ profile: RebuildUserProfile) throws {
+    func load() async throws -> RebuildUserProfile? {
+        loadedProfile
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
         if let error {
             throw error
         }
         savedProfiles.append(profile)
+    }
+}
+
+@MainActor
+private final class ControlledOnboardingProfileStore:
+    RebuildOnboardingProfileStore {
+    private(set) var saveCount = 0
+    private var saveContinuation: CheckedContinuation<Void, Error>?
+
+    func load() async throws -> RebuildUserProfile? {
+        nil
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
+        saveCount += 1
+        try await withCheckedThrowingContinuation { continuation in
+            saveContinuation = continuation
+        }
+    }
+
+    func waitUntilSaveStarts() async {
+        while saveContinuation == nil {
+            await Task.yield()
+        }
+    }
+
+    func finishSave() {
+        saveContinuation?.resume()
+        saveContinuation = nil
     }
 }
 
@@ -213,12 +388,66 @@ private enum TestError: Error {
     case saveFailed
 }
 
+private final class OnboardingURLProtocol: URLProtocol {
+    static var responseData = Data()
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+    override func startLoading() {
+        client?.urlProtocol(
+            self,
+            didReceive: HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!,
+            cacheStoragePolicy: .notAllowed
+        )
+        client?.urlProtocol(self, didLoad: Self.responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+private func makeSchoolClient(
+    _ json: String
+) -> RebuildLiveSchoolSearchClient {
+    OnboardingURLProtocol.responseData = Data(json.utf8)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [OnboardingURLProtocol.self]
+    return RebuildLiveSchoolSearchClient(
+        client: NEISClient(
+            apiKey: "test-key",
+            baseURL: URL(string: "https://example.com")!,
+            session: URLSession(configuration: configuration)
+        )
+    )
+}
+
 private extension RebuildOnboardingSchool {
     static let fixture = RebuildOnboardingSchool(
         name: "서울 냠냠초",
         officeCode: "B10",
         schoolCode: "7010111"
     )
+}
+
+private extension RebuildUserProfile {
+    static func fixture(
+        role: RebuildOnboardingRole
+    ) -> RebuildUserProfile {
+        RebuildUserProfile(
+            id: "current",
+            role: role,
+            nickname: role == .child ? "냠냠이" : "보호자",
+            school: role == .child ? .fixture : nil,
+            allergyCodes: role == .child ? [1, 5] : [],
+            destination: role == .child ? .today : .parentConnection
+        )
+    }
 }
 
 private func XCTAssertThrowsErrorAsync<T>(

@@ -57,6 +57,8 @@ enum class OnboardingError {
     InvalidNickname,
     MissingSchoolIdentifiers,
     WrongStep,
+    CompletionInProgress,
+    CompletionCancelled,
 }
 
 class OnboardingException(
@@ -74,6 +76,8 @@ sealed interface SchoolSearchState {
 
 fun interface OnboardingProfileStore {
     suspend fun save(profile: RebuildUserProfile)
+
+    suspend fun load(): RebuildUserProfile? = null
 }
 
 fun interface SchoolSearchClient {
@@ -83,6 +87,43 @@ fun interface SchoolSearchClient {
 class RoomOnboardingProfileStore(
     private val database: RebuildDatabase,
 ) : OnboardingProfileStore {
+    override suspend fun load(): RebuildUserProfile? {
+        val entity = database.profileDao().load() ?: return null
+        val role = when (entity.role) {
+            OnboardingRole.Child.persistedValue -> OnboardingRole.Child
+            OnboardingRole.Parent.persistedValue -> OnboardingRole.Parent
+            else -> throw IOException("Unsupported persisted role")
+        }
+        val allergyCodes = parseAllergyCodes(entity.allergyCodesJson)
+        val officeCode = entity.officeCode
+        val schoolCode = entity.schoolCode
+        val school = if (
+            role == OnboardingRole.Child &&
+            !officeCode.isNullOrBlank() &&
+            !schoolCode.isNullOrBlank()
+        ) {
+            OnboardingSchool(
+                name = "등록한 학교",
+                officeCode = officeCode,
+                schoolCode = schoolCode,
+            )
+        } else {
+            null
+        }
+        return RebuildUserProfile(
+            id = entity.id,
+            role = role,
+            nickname = entity.nickname,
+            school = school,
+            allergyCodes = allergyCodes,
+            destination = if (role == OnboardingRole.Child) {
+                OnboardingDestination.Today
+            } else {
+                OnboardingDestination.ParentConnection
+            },
+        )
+    }
+
     override suspend fun save(profile: RebuildUserProfile) {
         database.withTransaction {
             database.profileDao().upsert(
@@ -100,6 +141,32 @@ class RoomOnboardingProfileStore(
             )
         }
     }
+
+    private fun parseAllergyCodes(raw: String): List<Int> {
+        val trimmed = raw.trim()
+        if (trimmed == "[]") return emptyList()
+        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+            throw IOException("Malformed persisted allergy codes")
+        }
+        return trimmed
+            .removePrefix("[")
+            .removeSuffix("]")
+            .split(",")
+            .map { it.trim().toIntOrNull() ?: throw IOException("Malformed allergy code") }
+            .distinct()
+            .sorted()
+    }
+}
+
+sealed class SchoolSearchException(message: String) : IOException(message) {
+    data class ResultError(
+        val code: String,
+        val resultMessage: String?,
+    ) : SchoolSearchException(
+        listOfNotNull(code, resultMessage).joinToString(": "),
+    )
+
+    class MalformedResponse : SchoolSearchException("Malformed school response")
 }
 
 class NeisSchoolSearchClient(
@@ -114,18 +181,51 @@ class NeisSchoolSearchClient(
             "$BASE_URL?KEY=${encode(apiKey)}&Type=json&pIndex=1&pSize=100" +
                 "&SCHUL_NM=${encode(query)}",
         )
-        val root = MealJsonReader.parseObject(transport.get(url))
-        val sections = root["schoolInfo"] as? List<*> ?: return emptyList()
+        val root = try {
+            MealJsonReader.parseObject(transport.get(url))
+        } catch (_: IllegalArgumentException) {
+            throw SchoolSearchException.MalformedResponse()
+        }
+        val resultValue = root["RESULT"]
+        if (resultValue != null) {
+            val result = resultValue as? Map<*, *>
+                ?: throw SchoolSearchException.MalformedResponse()
+            val code = result["CODE"] as? String
+                ?: throw SchoolSearchException.MalformedResponse()
+            val messageValue = result["MESSAGE"]
+            val message = when (messageValue) {
+                null -> null
+                is String -> messageValue
+                else -> throw SchoolSearchException.MalformedResponse()
+            }
+            if (code == "INFO-200") {
+                return emptyList()
+            }
+            throw SchoolSearchException.ResultError(code, message)
+        }
+        val sections = root["schoolInfo"] as? List<*>
+            ?: throw SchoolSearchException.MalformedResponse()
         return sections.flatMap { sectionValue ->
-            val section = sectionValue as? Map<*, *> ?: return@flatMap emptyList()
-            val rows = section["row"] as? List<*> ?: return@flatMap emptyList()
-            rows.mapNotNull { rowValue ->
-                val row = rowValue as? Map<*, *> ?: return@mapNotNull null
-                val name = row["SCHUL_NM"] as? String ?: return@mapNotNull null
-                val officeCode =
-                    row["ATPT_OFCDC_SC_CODE"] as? String ?: return@mapNotNull null
-                val schoolCode =
-                    row["SD_SCHUL_CODE"] as? String ?: return@mapNotNull null
+            val section = sectionValue as? Map<*, *>
+                ?: throw SchoolSearchException.MalformedResponse()
+            val rows = if (section.containsKey("row")) {
+                section["row"] as? List<*>
+                    ?: throw SchoolSearchException.MalformedResponse()
+            } else {
+                emptyList<Any?>()
+            }
+            rows.map { rowValue ->
+                val row = rowValue as? Map<*, *>
+                    ?: throw SchoolSearchException.MalformedResponse()
+                val name = row["SCHUL_NM"] as? String
+                    ?: throw SchoolSearchException.MalformedResponse()
+                val officeCode = row["ATPT_OFCDC_SC_CODE"] as? String
+                    ?: throw SchoolSearchException.MalformedResponse()
+                val schoolCode = row["SD_SCHUL_CODE"] as? String
+                    ?: throw SchoolSearchException.MalformedResponse()
+                if (name.isBlank() || officeCode.isBlank() || schoolCode.isBlank()) {
+                    throw SchoolSearchException.MalformedResponse()
+                }
                 OnboardingSchool(name, officeCode, schoolCode)
             }
         }

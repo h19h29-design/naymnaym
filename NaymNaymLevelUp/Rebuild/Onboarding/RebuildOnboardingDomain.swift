@@ -48,6 +48,8 @@ enum RebuildOnboardingError: Error, Equatable {
     case missingSchoolIdentifiers
     case wrongStep
     case persistenceUnavailable
+    case completionInProgress
+    case completionCancelled
 }
 
 enum RebuildSchoolSearchState: Equatable, Sendable {
@@ -60,23 +62,73 @@ enum RebuildSchoolSearchState: Equatable, Sendable {
 }
 
 protocol RebuildOnboardingProfileStore {
-    func save(_ profile: RebuildUserProfile) throws
+    func load() async throws -> RebuildUserProfile?
+    func save(_ profile: RebuildUserProfile) async throws
 }
 
 protocol RebuildSchoolSearchClient {
     func search(query: String) async throws -> [RebuildOnboardingSchool]
 }
 
-final class RebuildCoreDataOnboardingProfileStore: RebuildOnboardingProfileStore {
+final class RebuildCoreDataOnboardingProfileStore:
+    RebuildOnboardingProfileStore,
+    @unchecked Sendable {
     private let container: NSPersistentContainer
 
     init(container: NSPersistentContainer) {
         self.container = container
     }
 
-    func save(_ profile: RebuildUserProfile) throws {
+    func load() async throws -> RebuildUserProfile? {
         let context = container.newBackgroundContext()
-        try context.performAndWait {
+        return try await context.perform {
+            let request = NSFetchRequest<RebuildProfileManagedObject>(
+                entityName: RebuildEntityName.profile
+            )
+            request.sortDescriptors = [
+                NSSortDescriptor(key: "id", ascending: true)
+            ]
+            request.fetchLimit = 1
+            guard let object = try context.fetch(request).first else {
+                return nil
+            }
+            guard let role = RebuildOnboardingRole(rawValue: object.role) else {
+                throw RebuildOnboardingError.persistenceUnavailable
+            }
+            let allergyCodes = try JSONDecoder().decode(
+                [Int].self,
+                from: Data(object.allergyCodesJSON.utf8)
+            )
+            let school: RebuildOnboardingSchool?
+            if
+                role == .child,
+                let officeCode = object.officeCode,
+                let schoolCode = object.schoolCode,
+                !officeCode.isEmpty,
+                !schoolCode.isEmpty
+            {
+                school = RebuildOnboardingSchool(
+                    name: "등록한 학교",
+                    officeCode: officeCode,
+                    schoolCode: schoolCode
+                )
+            } else {
+                school = nil
+            }
+            return RebuildUserProfile(
+                id: object.id,
+                role: role,
+                nickname: object.nickname,
+                school: school,
+                allergyCodes: Array(Set(allergyCodes)).sorted(),
+                destination: role == .child ? .today : .parentConnection
+            )
+        }
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
+        let context = container.newBackgroundContext()
+        try await context.perform {
             do {
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
@@ -85,7 +137,7 @@ final class RebuildCoreDataOnboardingProfileStore: RebuildOnboardingProfileStore
                 request.fetchLimit = 1
                 let object = try context.fetch(request).first
                     ?? RebuildProfileManagedObject(
-                        entity: try profileEntity(in: context),
+                        entity: try Self.profileEntity(in: context),
                         insertInto: context
                     )
                 object.id = profile.id
@@ -105,7 +157,7 @@ final class RebuildCoreDataOnboardingProfileStore: RebuildOnboardingProfileStore
         }
     }
 
-    private func profileEntity(
+    private static func profileEntity(
         in context: NSManagedObjectContext
     ) throws -> NSEntityDescription {
         guard let entity = NSEntityDescription.entity(
@@ -126,28 +178,52 @@ struct RebuildLiveSchoolSearchClient: RebuildSchoolSearchClient {
     }
 
     func search(query: String) async throws -> [RebuildOnboardingSchool] {
-        let data = try await client.request(
-            path: "schoolInfo",
-            query: ["SCHUL_NM": query]
-        )
-        let response = try JSONDecoder().decode(
-            RebuildSchoolInfoResponse.self,
-            from: data
-        )
-        return response.schoolInfo?
-            .flatMap { $0.row ?? [] }
-            .map {
-                RebuildOnboardingSchool(
-                    name: $0.SCHUL_NM,
-                    officeCode: $0.ATPT_OFCDC_SC_CODE,
-                    schoolCode: $0.SD_SCHUL_CODE
+        do {
+            let data = try await client.request(
+                path: "schoolInfo",
+                query: ["SCHUL_NM": query]
+            )
+            let response = try JSONDecoder().decode(
+                RebuildSchoolInfoResponse.self,
+                from: data
+            )
+            if let result = response.RESULT {
+                if result.CODE == "INFO-200" {
+                    return []
+                }
+                throw RebuildSchoolSearchError.result(
+                    code: result.CODE,
+                    message: result.MESSAGE
                 )
-            } ?? []
+            }
+            guard let sections = response.schoolInfo else {
+                throw RebuildSchoolSearchError.malformedResponse
+            }
+            return sections
+                .flatMap { $0.row ?? [] }
+                .map {
+                    RebuildOnboardingSchool(
+                        name: $0.SCHUL_NM,
+                        officeCode: $0.ATPT_OFCDC_SC_CODE,
+                        schoolCode: $0.SD_SCHUL_CODE
+                    )
+                }
+        } catch let error as RebuildSchoolSearchError {
+            throw error
+        } catch is DecodingError {
+            throw RebuildSchoolSearchError.malformedResponse
+        }
     }
+}
+
+enum RebuildSchoolSearchError: Error, Equatable {
+    case malformedResponse
+    case result(code: String, message: String?)
 }
 
 private struct RebuildSchoolInfoResponse: Decodable {
     let schoolInfo: [RebuildSchoolInfoSection]?
+    let RESULT: RebuildSchoolInfoResult?
 }
 
 private struct RebuildSchoolInfoSection: Decodable {
@@ -158,4 +234,25 @@ private struct RebuildSchoolInfoRow: Decodable {
     let ATPT_OFCDC_SC_CODE: String
     let SD_SCHUL_CODE: String
     let SCHUL_NM: String
+}
+
+private struct RebuildSchoolInfoResult: Decodable {
+    let CODE: String
+    let MESSAGE: String?
+}
+
+@MainActor
+final class RebuildOnboardingAppStore {
+    static let shared: RebuildOnboardingAppStore? = try? RebuildOnboardingAppStore()
+
+    let container: NSPersistentContainer
+    let profileStore: RebuildCoreDataOnboardingProfileStore
+
+    private init() throws {
+        let container = try RebuildPersistentStore.makePersistent()
+        self.container = container
+        profileStore = RebuildCoreDataOnboardingProfileStore(
+            container: container
+        )
+    }
 }

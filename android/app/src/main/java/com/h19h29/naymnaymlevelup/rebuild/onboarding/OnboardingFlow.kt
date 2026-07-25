@@ -27,22 +27,13 @@ import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
 import kotlinx.coroutines.launch
 
 @Composable
-fun OnboardingFlow(viewModel: OnboardingViewModel) {
+fun OnboardingFlow(
+    viewModel: OnboardingViewModel,
+    onCompleted: (RebuildUserProfile) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var nickname by remember { mutableStateOf("") }
     var saveMessage by remember { mutableStateOf<String?>(null) }
-
-    viewModel.completedProfile?.let { profile ->
-        Text(
-            if (profile.destination == OnboardingDestination.Today) {
-                "오늘 화면으로 이동할 준비가 되었어요."
-            } else {
-                "아이 연결 화면으로 이동할 준비가 되었어요."
-            },
-            modifier = Modifier.padding(RebuildTokens.spacing[4].dp),
-        )
-        return
-    }
 
     Column(
         modifier = Modifier
@@ -92,14 +83,25 @@ fun OnboardingFlow(viewModel: OnboardingViewModel) {
                             ?: "선택 안 함"
                     }",
                 )
-                OnboardingAction("완료") {
+                OnboardingAction(
+                    title = "완료",
+                    enabled = !viewModel.isCompleting,
+                ) {
                     scope.launch {
                         try {
-                            viewModel.complete()
-                        } catch (_: Throwable) {
-                            saveMessage = "저장하지 못했어요. 다시 시도해 주세요."
+                            onCompleted(viewModel.complete())
+                        } catch (error: Throwable) {
+                            if (
+                                (error as? OnboardingException)?.reason !=
+                                OnboardingError.CompletionCancelled
+                            ) {
+                                saveMessage = "저장하지 못했어요. 다시 시도해 주세요."
+                            }
                         }
                     }
+                }
+                if (viewModel.isCompleting) {
+                    Text("프로필을 저장하고 있어요.")
                 }
                 saveMessage?.let {
                     Text(it, color = MaterialTheme.colorScheme.error)
@@ -129,9 +131,14 @@ internal fun QuestionTitle(title: String) {
 }
 
 @Composable
-internal fun OnboardingAction(title: String, onClick: () -> Unit) {
+internal fun OnboardingAction(
+    title: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = RebuildTokens.minimumActionSize.dp),
