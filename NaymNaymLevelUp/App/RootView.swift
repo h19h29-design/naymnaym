@@ -12,7 +12,9 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if appState.hasProfile {
+            if RebuildFeatureGate.isEnabled() {
+                RebuildRootView()
+            } else if appState.hasProfile {
                 if appState.currentMode == .parent {
                     MainTabView(selection: $selectedTab)
                 } else if shouldShowIntro {
