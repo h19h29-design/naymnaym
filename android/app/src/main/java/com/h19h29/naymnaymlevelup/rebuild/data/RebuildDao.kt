@@ -1,0 +1,98 @@
+package com.h19h29.naymnaymlevelup.rebuild.data
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface ProfileDao {
+    @Upsert
+    suspend fun upsert(profile: ProfileEntity)
+
+    @Query("SELECT * FROM profiles ORDER BY id ASC LIMIT 1")
+    suspend fun load(): ProfileEntity?
+}
+
+@Dao
+interface MealDayDao {
+    @Query("SELECT * FROM meal_days WHERE date = :date LIMIT 1")
+    fun observe(date: String): Flow<MealDayEntity?>
+
+    @Upsert
+    suspend fun upsert(mealDay: MealDayEntity)
+}
+
+@Dao
+interface MealRecordDao {
+    @Upsert
+    suspend fun upsert(record: MealRecordEntity)
+
+    @Query("SELECT * FROM meal_records WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): MealRecordEntity?
+}
+
+@Dao
+interface MealPhotoDao {
+    @Upsert
+    suspend fun upsert(photo: MealPhotoEntity)
+
+    @Query(
+        """
+        SELECT * FROM meal_photos
+        WHERE recordId = :recordId
+        ORDER BY createdAtEpochMillis ASC, id ASC
+        """,
+    )
+    suspend fun forRecord(recordId: String): List<MealPhotoEntity>
+}
+
+@Dao
+interface ProgressDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(event: ProgressEventEntity): Long
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM progress_events")
+    suspend fun totalXp(): Int
+
+    @Query("SELECT * FROM progress_events WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): ProgressEventEntity?
+}
+
+@Dao
+interface SyncEnvelopeDao {
+    @Upsert
+    suspend fun upsert(envelope: SyncEnvelopeEntity)
+
+    @Query(
+        """
+        SELECT * FROM sync_envelopes
+        ORDER BY updatedAtEpochMillis ASC, id ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun orderedBatch(limit: Int): List<SyncEnvelopeEntity>
+}
+
+@Dao
+interface ParentLinkDao {
+    @Upsert
+    suspend fun upsert(link: ParentLinkEntity)
+
+    @Query("SELECT * FROM parent_links ORDER BY id ASC LIMIT 1")
+    suspend fun load(): ParentLinkEntity?
+}
+
+@Dao
+interface MigrationStateDao {
+    @Query("SELECT version FROM migration_states WHERE id = :id LIMIT 1")
+    suspend fun version(id: String): Int?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(state: MigrationStateEntity)
+
+    @Query("SELECT * FROM migration_states WHERE id = :id LIMIT 1")
+    suspend fun find(id: String): MigrationStateEntity?
+}
