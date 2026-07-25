@@ -180,6 +180,48 @@ class RebuildMigrationIntegrationTest {
     }
 
     @Test
+    fun invalidChildLinkAuthCombinationsAreRejectedWithoutSourceMutation() {
+        listOf(
+            mapOf(
+                LegacyPreferencesReader.CHILD_LINK_ID to "missing-secret",
+                LegacyPreferencesReader.INVITE_CODE to "CODE-1",
+            ),
+            mapOf(
+                LegacyPreferencesReader.CHILD_LINK_ID to "blank-secret",
+                LegacyPreferencesReader.INVITE_CODE to "CODE-2",
+                LegacyPreferencesReader.INVITE_SECRET to "   ",
+            ),
+            mapOf(
+                LegacyPreferencesReader.CHILD_LINK_ID to "connected-first",
+                LegacyPreferencesReader.INVITE_CODE to "CODE-3",
+                LegacyPreferencesReader.INVITE_SECRET to "valid-secret",
+                LegacyPreferencesReader.PARENT_CONNECTED_AT to "2026-07-25T01:03:00Z",
+            ),
+        ).forEach { values ->
+            preferences.edit().clear().apply {
+                values.forEach { (key, value) -> putString(key, value) }
+            }.commit()
+            val before = HashMap(preferences.all)
+
+            assertThrows(LegacyMigrationException.InvalidPayload::class.java) {
+                runBlocking {
+                    RebuildMigrationCoordinator(
+                        LegacyPreferencesReader(context),
+                        RoomMigrationTarget(database),
+                    ).runIfNeeded(1)
+                }
+            }
+            assertEquals(before, preferences.all)
+            assertNull(
+                runBlocking {
+                    database.migrationStateDao()
+                        .find(MigrationStateRepository.STATE_ID)
+                },
+            )
+        }
+    }
+
+    @Test
     fun verificationFailureRollsBackAllRoomRowsAndRetryMigratesOnce() = runBlocking {
         seedCompleteLegacyPreferences()
         val before = HashMap(preferences.all)

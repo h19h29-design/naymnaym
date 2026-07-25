@@ -260,11 +260,25 @@ class RebuildMigrationCoordinatorTest {
         listOf(
             LegacySnapshot(
                 parentJson = """[{"id":"parent-a","inviteCode":" SAME "}]""",
-                childLinkJson = """{"childLinkId":"child-b","inviteCode":"same"}""",
+                childLinkJson =
+                    """
+                    {
+                      "childLinkId":"child-b",
+                      "inviteCode":"same",
+                      "inviteSecret":"valid"
+                    }
+                    """.trimIndent(),
             ),
             LegacySnapshot(
                 parentJson = """[{"id":"same-id","inviteCode":"FIRST"}]""",
-                childLinkJson = """{"childLinkId":"same-id","inviteCode":"SECOND"}""",
+                childLinkJson =
+                    """
+                    {
+                      "childLinkId":"same-id",
+                      "inviteCode":"SECOND",
+                      "inviteSecret":"valid"
+                    }
+                    """.trimIndent(),
             ),
         ).forEach { snapshot ->
             val target = FakeMigrationTarget()
@@ -296,6 +310,72 @@ class RebuildMigrationCoordinatorTest {
             ).runIfNeeded(1),
         )
         assertEquals(1, exactDuplicateTarget.committedPlan?.parentLinks?.size)
+    }
+
+    @Test
+    fun childLinkRequiresExactNonblankSecretAndRegistrationBeforeConnection() {
+        listOf(
+            LegacySnapshot(
+                childLinkJson =
+                    """{"childLinkId":"missing","inviteCode":"CODE"}""",
+            ),
+            LegacySnapshot(
+                childLinkJson =
+                    """
+                    {
+                      "childLinkId":"blank",
+                      "inviteCode":"CODE",
+                      "inviteSecret":"   "
+                    }
+                    """.trimIndent(),
+            ),
+            LegacySnapshot(
+                childLinkJson =
+                    """
+                    {
+                      "childLinkId":"connected-first",
+                      "inviteCode":"CODE",
+                      "inviteSecret":"valid",
+                      "parentConnectedAt":"2026-07-25T01:03:00Z"
+                    }
+                    """.trimIndent(),
+            ),
+        ).forEach { snapshot ->
+            val target = FakeMigrationTarget()
+            assertThrows(LegacyMigrationException.InvalidPayload::class.java) {
+                runBlocking {
+                    RebuildMigrationCoordinator(
+                        FakeLegacySource(snapshot = snapshot),
+                        target,
+                    ).runIfNeeded(1)
+                }
+            }
+            assertEquals(0, target.migrateAttempts)
+        }
+
+        val newLinkTarget = FakeMigrationTarget()
+        assertEquals(
+            MigrationOutcome.Migrated,
+            runBlocking {
+                RebuildMigrationCoordinator(
+                    FakeLegacySource(
+                        childLinkJson =
+                            """
+                            {
+                              "childLinkId":"not-yet-registered",
+                              "inviteCode":"CODE",
+                              "inviteSecret":"  preserve exactly  "
+                            }
+                            """.trimIndent(),
+                    ),
+                    newLinkTarget,
+                ).runIfNeeded(1)
+            },
+        )
+        val newLink = newLinkTarget.committedPlan?.parentLinks?.single()
+        assertEquals("  preserve exactly  ", newLink?.inviteSecret)
+        assertNull(newLink?.registeredAtEpochMillis)
+        assertNull(newLink?.connectedAtEpochMillis)
     }
 
     @Test

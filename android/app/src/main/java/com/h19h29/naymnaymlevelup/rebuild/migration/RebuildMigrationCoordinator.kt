@@ -557,8 +557,14 @@ private object LegacySnapshotMapper {
             "parentConnectedAt",
             "childLink",
         )
-        val inviteSecret = objectValue.optionalString("inviteSecret", "childLink")
+        val inviteSecret = objectValue.requiredNonBlankString(
+            "inviteSecret",
+            "childLink",
+        )
         val registeredAt = objectValue.optionalTimestamp("registeredAt", "childLink")
+        if (connectedAt != null && registeredAt == null) {
+            invalid("childLink", "parentConnectedAt requires registeredAt")
+        }
         return ParentLinkEntity(
             id = id.ifBlank { invalid("childLink", "id must not be blank") },
             inviteCode = inviteCode,
@@ -838,7 +844,7 @@ private fun parseIsoTimestamp(value: String, path: String): Long {
     if (legacyDate != null && legacyPosition.index == value.length) {
         return legacyDate.time
     }
-    invalid(path, "invalid ISO-8601 timestamp")
+    invalid(path, "invalid timestamp")
 }
 
 private fun invalid(
