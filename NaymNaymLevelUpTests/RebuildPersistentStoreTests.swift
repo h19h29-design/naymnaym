@@ -276,6 +276,62 @@ final class RebuildPersistentStoreTests: XCTestCase {
         )
     }
 
+    func testBackgroundAndMainViewContextAppendsAvoidLockContextInversion() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let serializerEntered = expectation(description: "Append serializer entered")
+        let backgroundCompleted = expectation(description: "Background append completed")
+        let serializer = RebuildDeadlockDetectingSerializer(
+            enteredExpectation: serializerEntered
+        )
+        let backgroundRepository = RebuildProgressRepository(
+            context: container.viewContext,
+            serializeAppend: serializer.serialize
+        )
+        let mainRepository = RebuildProgressRepository(
+            context: container.viewContext,
+            serializeAppend: serializer.serialize
+        )
+        let backgroundEvent = RebuildProgressEvent(
+            id: "meal:view-context-shared",
+            amount: 18,
+            occurredAt: Date(timeIntervalSince1970: 100),
+            sourceRecordID: "background-first"
+        )
+        let mainEvent = RebuildProgressEvent(
+            id: backgroundEvent.id,
+            amount: 99,
+            occurredAt: Date(timeIntervalSince1970: 200),
+            sourceRecordID: "main-second"
+        )
+        let backgroundOutcome = RebuildLockedBox<Result<Bool, Error>?>(nil)
+        defer { serializer.releaseBlockedBackgroundCaller() }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            backgroundOutcome.withValue {
+                $0 = Result {
+                    try backgroundRepository.appendIfAbsent(backgroundEvent)
+                }
+            }
+            backgroundCompleted.fulfill()
+        }
+
+        wait(for: [serializerEntered], timeout: 2)
+        let mainOutcome = Result {
+            try mainRepository.appendIfAbsent(mainEvent)
+        }
+        serializer.releaseBlockedBackgroundCaller()
+        wait(for: [backgroundCompleted], timeout: 2)
+
+        XCTAssertTrue(try XCTUnwrap(backgroundOutcome.value).get())
+        XCTAssertFalse(try mainOutcome.get())
+        XCTAssertEqual(try mainRepository.load(id: backgroundEvent.id), backgroundEvent)
+        XCTAssertEqual(try mainRepository.totalXP(), backgroundEvent.amount)
+        XCTAssertEqual(
+            try count(entity: RebuildEntityName.progressEvent, in: container.viewContext),
+            1
+        )
+    }
+
     func testProgressTotalAccumulatesDistinctEvents() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let repository = RebuildProgressRepository(context: container.viewContext)
@@ -399,5 +455,47 @@ private final class RebuildLockedBox<Value>: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return try body(&storedValue)
+    }
+}
+
+private final class RebuildDeadlockDetectingSerializer: @unchecked Sendable {
+    private enum ProbeError: Error {
+        case mainThreadWouldDeadlock
+        case backgroundReleaseTimedOut
+    }
+
+    private let lock = NSLock()
+    private let enteredExpectation: XCTestExpectation
+    private let backgroundRelease = DispatchSemaphore(value: 0)
+    private var hasFulfilledEnteredExpectation = false
+
+    init(enteredExpectation: XCTestExpectation) {
+        self.enteredExpectation = enteredExpectation
+    }
+
+    func serialize(_ operation: () throws -> Bool) throws -> Bool {
+        if Thread.isMainThread {
+            guard lock.try() else {
+                throw ProbeError.mainThreadWouldDeadlock
+            }
+        } else {
+            lock.lock()
+        }
+        defer { lock.unlock() }
+
+        if !hasFulfilledEnteredExpectation {
+            hasFulfilledEnteredExpectation = true
+            enteredExpectation.fulfill()
+        }
+        if !Thread.isMainThread {
+            guard backgroundRelease.wait(timeout: .now() + 2) == .success else {
+                throw ProbeError.backgroundReleaseTimedOut
+            }
+        }
+        return try operation()
+    }
+
+    func releaseBlockedBackgroundCaller() {
+        backgroundRelease.signal()
     }
 }

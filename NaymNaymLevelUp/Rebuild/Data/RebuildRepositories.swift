@@ -40,6 +40,10 @@ enum RebuildRepositoryError: Error {
     case totalXPOverflow
 }
 
+typealias RebuildProgressAppendSerializer = (
+    _ operation: () throws -> Bool
+) throws -> Bool
+
 final class RebuildProfileRepository {
     private let context: NSManagedObjectContext
 
@@ -103,32 +107,41 @@ final class RebuildProgressRepository {
     private static let appendSerializationLock = NSLock()
 
     private let context: NSManagedObjectContext
+    private let serializeAppend: RebuildProgressAppendSerializer
 
     init(context: NSManagedObjectContext) {
         self.context = context
+        serializeAppend = Self.serializeAppendTransaction
+    }
+
+    init(
+        context: NSManagedObjectContext,
+        serializeAppend: @escaping RebuildProgressAppendSerializer
+    ) {
+        self.context = context
+        self.serializeAppend = serializeAppend
     }
 
     func appendIfAbsent(_ event: RebuildProgressEvent) throws -> Bool {
-        Self.appendSerializationLock.lock()
-        defer { Self.appendSerializationLock.unlock() }
+        try context.performAndWait {
+            try serializeAppend {
+                let request = requestForEvent(id: event.id)
+                guard try context.count(for: request) == 0 else {
+                    return false
+                }
 
-        return try context.performAndWait {
-            let request = requestForEvent(id: event.id)
-            guard try context.count(for: request) == 0 else {
-                return false
+                let object = try insertManagedObject(
+                    RebuildProgressEventManagedObject.self,
+                    entityName: RebuildEntityName.progressEvent,
+                    in: context
+                )
+                object.id = event.id
+                object.amount = event.amount
+                object.occurredAt = event.occurredAt
+                object.sourceRecordID = event.sourceRecordID
+                try context.save()
+                return true
             }
-
-            let object = try insertManagedObject(
-                RebuildProgressEventManagedObject.self,
-                entityName: RebuildEntityName.progressEvent,
-                in: context
-            )
-            object.id = event.id
-            object.amount = event.amount
-            object.occurredAt = event.occurredAt
-            object.sourceRecordID = event.sourceRecordID
-            try context.save()
-            return true
         }
     }
 
@@ -176,6 +189,14 @@ final class RebuildProgressRepository {
         request.predicate = NSPredicate(format: "id == %@", id)
         request.fetchLimit = 1
         return request
+    }
+
+    private static func serializeAppendTransaction(
+        _ operation: () throws -> Bool
+    ) rethrows -> Bool {
+        appendSerializationLock.lock()
+        defer { appendSerializationLock.unlock() }
+        return try operation()
     }
 }
 
