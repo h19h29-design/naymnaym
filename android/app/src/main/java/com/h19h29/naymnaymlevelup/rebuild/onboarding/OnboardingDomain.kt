@@ -92,6 +92,8 @@ fun interface SchoolSearchClient {
 class RoomOnboardingProfileStore(
     private val database: RebuildDatabase,
     private val schoolNameMetadata: SchoolNameMetadataStore,
+    private val profilePublisher: RoomProfilePublisher =
+        TransactionalRoomProfilePublisher(database),
 ) : OnboardingProfileStore {
     private val transactionMutex = Mutex()
 
@@ -139,22 +141,19 @@ class RoomOnboardingProfileStore(
     override suspend fun save(profile: RebuildUserProfile) = transactionMutex.withLock {
         val metadataSnapshot = schoolNameMetadata.write(profile)
         try {
-            database.withTransaction {
-                database.profileDao().deleteAll()
-                database.profileDao().upsert(
-                    ProfileEntity(
-                        id = profile.id,
-                        role = profile.role.persistedValue,
-                        nickname = profile.nickname,
-                        officeCode = profile.school?.officeCode,
-                        schoolCode = profile.school?.schoolCode,
-                        allergyCodesJson = profile.allergyCodes.joinToString(
-                            prefix = "[",
-                            postfix = "]",
-                        ),
+            profilePublisher.replace(
+                ProfileEntity(
+                    id = profile.id,
+                    role = profile.role.persistedValue,
+                    nickname = profile.nickname,
+                    officeCode = profile.school?.officeCode,
+                    schoolCode = profile.school?.schoolCode,
+                    allergyCodesJson = profile.allergyCodes.joinToString(
+                        prefix = "[",
+                        postfix = "]",
                     ),
-                )
-            }
+                ),
+            )
         } catch (error: Throwable) {
             schoolNameMetadata.restore(metadataSnapshot)
             throw error
@@ -162,18 +161,18 @@ class RoomOnboardingProfileStore(
     }
 
     override suspend fun removeIfCurrent(id: String) = transactionMutex.withLock {
-        val removed = database.withTransaction {
+        val removedProfile = database.withTransaction {
             val current = database.profileDao().find(id)
             if (current != null) {
                 database.profileDao().delete(id)
-                true
-            } else {
-                false
             }
+            current
         }
-        if (removed) {
-            schoolNameMetadata.removeProfile(id)
-        }
+        schoolNameMetadata.removeIfOwned(
+            profileID = id,
+            fallbackOfficeCode = removedProfile?.officeCode,
+            fallbackSchoolCode = removedProfile?.schoolCode,
+        )
     }
 
     private fun parseAllergyCodes(raw: String): List<Int> {
@@ -192,12 +191,31 @@ class RoomOnboardingProfileStore(
     }
 }
 
+fun interface RoomProfilePublisher {
+    suspend fun replace(profile: ProfileEntity)
+}
+
+class TransactionalRoomProfilePublisher(
+    private val database: RebuildDatabase,
+    private val afterWrite: suspend () -> Unit = {},
+) : RoomProfilePublisher {
+    override suspend fun replace(profile: ProfileEntity) {
+        database.withTransaction {
+            database.profileDao().deleteAll()
+            database.profileDao().upsert(profile)
+            afterWrite()
+        }
+    }
+}
+
 interface SchoolNameMetadataStore {
+    data class Entry(
+        val key: String,
+        val value: String?,
+    )
+
     data class Snapshot(
-        val profileKey: String,
-        val previousProfileName: String?,
-        val schoolKey: String?,
-        val previousSchoolName: String?,
+        val entries: List<Entry>,
     )
 
     fun name(
@@ -210,7 +228,11 @@ interface SchoolNameMetadataStore {
 
     fun restore(snapshot: Snapshot)
 
-    fun removeProfile(id: String)
+    fun removeIfOwned(
+        profileID: String,
+        fallbackOfficeCode: String? = null,
+        fallbackSchoolCode: String? = null,
+    )
 }
 
 class SharedPreferencesSchoolNameMetadataStore(
@@ -222,30 +244,88 @@ class SharedPreferencesSchoolNameMetadataStore(
         officeCode: String,
         schoolCode: String,
     ): String? {
-        return preferences.getString(profileKey(profileID), null)
-            ?: preferences.getString(schoolKey(officeCode, schoolCode), null)
+        return preferences.getString(profileNameKey(profileID), null)
+            ?: preferences.getString(legacyProfileNameKey(profileID), null)
+            ?: preferences.getString(
+                schoolNameKey(officeCode, schoolCode),
+                null,
+            )
+            ?: preferences.getString(
+                legacySchoolNameKey(officeCode, schoolCode),
+                null,
+            )
     }
 
     @Synchronized
     override fun write(profile: RebuildUserProfile): SchoolNameMetadataStore.Snapshot {
-        val profileKey = profileKey(profile.id)
-        val schoolKey = profile.school?.let {
-            schoolKey(it.officeCode, it.schoolCode)
+        val profileNameKey = profileNameKey(profile.id)
+        val profileOfficeKey = profileOfficeKey(profile.id)
+        val profileSchoolKey = profileSchoolKey(profile.id)
+        val legacyProfileNameKey = legacyProfileNameKey(profile.id)
+        val previousOfficeCode = preferences.getString(profileOfficeKey, null)
+        val previousSchoolCode = preferences.getString(profileSchoolKey, null)
+        val affectedKeys = buildSet {
+            add(profileNameKey)
+            add(profileOfficeKey)
+            add(profileSchoolKey)
+            add(legacyProfileNameKey)
+            if (previousOfficeCode != null && previousSchoolCode != null) {
+                add(schoolNameKey(previousOfficeCode, previousSchoolCode))
+                add(schoolOwnerKey(previousOfficeCode, previousSchoolCode))
+                add(
+                    legacySchoolNameKey(
+                        previousOfficeCode,
+                        previousSchoolCode,
+                    ),
+                )
+            }
+            profile.school?.let {
+                add(schoolNameKey(it.officeCode, it.schoolCode))
+                add(schoolOwnerKey(it.officeCode, it.schoolCode))
+                add(legacySchoolNameKey(it.officeCode, it.schoolCode))
+            }
         }
         val snapshot = SchoolNameMetadataStore.Snapshot(
-            profileKey = profileKey,
-            previousProfileName = preferences.getString(profileKey, null),
-            schoolKey = schoolKey,
-            previousSchoolName = schoolKey?.let {
-                preferences.getString(it, null)
+            entries = affectedKeys.map {
+                SchoolNameMetadataStore.Entry(
+                    key = it,
+                    value = preferences.getString(it, null),
+                )
             },
         )
+        val previousProfileName = preferences.getString(profileNameKey, null)
+            ?: preferences.getString(legacyProfileNameKey, null)
         val editor = preferences.edit()
+        removeOwnedSchoolMetadata(
+            editor = editor,
+            profileID = profile.id,
+            profileName = previousProfileName,
+            officeCode = previousOfficeCode,
+            schoolCode = previousSchoolCode,
+        )
+        editor.remove(legacyProfileNameKey)
         if (profile.school == null) {
-            editor.remove(profileKey)
+            editor.remove(profileNameKey)
+            editor.remove(profileOfficeKey)
+            editor.remove(profileSchoolKey)
         } else {
-            editor.putString(profileKey, profile.school.name)
-            editor.putString(requireNotNull(schoolKey), profile.school.name)
+            editor.putString(profileNameKey, profile.school.name)
+            editor.putString(profileOfficeKey, profile.school.officeCode)
+            editor.putString(profileSchoolKey, profile.school.schoolCode)
+            editor.putString(
+                schoolNameKey(
+                    profile.school.officeCode,
+                    profile.school.schoolCode,
+                ),
+                profile.school.name,
+            )
+            editor.putString(
+                schoolOwnerKey(
+                    profile.school.officeCode,
+                    profile.school.schoolCode,
+                ),
+                profile.id,
+            )
         }
         check(editor.commit()) {
             "Could not persist the school display name"
@@ -256,16 +336,11 @@ class SharedPreferencesSchoolNameMetadataStore(
     @Synchronized
     override fun restore(snapshot: SchoolNameMetadataStore.Snapshot) {
         val editor = preferences.edit()
-        restore(
-            editor = editor,
-            key = snapshot.profileKey,
-            value = snapshot.previousProfileName,
-        )
-        snapshot.schoolKey?.let {
+        snapshot.entries.forEach {
             restore(
                 editor = editor,
-                key = it,
-                value = snapshot.previousSchoolName,
+                key = it.key,
+                value = it.value,
             )
         }
         check(editor.commit()) {
@@ -274,9 +349,86 @@ class SharedPreferencesSchoolNameMetadataStore(
     }
 
     @Synchronized
-    override fun removeProfile(id: String) {
-        check(preferences.edit().remove(profileKey(id)).commit()) {
-            "Could not remove the obsolete school display name"
+    override fun removeIfOwned(
+        profileID: String,
+        fallbackOfficeCode: String?,
+        fallbackSchoolCode: String?,
+    ) {
+        val profileNameKey = profileNameKey(profileID)
+        val profileOfficeKey = profileOfficeKey(profileID)
+        val profileSchoolKey = profileSchoolKey(profileID)
+        val legacyProfileNameKey = legacyProfileNameKey(profileID)
+        val editor = preferences.edit()
+        removeOwnedSchoolMetadata(
+            editor = editor,
+            profileID = profileID,
+            profileName = preferences.getString(profileNameKey, null)
+                ?: preferences.getString(legacyProfileNameKey, null),
+            officeCode = preferences.getString(profileOfficeKey, null)
+                ?: fallbackOfficeCode,
+            schoolCode = preferences.getString(profileSchoolKey, null)
+                ?: fallbackSchoolCode,
+        )
+        editor.remove(profileNameKey)
+        editor.remove(profileOfficeKey)
+        editor.remove(profileSchoolKey)
+        editor.remove(legacyProfileNameKey)
+        check(editor.commit()) {
+            "Could not remove owned school display-name metadata"
+        }
+    }
+
+    @Synchronized
+    fun hasProfileMetadata(id: String): Boolean {
+        return preferences.contains(profileNameKey(id)) ||
+            preferences.contains(profileOfficeKey(id)) ||
+            preferences.contains(profileSchoolKey(id)) ||
+            preferences.contains(legacyProfileNameKey(id))
+    }
+
+    @Synchronized
+    fun hasSchoolMetadata(
+        officeCode: String,
+        schoolCode: String,
+    ): Boolean {
+        return preferences.contains(schoolNameKey(officeCode, schoolCode)) ||
+            preferences.contains(schoolOwnerKey(officeCode, schoolCode)) ||
+            preferences.contains(legacySchoolNameKey(officeCode, schoolCode))
+    }
+
+    @Synchronized
+    fun schoolOwner(
+        officeCode: String,
+        schoolCode: String,
+    ): String? {
+        return preferences.getString(
+            schoolOwnerKey(officeCode, schoolCode),
+            null,
+        )
+    }
+
+    private fun removeOwnedSchoolMetadata(
+        editor: SharedPreferences.Editor,
+        profileID: String,
+        profileName: String?,
+        officeCode: String?,
+        schoolCode: String?,
+    ) {
+        if (officeCode == null || schoolCode == null) return
+        val nameKey = schoolNameKey(officeCode, schoolCode)
+        val ownerKey = schoolOwnerKey(officeCode, schoolCode)
+        val legacyNameKey = legacySchoolNameKey(officeCode, schoolCode)
+        val owner = preferences.getString(ownerKey, null)
+        val hasLegacyOwnership = owner == null &&
+            profileName != null &&
+            (
+                preferences.getString(nameKey, null) == profileName ||
+                    preferences.getString(legacyNameKey, null) == profileName
+                )
+        if (owner == profileID || hasLegacyOwnership) {
+            editor.remove(nameKey)
+            editor.remove(ownerKey)
+            editor.remove(legacyNameKey)
         }
     }
 
@@ -292,9 +444,29 @@ class SharedPreferencesSchoolNameMetadataStore(
         }
     }
 
-    private fun profileKey(id: String) = "rebuild.school-name.profile.$id"
+    private fun profileNameKey(id: String) =
+        "rebuild.school-name.profile.$id.name"
 
-    private fun schoolKey(
+    private fun profileOfficeKey(id: String) =
+        "rebuild.school-name.profile.$id.office"
+
+    private fun profileSchoolKey(id: String) =
+        "rebuild.school-name.profile.$id.school"
+
+    private fun legacyProfileNameKey(id: String) =
+        "rebuild.school-name.profile.$id"
+
+    private fun schoolNameKey(
+        officeCode: String,
+        schoolCode: String,
+    ) = "rebuild.school-name.codes.$officeCode.$schoolCode.name"
+
+    private fun schoolOwnerKey(
+        officeCode: String,
+        schoolCode: String,
+    ) = "rebuild.school-name.codes.$officeCode.$schoolCode.owner"
+
+    private fun legacySchoolNameKey(
         officeCode: String,
         schoolCode: String,
     ) = "rebuild.school-name.codes.$officeCode.$schoolCode"

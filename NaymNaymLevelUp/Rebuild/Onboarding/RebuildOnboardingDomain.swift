@@ -72,11 +72,13 @@ protocol RebuildSchoolSearchClient {
 }
 
 final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
+    struct Entry {
+        let key: String
+        let value: String?
+    }
+
     struct Snapshot {
-        let profileKey: String
-        let profileValue: String?
-        let schoolKey: String?
-        let schoolValue: String?
+        let entries: [Entry]
     }
 
     private let defaults: UserDefaults
@@ -90,43 +92,134 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         officeCode: String,
         schoolCode: String
     ) -> String? {
-        defaults.string(forKey: profileKey(profileID))
-            ?? defaults.string(forKey: schoolKey(officeCode, schoolCode))
+        defaults.string(forKey: profileNameKey(profileID))
+            ?? defaults.string(forKey: legacyProfileNameKey(profileID))
+            ?? defaults.string(
+                forKey: schoolNameKey(officeCode, schoolCode)
+            )
+            ?? defaults.string(
+                forKey: legacySchoolNameKey(officeCode, schoolCode)
+            )
     }
 
     func write(_ profile: RebuildUserProfile) -> Snapshot {
-        let idKey = profileKey(profile.id)
+        let idNameKey = profileNameKey(profile.id)
+        let idOfficeKey = profileOfficeKey(profile.id)
+        let idSchoolKey = profileSchoolKey(profile.id)
+        let legacyIDKey = legacyProfileNameKey(profile.id)
+        let previousOfficeCode = defaults.string(forKey: idOfficeKey)
+        let previousSchoolCode = defaults.string(forKey: idSchoolKey)
+        var affectedKeys = [
+            idNameKey,
+            idOfficeKey,
+            idSchoolKey,
+            legacyIDKey
+        ]
+        if let previousOfficeCode, let previousSchoolCode {
+            affectedKeys += [
+                schoolNameKey(previousOfficeCode, previousSchoolCode),
+                schoolOwnerKey(previousOfficeCode, previousSchoolCode),
+                legacySchoolNameKey(previousOfficeCode, previousSchoolCode)
+            ]
+        }
+        if let school = profile.school {
+            affectedKeys += [
+                schoolNameKey(school.officeCode, school.schoolCode),
+                schoolOwnerKey(school.officeCode, school.schoolCode),
+                legacySchoolNameKey(school.officeCode, school.schoolCode)
+            ]
+        }
+        let snapshot = Snapshot(
+            entries: Array(Set(affectedKeys)).map {
+                Entry(key: $0, value: defaults.string(forKey: $0))
+            }
+        )
+        removeOwnedSchoolMetadata(
+            profileID: profile.id,
+            profileName: defaults.string(forKey: idNameKey)
+                ?? defaults.string(forKey: legacyIDKey),
+            officeCode: previousOfficeCode,
+            schoolCode: previousSchoolCode
+        )
+        defaults.removeObject(forKey: legacyIDKey)
         guard let school = profile.school else {
-            let snapshot = Snapshot(
-                profileKey: idKey,
-                profileValue: defaults.string(forKey: idKey),
-                schoolKey: nil,
-                schoolValue: nil
-            )
-            defaults.removeObject(forKey: idKey)
+            defaults.removeObject(forKey: idNameKey)
+            defaults.removeObject(forKey: idOfficeKey)
+            defaults.removeObject(forKey: idSchoolKey)
             return snapshot
         }
-        let codeKey = schoolKey(school.officeCode, school.schoolCode)
-        let snapshot = Snapshot(
-            profileKey: idKey,
-            profileValue: defaults.string(forKey: idKey),
-            schoolKey: codeKey,
-            schoolValue: defaults.string(forKey: codeKey)
+        defaults.set(school.name, forKey: idNameKey)
+        defaults.set(school.officeCode, forKey: idOfficeKey)
+        defaults.set(school.schoolCode, forKey: idSchoolKey)
+        defaults.set(
+            school.name,
+            forKey: schoolNameKey(school.officeCode, school.schoolCode)
         )
-        defaults.set(school.name, forKey: idKey)
-        defaults.set(school.name, forKey: codeKey)
+        defaults.set(
+            profile.id,
+            forKey: schoolOwnerKey(school.officeCode, school.schoolCode)
+        )
         return snapshot
     }
 
     func restore(_ snapshot: Snapshot) {
-        restore(snapshot.profileValue, forKey: snapshot.profileKey)
-        if let schoolKey = snapshot.schoolKey {
-            restore(snapshot.schoolValue, forKey: schoolKey)
+        for entry in snapshot.entries {
+            restore(entry.value, forKey: entry.key)
         }
     }
 
-    func removeProfile(id: String) {
-        defaults.removeObject(forKey: profileKey(id))
+    func removeIfOwned(
+        profileID: String,
+        fallbackOfficeCode: String? = nil,
+        fallbackSchoolCode: String? = nil
+    ) {
+        let idNameKey = profileNameKey(profileID)
+        let idOfficeKey = profileOfficeKey(profileID)
+        let idSchoolKey = profileSchoolKey(profileID)
+        let legacyIDKey = legacyProfileNameKey(profileID)
+        let profileName = defaults.string(forKey: idNameKey)
+            ?? defaults.string(forKey: legacyIDKey)
+        let officeCode = defaults.string(forKey: idOfficeKey)
+            ?? fallbackOfficeCode
+        let schoolCode = defaults.string(forKey: idSchoolKey)
+            ?? fallbackSchoolCode
+        removeOwnedSchoolMetadata(
+            profileID: profileID,
+            profileName: profileName,
+            officeCode: officeCode,
+            schoolCode: schoolCode
+        )
+        defaults.removeObject(forKey: idNameKey)
+        defaults.removeObject(forKey: idOfficeKey)
+        defaults.removeObject(forKey: idSchoolKey)
+        defaults.removeObject(forKey: legacyIDKey)
+    }
+
+    func hasProfileMetadata(id: String) -> Bool {
+        defaults.object(forKey: profileNameKey(id)) != nil
+            || defaults.object(forKey: profileOfficeKey(id)) != nil
+            || defaults.object(forKey: profileSchoolKey(id)) != nil
+            || defaults.object(forKey: legacyProfileNameKey(id)) != nil
+    }
+
+    func hasSchoolMetadata(
+        officeCode: String,
+        schoolCode: String
+    ) -> Bool {
+        defaults.object(forKey: schoolNameKey(officeCode, schoolCode)) != nil
+            || defaults.object(
+                forKey: schoolOwnerKey(officeCode, schoolCode)
+            ) != nil
+            || defaults.object(
+                forKey: legacySchoolNameKey(officeCode, schoolCode)
+            ) != nil
+    }
+
+    func schoolOwner(
+        officeCode: String,
+        schoolCode: String
+    ) -> String? {
+        defaults.string(forKey: schoolOwnerKey(officeCode, schoolCode))
     }
 
     private func restore(_ value: String?, forKey key: String) {
@@ -137,11 +230,63 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         }
     }
 
-    private func profileKey(_ id: String) -> String {
+    private func removeOwnedSchoolMetadata(
+        profileID: String,
+        profileName: String?,
+        officeCode: String?,
+        schoolCode: String?
+    ) {
+        guard let officeCode, let schoolCode else { return }
+        let nameKey = schoolNameKey(officeCode, schoolCode)
+        let ownerKey = schoolOwnerKey(officeCode, schoolCode)
+        let legacyNameKey = legacySchoolNameKey(officeCode, schoolCode)
+        let owner = defaults.string(forKey: ownerKey)
+        let isLegacyOwnership = owner == nil
+            && profileName != nil
+            && (
+                defaults.string(forKey: nameKey) == profileName
+                    || defaults.string(forKey: legacyNameKey) == profileName
+            )
+        guard owner == profileID || isLegacyOwnership else { return }
+        defaults.removeObject(forKey: nameKey)
+        defaults.removeObject(forKey: ownerKey)
+        defaults.removeObject(forKey: legacyNameKey)
+    }
+
+    private func profileNameKey(_ id: String) -> String {
+        "rebuild.school-name.profile.\(id).name"
+    }
+
+    private func legacyProfileNameKey(_ id: String) -> String {
         "rebuild.school-name.profile.\(id)"
     }
 
-    private func schoolKey(_ officeCode: String, _ schoolCode: String) -> String {
+    private func profileOfficeKey(_ id: String) -> String {
+        "rebuild.school-name.profile.\(id).office"
+    }
+
+    private func profileSchoolKey(_ id: String) -> String {
+        "rebuild.school-name.profile.\(id).school"
+    }
+
+    private func schoolNameKey(
+        _ officeCode: String,
+        _ schoolCode: String
+    ) -> String {
+        "rebuild.school-name.codes.\(officeCode).\(schoolCode).name"
+    }
+
+    private func schoolOwnerKey(
+        _ officeCode: String,
+        _ schoolCode: String
+    ) -> String {
+        "rebuild.school-name.codes.\(officeCode).\(schoolCode).owner"
+    }
+
+    private func legacySchoolNameKey(
+        _ officeCode: String,
+        _ schoolCode: String
+    ) -> String {
         "rebuild.school-name.codes.\(officeCode).\(schoolCode)"
     }
 }
@@ -150,16 +295,21 @@ actor RebuildOnboardingProfileTransactionCoordinator {
     private let context: NSManagedObjectContext
     private let metadataStore: RebuildSchoolNameMetadataStore
     private let beforeRemove: (() -> Void)?
+    private let saveContext: (NSManagedObjectContext) throws -> Void
 
     init(
         container: NSPersistentContainer,
         metadataStore: RebuildSchoolNameMetadataStore = .init(),
-        beforeRemove: (() -> Void)? = nil
+        beforeRemove: (() -> Void)? = nil,
+        saveContext: @escaping (NSManagedObjectContext) throws -> Void = {
+            try $0.save()
+        }
     ) {
         context = container.newBackgroundContext()
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         self.metadataStore = metadataStore
         self.beforeRemove = beforeRemove
+        self.saveContext = saveContext
     }
 
     func load() throws -> RebuildUserProfile? {
@@ -244,7 +394,7 @@ actor RebuildOnboardingProfileTransactionCoordinator {
                     data: JSONEncoder().encode(profile.allergyCodes),
                     encoding: .utf8
                 ) ?? "[]"
-                try context.save()
+                try saveContext(context)
             } catch {
                 context.rollback()
                 metadataStore.restore(metadataSnapshot)
@@ -261,17 +411,24 @@ actor RebuildOnboardingProfileTransactionCoordinator {
             )
             request.predicate = NSPredicate(format: "id == %@", id)
             let objects = try context.fetch(request)
-            guard !objects.isEmpty else { return }
+            let fallbackOfficeCode = objects.first?.officeCode
+            let fallbackSchoolCode = objects.first?.schoolCode
             for object in objects {
                 context.delete(object)
             }
-            do {
-                try context.save()
-                metadataStore.removeProfile(id: id)
-            } catch {
-                context.rollback()
-                throw error
+            if context.hasChanges {
+                do {
+                    try saveContext(context)
+                } catch {
+                    context.rollback()
+                    throw error
+                }
             }
+            metadataStore.removeIfOwned(
+                profileID: id,
+                fallbackOfficeCode: fallbackOfficeCode,
+                fallbackSchoolCode: fallbackSchoolCode
+            )
         }
     }
 

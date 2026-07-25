@@ -47,6 +47,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.h19h29.naymnaymlevelup.rebuild.RebuildActivity;
+import com.h19h29.naymnaymlevelup.rebuild.foundation.RebuildNativeGate;
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyDestinationLauncher;
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyLaunchGate;
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildLegacyRouteCapability;
@@ -121,7 +122,7 @@ public class MainActivity extends Activity {
             getIntent()
         );
         if (RebuildLegacyLaunchGate.shouldHandoffToRebuild(
-            BuildConfig.NATIVE_REBUILD_ENABLED,
+            RebuildNativeGate.isEnabled(),
             rebuildDestination
         )) {
             startActivity(new Intent(this, RebuildActivity.class));

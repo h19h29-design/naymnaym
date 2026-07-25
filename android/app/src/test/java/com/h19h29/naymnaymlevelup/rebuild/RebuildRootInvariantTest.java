@@ -10,8 +10,6 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.ClassExpr;
-import com.github.javaparser.ast.expr.BinaryExpr;
-import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
@@ -276,17 +274,19 @@ public final class RebuildRootInvariantTest {
                 || gate.getArguments().size() != 2) {
             return false;
         }
-        if (!gate.getArgument(0).isFieldAccessExpr()
+        if (!gate.getArgument(0).isMethodCallExpr()
                 || !gate.getArgument(1).isNameExpr()) {
             return false;
         }
-        FieldAccessExpr flag = gate.getArgument(0).asFieldAccessExpr();
-        return flag.getNameAsString().equals("NATIVE_REBUILD_ENABLED")
-                && flag.getScope() instanceof NameExpr
-                && flag.getScope()
-                .asNameExpr()
-                .getNameAsString()
-                .equals("BuildConfig")
+        MethodCallExpr nativeGate = gate.getArgument(0).asMethodCallExpr();
+        return nativeGate.getNameAsString().equals("isEnabled")
+                && nativeGate.getArguments().isEmpty()
+                && nativeGate.getScope()
+                .filter(NameExpr.class::isInstance)
+                .map(NameExpr.class::cast)
+                .map(NameExpr::getNameAsString)
+                .filter("RebuildNativeGate"::equals)
+                .isPresent()
                 && gate.getArgument(1)
                 .asNameExpr()
                 .getNameAsString()
