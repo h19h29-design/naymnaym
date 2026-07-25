@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>냠냠레벨업 캐릭터 모션 톤</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+      --ink: #193026;
+      --muted: #64746b;
+      --line: rgba(28, 61, 44, .13);
+      --green: #1e704d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% -5%, rgba(255,255,255,.95), transparent 32rem),
+        linear-gradient(150deg, #f8f3e7 0%, #e9e6d5 100%);
+    }
+
+    main {
+      width: min(1320px, calc(100% - 42px));
+      margin: 0 auto;
+      padding: 45px 0 70px;
+    }
+
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      color: #5f776a;
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .back::before {
+      display: block;
+      width: 28px;
+      height: 1px;
+      background: #789184;
+      content: "";
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 800px;
+      font-size: clamp(32px, 4.2vw, 58px);
+      line-height: 1.08;
+      letter-spacing: -.055em;
+    }
+
+    .lead {
+      margin: 16px 0 32px;
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .motion-card {
+      overflow: hidden;
+      border: 2px solid transparent;
+      border-radius: 30px;
+      background: white;
+      box-shadow: 0 20px 55px rgba(46, 54, 46, .12);
+      cursor: pointer;
+      transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease;
+    }
+
+    .motion-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 30px 72px rgba(46, 54, 46, .17);
+    }
+
+    .motion-card.selected {
+      border-color: #2a9468;
+      box-shadow: 0 0 0 5px rgba(42,148,104,.15), 0 30px 72px rgba(46,54,46,.18);
+    }
+
+    .stage {
+      position: relative;
+      height: 410px;
+      overflow: hidden;
+      background:
+        linear-gradient(to bottom, rgba(255,255,255,.03), rgba(15,53,33,.18)),
+        url("./forest-home.png") center / cover;
+    }
+
+    .stage::after {
+      position: absolute;
+      right: 0;
+      bottom: -26px;
+      left: 0;
+      height: 110px;
+      background: radial-gradient(ellipse at center, rgba(20,65,38,.3), transparent 63%);
+      content: "";
+    }
+
+    .motion-label {
+      position: absolute;
+      z-index: 4;
+      top: 19px;
+      left: 19px;
+      padding: 8px 11px;
+      border: 1px solid rgba(255,255,255,.42);
+      border-radius: 999px;
+      background: rgba(23,65,41,.43);
+      color: white;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .04em;
+      backdrop-filter: blur(10px);
+    }
+
+    .character-wrap {
+      position: absolute;
+      z-index: 2;
+      inset: 70px 20px 22px;
+      display: grid;
+      place-items: end center;
+      transform-origin: 50% 92%;
+      will-change: transform;
+    }
+
+    .character {
+      width: min(95%, 330px);
+      max-height: 310px;
+      object-fit: contain;
+      filter: drop-shadow(0 22px 19px rgba(12,43,25,.31));
+      transform-origin: 50% 88%;
+      will-change: transform;
+    }
+
+    .calm .character-wrap {
+      animation: calm-body 4.2s cubic-bezier(.42, 0, .58, 1) infinite;
+    }
+
+    .calm .character {
+      animation: calm-breath 4.2s cubic-bezier(.42, 0, .58, 1) infinite;
+    }
+
+    .explorer .character-wrap {
+      animation: explorer-body 6.2s cubic-bezier(.32, .02, .16, 1) infinite;
+    }
+
+    .explorer .character {
+      animation: explorer-gesture 6.2s cubic-bezier(.32, .02, .16, 1) infinite;
+    }
+
+    .bouncy .character-wrap {
+      animation: bouncy-body 2.1s cubic-bezier(.34, .02, .18, 1) infinite;
+    }
+
+    .bouncy .character {
+      animation: bouncy-squash 2.1s cubic-bezier(.34, .02, .18, 1) infinite;
+    }
+
+    @keyframes calm-body {
+      0%, 100% { transform: translateY(0) rotate(-.25deg); }
+      50% { transform: translateY(-5px) rotate(.35deg); }
+    }
+
+    @keyframes calm-breath {
+      0%, 100% { transform: scale(1, 1); }
+      50% { transform: scale(1.012, 1.022); }
+    }
+
+    @keyframes explorer-body {
+      0%, 18%, 100% { transform: translate(0, 0) rotate(0); }
+      24% { transform: translate(-2px, -4px) rotate(-1.6deg); }
+      31% { transform: translate(-4px, -7px) rotate(-2.2deg); }
+      38% { transform: translate(-2px, -3px) rotate(-1deg); }
+      58% { transform: translate(0, 0) rotate(0); }
+      66% { transform: translate(3px, -4px) rotate(1.8deg); }
+      73% { transform: translate(5px, -6px) rotate(2.4deg); }
+      81% { transform: translate(1px, -2px) rotate(.6deg); }
+    }
+
+    @keyframes explorer-gesture {
+      0%, 18%, 100% { transform: scale(1, 1); }
+      24% { transform: scale(.995, 1.015); }
+      31% { transform: scale(.99, 1.025); }
+      38% { transform: scale(1.008, .996); }
+      58% { transform: scale(1, 1); }
+      66% { transform: scale(.995, 1.016); }
+      73% { transform: scale(.988, 1.027); }
+      81% { transform: scale(1.007, .997); }
+    }
+
+    @keyframes bouncy-body {
+      0%, 100% { transform: translateY(0) rotate(0); }
+      13% { transform: translateY(5px) rotate(-.8deg); }
+      30% { transform: translateY(-20px) rotate(1.8deg); }
+      47% { transform: translateY(0) rotate(-1deg); }
+      57% { transform: translateY(-7px) rotate(.5deg); }
+      69% { transform: translateY(0) rotate(0); }
+    }
+
+    @keyframes bouncy-squash {
+      0%, 100% { transform: scale(1, 1); }
+      13% { transform: scale(1.055, .95); }
+      30% { transform: scale(.975, 1.045); }
+      47% { transform: scale(1.045, .962); }
+      57% { transform: scale(.99, 1.018); }
+      69% { transform: scale(1, 1); }
+    }
+
+    .copy {
+      min-height: 230px;
+      padding: 23px 23px 26px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .letter {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 50%;
+      background: #20372a;
+      color: white;
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .recommend {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #def1bf;
+      color: #356129;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    h2 {
+      margin: 15px 0 7px;
+      font-size: 23px;
+      letter-spacing: -.04em;
+    }
+
+    .copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.58;
+    }
+
+    .tempo {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-top: 17px;
+      padding-top: 15px;
+      border-top: 1px solid var(--line);
+      color: #4e6256;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .tempo-bar {
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e3e8e1;
+    }
+
+    .tempo-bar::after {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: #58a876;
+      content: "";
+    }
+
+    .calm .tempo-bar::after { width: 32%; }
+    .explorer .tempo-bar::after { width: 58%; }
+    .bouncy .tempo-bar::after { width: 88%; }
+
+    .note {
+      margin: 23px auto 0;
+      max-width: 840px;
+      color: #586a60;
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .character-wrap, .character { animation-play-state: paused !important; }
+    }
+
+    @media (max-width: 920px) {
+      main { width: min(680px, calc(100% - 28px)); padding-top: 28px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="back">A안 · 살아있는 숲속 모험</span>
+    <h1>다람쥐는 어떤 성격으로 움직일까요?</h1>
+    <p class="lead">
+      세 카드가 서로 다른 속도와 리듬으로 반복 재생됩니다. 최종 구현에서는 눈·입·꼬리·몸통을 분리해
+      지금보다 훨씬 자연스럽게 움직이되, 먼저 캐릭터의 기본 성격부터 정합니다.
+    </p>
+
+    <section class="grid" aria-label="캐릭터 모션 톤 선택">
+      <article class="motion-card calm" data-choice="1 · 숨 쉬는 친구" onclick="toggleSelect(this)">
+        <div class="stage">
+          <span class="motion-label">4.2초 루프</span>
+          <div class="character-wrap">
+            <img class="character" src="./squirrel-level1.png" alt="차분하게 숨 쉬는 다람쥐">
+          </div>
+        </div>
+        <div class="copy">
+          <div class="title-row">
+            <span class="letter">1</span>
+          </div>
+          <h2>숨 쉬는 친구</h2>
+          <p>호흡과 무게 이동만 아주 작게 보여줍니다. 고급스럽고 편안하지만 아이가 느끼는 생동감은 다소 약합니다.</p>
+          <div class="tempo">
+            <span>움직임 강도</span>
+            <span class="tempo-bar"></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="motion-card explorer" data-choice="2 · 호기심 많은 탐험가" onclick="toggleSelect(this)">
+        <div class="stage">
+          <span class="motion-label">6.2초 행동 루프</span>
+          <div class="character-wrap">
+            <img class="character" src="./squirrel-level1.png" alt="주변을 살피는 다람쥐">
+          </div>
+        </div>
+        <div class="copy">
+          <div class="title-row">
+            <span class="letter">2</span>
+            <span class="recommend">추천 방향</span>
+          </div>
+          <h2>호기심 많은 탐험가</h2>
+          <p>가만히 쉬다가 주변을 살피고 다시 안정됩니다. 계속 들썩이지 않아 자연스럽고, 캐릭터의 성격도 잘 살아납니다.</p>
+          <div class="tempo">
+            <span>움직임 강도</span>
+            <span class="tempo-bar"></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="motion-card bouncy" data-choice="3 · 통통 튀는 게임 친구" onclick="toggleSelect(this)">
+        <div class="stage">
+          <span class="motion-label">2.1초 루프</span>
+          <div class="character-wrap">
+            <img class="character" src="./squirrel-level1.png" alt="통통 튀는 다람쥐">
+          </div>
+        </div>
+        <div class="copy">
+          <div class="title-row">
+            <span class="letter">3</span>
+          </div>
+          <h2>통통 튀는 게임 친구</h2>
+          <p>스쿼시와 점프를 크게 써서 즉각적으로 귀엽습니다. 다만 계속 반복되면 가벼워 보이고 쉽게 피로해질 수 있습니다.</p>
+          <div class="tempo">
+            <span>움직임 강도</span>
+            <span class="tempo-bar"></span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <p class="note">
+      여기서는 리듬만 비교합니다. 선택한 방향은 이후 ‘기본 대기·식사 반응·레벨업·실패 위로’의 네 가지 모션 세트로 확장합니다.
+    </p>
+  </main>
+  <script>
+    function toggleSelect(element) {
+      document.querySelectorAll("[data-choice].selected").forEach(function (item) {
+        item.classList.remove("selected");
+      });
+      element.classList.add("selected");
+    }
+  </script>
+</body>
+</html>

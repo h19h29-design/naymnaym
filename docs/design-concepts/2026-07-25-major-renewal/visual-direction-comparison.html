@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>냠냠레벨업 비주얼 방향 선택</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17251c;
+      --muted: #69736d;
+      --line: rgba(28, 50, 37, .12);
+      --cream: #f3eee2;
+      --green: #17634a;
+      --lime: #c9ed71;
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(255,255,255,.88), transparent 27rem),
+        linear-gradient(145deg, #f8f4ea 0%, #ebe4d5 100%);
+    }
+
+    main {
+      width: min(1480px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 48px 0 72px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: #5b7566;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 900px;
+      font-size: clamp(32px, 4vw, 58px);
+      line-height: 1.08;
+      letter-spacing: -.055em;
+    }
+
+    .lead {
+      margin: 18px 0 34px;
+      max-width: 800px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.65;
+    }
+
+    .context {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 22px;
+      align-items: center;
+      padding: 18px;
+      margin-bottom: 28px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: rgba(255,255,255,.58);
+      box-shadow: 0 20px 60px rgba(53, 59, 46, .08);
+      backdrop-filter: blur(18px);
+    }
+
+    .context img {
+      width: 100%;
+      height: 170px;
+      object-fit: cover;
+      object-position: top;
+      border-radius: 18px;
+      box-shadow: 0 12px 24px rgba(25, 31, 27, .14);
+    }
+
+    .context h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      letter-spacing: -.03em;
+    }
+
+    .context p {
+      margin: 0;
+      max-width: 790px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .direction {
+      position: relative;
+      overflow: hidden;
+      min-height: 630px;
+      padding: 0;
+      border: 2px solid transparent;
+      border-radius: 32px;
+      background: #fff;
+      box-shadow: 0 18px 55px rgba(47, 49, 43, .12);
+      cursor: pointer;
+      transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+    }
+
+    .direction:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 28px 70px rgba(47, 49, 43, .17);
+    }
+
+    .direction.selected {
+      border-color: #2f8c67;
+      box-shadow: 0 0 0 5px rgba(47, 140, 103, .16), 0 28px 70px rgba(47, 49, 43, .2);
+    }
+
+    .preview {
+      position: relative;
+      height: 395px;
+      overflow: hidden;
+    }
+
+    .copy {
+      position: relative;
+      z-index: 3;
+      padding: 23px 24px 26px;
+      background: #fff;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .letter {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #1b2c22;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .recommend {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #e4f4c6;
+      color: #315f23;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .copy h3 {
+      margin: 16px 0 7px;
+      font-size: 25px;
+      letter-spacing: -.045em;
+    }
+
+    .copy > p {
+      margin: 0;
+      min-height: 68px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 17px;
+    }
+
+    .tags span {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #445349;
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .a-preview {
+      background:
+        linear-gradient(to bottom, rgba(8, 46, 31, .08), rgba(4, 38, 26, .28)),
+        url("./forest-home.png") center / cover;
+    }
+
+    .a-top {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      color: white;
+      text-shadow: 0 2px 14px rgba(0,0,0,.28);
+    }
+
+    .a-brand {
+      font-size: 18px;
+      font-weight: 950;
+      letter-spacing: -.04em;
+    }
+
+    .a-day {
+      padding: 6px 9px;
+      border: 1px solid rgba(255,255,255,.38);
+      border-radius: 999px;
+      background: rgba(15, 55, 38, .28);
+      font-size: 10px;
+      font-weight: 800;
+      backdrop-filter: blur(8px);
+    }
+
+    .a-char {
+      position: absolute;
+      left: 50%;
+      bottom: 38px;
+      width: 70%;
+      max-height: 300px;
+      object-fit: contain;
+      transform: translateX(-50%);
+      filter: drop-shadow(0 22px 22px rgba(17, 48, 26, .28));
+    }
+
+    .a-quest {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      left: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 15px 17px;
+      border: 1px solid rgba(255,255,255,.4);
+      border-radius: 20px;
+      background: rgba(255, 252, 242, .82);
+      box-shadow: 0 13px 28px rgba(11, 42, 27, .18);
+      backdrop-filter: blur(16px);
+    }
+
+    .a-quest b, .a-quest small { display: block; }
+    .a-quest b { font-size: 13px; }
+    .a-quest small { margin-top: 4px; color: #66726a; font-size: 9px; }
+    .a-quest strong { color: #226544; font-size: 11px; }
+
+    .b-preview {
+      background:
+        radial-gradient(circle at 80% 18%, rgba(119, 241, 153, .24), transparent 10rem),
+        linear-gradient(145deg, #071c29 0%, #0e3040 58%, #173f35 100%);
+    }
+
+    .b-grid {
+      position: absolute;
+      inset: 0;
+      opacity: .17;
+      background-image:
+        linear-gradient(rgba(172,255,205,.45) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(172,255,205,.45) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, black, transparent 85%);
+    }
+
+    .b-header {
+      position: absolute;
+      top: 22px;
+      left: 22px;
+      right: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #dcffe9;
+    }
+
+    .b-header b {
+      font-size: 11px;
+      letter-spacing: .13em;
+    }
+
+    .b-rank {
+      padding: 6px 9px;
+      border: 1px solid #7beaa5;
+      border-radius: 8px;
+      color: #baffe0;
+      font-size: 9px;
+      font-weight: 900;
+    }
+
+    .b-char {
+      position: absolute;
+      right: -15px;
+      bottom: 46px;
+      width: 76%;
+      max-height: 300px;
+      object-fit: contain;
+      filter: drop-shadow(0 25px 25px rgba(0,0,0,.38));
+    }
+
+    .b-hud {
+      position: absolute;
+      top: 92px;
+      left: 22px;
+      width: 46%;
+      color: white;
+    }
+
+    .b-hud small {
+      color: #89c9a7;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: .12em;
+    }
+
+    .b-hud h4 {
+      margin: 7px 0 13px;
+      font-size: 22px;
+      line-height: 1.08;
+      letter-spacing: -.04em;
+    }
+
+    .b-meter {
+      width: 100%;
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,.13);
+    }
+
+    .b-meter::after {
+      display: block;
+      width: 68%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #9eef76, #4bd6aa);
+      content: "";
+    }
+
+    .b-bottom {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      left: 18px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .b-bottom span {
+      flex: 1;
+      padding: 11px 8px;
+      border: 1px solid rgba(141,242,181,.25);
+      border-radius: 12px;
+      background: rgba(9,28,38,.76);
+      color: #c7fbd9;
+      font-size: 9px;
+      font-weight: 850;
+      text-align: center;
+      backdrop-filter: blur(8px);
+    }
+
+    .c-preview {
+      background: linear-gradient(155deg, #fbfaf4 0%, #ecebdc 100%);
+    }
+
+    .c-rule {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 31px;
+      width: 1px;
+      background: rgba(26,74,50,.18);
+    }
+
+    .c-head {
+      position: absolute;
+      top: 24px;
+      left: 52px;
+      color: #183b2a;
+    }
+
+    .c-head small {
+      display: block;
+      margin-bottom: 8px;
+      color: #718078;
+      font-family: Georgia, serif;
+      font-size: 10px;
+      font-style: italic;
+    }
+
+    .c-head h4 {
+      margin: 0;
+      font-family: Georgia, "Noto Serif KR", serif;
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.1;
+      letter-spacing: -.04em;
+    }
+
+    .c-char {
+      position: absolute;
+      right: -4px;
+      bottom: 63px;
+      width: 63%;
+      max-height: 260px;
+      object-fit: contain;
+      filter: drop-shadow(0 18px 18px rgba(41,62,44,.13));
+    }
+
+    .c-report {
+      position: absolute;
+      left: 52px;
+      bottom: 23px;
+      width: 57%;
+      padding: 15px;
+      border: 1px solid rgba(30,63,43,.12);
+      border-radius: 4px;
+      background: rgba(255,255,252,.78);
+      box-shadow: 0 13px 30px rgba(58, 66, 55, .08);
+    }
+
+    .c-report small {
+      color: #6e7a71;
+      font-size: 9px;
+    }
+
+    .c-report b {
+      display: block;
+      margin-top: 5px;
+      color: #204632;
+      font-family: Georgia, "Noto Serif KR", serif;
+      font-size: 15px;
+    }
+
+    .c-dots {
+      display: flex;
+      gap: 5px;
+      margin-top: 11px;
+    }
+
+    .c-dots i {
+      display: block;
+      width: 22px;
+      height: 4px;
+      border-radius: 999px;
+      background: #cfd7ce;
+    }
+
+    .c-dots i:first-child { width: 48px; background: #4b745d; }
+
+    .choice-hint {
+      margin: 22px 0 0;
+      color: #526259;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      main { width: min(720px, calc(100% - 28px)); padding-top: 28px; }
+      .grid { grid-template-columns: 1fr; }
+      .direction { min-height: auto; }
+      .context { grid-template-columns: 150px 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .context { grid-template-columns: 1fr; }
+      .context img { height: 210px; }
+      .preview { height: 370px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">NyamNyam Level Up · Major Renewal</p>
+    <h1>어떤 세계관이 냠냠레벨업답나요?</h1>
+    <p class="lead">
+      아이 화면은 더 재미있는 게임처럼, 부모 화면은 더 차분하고 믿음직하게 나눌 예정입니다.
+      아래는 캐릭터 연출·화면 밀도·색감의 중심 방향을 비교한 첫 시안입니다.
+    </p>
+
+    <section class="context">
+      <img src="./current-home.jpg" alt="현재 냠냠레벨업 홈 화면">
+      <div>
+        <h2>현재 화면에서 바꾸려는 핵심</h2>
+        <p>
+          카드가 비슷한 크기와 무게로 반복되어 시선이 분산되고, 고품질 캐릭터가 화면의 주인공이 되지 못하고 있습니다.
+          새 방향에서는 오늘의 식사, 캐릭터 반응, 성장 보상이 하나의 장면처럼 이어지게 만듭니다.
+        </p>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="비주얼 방향 선택">
+      <article class="direction" data-choice="A · 살아있는 숲속 모험" onclick="toggleSelect(this)">
+        <div class="preview a-preview">
+          <div class="a-top">
+            <span class="a-brand">냠냠레벨업</span>
+            <span class="a-day">오늘의 모험</span>
+          </div>
+          <img class="a-char" src="./squirrel-level1.png" alt="냠냠레벨업 다람쥐 캐릭터">
+          <div class="a-quest">
+            <div>
+              <b>당근 한입으로 숲을 밝혀요</b>
+              <small>식사 기록이 캐릭터와 배경의 변화로 바로 이어집니다.</small>
+            </div>
+            <strong>2 / 3</strong>
+          </div>
+        </div>
+        <div class="copy">
+          <div class="label-row">
+            <span class="letter">A</span>
+            <span class="recommend">추천 방향</span>
+          </div>
+          <h3>살아있는 숲속 모험</h3>
+          <p>따뜻한 일러스트 세계에 캐릭터·식사·성장을 한 장면으로 묶습니다. 아이의 몰입과 부모의 신뢰를 함께 잡기 가장 좋습니다.</p>
+          <div class="tags">
+            <span>2.5D 캐릭터 연출</span>
+            <span>장면형 홈</span>
+            <span>차분한 부모 리포트</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="direction" data-choice="B · 컬렉터 게임 HUD" onclick="toggleSelect(this)">
+        <div class="preview b-preview">
+          <div class="b-grid"></div>
+          <div class="b-header">
+            <b>NYAM QUEST</b>
+            <span class="b-rank">RANK 07</span>
+          </div>
+          <div class="b-hud">
+            <small>TODAY MISSION</small>
+            <h4>남김없이<br>에너지 충전</h4>
+            <div class="b-meter"></div>
+          </div>
+          <img class="b-char" src="./squirrel-level1.png" alt="냠냠레벨업 다람쥐 캐릭터">
+          <div class="b-bottom">
+            <span>QUEST 03</span>
+            <span>ITEM 12</span>
+            <span>STREAK 07</span>
+          </div>
+        </div>
+        <div class="copy">
+          <div class="label-row">
+            <span class="letter">B</span>
+          </div>
+          <h3>컬렉터 게임 HUD</h3>
+          <p>퀘스트·랭크·아이템을 전면에 내세워 게임성을 가장 강하게 만듭니다. 재미는 즉각적이지만 화면이 복잡하고 부모용 인상이 가벼워질 수 있습니다.</p>
+          <div class="tags">
+            <span>강한 보상감</span>
+            <span>수집 중심</span>
+            <span>빠른 마이크로 모션</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="direction" data-choice="C · 감성 에듀테크" onclick="toggleSelect(this)">
+        <div class="preview c-preview">
+          <div class="c-rule"></div>
+          <div class="c-head">
+            <small>Today’s food story</small>
+            <h4>오늘 먹은 한입이<br>내일의 성장이 돼요</h4>
+          </div>
+          <img class="c-char" src="./squirrel-level1.png" alt="냠냠레벨업 다람쥐 캐릭터">
+          <div class="c-report">
+            <small>오늘의 영양 균형</small>
+            <b>채소와 단백질을 골고루 먹었어요</b>
+            <div class="c-dots"><i></i><i></i><i></i></div>
+          </div>
+        </div>
+        <div class="copy">
+          <div class="label-row">
+            <span class="letter">C</span>
+          </div>
+          <h3>감성 에듀테크</h3>
+          <p>여백과 편집 디자인으로 단정하고 프리미엄한 인상을 만듭니다. 부모의 신뢰는 높지만 아이가 느끼는 게임성과 캐릭터 존재감은 약해집니다.</p>
+          <div class="tags">
+            <span>에디토리얼 레이아웃</span>
+            <span>높은 가독성</span>
+            <span>조용한 인터랙션</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <p class="choice-hint">마음에 가까운 카드를 클릭해 선택해 주세요. 세부 요소는 다음 단계에서 서로 섞을 수 있습니다.</p>
+  </main>
+  <script>
+    function toggleSelect(element) {
+      document.querySelectorAll("[data-choice].selected").forEach(function (item) {
+        item.classList.remove("selected");
+      });
+      element.classList.add("selected");
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>냠냠레벨업 캐릭터 리디자인 범위</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+      --ink: #1b2e23;
+      --muted: #68746c;
+      --line: rgba(36, 60, 45, .14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(255,255,255,.95), transparent 34rem),
+        linear-gradient(150deg, #f8f2e6 0%, #e9e3d3 100%);
+    }
+
+    main {
+      width: min(1260px, calc(100% - 42px));
+      margin: 0 auto;
+      padding: 42px 0 66px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: #5e7869;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 4.1vw, 56px);
+      line-height: 1.08;
+      letter-spacing: -.055em;
+    }
+
+    .lead {
+      margin: 15px 0 28px;
+      max-width: 830px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    .sheet {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(74, 67, 46, .11);
+      border-radius: 30px;
+      background: #fff9e9;
+      box-shadow: 0 24px 70px rgba(62, 57, 43, .14);
+    }
+
+    .sheet img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .markers {
+      position: absolute;
+      inset: 22px 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      pointer-events: none;
+    }
+
+    .markers span {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      justify-self: center;
+      border: 1px solid rgba(255,255,255,.64);
+      border-radius: 50%;
+      background: rgba(31,50,38,.74);
+      color: white;
+      font-size: 13px;
+      font-weight: 950;
+      box-shadow: 0 8px 20px rgba(40,40,30,.16);
+      backdrop-filter: blur(8px);
+    }
+
+    .choices {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .choice {
+      min-height: 190px;
+      padding: 21px 21px 23px;
+      border: 2px solid transparent;
+      border-radius: 23px;
+      background: rgba(255,255,255,.85);
+      box-shadow: 0 15px 40px rgba(53,58,48,.08);
+      cursor: pointer;
+      transition: transform .23s ease, border-color .23s ease, box-shadow .23s ease;
+    }
+
+    .choice:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 23px 50px rgba(53,58,48,.13);
+    }
+
+    .choice.selected {
+      border-color: #2d956b;
+      box-shadow: 0 0 0 5px rgba(45,149,107,.14), 0 23px 50px rgba(53,58,48,.13);
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .number {
+      color: #40604d;
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .recommend {
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: #e1f1c4;
+      color: #356128;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    h2 {
+      margin: 14px 0 8px;
+      font-size: 22px;
+      letter-spacing: -.04em;
+    }
+
+    .choice p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .impact {
+      display: inline-block;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      color: #43594c;
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .note {
+      margin: 20px auto 0;
+      max-width: 900px;
+      color: #617068;
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      main { width: min(650px, calc(100% - 28px)); padding-top: 28px; }
+      .sheet { overflow-x: auto; }
+      .sheet img { width: 880px; max-width: none; }
+      .markers { width: 880px; }
+      .choices { grid-template-columns: 1fr; }
+      .choice { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">A안 · Motion 3 · Character Evolution</p>
+    <h1>현재 다람쥐를 얼마나 바꿀까요?</h1>
+    <p class="lead">
+      셋 모두 잎사귀 스카프와 새싹, 주황색 털이라는 정체성은 유지합니다.
+      차이는 얼굴 비율·실루엣·게임 캐릭터로서의 힘, 그리고 애니메이션 확장성입니다.
+    </p>
+
+    <section class="sheet" aria-label="캐릭터 리디자인 비교 이미지">
+      <img src="./character-evolution-sheet.png" alt="세 단계의 다람쥐 캐릭터 리디자인 시안">
+      <div class="markers"><span>1</span><span>2</span><span>3</span></div>
+    </section>
+
+    <section class="choices" aria-label="캐릭터 리디자인 범위 선택">
+      <article class="choice" data-choice="1 · 원형 유지형" onclick="toggleSelect(this)">
+        <div class="top"><span class="number">DIRECTION 01</span></div>
+        <h2>원형 유지형</h2>
+        <p>익숙한 얼굴과 비율을 거의 그대로 두고 선·광택·색감만 정리합니다. 기존 이용자의 이질감이 가장 적습니다.</p>
+        <span class="impact">개선 폭 낮음 · 구현 안정성 높음</span>
+      </article>
+
+      <article class="choice" data-choice="2 · 세련된 진화형" onclick="toggleSelect(this)">
+        <div class="top">
+          <span class="number">DIRECTION 02</span>
+          <span class="recommend">추천 방향</span>
+        </div>
+        <h2>세련된 진화형</h2>
+        <p>정체성은 지키되 눈 비율과 몸의 덩어리를 자연스럽게 다듬고, 얼굴·팔·꼬리를 분리해 풍부한 움직임을 만듭니다.</p>
+        <span class="impact">개선 폭 큼 · 브랜드 연속성 높음</span>
+      </article>
+
+      <article class="choice" data-choice="3 · 과감한 게임형" onclick="toggleSelect(this)">
+        <div class="top"><span class="number">DIRECTION 03</span></div>
+        <h2>과감한 게임형</h2>
+        <p>꼬리와 자세를 크게 강조해 한눈에 강한 게임 캐릭터로 보이게 합니다. 개성은 강하지만 기존의 포근함은 줄어듭니다.</p>
+        <span class="impact">개선 폭 최대 · 브랜드 변화 큼</span>
+      </article>
+    </section>
+
+    <p class="note">
+      이 이미지는 방향 확인용 콘셉트입니다. 선택 후 실제 제작에서는 모든 성장 단계가 같은 비율과 리깅 구조를 공유하도록 다시 설계합니다.
+    </p>
+  </main>
+  <script>
+    function toggleSelect(element) {
+      document.querySelectorAll("[data-choice].selected").forEach(function (item) {
+        item.classList.remove("selected");
+      });
+      element.classList.add("selected");
+    }
+  </script>
+</body>
+</html>
