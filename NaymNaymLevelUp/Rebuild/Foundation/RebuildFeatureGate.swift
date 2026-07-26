@@ -10,6 +10,10 @@ enum RebuildFeatureGate {
             return arguments[index + 1].uppercased() == "YES"
         }
 
+        #if NATIVE_REBUILD_RELEASE_ENABLED
+        return true
+        #else
         return defaults.bool(forKey: "native-rebuild-enabled")
+        #endif
     }
 }

@@ -2,11 +2,12 @@
 
 ## Activation boundary
 
-The native rebuild is disabled by default and is for local debug verification
-only. It is not enabled for a release or any deployment.
+The native rebuild remains disabled by default in debug builds. The approved
+1.1 release enables it only in release builds.
 
 - **iOS:** `RootView` uses the rebuild only when `RebuildFeatureGate` returns
-  true. For a simulator-only check, add this launch argument in the scheme:
+  true. Release builds define `NATIVE_REBUILD_RELEASE_ENABLED`; debug builds
+  remain disabled unless this launch argument is added in the scheme:
 
   ```text
   -native-rebuild-enabled YES
@@ -17,21 +18,17 @@ only. It is not enabled for a release or any deployment.
   Boolean value is false. Remove the launch argument after checking the local
   rebuild.
 
-- **Android:** committed `defaultConfig` keeps
-  `BuildConfig.NATIVE_REBUILD_ENABLED` as `false`; `MainActivity` opens the
-  non-exported `RebuildActivity` only when that value is true. For a local
-  debug-only check, make an uncommitted edit that adds this override inside the
-  existing `buildTypes.debug` block in `android/app/build.gradle`:
+- **Android:** committed `defaultConfig` and `debug` keep
+  `BuildConfig.NATIVE_REBUILD_ENABLED` as `false`, while `release` overrides it
+  to `true`; `MainActivity` opens the non-exported `RebuildActivity` only when
+  that value is true.
 
   ```groovy
   buildConfigField "boolean", "NATIVE_REBUILD_ENABLED", "true"
   ```
 
-  Build and verify `RebuildActivity`, then remove the override. Do not change
-  the committed `defaultConfig` value and do not add the override to `release`.
-
-No flag change, release build, rollout, or deployment is authorized by this
-foundation documentation.
+  Debug verification continues to use the launch/instrumentation-only path, so
+  normal debug runs do not silently change behavior.
 
 ## Rebuild stores and schema v1
 

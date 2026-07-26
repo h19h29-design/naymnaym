@@ -1,5 +1,6 @@
 package com.h19h29.naymnaymlevelup.rebuild;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -10,8 +11,15 @@ import org.junit.Test;
 
 public final class RebuildFeatureGateTest {
     @Test
-    public void defaultsToBuildConfigValue() {
-        assertFalse(
+    public void generatedBuildConfigActivatesRebuildOnlyInRelease() {
+        if (BuildConfig.DEBUG) {
+            assertFalse(BuildConfig.NATIVE_REBUILD_ENABLED);
+        } else {
+            assertTrue(BuildConfig.NATIVE_REBUILD_ENABLED);
+        }
+
+        assertEquals(
+                !BuildConfig.DEBUG,
                 RebuildFeatureGate.INSTANCE.isEnabled(
                         BuildConfig.NATIVE_REBUILD_ENABLED,
                         null));

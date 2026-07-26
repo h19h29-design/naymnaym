@@ -47,8 +47,8 @@ android {
         applicationId "com.h19h29.naymnaymlevelup"
         minSdk 23
         targetSdk 36
-        versionCode 7
-        versionName "1.0-android-test7"
+        versionCode 8
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "NATIVE_REBUILD_ENABLED", "false"
@@ -73,10 +73,12 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField "boolean", "NATIVE_REBUILD_ENABLED", "false"
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
         }
         release {
+            buildConfigField "boolean", "NATIVE_REBUILD_ENABLED", "true"
             minifyEnabled false
             if (localProperties.getProperty("ANDROID_KEYSTORE_FILE", "")) {
                 signingConfig signingConfigs.release

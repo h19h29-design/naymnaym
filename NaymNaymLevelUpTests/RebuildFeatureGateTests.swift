@@ -2,7 +2,8 @@ import XCTest
 @testable import NaymNaymLevelUp
 
 final class RebuildFeatureGateTests: XCTestCase {
-    func testDefaultsToDisabled() {
+    #if DEBUG
+    func testDebugBuildDefaultsToDisabled() {
         let defaults = makeDefaults()
 
         XCTAssertFalse(RebuildFeatureGate.isEnabled(defaults: defaults, arguments: []))
@@ -18,6 +19,13 @@ final class RebuildFeatureGateTests: XCTestCase {
 
         XCTAssertTrue(RebuildFeatureGate.isEnabled(defaults: defaults, arguments: []))
     }
+    #else
+    func testReleaseBuildDefaultsToEnabled() {
+        let defaults = makeDefaults()
+
+        XCTAssertTrue(RebuildFeatureGate.isEnabled(defaults: defaults, arguments: []))
+    }
+    #endif
 
     func testValidYESLaunchArgumentEnablesRebuild() {
         let defaults = makeDefaults()
