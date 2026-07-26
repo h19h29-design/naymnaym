@@ -94,10 +94,16 @@ struct OnboardingFlowView: View {
         guard !isPersistingIntro else { return false }
         isPersistingIntro = true
         defer { isPersistingIntro = false }
-        return await UserDefaultsRebuildIntroDateStore(
+        let store = UserDefaultsRebuildIntroDateStore(
             defaults: .standard
         )
-        .writeDurably(todayKey)
+        return await RebuildIntroLegacyCompletionCoordinator.complete(
+            currentDay: { todayKey },
+            persist: { day in
+                await store.writeDurably(day)
+            },
+            apply: {}
+        )
     }
 
     private var title: String {

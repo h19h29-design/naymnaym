@@ -9,12 +9,14 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.lang.ref.WeakReference
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 data class RebuildIntroWordFrame(
@@ -240,41 +242,121 @@ class RebuildIntroMotionController(
 interface RebuildIntroDateStore {
     fun read(): String?
     suspend fun writeDurably(value: String): Boolean
+    fun observeCommittedValue(
+        listener: (String?) -> Unit,
+    ): AutoCloseable? = null
 }
 
-private object RebuildIntroPreferencesCoordinator {
-    private val writerLock =
-        java.util.concurrent.locks.ReentrantLock()
+private class RebuildIntroPreferencesScope {
+    private val writerMutex = Mutex()
+    private val orderingMutex = Mutex()
     private var activeWriteCount = 0
     private var nextRequestId = 0L
     private var latestCommittedRequestId = 0L
     private val reservedValues = mutableMapOf<Long, String>()
+    private var committedValue: String? = null
+    private var hasLoadedCommittedValue = false
+    private var version = 0L
+    private var nextListenerId = 0L
+    private val listeners = mutableMapOf<Long, (String?) -> Unit>()
 
-    fun beginWrite() {
-        writerLock.lock()
+    fun readThrough(
+        authoritativeValue: () -> String?,
+    ): String? {
+        val inFlight = synchronized(this) {
+            Triple(
+                activeWriteCount > 0,
+                committedValue,
+                hasLoadedCommittedValue,
+            )
+        }
+        if (inFlight.first) {
+            return if (inFlight.third) inFlight.second else null
+        }
+
+        if (!writerMutex.tryLock()) {
+            val snapshot = synchronized(this) {
+                committedValue to hasLoadedCommittedValue
+            }
+            return if (snapshot.second) snapshot.first else null
+        }
+        return try {
+            val afterLock = synchronized(this) {
+                Triple(
+                    activeWriteCount > 0,
+                    committedValue,
+                    hasLoadedCommittedValue,
+                )
+            }
+            if (afterLock.first) {
+                if (afterLock.third) afterLock.second else null
+            } else {
+                publishReadThrough(authoritativeValue())
+            }
+        } finally {
+            writerMutex.unlock()
+        }
+    }
+
+    fun observe(
+        listener: (String?) -> Unit,
+    ): AutoCloseable {
+        val snapshot = synchronized(this) {
+            nextListenerId += 1
+            listeners[nextListenerId] = listener
+            Triple(nextListenerId, committedValue, hasLoadedCommittedValue)
+        }
+        if (snapshot.third) {
+            listener(snapshot.second)
+        }
+        return AutoCloseable {
+            synchronized(this) {
+                listeners.remove(snapshot.first)
+            }
+        }
+    }
+
+    suspend fun <Result> withSerializedWrite(
+        block: suspend () -> Result,
+    ): Result {
         synchronized(this) {
             activeWriteCount += 1
         }
-    }
-
-    fun endWrite() {
-        synchronized(this) {
-            activeWriteCount -= 1
+        return try {
+            writerMutex.lock()
+            try {
+                block()
+            } finally {
+                writerMutex.unlock()
+            }
+        } finally {
+            synchronized(this) {
+                activeWriteCount -= 1
+            }
         }
-        writerLock.unlock()
     }
 
-    fun <Result> withStableRead(
-        block: (isWriteInFlight: Boolean) -> Result,
-    ): Result = synchronized(this) {
-        block(activeWriteCount > 0)
-    }
-
-    @Synchronized
-    fun reserveRequestId(value: String): Long {
-        nextRequestId += 1
-        reservedValues[nextRequestId] = value
-        return nextRequestId
+    suspend fun reserveRequestId(
+        value: String,
+        readPublicValue: () -> String?,
+    ): Pair<Long, String?> {
+        orderingMutex.lock()
+        return try {
+            withContext(Dispatchers.IO) {
+                val publicValue = readPublicValue()
+                synchronized(this@RebuildIntroPreferencesScope) {
+                    if (!hasLoadedCommittedValue) {
+                        committedValue = publicValue
+                        hasLoadedCommittedValue = true
+                    }
+                    nextRequestId += 1
+                    reservedValues[nextRequestId] = value
+                    nextRequestId to publicValue
+                }
+            }
+        } finally {
+            orderingMutex.unlock()
+        }
     }
 
     @Synchronized
@@ -292,12 +374,144 @@ private object RebuildIntroPreferencesCoordinator {
         reservedValues.remove(requestId)
     }
 
+    fun adoptAuthoritativeValue(value: String?) {
+        publishReadThrough(value)
+    }
+
+    suspend fun completeWithoutWrite(
+        requestId: Long,
+        value: String,
+    ): Boolean {
+        orderingMutex.lock()
+        val result = try {
+            var listenersToNotify = emptyList<(String?) -> Unit>()
+            val didComplete = synchronized(this) {
+                if (isSupersededLocked(requestId, value)) {
+                    false
+                } else {
+                    latestCommittedRequestId = maxOf(
+                        latestCommittedRequestId,
+                        requestId,
+                    )
+                    if (
+                        !hasLoadedCommittedValue ||
+                        committedValue != value
+                    ) {
+                        committedValue = value
+                        hasLoadedCommittedValue = true
+                        version += 1
+                        listenersToNotify = listeners.values.toList()
+                    }
+                    true
+                }
+            }
+            didComplete to listenersToNotify
+        } finally {
+            orderingMutex.unlock()
+        }
+        result.second.forEach { it(value) }
+        return result.first
+    }
+
+    suspend fun publishAtomically(
+        requestId: Long,
+        value: String,
+        onClaimed: () -> Unit = {},
+        publication: () -> Boolean,
+    ): Boolean {
+        orderingMutex.lock()
+        val result = try {
+            val canPublish = synchronized(this) {
+                !isSupersededLocked(requestId, value)
+            }
+            if (!canPublish) {
+                false to emptyList()
+            } else {
+                onClaimed()
+                if (!publication()) {
+                    false to emptyList()
+                } else {
+                    val listenersToNotify = synchronized(this) {
+                        latestCommittedRequestId = maxOf(
+                            latestCommittedRequestId,
+                            requestId,
+                        )
+                        committedValue = value
+                        hasLoadedCommittedValue = true
+                        version += 1
+                        listeners.values.toList()
+                    }
+                    true to listenersToNotify
+                }
+            }
+        } finally {
+            orderingMutex.unlock()
+        }
+        result.second.forEach { it(value) }
+        return result.first
+    }
+
+    private fun publishReadThrough(value: String?): String? {
+        var listenersToNotify = emptyList<(String?) -> Unit>()
+        val result = synchronized(this) {
+            if (activeWriteCount > 0) {
+                Pair(
+                    if (hasLoadedCommittedValue) committedValue else null,
+                    false,
+                )
+            } else if (
+                hasLoadedCommittedValue &&
+                committedValue == value
+            ) {
+                value to false
+            } else {
+                committedValue = value
+                hasLoadedCommittedValue = true
+                version += 1
+                listenersToNotify = listeners.values.toList()
+                value to true
+            }
+        }
+        if (result.second) {
+            listenersToNotify.forEach { it(value) }
+        }
+        return result.first
+    }
+
+    private fun isSupersededLocked(
+        requestId: Long,
+        value: String,
+    ): Boolean =
+        requestId < latestCommittedRequestId ||
+            reservedValues.any { (reservedId, reservedValue) ->
+                reservedId > requestId && reservedValue != value
+            }
+}
+
+private object RebuildIntroPreferencesRegistry {
+    private data class Entry(
+        val preferences: WeakReference<SharedPreferences>,
+        val scope: RebuildIntroPreferencesScope,
+    )
+
+    private val entries = mutableListOf<Entry>()
+
     @Synchronized
-    fun markCommitted(requestId: Long) {
-        latestCommittedRequestId = maxOf(
-            latestCommittedRequestId,
-            requestId,
-        )
+    fun scopeFor(
+        preferences: SharedPreferences,
+    ): RebuildIntroPreferencesScope {
+        entries.removeAll { it.preferences.get() == null }
+        entries.firstOrNull {
+            it.preferences.get() === preferences
+        }?.let {
+            return it.scope
+        }
+        return RebuildIntroPreferencesScope().also { scope ->
+            entries += Entry(
+                preferences = WeakReference(preferences),
+                scope = scope,
+            )
+        }
     }
 }
 
@@ -309,202 +523,255 @@ class SharedPreferencesRebuildIntroDateStore(
     },
     private val onRequestReserved: () -> Unit = {},
     private val beforePublication: () -> Unit = {},
+    private val onPublicValueRead: () -> Unit = {},
+    private val onPublicationClaimed: () -> Unit = {},
+    private val onAuthoritativeReadStarted: () -> Unit = {},
 ) : RebuildIntroDateStore {
+    private val scope =
+        RebuildIntroPreferencesRegistry.scopeFor(preferences)
+
     override fun read(): String? =
-        RebuildIntroPreferencesCoordinator.withStableRead {
-            isWriteInFlight ->
-            if (isWriteInFlight) {
-                return@withStableRead preferences.getString(
-                    RebuildIntroDailyGate.StorageKey,
-                    null,
-                )
-            }
+        scope.readThrough {
             authoritativeCommittedValue()
         }
 
+    override fun observeCommittedValue(
+        listener: (String?) -> Unit,
+    ): AutoCloseable = scope.observe(listener)
+
     override suspend fun writeDurably(value: String): Boolean {
-        val publicValueAtRequest = preferences.getString(
-            RebuildIntroDailyGate.StorageKey,
-            null,
-        )
-        val requestId =
-            RebuildIntroPreferencesCoordinator.reserveRequestId(value)
+        val reservation = scope.reserveRequestId(
+            value = value,
+        ) {
+            preferences.getString(
+                RebuildIntroDailyGate.StorageKey,
+                null,
+            ).also {
+                onPublicValueRead()
+            }
+        }
+        val requestId = reservation.first
+        val publicValueAtRequest = reservation.second
         onRequestReserved()
         return try {
             withContext(ioDispatcher) {
-                RebuildIntroPreferencesCoordinator.beginWrite()
-                try {
-                val authoritativeValue = authoritativeCommittedValue()
-                if (authoritativeValue == value) {
-                    RebuildIntroPreferencesCoordinator.markCommitted(
-                        requestId,
-                    )
-                    return@withContext true
-                }
-                if (authoritativeValue != publicValueAtRequest) {
-                    return@withContext false
-                }
-                if (RebuildIntroPreferencesCoordinator.isSuperseded(
-                        requestId,
-                        value,
-                    )
-                ) {
-                    return@withContext false
-                }
+                scope.withSerializedWrite {
+                    val authoritativeValue =
+                        authoritativeCommittedValue()
+                    scope.adoptAuthoritativeValue(authoritativeValue)
+                    if (authoritativeValue == value) {
+                        return@withSerializedWrite scope
+                            .completeWithoutWrite(
+                                requestId = requestId,
+                                value = value,
+                            )
+                    }
+                    if (authoritativeValue != publicValueAtRequest) {
+                        return@withSerializedWrite false
+                    }
+                    if (scope.isSuperseded(requestId, value)) {
+                        return@withSerializedWrite false
+                    }
 
-                val previousPublicValue = preferences.getString(
-                    RebuildIntroDailyGate.StorageKey,
-                    null,
-                )
-                if (previousPublicValue != publicValueAtRequest) {
-                    return@withContext false
-                }
-                val hadPreviousDurableOwner =
-                    preferences.contains(DurableOwnerKey)
-                val previousDurableOwner = preferences.getString(
-                    DurableOwnerKey,
-                    null,
-                )
-                val hadPreviousDurableVersion =
-                    preferences.contains(DurableVersionKey)
-                val previousDurableVersion = preferences.getLong(
-                    DurableVersionKey,
-                    0L,
-                )
-                val hadPreviousDurableState =
-                    preferences.contains(DurableStateKey)
-                val previousDurableState = preferences.getString(
-                    DurableStateKey,
-                    null,
-                )
-                val hadPreviousDurableValue =
-                    preferences.contains(DurableValueKey)
-                val previousDurableValue = preferences.getString(
-                    DurableValueKey,
-                    null,
-                )
-                val hadPreviousDurablePublicValue =
-                    preferences.contains(DurablePreviousPublicValueKey)
-                val previousDurablePublicValue = preferences.getString(
-                    DurablePreviousPublicValueKey,
-                    null,
-                )
-                val version = maxOf(
-                    requestId,
-                    previousDurableVersion + 1L,
-                )
-                val didCommit = commit(
-                    preferences
-                        .edit()
-                        .putString(DurableOwnerKey, DurableOwner)
-                        .putLong(DurableVersionKey, version)
-                        .putString(DurableStateKey, PendingState)
-                        .putString(DurableValueKey, value)
-                        .putString(
+                    val previousPublicValue = preferences.getString(
+                        RebuildIntroDailyGate.StorageKey,
+                        null,
+                    )
+                    if (previousPublicValue != publicValueAtRequest) {
+                        return@withSerializedWrite false
+                    }
+                    val hadPreviousDurableOwner =
+                        preferences.contains(DurableOwnerKey)
+                    val previousDurableOwner = preferences.getString(
+                        DurableOwnerKey,
+                        null,
+                    )
+                    val hadPreviousDurableVersion =
+                        preferences.contains(DurableVersionKey)
+                    val previousDurableVersion = preferences.getLong(
+                        DurableVersionKey,
+                        0L,
+                    )
+                    val hadPreviousDurableState =
+                        preferences.contains(DurableStateKey)
+                    val previousDurableState = preferences.getString(
+                        DurableStateKey,
+                        null,
+                    )
+                    val hadPreviousDurableValue =
+                        preferences.contains(DurableValueKey)
+                    val previousDurableValue = preferences.getString(
+                        DurableValueKey,
+                        null,
+                    )
+                    val hadPreviousDurablePublicValue =
+                        preferences.contains(
                             DurablePreviousPublicValueKey,
-                            previousPublicValue ?: "",
-                        ),
-                )
-                val didReadBack =
-                    preferences.getString(DurableOwnerKey, null) ==
-                        DurableOwner &&
-                        preferences.getLong(DurableVersionKey, 0L) ==
-                        version &&
-                        preferences.getString(DurableStateKey, null) ==
-                        PendingState &&
-                        preferences.getString(DurableValueKey, null) ==
-                        value &&
+                        )
+                    val previousDurablePublicValue =
                         preferences.getString(
                             DurablePreviousPublicValueKey,
                             null,
-                        ) == (previousPublicValue ?: "")
-
-                if (!didCommit || !didReadBack) {
-                    val rollback = preferences.edit()
-                    restoreString(
-                        rollback,
-                        DurableOwnerKey,
-                        hadPreviousDurableOwner,
-                        previousDurableOwner,
-                    )
-                    if (hadPreviousDurableVersion) {
-                        rollback.putLong(
-                            DurableVersionKey,
-                            previousDurableVersion,
                         )
-                    } else {
-                        rollback.remove(DurableVersionKey)
-                    }
-                    restoreString(
-                        rollback,
-                        DurableStateKey,
-                        hadPreviousDurableState,
-                        previousDurableState,
-                    )
-                    restoreString(
-                        rollback,
-                        DurableValueKey,
-                        hadPreviousDurableValue,
-                        previousDurableValue,
-                    )
-                    restoreString(
-                        rollback,
-                        DurablePreviousPublicValueKey,
-                        hadPreviousDurablePublicValue,
-                        previousDurablePublicValue,
-                    )
-                    rollback.commit()
-                    return@withContext false
-                }
-
-                beforePublication()
-                if (RebuildIntroPreferencesCoordinator.isSuperseded(
+                    val version = maxOf(
                         requestId,
-                        value,
+                        previousDurableVersion + 1L,
                     )
-                ) {
-                    commit(
+                    val didCommit = commit(
                         preferences
                             .edit()
-                            .putString(DurableStateKey, SupersededState),
+                            .putString(DurableOwnerKey, DurableOwner)
+                            .putLong(DurableVersionKey, version)
+                            .putString(
+                                DurableStateKey,
+                                PendingState,
+                            )
+                            .putString(DurableValueKey, value)
+                            .putString(
+                                DurablePreviousPublicValueKey,
+                                previousPublicValue ?: "",
+                            ),
                     )
-                    return@withContext false
-                }
-                val publicValueBeforePublication = preferences.getString(
-                    RebuildIntroDailyGate.StorageKey,
-                    null,
-                )
-                if (publicValueBeforePublication != previousPublicValue &&
-                    publicValueBeforePublication != value
-                ) {
-                    commit(
-                        preferences
-                            .edit()
-                            .putString(DurableStateKey, SupersededState),
-                    )
-                    return@withContext false
-                }
-                commit(
-                    preferences
-                        .edit()
-                        .putString(
-                            RebuildIntroDailyGate.StorageKey,
-                            value,
+                    val didReadBack =
+                        preferences.getString(
+                            DurableOwnerKey,
+                            null,
+                        ) == DurableOwner &&
+                            preferences.getLong(
+                                DurableVersionKey,
+                                0L,
+                            ) == version &&
+                            preferences.getString(
+                                DurableStateKey,
+                                null,
+                            ) == PendingState &&
+                            preferences.getString(
+                                DurableValueKey,
+                                null,
+                            ) == value &&
+                            preferences.getString(
+                                DurablePreviousPublicValueKey,
+                                null,
+                            ) == (previousPublicValue ?: "")
+
+                    if (!didCommit || !didReadBack) {
+                        val rollback = preferences.edit()
+                        restoreString(
+                            rollback,
+                            DurableOwnerKey,
+                            hadPreviousDurableOwner,
+                            previousDurableOwner,
                         )
-                        .putString(DurableStateKey, PublishedState),
-                )
-                RebuildIntroPreferencesCoordinator.markCommitted(requestId)
-                true
-                } finally {
-                    RebuildIntroPreferencesCoordinator.endWrite()
+                        if (hadPreviousDurableVersion) {
+                            rollback.putLong(
+                                DurableVersionKey,
+                                previousDurableVersion,
+                            )
+                        } else {
+                            rollback.remove(DurableVersionKey)
+                        }
+                        restoreString(
+                            rollback,
+                            DurableStateKey,
+                            hadPreviousDurableState,
+                            previousDurableState,
+                        )
+                        restoreString(
+                            rollback,
+                            DurableValueKey,
+                            hadPreviousDurableValue,
+                            previousDurableValue,
+                        )
+                        restoreString(
+                            rollback,
+                            DurablePreviousPublicValueKey,
+                            hadPreviousDurablePublicValue,
+                            previousDurablePublicValue,
+                        )
+                        rollback.commit()
+                        return@withSerializedWrite false
+                    }
+
+                    beforePublication()
+                    val didPublish = scope.publishAtomically(
+                        requestId = requestId,
+                        value = value,
+                        onClaimed = onPublicationClaimed,
+                    ) {
+                        val publicValueBeforePublication =
+                            preferences.getString(
+                                RebuildIntroDailyGate.StorageKey,
+                                null,
+                            )
+                        if (
+                            publicValueBeforePublication !=
+                            previousPublicValue &&
+                            publicValueBeforePublication != value
+                        ) {
+                            return@publishAtomically false
+                        }
+                        val didCommitPublication = commit(
+                            preferences
+                                .edit()
+                                .putString(
+                                    RebuildIntroDailyGate.StorageKey,
+                                    value,
+                                )
+                                .putString(
+                                    DurableStateKey,
+                                    PublishedState,
+                                ),
+                        )
+                        val didReadBackPublication =
+                            preferences.getString(
+                                RebuildIntroDailyGate.StorageKey,
+                                null,
+                            ) == value &&
+                                preferences.getString(
+                                    DurableStateKey,
+                                    null,
+                                ) == PublishedState
+                        if (
+                            !didCommitPublication ||
+                            !didReadBackPublication
+                        ) {
+                            val rollback = preferences.edit()
+                            restoreString(
+                                rollback,
+                                RebuildIntroDailyGate.StorageKey,
+                                previousPublicValue != null,
+                                previousPublicValue,
+                            )
+                            rollback.putString(
+                                DurableStateKey,
+                                PendingState,
+                            )
+                            rollback.commit()
+                            return@publishAtomically false
+                        }
+                        true
+                    }
+                    if (!didPublish) {
+                        commit(
+                            preferences
+                                .edit()
+                                .putString(
+                                    DurableStateKey,
+                                    SupersededState,
+                                ),
+                        )
+                        return@withSerializedWrite false
+                    }
+                    true
                 }
             }
         } finally {
-            RebuildIntroPreferencesCoordinator.finishRequest(requestId)
+            scope.finishRequest(requestId)
         }
     }
 
     private fun authoritativeCommittedValue(): String? {
+        onAuthoritativeReadStarted()
         val publicValue = preferences.getString(
             RebuildIntroDailyGate.StorageKey,
             null,
@@ -599,6 +866,12 @@ class RebuildIntroDailyGate(
     fun shouldPresent(): Boolean = completionAttempt != null ||
         store.read() != todayKey()
 
+    fun observeShouldPresent(
+        listener: (Boolean) -> Unit,
+    ): AutoCloseable? = store.observeCommittedValue { committedDay ->
+        listener(committedDay != todayKey())
+    }
+
     suspend fun markCompleted(): Boolean {
         while (true) {
             val requestedDay = todayKey()
@@ -671,6 +944,19 @@ class RebuildIntroEntryController(
 ) {
     var showIntro by mutableStateOf(dailyGate.shouldPresent())
         private set
+    private val gateObservation: AutoCloseable?
+
+    init {
+        val weakEntry = WeakReference(this)
+        gateObservation =
+            dailyGate.observeShouldPresent { shouldPresent ->
+                weakEntry.get()?.showIntro = shouldPresent
+            }
+    }
+
+    fun close() {
+        gateObservation?.close()
+    }
 
     val canLoadBootstrap: Boolean
         get() = !showIntro

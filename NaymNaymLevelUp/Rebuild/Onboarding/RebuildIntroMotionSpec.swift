@@ -233,6 +233,39 @@ final class RebuildIntroMotionController: ObservableObject {
 protocol RebuildIntroDateStoring: AnyObject {
     func read() -> String?
     func writeDurably(_ value: String) async -> Bool
+    func observeCommittedValue(
+        _ listener: @escaping @Sendable (String?) -> Void
+    ) -> RebuildIntroDateStoreObservation?
+}
+
+extension RebuildIntroDateStoring {
+    func observeCommittedValue(
+        _ listener: @escaping @Sendable (String?) -> Void
+    ) -> RebuildIntroDateStoreObservation? {
+        nil
+    }
+}
+
+final class RebuildIntroDateStoreObservation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancellation: (@Sendable () -> Void)?
+
+    init(cancellation: @escaping @Sendable () -> Void) {
+        self.cancellation = cancellation
+    }
+
+    func cancel() {
+        let cancellation = lock.withLock {
+            let cancellation = self.cancellation
+            self.cancellation = nil
+            return cancellation
+        }
+        cancellation?()
+    }
+
+    deinit {
+        cancel()
+    }
 }
 
 private let rebuildIntroStorageKey = "last-intro-date"
@@ -310,46 +343,121 @@ private struct RebuildIntroDurableRecord {
     }
 }
 
-private final class RebuildIntroPersistenceCoordinator:
-    @unchecked Sendable {
-    static let shared = RebuildIntroPersistenceCoordinator()
+private final class RebuildIntroPersistenceCoordinator: @unchecked Sendable {
+    typealias Listener = @Sendable (String?, Int) -> Void
 
     private let stateLock = NSLock()
     private let writerLock = NSLock()
+    private let orderingQueue = DispatchQueue(
+        label: "com.h19h29.naymnaymlevelup.rebuild-intro-ordering",
+        qos: .utility
+    )
     private var activeWriteCount = 0
     private var nextRequestID = 0
     private var latestCommittedRequestID = 0
     private var reservedValues: [Int: String] = [:]
+    private var committedValue: String?
+    private var hasLoadedCommittedValue = false
+    private var version = 0
+    private var listeners: [UUID: Listener] = [:]
 
-    private init() {}
+    func readThrough(
+        authoritativeValue: () -> String?
+    ) -> String? {
+        let inFlight = stateLock.withLock {
+            (
+                isActive: activeWriteCount > 0,
+                value: committedValue,
+                isLoaded: hasLoadedCommittedValue
+            )
+        }
+        if inFlight.isActive {
+            return inFlight.isLoaded ? inFlight.value : nil
+        }
 
-    func beginWrite() {
+        guard writerLock.try() else {
+            let snapshot = stateLock.withLock {
+                (
+                    value: committedValue,
+                    isLoaded: hasLoadedCommittedValue
+                )
+            }
+            return snapshot.isLoaded ? snapshot.value : nil
+        }
+        defer { writerLock.unlock() }
+        let afterLock = stateLock.withLock {
+            (
+                isActive: activeWriteCount > 0,
+                value: committedValue,
+                isLoaded: hasLoadedCommittedValue
+            )
+        }
+        if afterLock.isActive {
+            return afterLock.isLoaded ? afterLock.value : nil
+        }
+        let value = authoritativeValue()
+        publishReadThrough(value)
+        return value
+    }
+
+    func observe(_ listener: @escaping Listener)
+        -> RebuildIntroDateStoreObservation {
+        let id = UUID()
+        let snapshot = stateLock.withLock {
+            listeners[id] = listener
+            return (
+                value: committedValue,
+                version: version,
+                isLoaded: hasLoadedCommittedValue
+            )
+        }
+        if snapshot.isLoaded {
+            listener(snapshot.value, snapshot.version)
+        }
+        return RebuildIntroDateStoreObservation { [weak self] in
+            _ = self?.stateLock.withLock {
+                self?.listeners.removeValue(forKey: id)
+            }
+        }
+    }
+
+    func withSerializedWrite<Result>(
+        _ body: () -> Result
+    ) -> Result {
         writerLock.lock()
         stateLock.withLock {
             activeWriteCount += 1
         }
-    }
-
-    func endWrite() {
-        stateLock.withLock {
-            activeWriteCount -= 1
+        defer {
+            stateLock.withLock {
+                activeWriteCount -= 1
+            }
+            writerLock.unlock()
         }
-        writerLock.unlock()
+        return body()
     }
 
-    func withStableRead<Result>(
-        _ body: (_ isWriteInFlight: Bool) -> Result
-    ) -> Result {
-        stateLock.withLock {
-            body(activeWriteCount > 0)
-        }
-    }
-
-    func reserveRequestID(value: String) -> Int {
-        stateLock.withLock {
-            nextRequestID += 1
-            reservedValues[nextRequestID] = value
-            return nextRequestID
+    func reserveRequestID(
+        value: String,
+        readPublicValue: @escaping @Sendable () -> String?
+    ) async -> (requestID: Int, publicValue: String?) {
+        await withCheckedContinuation { continuation in
+            orderingQueue.async { [self] in
+                let publicValue = readPublicValue()
+                let reservation = stateLock.withLock {
+                    if !hasLoadedCommittedValue {
+                        committedValue = publicValue
+                        hasLoadedCommittedValue = true
+                    }
+                    nextRequestID += 1
+                    reservedValues[nextRequestID] = value
+                    return (
+                        requestID: nextRequestID,
+                        publicValue: publicValue
+                    )
+                }
+                continuation.resume(returning: reservation)
+            }
         }
     }
 
@@ -371,12 +479,210 @@ private final class RebuildIntroPersistenceCoordinator:
         }
     }
 
-    func markCommitted(requestID: Int) {
-        stateLock.withLock {
-            latestCommittedRequestID = max(
-                latestCommittedRequestID,
-                requestID
+    func adoptAuthoritativeValue(_ value: String?) {
+        publishReadThrough(value)
+    }
+
+    func completeWithoutWrite(
+        requestID: Int,
+        value: String
+    ) -> Bool {
+        let result = orderingQueue.sync {
+            stateLock.withLock {
+                guard !isSupersededLocked(
+                    requestID: requestID,
+                    value: value
+                ) else {
+                    return (
+                        didComplete: false,
+                        listeners: [Listener](),
+                        version: 0
+                    )
+                }
+                latestCommittedRequestID = max(
+                    latestCommittedRequestID,
+                    requestID
+                )
+                guard
+                    !hasLoadedCommittedValue || committedValue != value
+                else {
+                    return (
+                        didComplete: true,
+                        listeners: [Listener](),
+                        version: 0
+                    )
+                }
+                committedValue = value
+                hasLoadedCommittedValue = true
+                version += 1
+                return (
+                    didComplete: true,
+                    listeners: Array(listeners.values),
+                    version: version
+                )
+            }
+        }
+        notify(
+            result.listeners,
+            value: value,
+            version: result.version
+        )
+        return result.didComplete
+    }
+
+    func publishAtomically(
+        requestID: Int,
+        value: String,
+        onClaimed: () -> Void = {},
+        publication: () -> Bool
+    ) -> Bool {
+        let result = orderingQueue.sync {
+            let canPublish = stateLock.withLock {
+                !isSupersededLocked(
+                    requestID: requestID,
+                    value: value
+                )
+            }
+            guard canPublish else {
+                return (
+                    didPublish: false,
+                    listeners: [Listener](),
+                    version: 0
+                )
+            }
+            onClaimed()
+            guard publication() else {
+                return (
+                    didPublish: false,
+                    listeners: [Listener](),
+                    version: 0
+                )
+            }
+            return stateLock.withLock {
+                latestCommittedRequestID = max(
+                    latestCommittedRequestID,
+                    requestID
+                )
+                committedValue = value
+                hasLoadedCommittedValue = true
+                version += 1
+                return (
+                    didPublish: true,
+                    listeners: Array(listeners.values),
+                    version: version
+                )
+            }
+        }
+        notify(
+            result.listeners,
+            value: value,
+            version: result.version
+        )
+        return result.didPublish
+    }
+
+    private func publishReadThrough(_ value: String?) {
+        var listenersToNotify: [Listener] = []
+        var publishedVersion = 0
+        let didChange = stateLock.withLock {
+            guard !hasLoadedCommittedValue || committedValue != value else {
+                return false
+            }
+            committedValue = value
+            hasLoadedCommittedValue = true
+            version += 1
+            publishedVersion = version
+            listenersToNotify = Array(listeners.values)
+            return true
+        }
+        guard didChange else { return }
+        notify(
+            listenersToNotify,
+            value: value,
+            version: publishedVersion
+        )
+    }
+
+    private func isSupersededLocked(
+        requestID: Int,
+        value: String
+    ) -> Bool {
+        requestID < latestCommittedRequestID
+            || reservedValues.contains {
+                $0.key > requestID && $0.value != value
+            }
+    }
+
+    private func notify(
+        _ listeners: [Listener],
+        value: String?,
+        version: Int
+    ) {
+        guard version > 0 else { return }
+        listeners.forEach { $0(value, version) }
+    }
+}
+
+private final class RebuildIntroPersistenceRegistry:
+    @unchecked Sendable {
+    static let shared = RebuildIntroPersistenceRegistry()
+
+    private final class ObjectEntry {
+        weak var defaults: UserDefaults?
+        let coordinator: RebuildIntroPersistenceCoordinator
+
+        init(
+            defaults: UserDefaults,
+            coordinator: RebuildIntroPersistenceCoordinator
+        ) {
+            self.defaults = defaults
+            self.coordinator = coordinator
+        }
+    }
+
+    private let lock = NSLock()
+    private let standardCoordinator =
+        RebuildIntroPersistenceCoordinator()
+    private var namedCoordinators:
+        [String: RebuildIntroPersistenceCoordinator] = [:]
+    private var objectEntries:
+        [ObjectIdentifier: ObjectEntry] = [:]
+
+    private init() {}
+
+    func coordinator(
+        defaults: UserDefaults,
+        scopeIdentifier: String?
+    ) -> RebuildIntroPersistenceCoordinator {
+        if let scopeIdentifier {
+            return lock.withLock {
+                if let coordinator =
+                    namedCoordinators[scopeIdentifier] {
+                    return coordinator
+                }
+                let coordinator =
+                    RebuildIntroPersistenceCoordinator()
+                namedCoordinators[scopeIdentifier] = coordinator
+                return coordinator
+            }
+        }
+        if defaults === UserDefaults.standard {
+            return standardCoordinator
+        }
+        let identifier = ObjectIdentifier(defaults)
+        return lock.withLock {
+            if
+                let entry = objectEntries[identifier],
+                entry.defaults === defaults
+            {
+                return entry.coordinator
+            }
+            let coordinator = RebuildIntroPersistenceCoordinator()
+            objectEntries[identifier] = ObjectEntry(
+                defaults: defaults,
+                coordinator: coordinator
             )
+            return coordinator
         }
     }
 }
@@ -409,161 +715,231 @@ final class UserDefaultsRebuildIntroDateStore:
     typealias Synchronize = @Sendable (UserDefaults) -> Bool
     typealias RequestReserved = @Sendable () -> Void
     typealias BeforePublication = @Sendable () -> Void
+    typealias PublicValueRead = @Sendable () -> Void
+    typealias PublicationClaimed = @Sendable () -> Void
 
     private let defaults: UserDefaults
     private let queue: DispatchQueue
     private let synchronize: Synchronize
     private let onRequestReserved: RequestReserved
     private let beforePublication: BeforePublication
+    private let onPublicValueRead: PublicValueRead
+    private let onPublicationClaimed: PublicationClaimed
+    private let coordinator: RebuildIntroPersistenceCoordinator
 
     init(
         defaults: UserDefaults,
+        scopeIdentifier: String? = nil,
         queue: DispatchQueue = DispatchQueue(
             label: "com.h19h29.naymnaymlevelup.rebuild-intro-persistence",
             qos: .utility
         ),
         synchronize: @escaping Synchronize = { $0.synchronize() },
         onRequestReserved: @escaping RequestReserved = {},
-        beforePublication: @escaping BeforePublication = {}
+        beforePublication: @escaping BeforePublication = {},
+        onPublicValueRead: @escaping PublicValueRead = {},
+        onPublicationClaimed: @escaping PublicationClaimed = {}
     ) {
         self.defaults = defaults
         self.queue = queue
         self.synchronize = synchronize
         self.onRequestReserved = onRequestReserved
         self.beforePublication = beforePublication
+        self.onPublicValueRead = onPublicValueRead
+        self.onPublicationClaimed = onPublicationClaimed
+        coordinator = RebuildIntroPersistenceRegistry.shared.coordinator(
+            defaults: defaults,
+            scopeIdentifier: scopeIdentifier
+        )
     }
 
     func read() -> String? {
-        RebuildIntroPersistenceCoordinator.shared.withStableRead {
-            isWriteInFlight in
-            guard !isWriteInFlight else {
-                return defaults.string(forKey: rebuildIntroStorageKey)
-            }
-            return authoritativeCommittedValue()
+        coordinator.readThrough {
+            authoritativeCommittedValue()
+        }
+    }
+
+    func observeCommittedValue(
+        _ listener: @escaping @Sendable (String?) -> Void
+    ) -> RebuildIntroDateStoreObservation? {
+        coordinator.observe { value, _ in
+            listener(value)
         }
     }
 
     func writeDurably(_ value: String) async -> Bool {
-        let coordinator = RebuildIntroPersistenceCoordinator.shared
-        let publicValueAtRequest = defaults.string(
-            forKey: rebuildIntroStorageKey
-        )
-        let requestID = coordinator.reserveRequestID(value: value)
+        let reservation = await coordinator.reserveRequestID(
+            value: value
+        ) { [self] in
+            let publicValue = self.defaults.string(
+                forKey: rebuildIntroStorageKey
+            )
+            self.onPublicValueRead()
+            return publicValue
+        }
+        let requestID = reservation.requestID
+        let publicValueAtRequest = reservation.publicValue
         onRequestReserved()
         return await withCheckedContinuation { continuation in
             queue.async { [self] in
-                coordinator.beginWrite()
-                defer {
-                    coordinator.finishRequest(requestID: requestID)
-                    coordinator.endWrite()
-                }
+                let didComplete = coordinator.withSerializedWrite {
+                    defer {
+                        coordinator.finishRequest(requestID: requestID)
+                    }
 
-                let authoritativeValue = authoritativeCommittedValue()
-                if authoritativeValue == value {
-                    coordinator.markCommitted(requestID: requestID)
-                    continuation.resume(returning: true)
-                    return
-                }
-                guard authoritativeValue == publicValueAtRequest else {
-                    continuation.resume(returning: false)
-                    return
-                }
-                guard !coordinator.isSuperseded(
-                    requestID: requestID,
-                    value: value
-                ) else {
-                    continuation.resume(returning: false)
-                    return
-                }
-
-                let previousPublicValue = defaults.string(
-                    forKey: rebuildIntroStorageKey
-                )
-                guard previousPublicValue == publicValueAtRequest else {
-                    continuation.resume(returning: false)
-                    return
-                }
-                let previousDurableRecord = defaults.object(
-                    forKey: rebuildIntroDurableStorageKey
-                )
-                let previousVersion = defaults.dictionary(
-                    forKey: rebuildIntroDurableStorageKey
-                )
-                .flatMap(RebuildIntroDurableRecord.init(dictionary:))?
-                .version ?? 0
-                let record = RebuildIntroDurableRecord(
-                    version: max(requestID, previousVersion + 1),
-                    state: .pending,
-                    value: value,
-                    previousPublicValue: previousPublicValue ?? ""
-                )
-                defaults.set(
-                    record.dictionary,
-                    forKey: rebuildIntroDurableStorageKey
-                )
-                let didSynchronize = synchronize(defaults)
-                let readBackRecord = defaults.dictionary(
-                    forKey: rebuildIntroDurableStorageKey
-                )
-                .flatMap(RebuildIntroDurableRecord.init(dictionary:))
-                let didReadBack = readBackRecord?.version == record.version
-                    && readBackRecord?.state == .pending
-                    && readBackRecord?.value == value
-                    && readBackRecord?.previousPublicValue
-                        == previousPublicValue ?? ""
-
-                guard didSynchronize, didReadBack else {
-                    if let previousDurableRecord {
-                        defaults.set(
-                            previousDurableRecord,
-                            forKey: rebuildIntroDurableStorageKey
-                        )
-                    } else {
-                        defaults.removeObject(
-                            forKey: rebuildIntroDurableStorageKey
+                    let authoritativeValue = authoritativeCommittedValue()
+                    coordinator.adoptAuthoritativeValue(
+                        authoritativeValue
+                    )
+                    if authoritativeValue == value {
+                        return coordinator.completeWithoutWrite(
+                            requestID: requestID,
+                            value: value
                         )
                     }
-                    _ = synchronize(defaults)
-                    continuation.resume(returning: false)
-                    return
-                }
+                    guard authoritativeValue == publicValueAtRequest else {
+                        return false
+                    }
+                    guard !coordinator.isSuperseded(
+                        requestID: requestID,
+                        value: value
+                    ) else {
+                        return false
+                    }
 
-                beforePublication()
-                guard !coordinator.isSuperseded(
-                    requestID: requestID,
-                    value: value
-                ) else {
-                    defaults.set(
-                        record.changingState(to: .superseded).dictionary,
+                    let previousPublicValue = defaults.string(
+                        forKey: rebuildIntroStorageKey
+                    )
+                    guard previousPublicValue == publicValueAtRequest else {
+                        return false
+                    }
+                    let previousDurableRecord = defaults.object(
                         forKey: rebuildIntroDurableStorageKey
                     )
-                    _ = synchronize(defaults)
-                    continuation.resume(returning: false)
-                    return
-                }
-                let publicValueBeforePublication = defaults.string(
-                    forKey: rebuildIntroStorageKey
-                )
-                guard
-                    publicValueBeforePublication == previousPublicValue
-                        || publicValueBeforePublication == value
-                else {
-                    defaults.set(
-                        record.changingState(to: .superseded).dictionary,
+                    let previousVersion = defaults.dictionary(
                         forKey: rebuildIntroDurableStorageKey
                     )
-                    _ = synchronize(defaults)
-                    continuation.resume(returning: false)
-                    return
+                    .flatMap(
+                        RebuildIntroDurableRecord.init(dictionary:)
+                    )?
+                    .version ?? 0
+                    let record = RebuildIntroDurableRecord(
+                        version: max(requestID, previousVersion + 1),
+                        state: .pending,
+                        value: value,
+                        previousPublicValue: previousPublicValue ?? ""
+                    )
+                    defaults.set(
+                        record.dictionary,
+                        forKey: rebuildIntroDurableStorageKey
+                    )
+                    let didSynchronize = synchronize(defaults)
+                    let readBackRecord = defaults.dictionary(
+                        forKey: rebuildIntroDurableStorageKey
+                    )
+                    .flatMap(
+                        RebuildIntroDurableRecord.init(dictionary:)
+                    )
+                    let didReadBack =
+                        readBackRecord?.version == record.version
+                        && readBackRecord?.state == .pending
+                        && readBackRecord?.value == value
+                        && readBackRecord?.previousPublicValue
+                            == previousPublicValue ?? ""
+
+                    guard didSynchronize, didReadBack else {
+                        if let previousDurableRecord {
+                            defaults.set(
+                                previousDurableRecord,
+                                forKey: rebuildIntroDurableStorageKey
+                            )
+                        } else {
+                            defaults.removeObject(
+                                forKey: rebuildIntroDurableStorageKey
+                            )
+                        }
+                        _ = synchronize(defaults)
+                        return false
+                    }
+
+                    beforePublication()
+                    let didPublish = coordinator.publishAtomically(
+                        requestID: requestID,
+                        value: value,
+                        onClaimed: onPublicationClaimed
+                    ) {
+                        let publicValueBeforePublication =
+                            defaults.string(
+                                forKey: rebuildIntroStorageKey
+                            )
+                        guard
+                            publicValueBeforePublication
+                                == previousPublicValue
+                                || publicValueBeforePublication == value
+                        else {
+                            return false
+                        }
+                        defaults.set(
+                            value,
+                            forKey: rebuildIntroStorageKey
+                        )
+                        defaults.set(
+                            record.changingState(
+                                to: .published
+                            ).dictionary,
+                            forKey: rebuildIntroDurableStorageKey
+                        )
+                        let didSynchronizePublication =
+                            synchronize(defaults)
+                        let didReadBackPublication =
+                            defaults.string(
+                                forKey: rebuildIntroStorageKey
+                            ) == value
+                            && defaults.dictionary(
+                                forKey: rebuildIntroDurableStorageKey
+                            )
+                            .flatMap(
+                                RebuildIntroDurableRecord.init(
+                                    dictionary:
+                                )
+                            )?
+                            .state == .published
+                        guard
+                            didSynchronizePublication,
+                            didReadBackPublication
+                        else {
+                            if let previousPublicValue {
+                                defaults.set(
+                                    previousPublicValue,
+                                    forKey: rebuildIntroStorageKey
+                                )
+                            } else {
+                                defaults.removeObject(
+                                    forKey: rebuildIntroStorageKey
+                                )
+                            }
+                            defaults.set(
+                                record.dictionary,
+                                forKey: rebuildIntroDurableStorageKey
+                            )
+                            _ = synchronize(defaults)
+                            return false
+                        }
+                        return true
+                    }
+                    guard didPublish else {
+                        defaults.set(
+                            record.changingState(
+                                to: .superseded
+                            ).dictionary,
+                            forKey: rebuildIntroDurableStorageKey
+                        )
+                        _ = synchronize(defaults)
+                        return false
+                    }
+                    return true
                 }
-                defaults.set(value, forKey: rebuildIntroStorageKey)
-                defaults.set(
-                    record.changingState(to: .published).dictionary,
-                    forKey: rebuildIntroDurableStorageKey
-                )
-                _ = synchronize(defaults)
-                coordinator.markCommitted(requestID: requestID)
-                continuation.resume(returning: true)
+                continuation.resume(returning: didComplete)
             }
         }
     }
@@ -627,6 +1003,7 @@ final class RebuildIntroDailyGate: ObservableObject {
     private let now: () -> Date
     private let dayKey: (Date) -> String
     private var completionAttempt: CompletionAttempt?
+    private var storeObservation: RebuildIntroDateStoreObservation?
 
     init(
         defaults: UserDefaults = .standard,
@@ -640,6 +1017,7 @@ final class RebuildIntroDailyGate: ObservableObject {
         self.dayKey = dayKey
         let today = dayKey(now())
         shouldPresent = store.read() != today
+        observeStore()
     }
 
     init(
@@ -654,6 +1032,7 @@ final class RebuildIntroDailyGate: ObservableObject {
         self.dayKey = dayKey
         let today = dayKey(now())
         shouldPresent = store.read() != today
+        observeStore()
     }
 
     var entryPhase: RebuildIntroEntryPhase {
@@ -709,6 +1088,17 @@ final class RebuildIntroDailyGate: ObservableObject {
             return await task.value
         }
     }
+
+    private func observeStore() {
+        storeObservation = store.observeCommittedValue {
+            [weak self] committedDay in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let today = dayKey(now())
+                shouldPresent = committedDay != today
+            }
+        }
+    }
 }
 
 @MainActor
@@ -753,5 +1143,20 @@ enum RebuildIntroDeepLinkCoordinator {
         guard await persistIntroCompletion() else { return nil }
         applyIntroCompletion()
         return route
+    }
+}
+
+enum RebuildIntroLegacyCompletionCoordinator {
+    @MainActor
+    static func complete(
+        currentDay: () -> String,
+        persist: (String) async -> Bool,
+        apply: () -> Void
+    ) async -> Bool {
+        let requestedDay = currentDay()
+        guard await persist(requestedDay) else { return false }
+        guard requestedDay == currentDay() else { return false }
+        apply()
+        return true
     }
 }

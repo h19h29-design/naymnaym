@@ -59,11 +59,18 @@ at the same three effective canvas widths.
 - Only that explicit `pending` transaction can repair its recorded predecessor
   after restart. `published` or `superseded` records never overwrite a later
   legacy `last-intro-date` write from another app flow.
-- Stable reads, process-wide writer serialization, and request ordering keep a
-  fresh store wrapper from accepting an in-memory candidate before the durable
-  operation returns. All production `last-intro-date` writers use this path.
-  A queued older-day request revalidates after taking the writer lock and again
-  at final publication, so a later reserved day cannot be overwritten.
+- Each preferences identity owns one shared completion scope with the
+  committed day, monotonic version, listeners, request reservations, and
+  writer serialization. Fresh store wrappers and gates therefore observe the
+  same committed state.
+- Snapshot plus reservation enters the shared ordered queue/mutex before any
+  per-store persistence queue. A saturated store queue cannot reorder an older
+  invocation behind a newer day, and MainActor/UI callers suspend instead of
+  blocking while final publication is in progress.
+- The last superseded check and public-key publication share that same ordered
+  boundary. Android keeps the actual commit on the injected I/O dispatcher;
+  both platforms use a nonblocking writer try-lock for synchronous reads, so a
+  reader cannot recover a pending record while its writer may still fail.
 - A durable-write failure restores the previous record without changing the
   public date, keeps the intro active, and exposes the accessible
   `저장 다시 시도` action without recreating the screen.
@@ -85,6 +92,9 @@ at the same three effective canvas widths.
 - Refresh cannot consume an in-memory value while persistence is pending.
   Completion rechecks the current local day after durable storage, so a
   midnight or time-zone rollover keeps the new day's intro active.
+- The legacy iOS RootView and onboarding flow capture the requested local day,
+  await this same persistence path, and recheck the current local day before
+  dismissing or advancing.
 - A valid iOS deep link is resolved first, awaits durable persistence, applies
   dismissal state, and only then routes. Invalid routes and persistence
   failures cannot dismiss or route. A deep link arriving during automatic
@@ -93,14 +103,14 @@ at the same three effective canvas widths.
 
 ## Final automated gate
 
-- iOS XcodeBuildMCP `test_sim`: `339 passed, 0 failed, 0 skipped`;
+- iOS XcodeBuildMCP `test_sim`: `344 passed, 0 failed, 0 skipped`;
   warnings `0`, errors `0`.
 - Android fresh ASCII build:
   - JVM: `157 passed, 0 failed`.
-  - API-35 emulator: `51 passed, 0 failed`.
+  - API-35 emulator: `56 passed, 0 failed`.
   - `assembleDebug`: PASS.
-- Task 6 focused: iOS `27/27`, Android JVM `15/15`, Android
-  instrumentation `18/18`.
+- Task 6 focused: iOS `32/32`, Android JVM `15/15`, Android
+  instrumentation `23/23`.
 - Android large-screen / 200% Task 6 rerun: `10 passed, 0 failed`.
 - Mascot validator: `77 parts: PASS`.
 - Native contract validator: PASS.

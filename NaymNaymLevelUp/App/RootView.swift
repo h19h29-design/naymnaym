@@ -116,10 +116,16 @@ struct RootView: View {
         guard !isPersistingLegacyIntro else { return false }
         isPersistingLegacyIntro = true
         defer { isPersistingLegacyIntro = false }
-        return await UserDefaultsRebuildIntroDateStore(
+        let store = UserDefaultsRebuildIntroDateStore(
             defaults: .standard
         )
-        .writeDurably(todayKey)
+        return await RebuildIntroLegacyCompletionCoordinator.complete(
+            currentDay: { todayKey },
+            persist: { day in
+                await store.writeDurably(day)
+            },
+            apply: {}
+        )
     }
 
     @MainActor

@@ -70,6 +70,11 @@ fun RebuildApp(database: RebuildDatabase) {
             ),
         )
     }
+    DisposableEffect(introEntry) {
+        onDispose {
+            introEntry.close()
+        }
+    }
     DisposableEffect(lifecycleOwner, introEntry) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
