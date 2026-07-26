@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct TodayForestView: View {
-    @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var viewModel: TodayForestViewModel
+    let growthPolicy: GrowthPolicy
     @State private var isShowingRecorder = false
 
     var body: some View {
@@ -60,25 +60,11 @@ struct TodayForestView: View {
     private var characterStage: some View {
         VStack(spacing: RebuildDesignTokens.spacing[2]) {
             GeometryReader { proxy in
-                Group {
-                    if reduceMotion {
-                        GrowthCharacterView(
-                            level: appState.progress.level,
-                            size: 188,
-                            pose: .idle,
-                            blendsCreamBackground: true
-                        )
-                    } else {
-                        LottieMascotView(state: mascotState) {
-                            GrowthCharacterView(
-                                level: appState.progress.level,
-                                size: 188,
-                                pose: characterPose,
-                                blendsCreamBackground: true
-                            )
-                        }
-                    }
-                }
+                MascotRigView(
+                    level: currentLevel,
+                    state: viewModel.motion,
+                    reduceMotion: reduceMotion
+                )
                 .frame(
                     width: proxy.size.width,
                     height: proxy.size.height,
@@ -98,7 +84,7 @@ struct TodayForestView: View {
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity)
-        .background(RebuildDesignTokens.cream50.opacity(0.84))
+        .background(RebuildDesignTokens.cream50)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[2],
@@ -225,7 +211,9 @@ struct TodayForestView: View {
                 Text("현재 성장")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(RebuildDesignTokens.muted600)
-                Text("레벨 \(appState.progress.level) · 총 \(viewModel.totalXP) XP")
+                Text(
+                    "레벨 \(currentLevel) · \(growthPolicy.title(for: currentLevel)) · 총 \(viewModel.totalXP) XP"
+                )
                     .font(RebuildDesignTokens.headlineFont)
                     .foregroundStyle(RebuildDesignTokens.ink900)
                     .fixedSize(horizontal: false, vertical: true)
@@ -234,7 +222,7 @@ struct TodayForestView: View {
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RebuildDesignTokens.leaf300.opacity(0.28))
+        .background(RebuildDesignTokens.cream100)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[1],
@@ -244,21 +232,8 @@ struct TodayForestView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var mascotState: MascotAnimationState {
-        switch viewModel.motion {
-        case .mealSuccess: return .success
-        case .levelUp: return .levelup
-        case .comfort: return .wave
-        case .idle, .tapReaction, .reducedMotion: return .idle
-        }
-    }
-
-    private var characterPose: GrowthCharacterPose {
-        switch viewModel.motion {
-        case .mealSuccess, .levelUp: return .celebrate
-        case .comfort, .tapReaction: return .wave
-        case .idle, .reducedMotion: return .idle
-        }
+    private var currentLevel: Int {
+        growthPolicy.level(totalXP: viewModel.totalXP)
     }
 
     private var characterMessage: String {

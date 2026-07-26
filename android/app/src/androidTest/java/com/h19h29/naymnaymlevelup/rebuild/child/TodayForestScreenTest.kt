@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.unit.Density
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -19,6 +20,7 @@ import com.h19h29.naymnaymlevelup.rebuild.meal.NutritionInfo
 import com.h19h29.naymnaymlevelup.rebuild.meal.RecordMealCommand
 import com.h19h29.naymnaymlevelup.rebuild.meal.RecordMealResult
 import com.h19h29.naymnaymlevelup.rebuild.meal.School
+import com.h19h29.naymnaymlevelup.rebuild.growth.GrowthPolicyLoader
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTheme
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
@@ -67,7 +69,14 @@ class TodayForestScreenTest {
                 LocalDensity provides Density(density.density, fontScale = 1.5f),
             ) {
                 RebuildTheme {
-                    TodayForestScreen(viewModel)
+                    TodayForestScreen(
+                        viewModel = viewModel,
+                        growthPolicy = GrowthPolicyLoader.load(
+                            ApplicationProvider.getApplicationContext<
+                                android.content.Context
+                            >().assets,
+                        ),
+                    )
                 }
             }
         }
@@ -78,46 +87,58 @@ class TodayForestScreenTest {
     }
 
     @Test
-    fun freshViewModelReadsPersistedRoomXpTruthfully() = runBlocking {
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val database = Room.inMemoryDatabaseBuilder(
-            context,
-            RebuildDatabase::class.java,
-        ).build()
-        try {
-            database.progressDao().insert(
-                ProgressEventEntity(
-                    id = "persisted-positive",
-                    amount = 734,
-                    occurredAtEpochMillis = 1,
-                    sourceRecordId = null,
-                ),
-            )
-            database.progressDao().insert(
-                ProgressEventEntity(
-                    id = "persisted-negative",
-                    amount = -500,
-                    occurredAtEpochMillis = 2,
-                    sourceRecordId = null,
-                ),
-            )
-            val viewModel = TodayForestViewModel(
-                repository = object : TodayMealRepository {
-                    override suspend fun currentState(date: String) = MealLoadState.Empty
-                    override suspend fun refresh(date: LocalDate, school: School) = Unit
-                },
-                recorder = TodayMealRecorder { error("Not used") },
-                progressProvider = RoomTodayProgressProvider(database),
-                school = null,
-                allergyCodes = emptyList(),
-                date = LocalDate.of(2026, 7, 25),
-            )
+    fun freshViewModelReadsPersistedRoomXpTruthfully() {
+        runBlocking {
+            val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+            val database = Room.inMemoryDatabaseBuilder(
+                context,
+                RebuildDatabase::class.java,
+            ).build()
+            try {
+                database.progressDao().insert(
+                    ProgressEventEntity(
+                        id = "persisted-positive",
+                        amount = 734,
+                        occurredAtEpochMillis = 1,
+                        sourceRecordId = null,
+                    ),
+                )
+                database.progressDao().insert(
+                    ProgressEventEntity(
+                        id = "persisted-negative",
+                        amount = -500,
+                        occurredAtEpochMillis = 2,
+                        sourceRecordId = null,
+                    ),
+                )
+                val viewModel = TodayForestViewModel(
+                    repository = object : TodayMealRepository {
+                        override suspend fun currentState(date: String) = MealLoadState.Empty
+                        override suspend fun refresh(date: LocalDate, school: School) = Unit
+                    },
+                    recorder = TodayMealRecorder { error("Not used") },
+                    progressProvider = RoomTodayProgressProvider(database),
+                    school = null,
+                    allergyCodes = emptyList(),
+                    date = LocalDate.of(2026, 7, 25),
+                )
 
-            viewModel.load()
+                viewModel.load()
 
-            assertEquals(734, viewModel.state.value.totalXP)
-        } finally {
-            database.close()
+                assertEquals(734, viewModel.state.value.totalXP)
+                composeRule.setContent {
+                    RebuildTheme {
+                        TodayForestScreen(
+                            viewModel = viewModel,
+                            growthPolicy = GrowthPolicyLoader.load(context.assets),
+                        )
+                    }
+                }
+                composeRule.onNodeWithContentDescription("레벨 6 냠냠 다람쥐")
+                    .assertIsDisplayed()
+            } finally {
+                database.close()
+            }
         }
     }
 

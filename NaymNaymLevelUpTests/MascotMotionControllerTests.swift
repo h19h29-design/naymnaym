@@ -255,6 +255,37 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertTrue(first.celebrate === second.celebrate)
     }
 
+    func testRestOnlyLoaderVerifiesAndCachesWithoutDecodingAnimationFrames() throws {
+        let store = MascotRigAssetStore()
+
+        let first = try store.restImage(level: 4, bundle: .main)
+        let second = try store.restImage(level: 4, bundle: .main)
+
+        XCTAssertEqual(first.size.width, 1254, accuracy: 0.001)
+        XCTAssertEqual(first.size.height, 1254, accuracy: 0.001)
+        XCTAssertTrue(first === second)
+        XCTAssertEqual(store.cachedRestImageCount, 1)
+        XCTAssertEqual(store.cachedRigImageSetCount, 0)
+    }
+
+    func testRestArtLoaderExposesFailureWithoutLegacyFallback() {
+        let loader = MascotRestArtLoader(
+            level: 3,
+            loadImage: { _, _ in
+                throw MascotRigAssetError.missingAsset("composite-rest")
+            }
+        )
+
+        loader.load()
+
+        XCTAssertNil(loader.image)
+        XCTAssertFalse(loader.isLoading)
+        XCTAssertEqual(
+            loader.loadError,
+            .missingAsset("composite-rest")
+        )
+    }
+
     func testSemanticFallbackLayersAreVerifiedAndCached() throws {
         let store = MascotRigAssetStore()
 
@@ -265,6 +296,48 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertEqual(first.map(\.part), MascotRigSemanticPart.allCases)
         for (firstLayer, secondLayer) in zip(first, second) {
             XCTAssertTrue(firstLayer.image === secondLayer.image)
+        }
+    }
+
+    func testAllSevenLevelsHaveDistinctExplicitKeyframesAndFallbacks() throws {
+        let definitions = MascotRigLevelCatalog.definitions
+
+        XCTAssertEqual(Array(definitions.keys).sorted(), Array(1...7))
+        XCTAssertEqual(
+            Set(definitions.values.map(\.rest.sha256)).count,
+            7
+        )
+        XCTAssertEqual(
+            Set(definitions.values.map(\.blink.sha256)).count,
+            7
+        )
+        XCTAssertEqual(
+            Set(definitions.values.map(\.celebrate.sha256)).count,
+            7
+        )
+        for part in MascotRigSemanticPart.allCases {
+            XCTAssertEqual(
+                Set(
+                    definitions.values.map {
+                        $0.semanticParts[part]!.sha256
+                    }
+                ).count,
+                7,
+                "Every growth level needs a distinct \(part) fallback"
+            )
+        }
+
+        let store = MascotRigAssetStore()
+        for level in [1, 4, 7] {
+            XCTAssertEqual(
+                try store.images(level: level, bundle: .main)
+                    .verifiedKeyframeCount,
+                3
+            )
+            XCTAssertEqual(
+                try store.fallbackLayers(level: level, bundle: .main).count,
+                11
+            )
         }
     }
 }

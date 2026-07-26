@@ -192,6 +192,16 @@ interface ProgressDao {
     @Query("SELECT * FROM progress_events WHERE id = :id LIMIT 1")
     suspend fun find(id: String): ProgressEventEntity?
 
+    @Query(
+        """
+        SELECT * FROM progress_events
+        WHERE amount > 0
+        ORDER BY occurredAtEpochMillis DESC, id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun recentPositive(limit: Int): List<ProgressEventEntity>
+
     @Query("SELECT COUNT(*) FROM progress_events WHERE id IN (:ids)")
     suspend fun count(ids: List<String>): Int
 }

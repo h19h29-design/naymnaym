@@ -35,6 +35,47 @@ EXPECTED_RECORD_IDENTITIES = [
 
 
 class NativeRebuildContractTests(unittest.TestCase):
+    def test_growth_policy_preserves_shipped_thresholds_and_titles(self):
+        policy = json.loads((CONTRACTS / "growth-policy.json").read_text())
+
+        self.assertEqual(policy["version"], 1)
+        self.assertEqual(
+            policy["thresholds"],
+            [0, 80, 180, 320, 500, 720, 1000],
+        )
+        self.assertEqual(
+            policy["titles"],
+            [
+                "냠냠 새싹",
+                "한 입 탐험가",
+                "냠냠 용사",
+                "편식 몬스터 사냥꾼",
+                "급식 히어로",
+                "영양 마스터",
+                "레전드 냠냠러",
+            ],
+        )
+
+    def test_validator_rejects_growth_policy_drift(self):
+        policy = {
+            "version": 1,
+            "thresholds": [0, 80, 180, 320, 500, 720, 720],
+            "titles": [
+                "냠냠 새싹",
+                "한 입 탐험가",
+                "냠냠 용사",
+                "편식 몬스터 사냥꾼",
+                "급식 히어로",
+                "영양 마스터",
+                "영양 마스터",
+            ],
+        }
+
+        result = self._run_validator_with(growth_policy=policy)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("growth-policy.json", result.stderr)
+
     def test_xp_policy_preserves_existing_values(self):
         policy = json.loads((CONTRACTS / "xp-policy.json").read_text())
 
@@ -357,6 +398,7 @@ class NativeRebuildContractTests(unittest.TestCase):
         nutrition_rules=None,
         xp_policy=None,
         meal_loop_fixtures=None,
+        growth_policy=None,
     ):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project = pathlib.Path(temporary_directory)
@@ -388,6 +430,10 @@ class NativeRebuildContractTests(unittest.TestCase):
             if meal_loop_fixtures is not None:
                 (project / "contracts/native-rebuild/v1/meal-loop-fixtures.json").write_text(
                     json.dumps(meal_loop_fixtures), encoding="utf-8"
+                )
+            if growth_policy is not None:
+                (project / "contracts/native-rebuild/v1/growth-policy.json").write_text(
+                    json.dumps(growth_policy), encoding="utf-8"
                 )
             return subprocess.run(
                 [sys.executable, "scripts/validate-native-rebuild-contracts.py"],

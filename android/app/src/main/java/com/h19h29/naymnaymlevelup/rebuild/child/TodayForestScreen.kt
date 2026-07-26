@@ -41,11 +41,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.h19h29.naymnaymlevelup.rebuild.mascot.MascotRig
 import com.h19h29.naymnaymlevelup.rebuild.mascot.toMascotMotionState
+import com.h19h29.naymnaymlevelup.rebuild.growth.GrowthPolicy
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
 
 @Composable
 fun TodayForestScreen(
     viewModel: TodayForestViewModel,
+    growthPolicy: GrowthPolicy,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -93,7 +95,7 @@ fun TodayForestScreen(
         }
 
         item {
-            CharacterStage(state)
+            CharacterStage(state, growthPolicy)
         }
 
         item {
@@ -137,7 +139,11 @@ fun TodayForestScreen(
 }
 
 @Composable
-private fun CharacterStage(state: TodayForestUiState) {
+private fun CharacterStage(
+    state: TodayForestUiState,
+    growthPolicy: GrowthPolicy,
+) {
+    val level = growthPolicy.level(state.totalXP)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -156,11 +162,18 @@ private fun CharacterStage(state: TodayForestUiState) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             MascotRig(
-                level = 1,
+                level = level,
                 state = state.motion.toMascotMotionState(),
                 reduceMotion = false,
                 playbackRevision = state.motionRevision,
                 modifier = Modifier.size(112.dp),
+            )
+            Text(
+                text = "레벨 $level · ${growthPolicy.title(level)}",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(RebuildTokens.Forest700),
+                textAlign = TextAlign.Center,
             )
             Text(
                 text = characterMessage(state),

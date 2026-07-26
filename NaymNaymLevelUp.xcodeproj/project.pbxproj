@@ -87,6 +87,11 @@
 		C20000000000000000000078 /* MascotMotionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000082 /* MascotMotionController.swift */; };
 		C20000000000000000000079 /* MascotRig in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000083 /* MascotRig */; };
 		C20000000000000000000080 /* MascotRigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000084 /* MascotRigView.swift */; };
+		C20000000000000000000081 /* GrowthPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000085 /* GrowthPolicyTests.swift */; };
+		C20000000000000000000082 /* GrowthRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000086 /* GrowthRepositoryTests.swift */; };
+		C20000000000000000000083 /* GrowthDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000087 /* GrowthDomain.swift */; };
+		C20000000000000000000084 /* GrowthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000088 /* GrowthView.swift */; };
+		C20000000000000000000085 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000089 /* CollectionView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -184,6 +189,11 @@
 		C10000000000000000000082 /* MascotMotionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Mascot/MascotMotionController.swift; sourceTree = "<group>"; };
 		C10000000000000000000083 /* MascotRig */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/MascotRig; sourceTree = "<group>"; };
 		C10000000000000000000084 /* MascotRigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Mascot/MascotRigView.swift; sourceTree = "<group>"; };
+		C10000000000000000000085 /* GrowthPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrowthPolicyTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000086 /* GrowthRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrowthRepositoryTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000087 /* GrowthDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Growth/GrowthDomain.swift; sourceTree = "<group>"; };
+		C10000000000000000000088 /* GrowthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Growth/GrowthView.swift; sourceTree = "<group>"; };
+		C10000000000000000000089 /* CollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Growth/CollectionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -278,6 +288,9 @@
 				C10000000000000000000081 /* MascotRigModel.swift */,
 				C10000000000000000000082 /* MascotMotionController.swift */,
 				C10000000000000000000084 /* MascotRigView.swift */,
+				C10000000000000000000087 /* GrowthDomain.swift */,
+				C10000000000000000000088 /* GrowthView.swift */,
+				C10000000000000000000089 /* CollectionView.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
@@ -306,6 +319,8 @@
 				C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */,
 				C10000000000000000000075 /* TodayForestViewModelTests.swift */,
 				C10000000000000000000080 /* MascotMotionControllerTests.swift */,
+				C10000000000000000000085 /* GrowthPolicyTests.swift */,
+				C10000000000000000000086 /* GrowthRepositoryTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -496,6 +511,9 @@
 				C20000000000000000000077 /* MascotRigModel.swift in Sources */,
 				C20000000000000000000078 /* MascotMotionController.swift in Sources */,
 				C20000000000000000000080 /* MascotRigView.swift in Sources */,
+				C20000000000000000000083 /* GrowthDomain.swift in Sources */,
+				C20000000000000000000084 /* GrowthView.swift in Sources */,
+				C20000000000000000000085 /* CollectionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -518,6 +536,8 @@
 				C20000000000000000000070 /* RebuildOnboardingViewModelTests.swift in Sources */,
 				C20000000000000000000071 /* TodayForestViewModelTests.swift in Sources */,
 				C20000000000000000000076 /* MascotMotionControllerTests.swift in Sources */,
+				C20000000000000000000081 /* GrowthPolicyTests.swift in Sources */,
+				C20000000000000000000082 /* GrowthRepositoryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

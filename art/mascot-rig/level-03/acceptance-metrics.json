@@ -1,0 +1,83 @@
+{
+  "level": 3,
+  "canvas": {
+    "width": 1254,
+    "height": 1254,
+    "mode": "RGBA"
+  },
+  "anchor": {
+    "x": 627,
+    "y": 1128
+  },
+  "sourceSha256": "4206e8ad0fd2b4822805ac1cb9468f6779af6d25e36a00137e4289d399e65ae5",
+  "referenceVsRestChangedPixels": 0,
+  "blinkAcceptance": {
+    "outsideEyeRoiChangedPixels": 0,
+    "immutableSourceMouthChangedPixels": 0,
+    "imageGenSourceSha256": "25bab2c928298cbef1102348c35a92b3a0850f3e26c2f4a77e89d89f80511510"
+  },
+  "neutralMouthAcceptance": {
+    "differsFromSmilePixels": 11513,
+    "imageGenSourceSha256": "2cdbbf7c749d58f1aa33c5be74fd2cd9f28be270e3750f45ac7f723b1a7b463a"
+  },
+  "parts": {
+    "tailBack": {
+      "sha256": "a947d147d762b5a6e1f50057da134902716e807d11c4f22f6ffc0cde5f7cf1d1",
+      "nonzeroAlphaPixels": 30060
+    },
+    "body": {
+      "sha256": "725fdd572f8b6f8580675902cb5c9416e0d409f2981fa5f183b72af6939cf0f0",
+      "nonzeroAlphaPixels": 278944
+    },
+    "scarf": {
+      "sha256": "9a84c9d891b7d3ecb9388caeebcd440c3109f74cecefd20ee0eb0fa74b358aec",
+      "nonzeroAlphaPixels": 52710
+    },
+    "head": {
+      "sha256": "a120468a8534af27cf610340dd87a05b57bbfa8e2b1c4fd4d82eed7590085ce6",
+      "nonzeroAlphaPixels": 176036
+    },
+    "armLeft": {
+      "sha256": "55c032d79e74ec67fcb40aeb9be92a2f79dd833eebfc7d94470043d030700b88",
+      "nonzeroAlphaPixels": 40860
+    },
+    "armRight": {
+      "sha256": "a75fb9592c5a24d5cc7edaaac7762c27c602c5e359449b101dce556b934e89b7",
+      "nonzeroAlphaPixels": 97962
+    },
+    "eyesOpen": {
+      "sha256": "2963be9b10b5c84b372d6396c5cda7307588efeb1d62d7c624568b4011d24fe6",
+      "nonzeroAlphaPixels": 89909
+    },
+    "eyesClosed": {
+      "sha256": "1bbfc527b5fa39d4aa9e12d255c556f8da9b417751492077e715bd1d34d85298",
+      "nonzeroAlphaPixels": 89909
+    },
+    "mouthNeutral": {
+      "sha256": "06d7cfb2024fb69a33af4d6db5b0436e1227e73cca162ad03dec36282ab03295",
+      "nonzeroAlphaPixels": 11596
+    },
+    "mouthSmile": {
+      "sha256": "e8e2939d90147f4076b45680e1860f9f9487da57f74b0aae163d76bd3cd9c6b1",
+      "nonzeroAlphaPixels": 11596
+    },
+    "sprout": {
+      "sha256": "c4069cfbad90e2093dc4db97494ea12278f42db322bf12ae3cc1a2cd8a22f701",
+      "nonzeroAlphaPixels": 24170
+    }
+  },
+  "poses": {
+    "rest": "exact immutable source pixels",
+    "blink": "closed eyes only; source mouth is byte-for-byte unchanged",
+    "celebrate": {
+      "renderMethod": "semantic part-weight-map soft skinning keyframe",
+      "armLeftDegrees": 12,
+      "armRightDegrees": -12,
+      "tailDegrees": 8,
+      "bodyScale": [
+        1.04,
+        0.96
+      ]
+    }
+  }
+}

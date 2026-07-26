@@ -1485,22 +1485,12 @@ struct PlayerProgress: Codable, Hashable {
 }
 
 enum GrowthCharacterAssets {
-    private static let stageTitles = [
-        "새싹",
-        "꼬마 모험가",
-        "한입 탐험가",
-        "숲길 도전자",
-        "냠냠 용사",
-        "숲의 수호자",
-        "레전드 냠냠러"
-    ]
-
     static func atlasCell(for level: Int) -> Int {
-        min(max(level, 1), stageTitles.count) - 1
+        min(max(level, 1), PlayerProgress.levelTitles.count) - 1
     }
 
     static func stageTitle(for level: Int) -> String {
-        stageTitles[atlasCell(for: level)]
+        PlayerProgress.title(for: level)
     }
 }
 

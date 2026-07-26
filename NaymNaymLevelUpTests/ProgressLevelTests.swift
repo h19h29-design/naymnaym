@@ -35,12 +35,12 @@ final class ProgressLevelTests: XCTestCase {
 
     func testGrowthCharacterAssetsClampLevelsAndResolveEveryStage() {
         let expectedTitles = [
-            "새싹",
-            "꼬마 모험가",
-            "한입 탐험가",
-            "숲길 도전자",
+            "냠냠 새싹",
+            "한 입 탐험가",
             "냠냠 용사",
-            "숲의 수호자",
+            "편식 몬스터 사냥꾼",
+            "급식 히어로",
+            "영양 마스터",
             "레전드 냠냠러"
         ]
 

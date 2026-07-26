@@ -107,6 +107,16 @@ EXPECTED_STATUS_XP = {
     "allergyAvoided": 8,
 }
 EXPECTED_CAPS = {"base": 50, "challengeBonus": 70, "total": 100}
+EXPECTED_GROWTH_THRESHOLDS = [0, 80, 180, 320, 500, 720, 1000]
+EXPECTED_GROWTH_TITLES = [
+    "냠냠 새싹",
+    "한 입 탐험가",
+    "냠냠 용사",
+    "편식 몬스터 사냥꾼",
+    "급식 히어로",
+    "영양 마스터",
+    "레전드 냠냠러",
+]
 SAFE_EDUCATION_NOTICE = "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
 CHILD_OMISSION_COPY = "영양소를 조금 놓칠 수 있어요."
 
@@ -399,6 +409,50 @@ def validate_xp_policy(policy, eating_statuses, recordable_statuses):
     return errors
 
 
+def validate_growth_policy(policy):
+    if not isinstance(policy, dict):
+        return ["growth-policy.json: root must be an object"]
+
+    errors = []
+    if set(policy) != {"version", "thresholds", "titles"}:
+        errors.append(
+            "growth-policy.json: must contain only version, thresholds, and titles"
+        )
+    if policy.get("version") != 1 or not is_integer(policy.get("version")):
+        errors.append("growth-policy.json: version must be exactly integer 1")
+
+    thresholds = policy.get("thresholds")
+    if thresholds != EXPECTED_GROWTH_THRESHOLDS:
+        errors.append(
+            "growth-policy.json: thresholds must match the exact shipped values"
+        )
+    if (
+        not isinstance(thresholds, list)
+        or len(thresholds) != 7
+        or not all(is_integer(value) and value >= 0 for value in thresholds)
+        or any(left >= right for left, right in zip(thresholds, thresholds[1:]))
+    ):
+        errors.append(
+            "growth-policy.json: thresholds must be seven increasing non-negative integers"
+        )
+
+    titles = policy.get("titles")
+    if titles != EXPECTED_GROWTH_TITLES:
+        errors.append(
+            "growth-policy.json: titles must match PlayerProgress.levelTitles"
+        )
+    if (
+        not isinstance(titles, list)
+        or len(titles) != 7
+        or not all(isinstance(value, str) and value for value in titles)
+        or len(set(titles)) != 7
+    ):
+        errors.append(
+            "growth-policy.json: titles must be seven unique non-empty strings"
+        )
+    return errors
+
+
 def validate_meal_loop_fixtures(fixtures, rules, policy):
     if not isinstance(fixtures, dict):
         return ["meal-loop-fixtures.json: root must be an object"]
@@ -523,6 +577,7 @@ def main():
         meal_loop_fixtures = load_json(CONTRACTS / "meal-loop-fixtures.json")
         mascot_rig = load_json(CONTRACTS / "mascot-rig.json")
         mascot_motion = load_json(CONTRACTS / "mascot-motion.json")
+        growth_policy = load_json(CONTRACTS / "growth-policy.json")
     except ValueError as error:
         print(f"native-rebuild-contract-validation: FAIL\n{error}", file=sys.stderr)
         return 1
@@ -537,6 +592,7 @@ def main():
         contract.get("recordableEatingStatuses", []),
     ))
     errors.extend(validate_meal_loop_fixtures(meal_loop_fixtures, nutrition_rules, xp_policy))
+    errors.extend(validate_growth_policy(growth_policy))
     mascot_validator = runpy.run_path(
         str(ROOT / "scripts/validate-mascot-rig.py")
     )

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -30,6 +31,14 @@ MOTIONS = {
     "comfort": {"durationMs": 1200, "loop": False},
     "reducedMotion": {"durationMs": 250, "loop": False},
 }
+ACCEPTANCE_FILES = [
+    "reference-flat.png",
+    "composite-rest.png",
+    "composite-blink.png",
+    "composite-celebrate.png",
+    "source-notes.md",
+    "acceptance-metrics.json",
+]
 
 
 class MascotRigValidatorTests(unittest.TestCase):
@@ -45,7 +54,7 @@ class MascotRigValidatorTests(unittest.TestCase):
         self.assertEqual(len(diagnostics), 78)
         self.assertNotIn("Traceback", result.stderr)
 
-    def test_accepts_seven_levels_of_header_only_rgba_png_fixtures(self):
+    def test_accepts_seven_complete_unique_growth_rig_fixtures(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             asset_root = pathlib.Path(temporary_directory)
             self._populate_valid_assets(asset_root)
@@ -55,6 +64,55 @@ class MascotRigValidatorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "77 parts: PASS\n")
         self.assertEqual(result.stderr, "")
+
+    def test_rejects_reused_part_files_across_growth_levels(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            asset_root = pathlib.Path(temporary_directory)
+            self._populate_valid_assets(
+                asset_root,
+                unique_parts=False,
+            )
+
+            result = self._run_validator(asset_root)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "growth levels must not reuse identical semantic part files",
+            result.stderr,
+        )
+
+    def test_rejects_missing_acceptance_composites_and_reference_sources(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            asset_root = pathlib.Path(temporary_directory)
+            self._populate_valid_assets(asset_root)
+            for level in range(1, 8):
+                directory = asset_root / f"level-{level:02d}"
+                for name in ACCEPTANCE_FILES:
+                    (directory / name).unlink()
+
+            result = self._run_validator(asset_root)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("level-01/reference-flat.png: missing", result.stderr)
+        self.assertIn("level-07/composite-celebrate.png: missing", result.stderr)
+
+    def test_rejects_visually_identical_neutral_and_smile_mouths(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            asset_root = pathlib.Path(temporary_directory)
+            self._populate_valid_assets(asset_root)
+            directory = asset_root / "level-03"
+            shutil.copy2(
+                directory / "mouthSmile.png",
+                directory / "mouthNeutral.png",
+            )
+
+            result = self._run_validator(asset_root)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "level-03/mouthNeutral.png: must differ meaningfully",
+            result.stderr,
+        )
 
     def test_reports_all_signature_dimension_color_and_missing_errors(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -254,6 +312,9 @@ class MascotRigValidatorTests(unittest.TestCase):
         ):
             if path is not None:
                 arguments.extend((flag, str(path)))
+        fixture_sources = pathlib.Path(asset_root) / "fixture-sources"
+        if fixture_sources.is_dir():
+            arguments.extend(("--source-root", str(fixture_sources)))
         return subprocess.run(
             arguments,
             cwd=ROOT,
@@ -261,12 +322,99 @@ class MascotRigValidatorTests(unittest.TestCase):
             text=True,
         )
 
-    def _populate_valid_assets(self, asset_root):
+    def _populate_valid_assets(self, asset_root, unique_parts=True):
+        source_root = asset_root / "fixture-sources"
         for level in range(1, 8):
-            for part in PARTS:
-                self._write_png(
-                    asset_root / f"level-{level:02d}" / f"{part}.png"
+            directory = asset_root / f"level-{level:02d}"
+            for part_index, part in enumerate(PARTS):
+                level_color = level if unique_parts else 1
+                self._write_rgba_png(
+                    directory / f"{part}.png",
+                    (
+                        (level_color * 29 + part_index * 7) % 255,
+                        (level_color * 41 + part_index * 11) % 255,
+                        (level_color * 53 + part_index * 13) % 255,
+                        255,
+                    ),
                 )
+            source = (
+                source_root
+                / f"Squirrel_Growth_Level_{level}.imageset"
+                / f"Squirrel_Growth_Level_{level}.png"
+            )
+            self._write_rgba_png(
+                source,
+                (level * 20, level * 23, level * 27, 255),
+            )
+            shutil.copy2(source, directory / "reference-flat.png")
+            shutil.copy2(source, directory / "composite-rest.png")
+            self._write_rgba_png(
+                directory / "composite-blink.png",
+                (level * 20, level * 23, level * 27, 255),
+                edits={(450, 450): (1, 2, 3, 255)},
+            )
+            self._write_rgba_png(
+                directory / "composite-celebrate.png",
+                (level * 20, level * 23, level * 27, 255),
+                edits={(600, 700): (3, 2, 1, 255)},
+            )
+            (directory / "source-notes.md").write_text(
+                "fixture\n",
+                encoding="utf-8",
+            )
+            (directory / "acceptance-metrics.json").write_text(
+                json.dumps(
+                    {
+                        "parts": {
+                            "mouthNeutral": {
+                                "nonzeroAlphaPixels": 1254 * 1254
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            if level >= 2:
+                (directory / "blink-imagegen-source.png").write_bytes(
+                    b"fixture provenance"
+                )
+                (
+                    directory / "mouth-neutral-imagegen-source.png"
+                ).write_bytes(b"fixture provenance")
+
+    def _write_rgba_png(self, path, color, edits=None):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        width = height = 1254
+        row = bytearray([0]) + bytearray(color) * width
+        raw = bytearray(row * height)
+        for (x, y), edit_color in (edits or {}).items():
+            offset = y * (width * 4 + 1) + 1 + x * 4
+            raw[offset : offset + 4] = bytes(edit_color)
+        ihdr = struct.pack(
+            ">IIBBBBB",
+            width,
+            height,
+            8,
+            6,
+            0,
+            0,
+            0,
+        )
+
+        def chunk(name, data):
+            payload = name + data
+            return (
+                struct.pack(">I", len(data))
+                + payload
+                + struct.pack(">I", zlib.crc32(payload) & 0xFFFFFFFF)
+            )
+
+        path.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(bytes(raw), level=9))
+            + chunk(b"IEND", b"")
+        )
 
     def _write_png(
         self,

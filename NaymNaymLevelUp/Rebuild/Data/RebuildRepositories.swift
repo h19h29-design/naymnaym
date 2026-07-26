@@ -187,6 +187,32 @@ final class RebuildProgressRepository {
         }
     }
 
+    func recentPositiveEvents(limit: Int) throws -> [RebuildProgressEvent] {
+        let boundedLimit = min(max(limit, 0), 20)
+        guard boundedLimit > 0 else {
+            return []
+        }
+        return try context.performAndWait {
+            let request = NSFetchRequest<RebuildProgressEventManagedObject>(
+                entityName: RebuildEntityName.progressEvent
+            )
+            request.predicate = NSPredicate(format: "amount > 0")
+            request.sortDescriptors = [
+                NSSortDescriptor(key: "occurredAt", ascending: false),
+                NSSortDescriptor(key: "id", ascending: false),
+            ]
+            request.fetchLimit = boundedLimit
+            return try context.fetch(request).map {
+                RebuildProgressEvent(
+                    id: $0.id,
+                    amount: $0.amount,
+                    occurredAt: $0.occurredAt,
+                    sourceRecordID: $0.sourceRecordID
+                )
+            }
+        }
+    }
+
     func load(id: String) throws -> RebuildProgressEvent? {
         try context.performAndWait {
             let request = NSFetchRequest<RebuildProgressEventManagedObject>(

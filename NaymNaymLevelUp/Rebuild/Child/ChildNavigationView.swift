@@ -28,11 +28,25 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
 struct ChildNavigationView: View {
     @StateObject private var todayViewModel: TodayForestViewModel
     @State private var selection: RebuildChildTab = .today
+    private let growthPolicy: GrowthPolicy
+    private let growthProvider: any GrowthSnapshotProviding
 
     init(
         profile: RebuildUserProfile,
         container: NSPersistentContainer?
     ) {
+        do {
+            growthPolicy = try GrowthPolicy.bundled()
+        } catch {
+            fatalError("Validated growth policy is missing or invalid: \(error)")
+        }
+        if let container {
+            growthProvider = CoreDataGrowthSnapshotProvider(
+                container: container
+            )
+        } else {
+            growthProvider = UnavailableGrowthSnapshotProvider()
+        }
         _todayViewModel = StateObject(
             wrappedValue: Self.makeTodayViewModel(
                 profile: profile,
@@ -43,7 +57,10 @@ struct ChildNavigationView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            TodayForestView(viewModel: todayViewModel)
+            TodayForestView(
+                viewModel: todayViewModel,
+                growthPolicy: growthPolicy
+            )
                 .tabItem {
                     Label(
                         RebuildChildTab.today.title,
@@ -52,7 +69,11 @@ struct ChildNavigationView: View {
                 }
                 .tag(RebuildChildTab.today)
 
-            ProgressAndBadgesView()
+            GrowthView(
+                provider: growthProvider,
+                policy: growthPolicy,
+                isActive: selection == .growth
+            )
                 .tabItem {
                     Label(
                         RebuildChildTab.growth.title,
@@ -61,7 +82,11 @@ struct ChildNavigationView: View {
                 }
                 .tag(RebuildChildTab.growth)
 
-            RebuildCollectionView()
+            CollectionView(
+                provider: growthProvider,
+                policy: growthPolicy,
+                isActive: selection == .collection
+            )
                 .tabItem {
                     Label(
                         RebuildChildTab.collection.title,
@@ -132,36 +157,5 @@ private actor UnavailableTodayMealRepository: TodayMealRepository {
 private struct UnavailableTodayMealRecorder: TodayMealRecorder {
     func execute(_ command: RecordMealCommand) async throws -> RecordMealResult {
         throw RebuildOnboardingError.persistenceUnavailable
-    }
-}
-
-private struct RebuildCollectionView: View {
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
-                    GrowthCharacterView(
-                        level: 1,
-                        size: 144,
-                        pose: .wave,
-                        blendsCreamBackground: true
-                    )
-                    .frame(maxWidth: .infinity)
-
-                    Text("먹어 본 음식과 만난 영양소가 이곳에 차곡차곡 모여요.")
-                        .font(RebuildDesignTokens.bodyFont)
-                        .foregroundStyle(RebuildDesignTokens.ink900)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("오늘 급식을 기록하면 첫 도감 이야기가 열려요.")
-                        .font(RebuildDesignTokens.headlineFont)
-                        .foregroundStyle(RebuildDesignTokens.forest700)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(RebuildDesignTokens.spacing[4])
-            }
-            .background(RebuildDesignTokens.cream50)
-            .navigationTitle("도감")
-        }
     }
 }
