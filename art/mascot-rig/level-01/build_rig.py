@@ -8,9 +8,26 @@ import json
 import math
 from pathlib import Path
 
-import cv2
-import numpy as np
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+try:
+    import numpy as np
+    import PIL
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+except ModuleNotFoundError as error:
+    raise SystemExit(
+        "Missing mascot-rig build dependency "
+        f"{error.name!r}. Install the pinned dependencies with:\n"
+        "  python3 -m pip install -r "
+        "art/mascot-rig/level-01/requirements.txt"
+    ) from error
+
+if np.__version__ != "2.0.2" or PIL.__version__ != "11.3.0":
+    raise SystemExit(
+        "Mascot-rig dependency version mismatch "
+        f"(NumPy {np.__version__}, Pillow {PIL.__version__}); expected "
+        "NumPy 2.0.2 and Pillow 11.3.0. Install the pinned dependencies with:\n"
+        "  python3 -m pip install -r "
+        "art/mascot-rig/level-01/requirements.txt"
+    )
 
 
 HERE = Path(__file__).resolve().parent
@@ -23,6 +40,10 @@ SOURCE = (
 EXPECTED_SHA256 = "e5469a7652dc91989ddbf6c11ccb6355724fb831b4dac90ee66f249939882cfa"
 EYES_EDIT_SOURCE = HERE / "eyes-closed-imagegen-source.png"
 EYES_EDIT_SHA256 = "834f4187d55dc02b707e548692759018a470bc33989780a0ffd08e077ea35c08"
+EYES_UNDERPAINT_SOURCE = HERE / "eyes-underpaint-approved.png"
+EYES_UNDERPAINT_SHA256 = (
+    "d3223845fa09a517b07cce2a4354ad8335458297f4cea32d22f21c66a25fbcd8"
+)
 SIZE = (1254, 1254)
 PARTS = [
     "tailBack",
@@ -291,8 +312,8 @@ def smooth_pose(source: Image.Image, layers: dict[str, Image.Image]) -> Image.Im
 
     def weight_for(name: str, transformed: Image.Image | None = None) -> np.ndarray:
         alpha_image = (transformed or layers[name]).getchannel("A")
-        alpha = np.asarray(alpha_image, dtype=np.float32) / 255
-        return cv2.GaussianBlur(alpha, (0, 0), 24)
+        feathered = alpha_image.filter(ImageFilter.GaussianBlur(24))
+        return np.asarray(feathered, dtype=np.float32) / 255
 
     def blend_inverse(
         weight: np.ndarray,
@@ -324,16 +345,31 @@ def smooth_pose(source: Image.Image, layers: dict[str, Image.Image]) -> Image.Im
         transformed = affine_about(layers[name], pivot=pivot, degrees=degrees)
         blend_inverse(weight_for(name, transformed), pivot, degrees=degrees)
 
-    rgba = np.asarray(source)
-    deformed = cv2.remap(
-        rgba,
-        map_x,
-        map_y,
-        interpolation=cv2.INTER_CUBIC,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0, 0),
+    rgba = np.asarray(source, dtype=np.float32)
+    x0 = np.floor(map_x).astype(np.int32)
+    y0 = np.floor(map_y).astype(np.int32)
+    x1 = x0 + 1
+    y1 = y0 + 1
+    valid = (x0 >= 0) & (y0 >= 0) & (x1 < width) & (y1 < height)
+
+    x0_clipped = np.clip(x0, 0, width - 1)
+    x1_clipped = np.clip(x1, 0, width - 1)
+    y0_clipped = np.clip(y0, 0, height - 1)
+    y1_clipped = np.clip(y1, 0, height - 1)
+    x_fraction = (map_x - x0)[..., None]
+    y_fraction = (map_y - y0)[..., None]
+
+    top = (
+        rgba[y0_clipped, x0_clipped] * (1 - x_fraction)
+        + rgba[y0_clipped, x1_clipped] * x_fraction
     )
-    return Image.fromarray(deformed).convert("RGBA")
+    bottom = (
+        rgba[y1_clipped, x0_clipped] * (1 - x_fraction)
+        + rgba[y1_clipped, x1_clipped] * x_fraction
+    )
+    deformed = top * (1 - y_fraction) + bottom * y_fraction
+    deformed[~valid] = 0
+    return Image.fromarray(np.clip(np.rint(deformed), 0, 255).astype(np.uint8))
 
 
 def compose(layers: dict[str, Image.Image], active: set[str]) -> Image.Image:
@@ -384,6 +420,14 @@ def main() -> None:
     source = Image.open(SOURCE).convert("RGBA")
     if source.size != SIZE:
         raise SystemExit(f"unexpected source dimensions: {source.size}")
+    underpaint_sha = hashlib.sha256(EYES_UNDERPAINT_SOURCE.read_bytes()).hexdigest()
+    if underpaint_sha != EYES_UNDERPAINT_SHA256:
+        raise SystemExit(f"approved eye underpaint checksum mismatch: {underpaint_sha}")
+    eye_underpaint = Image.open(EYES_UNDERPAINT_SOURCE).convert("RGBA")
+    if eye_underpaint.size != SIZE:
+        raise SystemExit(
+            f"unexpected approved eye underpaint dimensions: {eye_underpaint.size}"
+        )
     source_alpha = source.getchannel("A")
     foreground = source_alpha.point(lambda value: 255 if value else 0)
 
@@ -553,15 +597,11 @@ def main() -> None:
     eyes_hidden = intersection(
         union(left_eye_region, right_eye_region), face_opaque
     )
-    clean_eye_base = cv2.inpaint(
-        np.asarray(source.convert("RGB")),
-        np.asarray(eyes_hidden),
-        18,
-        cv2.INPAINT_TELEA,
-    )
-    clean_eye_base = Image.fromarray(clean_eye_base).convert("RGBA")
-    clean_eye_base.putalpha(eyes_hidden)
-    layers["head"] = Image.alpha_composite(layers["head"], clean_eye_base)
+    if ImageChops.difference(
+        eye_underpaint.getchannel("A"), eyes_hidden
+    ).getbbox() is not None:
+        raise SystemExit("approved eye underpaint alpha mask mismatch")
+    layers["head"] = Image.alpha_composite(layers["head"], eye_underpaint)
     mouth_hidden = intersection(mouth_region, face_opaque)
     layers["head"] = Image.alpha_composite(
         layers["head"], muzzle_texture(source, mouth_hidden)
