@@ -109,6 +109,7 @@ data class TodayForestUiState(
     val totalXP: Int = 0,
     val lastGrantedXP: Int = 0,
     val motion: MotionState = MotionState.Idle,
+    val motionRevision: Long = 0,
     val message: String? = null,
 )
 
@@ -213,6 +214,7 @@ class TodayForestViewModel(
             totalXP = result.totalXP,
             lastGrantedXP = result.xpGranted,
             motion = result.motion,
+            motionRevision = progressRevision,
             message = if (result.xpGranted > 0) {
                 "${result.xpGranted} XP를 얻었어요!"
             } else {

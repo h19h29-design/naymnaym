@@ -171,6 +171,21 @@ class TodayForestViewModelTest {
         assertEquals(listOf(5), recorder.commands[1].allergyCodes)
     }
 
+    @Test
+    fun consecutiveMealSuccessRecordsAdvanceTheMotionRevision() = runTest {
+        val viewModel = viewModel()
+        viewModel.load()
+
+        viewModel.record(MEAL.menuItems.first(), EatingStatus.Finished)
+        val first = viewModel.state.value
+        viewModel.record(MEAL.menuItems.first(), EatingStatus.Finished)
+        val second = viewModel.state.value
+
+        assertEquals(MotionState.MealSuccess, first.motion)
+        assertEquals(MotionState.MealSuccess, second.motion)
+        assertEquals(first.motionRevision + 1, second.motionRevision)
+    }
+
     private fun viewModel(
         repository: TodayMealRepository = FakeMealRepository(MealLoadState.Live(MEAL)),
         recorder: CapturingRecorder = CapturingRecorder(),

@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,40 +43,70 @@ fun MascotRig(
     reduceMotion: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    MascotRig(
+        level = level,
+        state = state,
+        reduceMotion = reduceMotion,
+        playbackRevision = 0,
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun MascotRig(
+    level: Int,
+    state: MotionState,
+    reduceMotion: Boolean,
+    playbackRevision: Long,
+    modifier: Modifier = Modifier,
+) {
     val controller = remember { MascotMotionController(MotionSpec.fixture) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val systemReduceMotion = scope.coroutineContext[MotionDurationScale]?.scaleFactor == 0f
     val effectiveReduceMotion = reduceMotion || systemReduceMotion
     var assets by remember(level) { mutableStateOf<MascotRigAssets?>(null) }
-    var progress by remember(state, effectiveReduceMotion) { mutableFloatStateOf(0f) }
+    val playback = remember(state, playbackRevision, effectiveReduceMotion) {
+        controller.playback(
+            state = state,
+            eventRevision = playbackRevision,
+            reduceMotion = effectiveReduceMotion,
+        )
+    }
+    var elapsedMs by remember(playback.key) { mutableLongStateOf(0) }
 
     LaunchedEffect(level) {
         assets = withContext(Dispatchers.IO) {
             MascotRigAssetStore.load(context.resources, level)
         }
     }
-    LaunchedEffect(state, effectiveReduceMotion) {
-        if (!controller.isPlaybackActive(state, effectiveReduceMotion)) {
-            progress = if (effectiveReduceMotion) 0.5f else 0f
+    LaunchedEffect(playback.key) {
+        elapsedMs = 0
+        if (!playback.isActive) {
             return@LaunchedEffect
         }
         var startedAtNanos = 0L
         do {
             withFrameNanos { frameNanos ->
                 if (startedAtNanos == 0L) startedAtNanos = frameNanos
-                progress = controller.progress(state, (frameNanos - startedAtNanos) / 1_000_000L)
+                elapsedMs = ((frameNanos - startedAtNanos) / 1_000_000L)
+                    .coerceAtMost(playback.durationMs)
             }
-        } while (progress < 1f)
+        } while (elapsedMs < playback.durationMs)
     }
 
-    val pose = controller.pose(state, progress, effectiveReduceMotion)
+    val pose = playback.poseAt(elapsedMs)
     val projection = MascotRenderProjection.from(state, pose)
-    val blinkAlpha by animateFloatAsState(
+    val animatedBlinkAlpha by animateFloatAsState(
         targetValue = if (projection.eyesClosed) 1f else 0f,
-        animationSpec = tween(if (effectiveReduceMotion) 125 else 80),
+        animationSpec = tween(80),
         label = "mascot-blink-crossfade",
     )
+    val blinkAlpha = if (effectiveReduceMotion) {
+        playback.expressionBlendAt(elapsedMs)
+    } else {
+        animatedBlinkAlpha
+    }
     val celebrateAlpha by animateFloatAsState(
         targetValue = projection.celebrationBlend,
         animationSpec = tween(if (effectiveReduceMotion) 0 else 80),

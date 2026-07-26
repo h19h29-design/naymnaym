@@ -4,6 +4,43 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
 
+data class MascotPlaybackKey(
+    val state: MotionState,
+    val eventRevision: Long,
+    val reduceMotion: Boolean,
+)
+
+class MascotPlayback internal constructor(
+    val key: MascotPlaybackKey,
+    val durationMs: Long,
+    val isActive: Boolean,
+    private val controller: MascotMotionController,
+) {
+    fun poseAt(elapsedMs: Long): MascotPose {
+        if (!isActive) return MascotPose.Rest
+        return controller.pose(
+            state = key.state,
+            rawProgress = normalizedProgress(elapsedMs),
+            reduceMotion = key.reduceMotion,
+        )
+    }
+
+    fun expressionBlendAt(elapsedMs: Long): Float {
+        if (!isActive) return 0f
+        val progress = normalizedProgress(elapsedMs)
+        return if (key.reduceMotion) {
+            1f - abs((2f * progress) - 1f)
+        } else if (poseAt(elapsedMs).eyesClosed) {
+            1f
+        } else {
+            0f
+        }
+    }
+
+    private fun normalizedProgress(elapsedMs: Long): Float =
+        (elapsedMs.coerceAtLeast(0).toFloat() / durationMs).coerceAtMost(1f)
+}
+
 /** Deterministic, Android-free state-to-pose sampling. */
 class MascotMotionController(private val spec: MotionSpec) {
     fun pose(state: MotionState, rawProgress: Float, reduceMotion: Boolean = false): MascotPose {
@@ -29,8 +66,22 @@ class MascotMotionController(private val spec: MotionSpec) {
         }
     }
 
-    fun isPlaybackActive(state: MotionState, reduceMotion: Boolean): Boolean =
-        !reduceMotion && state != MotionState.Idle && state != MotionState.ReducedMotion
+    fun playback(
+        state: MotionState,
+        eventRevision: Long,
+        reduceMotion: Boolean,
+    ): MascotPlayback = MascotPlayback(
+        key = MascotPlaybackKey(
+            state = state,
+            eventRevision = eventRevision,
+            reduceMotion = reduceMotion,
+        ),
+        durationMs = spec.stateFor(
+            if (reduceMotion) MotionState.ReducedMotion else state,
+        ).durationMs,
+        isActive = state != MotionState.Idle && state != MotionState.ReducedMotion,
+        controller = this,
+    )
 
     private fun fullMotionPose(state: MotionState, progress: Float): MascotPose {
         if (progress <= 0f || progress >= 1f) return MascotPose.Rest

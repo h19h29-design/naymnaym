@@ -159,6 +159,7 @@ private fun CharacterStage(state: TodayForestUiState) {
                 level = 1,
                 state = state.motion.toMascotMotionState(),
                 reduceMotion = false,
+                playbackRevision = state.motionRevision,
                 modifier = Modifier.size(112.dp),
             )
             Text(
