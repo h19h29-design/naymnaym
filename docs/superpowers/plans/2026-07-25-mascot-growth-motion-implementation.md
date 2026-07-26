@@ -480,7 +480,7 @@ git commit -m "feat: add seven-stage mascot growth"
 - Guarantees: the original 357×86 RGBA logo is rendered directly; no derived
   crop asset, marketing-site logo, overlapping mask, or duplicated stroke
 
-- [ ] **Step 1: Add genuine RED tests for the new frame model**
+- [x] **Step 1: Add genuine RED tests for the new frame model**
 
 Do not only retest the already-green legacy constants. Add focused tests against
 the missing rebuild frame-model interfaces and assert:
@@ -493,7 +493,7 @@ the missing rebuild frame-model interfaces and assert:
 5. a second start request cannot restart the sequence
 6. cancellation prevents any remaining asynchronous work from mutating state
 
-- [ ] **Step 2: Implement complementary safe-mask logo rendering**
+- [x] **Step 2: Implement complementary safe-mask logo rendering**
 
 Render the immutable app logo whose SHA-256 is
 `0132e9075a8a3953cc87ae43154be317fb846630ea5e1f7dfbced8fb0860120b`.
@@ -507,7 +507,7 @@ On Android, combine the system `MotionDurationScale.scaleFactor == 0f` signal
 with an explicit test override. Do not depend only on the legacy
 `IntroLogoMotionSpec.java`, which is package-private outside the rebuild package.
 
-- [ ] **Step 3: Integrate the real rebuild entry path**
+- [x] **Step 3: Integrate the real rebuild entry path**
 
 Replace the rebuild branch's missing intro with `RebuildIntroView` /
 `RebuildIntroScreen` in the actual iOS `RootView` and Android `RebuildApp`.
@@ -517,7 +517,7 @@ the intro; subsequent launches that local day proceed directly. iOS deep links
 continue to dismiss/mark the daily intro before routing. Do not leave an
 unreferenced preview-only screen.
 
-- [ ] **Step 4: Verify clipping and reduced motion**
+- [x] **Step 4: Verify clipping and reduced motion**
 
 Inspect 320pt, 393pt, Pro Max, Android 360×800, and a large Android screen at
 default and 200% text, both normal and Reduce Motion. Capture:
@@ -526,7 +526,7 @@ Acceptance: `ㅑ` and `ㄹ` have no clipped or duplicated strokes; the 2.00s fin
 render is pixel-equivalent to the static source logo; Reduce Motion has no
 spatial transform or shine.
 
-- [ ] **Step 5: Run complete motion gate**
+- [x] **Step 5: Run complete motion gate**
 
 Run: `python3 scripts/validate-mascot-rig.py --root art/mascot-rig`
 
@@ -536,13 +536,13 @@ Run: `cd android && ./gradlew testDebugUnitTest connectedDebugAndroidTest assemb
 
 Expected: all PASS.
 
-- [ ] **Step 6: Update the existing Figma motion frames**
+- [x] **Step 6: Update the existing Figma motion frames**
 
 Update existing normal frame `29:2` and Reduce Motion frame `31:2` in place.
 Document the complementary left/right mask tracks, timing markers, one-shot shine,
 and the 0.25s reduced fade. Do not create duplicate frames.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add NaymNaymLevelUp/Rebuild/Onboarding/RebuildIntroMotionSpec.swift \
