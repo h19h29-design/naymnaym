@@ -253,6 +253,7 @@ git commit -m "feat: add iOS mascot rig motion"
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotRigModel.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotMotionController.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotRig.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestScreen.kt`
 - Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotMotionControllerTest.kt`
 - Create: `android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotRigTest.kt`
 
@@ -281,6 +282,12 @@ Expected: FAIL because the mascot package does not exist.
 - [ ] **Step 3: Implement deterministic Compose transforms**
 
 Use a 1:1 `BoxWithConstraints`, draw checksum-verified pose keyframes and required expression layers with `Image`, and apply only the approved pose interpolation through `graphicsLayer`; semantic part assets support state metadata and compositional fallback, never an unfeathered rigid cutout preview. Load drawable IDs from a level-to-assets map; never use reflection on resource names. `LocalMotionDurationScale` and the app accessibility state must route to `reducedMotion`.
+
+Replace the static `mascot_wave_1` inside `TodayForestScreen.CharacterStage`
+with `MascotRig`, mapping the existing `TodayForestUiState.motion` to the
+shared motion states. Keep the existing card semantics and accessibility
+label so the new renderer is visible in the actual child-home path rather
+than only in an isolated prototype.
 
 - [ ] **Step 4: Run unit, Compose, and performance checks**
 
@@ -438,6 +445,10 @@ ground: stationary
 ```
 
 Pause the cycle while a sheet is open. In Reduce Motion, render all transforms at zero. The character remains the strongest moving object.
+
+As part of the iOS home composition update, replace the remaining legacy flat
+character in `TodayForestView` with the approved `MascotRigView`, mapping the
+existing `TodayForestViewModel` motion state and system Reduce Motion value.
 
 - [ ] **Step 4: Verify composition and performance**
 
