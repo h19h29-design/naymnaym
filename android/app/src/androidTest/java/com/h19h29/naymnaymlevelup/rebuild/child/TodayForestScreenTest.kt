@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.Density
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -25,6 +27,7 @@ import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTheme
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -33,7 +36,7 @@ class TodayForestScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun primaryActionRemainsVisibleAndClickableAtLargeText() {
+    fun mealHeaderReflowsAndPrimaryActionRemainsReachableAtTwoHundredPercentText() {
         val meal = MealDay(
             date = "2026-07-25",
             menuItems = listOf(
@@ -66,7 +69,7 @@ class TodayForestScreenTest {
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(
-                LocalDensity provides Density(density.density, fontScale = 1.5f),
+                LocalDensity provides Density(density.density, fontScale = 2f),
             ) {
                 RebuildTheme {
                     TodayForestScreen(
@@ -81,6 +84,16 @@ class TodayForestScreenTest {
             }
         }
 
+        val headingBounds = composeRule.onNodeWithText("오늘의 점심")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val sourceBounds = composeRule.onNodeWithText("학교 급식")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        assertTrue(sourceBounds.top >= headingBounds.bottom)
+
+        composeRule.onNodeWithTag("today_forest_list")
+            .performScrollToIndex(3)
         composeRule.onNodeWithTag("today_primary_action")
             .assertIsDisplayed()
             .assertHasClickAction()

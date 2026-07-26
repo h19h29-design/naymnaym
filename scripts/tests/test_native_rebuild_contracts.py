@@ -35,6 +35,95 @@ EXPECTED_RECORD_IDENTITIES = [
 
 
 class NativeRebuildContractTests(unittest.TestCase):
+    def test_forest_scene_contract_matches_shipped_motion_and_memory_limits(self):
+        contract = json.loads((CONTRACTS / "forest-scene.json").read_text())
+
+        self.assertEqual(contract["version"], 1)
+        self.assertEqual(contract["masterCanvas"], {"width": 1290, "height": 2796})
+        self.assertEqual(contract["runtimeCanvas"], {"width": 860, "height": 1864})
+        self.assertEqual(
+            contract["layerOrder"],
+            ["sky", "distantTrees", "midgroundTrees", "foregroundLeaves", "ground"],
+        )
+        self.assertEqual(contract["cycleDurationMs"], 8000)
+        self.assertEqual(
+            contract["keyframes"],
+            [
+                {"elapsedMs": 0, "progress": 0.0},
+                {"elapsedMs": 2000, "progress": 0.5},
+                {"elapsedMs": 4000, "progress": 1.0},
+                {"elapsedMs": 6000, "progress": 0.5},
+                {"elapsedMs": 8000, "progress": 0.0},
+            ],
+        )
+        self.assertEqual(
+            contract["motion"],
+            {
+                "sky": {"x": 0.0, "y": 0.0},
+                "distantTrees": {"x": 0.0, "y": -2.0},
+                "midgroundTrees": {"x": 0.0, "y": -4.0},
+                "foregroundLeaves": {"x": 6.0, "y": -3.0},
+                "ground": {"x": 0.0, "y": 0.0},
+            },
+        )
+        self.assertEqual(contract["foregroundOverscanScale"], 1.04)
+        self.assertEqual(contract["memory"]["forestDecodedBytes"], 32_060_800)
+        self.assertEqual(contract["memory"]["combinedDecodedBytes"], 50_930_992)
+        self.assertLessEqual(contract["memory"]["forestDecodedBytes"], 32 * 1024 * 1024)
+        self.assertLessEqual(contract["memory"]["combinedDecodedBytes"], 52 * 1024 * 1024)
+
+    def test_validator_rejects_forest_motion_or_memory_drift(self):
+        invalid_mutations = [
+            ("cycleDurationMs", 7000),
+            ("foregroundOverscanScale", 1.0),
+        ]
+        for field, value in invalid_mutations:
+            with self.subTest(field=field):
+                forest_scene = json.loads((CONTRACTS / "forest-scene.json").read_text())
+                forest_scene[field] = value
+
+                result = self._run_validator_with(forest_scene=forest_scene)
+
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("forest-scene.json", result.stderr)
+
+    def test_android_rebuild_uses_no_emoji_or_text_symbol_icon_stand_ins(self):
+        production_paths = [
+            ROOT / (
+                "android/app/src/main/java/com/h19h29/naymnaymlevelup/"
+                "rebuild/child/ChildNavigation.kt"
+            ),
+            ROOT / (
+                "android/app/src/main/java/com/h19h29/naymnaymlevelup/"
+                "rebuild/child/TodayForestScreen.kt"
+            ),
+        ]
+        forbidden_stand_ins = ("🌿", "📈", "📚", "✨", "●")
+
+        for path in production_paths:
+            source = path.read_text(encoding="utf-8")
+            for stand_in in forbidden_stand_ins:
+                with self.subTest(path=path, stand_in=stand_in):
+                    self.assertNotIn(stand_in, source)
+
+    def test_android_disabled_primary_action_uses_opaque_readable_colors(self):
+        source = (
+            ROOT
+            / (
+                "android/app/src/main/java/com/h19h29/naymnaymlevelup/"
+                "rebuild/child/TodayForestScreen.kt"
+            )
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "disabledContainerColor = Color(RebuildTokens.Muted600)",
+            source,
+        )
+        self.assertIn(
+            "disabledContentColor = Color(RebuildTokens.Cream50)",
+            source,
+        )
+
     def test_intro_logo_assets_match_exact_rgba_pixel_and_hash_contract(self):
         expected_hash = (
             "0132e9075a8a3953cc87ae43154be317f"
@@ -422,6 +511,7 @@ class NativeRebuildContractTests(unittest.TestCase):
         xp_policy=None,
         meal_loop_fixtures=None,
         growth_policy=None,
+        forest_scene=None,
     ):
         with tempfile.TemporaryDirectory() as temporary_directory:
             project = pathlib.Path(temporary_directory)
@@ -457,6 +547,10 @@ class NativeRebuildContractTests(unittest.TestCase):
             if growth_policy is not None:
                 (project / "contracts/native-rebuild/v1/growth-policy.json").write_text(
                     json.dumps(growth_policy), encoding="utf-8"
+                )
+            if forest_scene is not None:
+                (project / "contracts/native-rebuild/v1/forest-scene.json").write_text(
+                    json.dumps(forest_scene), encoding="utf-8"
                 )
             return subprocess.run(
                 [sys.executable, "scripts/validate-native-rebuild-contracts.py"],

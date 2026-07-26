@@ -4,6 +4,7 @@ struct MascotRigView: View {
     let level: Int
     let state: RebuildMotionState
     let reduceMotion: Bool
+    let playbackRevision: Int
 
     @StateObject private var controller: MascotMotionController
     @StateObject private var loader = MascotRigLoader()
@@ -14,11 +15,13 @@ struct MascotRigView: View {
     init(
         level: Int,
         state: RebuildMotionState,
-        reduceMotion: Bool
+        reduceMotion: Bool,
+        playbackRevision: Int = 0
     ) {
         self.level = level
         self.state = state
         self.reduceMotion = reduceMotion
+        self.playbackRevision = playbackRevision
         _controller = StateObject(
             wrappedValue: MascotMotionController(
                 spec: Self.productionSpec
@@ -81,6 +84,9 @@ struct MascotRigView: View {
         }
         .onChange(of: state) { newState in
             controller.play(newState, reduceMotion: reduceMotion)
+        }
+        .onChange(of: playbackRevision) { _ in
+            controller.play(state, reduceMotion: reduceMotion)
         }
         .onChange(of: reduceMotion) { isReduced in
             controller.play(state, reduceMotion: isReduced)

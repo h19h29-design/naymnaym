@@ -10,10 +10,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.core.content.ContextCompat
 import com.h19h29.naymnaymlevelup.rebuild.child.ChildNavigation
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
@@ -35,6 +37,7 @@ import com.h19h29.naymnaymlevelup.rebuild.onboarding.SharedPreferencesSchoolName
 fun RebuildApp(database: RebuildDatabase) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateAsState()
     val destinationLauncher = remember(context) {
         RebuildLegacyDestinationLauncher(context)
     }
@@ -136,6 +139,9 @@ fun RebuildApp(database: RebuildDatabase) {
                         ChildNavigation(
                             profile = state.profile,
                             database = database,
+                            isAppActive = lifecycleState.isAtLeast(
+                                Lifecycle.State.RESUMED,
+                            ),
                         )
                     } else {
                         RebuildParentConnectionDestinationScreen(

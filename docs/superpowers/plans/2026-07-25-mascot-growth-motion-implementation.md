@@ -591,8 +591,8 @@ git commit -m "feat: finish accessible mascot and logo motion"
 - Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ChildNavigation.kt`
 - Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestViewModel.kt`
 - Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/ui/RebuildApp.kt`
-- Modify: `android/app/build.gradle.kts` only if the existing Compose icon set
-  does not contain the required real icons
+- Modify: `android/app/build.gradle` to add the existing-project-compatible
+  Material icon dependency required by the real navigation and decoration icons
 - Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotionTest.kt`
 - Create: `android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneTest.kt`
 - Create: `docs/qa/forest-scene-asset-check.md`
@@ -658,6 +658,11 @@ no transparent edge or halo. Runtime forest-layer decoded memory must be
 The bounded decoded estimate is `30.576 MiB` for five runtime layers plus
 `17.996 MiB` for three active mascot frames, `48.572 MiB` combined. Do not
 package master layers in either runtime bundle.
+
+Apply a static `1.04` overscan scale to `foregroundLeaves` before its required
+translation. This covers the full `+6pt/dp, -3pt/dp` travel at both 2× and 3×
+without changing the motion values. REST and maximum-motion acceptance
+composites must include this production overscan and show no exposed seam.
 
 - [ ] **Step 4: Implement matched depth motion**
 

@@ -4,33 +4,33 @@ struct TodayForestView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var viewModel: TodayForestViewModel
     let growthPolicy: GrowthPolicy
+    let isTabActive: Bool
+    let isAppActive: Bool
     @State private var isShowingRecorder = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
-                    heading
-                    characterStage
-                    mealSummary
-                    primaryAction
-                    progressSummary
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, RebuildDesignTokens.spacing[4])
-                .padding(.vertical, RebuildDesignTokens.spacing[3])
-            }
-            .background(
-                LinearGradient(
-                    colors: [
-                        RebuildDesignTokens.cream50,
-                        RebuildDesignTokens.leaf300.opacity(0.24),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+            ForestSceneView(
+                reduceMotion: reduceMotion,
+                activity: ForestSceneActivity(
+                    isSheetPresented: isShowingRecorder,
+                    isTabActive: isTabActive,
+                    isAppActive: isAppActive
                 )
-                .ignoresSafeArea()
-            )
+            ) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
+                        heading
+                        characterStage
+                        mealSummary
+                        primaryAction
+                        progressSummary
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, RebuildDesignTokens.spacing[4])
+                    .padding(.vertical, RebuildDesignTokens.spacing[3])
+                }
+            }
             .navigationBarHidden(true)
         }
         .task {
@@ -55,6 +55,15 @@ struct TodayForestView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("날짜 \(viewModel.dateText)")
         }
+        .padding(RebuildDesignTokens.spacing[3])
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RebuildDesignTokens.cream50)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[1],
+                style: .continuous
+            )
+        )
     }
 
     private var characterStage: some View {
@@ -63,7 +72,8 @@ struct TodayForestView: View {
                 MascotRigView(
                     level: currentLevel,
                     state: viewModel.motion,
-                    reduceMotion: reduceMotion
+                    reduceMotion: reduceMotion,
+                    playbackRevision: viewModel.motionRevision
                 )
                 .frame(
                     width: proxy.size.width,
@@ -95,16 +105,18 @@ struct TodayForestView: View {
 
     private var mealSummary: some View {
         VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
-            HStack(alignment: .firstTextBaseline) {
+            VStack(
+                alignment: .leading,
+                spacing: RebuildDesignTokens.spacing[1]
+            ) {
                 Text("오늘의 점심")
                     .font(RebuildDesignTokens.titleFont.bold())
                     .foregroundStyle(RebuildDesignTokens.ink900)
                     .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: RebuildDesignTokens.spacing[2])
                 Text(viewModel.sourceLabel)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(RebuildDesignTokens.forest700)
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -149,7 +161,7 @@ struct TodayForestView: View {
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(RebuildDesignTokens.cream50)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[1],
@@ -185,7 +197,7 @@ struct TodayForestView: View {
         .background(
             viewModel.isPrimaryActionEnabled
                 ? RebuildDesignTokens.forest700
-                : RebuildDesignTokens.muted600.opacity(0.45)
+                : RebuildDesignTokens.muted600
         )
         .clipShape(
             RoundedRectangle(
@@ -220,7 +232,7 @@ struct TodayForestView: View {
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RebuildDesignTokens.cream100)
+        .background(RebuildDesignTokens.cream50)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[1],

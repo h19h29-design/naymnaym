@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "masterCanvas": {
+    "width": 1290,
+    "height": 2796
+  },
+  "runtimeCanvas": {
+    "width": 860,
+    "height": 1864
+  },
+  "layerOrder": [
+    "sky",
+    "distantTrees",
+    "midgroundTrees",
+    "foregroundLeaves",
+    "ground"
+  ],
+  "layers": {
+    "sky": {
+      "masterFilename": "sky.png",
+      "runtimeFilename": "forest_home_sky.png",
+      "pngColorType": 2,
+      "masterSha256": "0637af27204976fae7063dad80bbeceea6ac469a4d65ed6659f146ecc33b12d0",
+      "runtimeSha256": "31269847c3ea3825cfb0622c642bbf7bf58cd85f49c168a4b77864cb134151c6"
+    },
+    "distantTrees": {
+      "masterFilename": "distantTrees.png",
+      "runtimeFilename": "forest_home_distant_trees.png",
+      "pngColorType": 6,
+      "masterSha256": "48e7598f0aa73b459ce4e0861e150945bbf08e464dfe4182a892ed91b407b576",
+      "runtimeSha256": "9c2e598b7aaad3240a97930a796b499769950a3dcd3569e89fd728319d1e56f1"
+    },
+    "midgroundTrees": {
+      "masterFilename": "midgroundTrees.png",
+      "runtimeFilename": "forest_home_midground_trees.png",
+      "pngColorType": 6,
+      "masterSha256": "7c04b3032c359feed724fbbd4b102b315de67ca226bd274144c5d0a5168485c2",
+      "runtimeSha256": "19cd4380674504a333c31573432562ab3e3cb8730e7f2283c15d0e8c0b3e2dbf"
+    },
+    "foregroundLeaves": {
+      "masterFilename": "foregroundLeaves.png",
+      "runtimeFilename": "forest_home_foreground_leaves.png",
+      "pngColorType": 6,
+      "masterSha256": "04429a2b8b69e59847cf69b8ed5d0b52342e9587143d113bf68a78bb529d587a",
+      "runtimeSha256": "66893d6c0913a36962ec2b2855506bb26e47a0024bc65ceb662bf5b0e6759c28"
+    },
+    "ground": {
+      "masterFilename": "ground.png",
+      "runtimeFilename": "forest_home_ground.png",
+      "pngColorType": 6,
+      "masterSha256": "9d103ed0ec164fba18478a1f2d287541db2d7b48ac3ace0224dc42b19cefb5d1",
+      "runtimeSha256": "5468374dce57202cec48e94e11015b339f15140b458b183320239f6653e8b23f"
+    }
+  },
+  "cycleDurationMs": 8000,
+  "keyframes": [
+    {
+      "elapsedMs": 0,
+      "progress": 0.0
+    },
+    {
+      "elapsedMs": 2000,
+      "progress": 0.5
+    },
+    {
+      "elapsedMs": 4000,
+      "progress": 1.0
+    },
+    {
+      "elapsedMs": 6000,
+      "progress": 0.5
+    },
+    {
+      "elapsedMs": 8000,
+      "progress": 0.0
+    }
+  ],
+  "motion": {
+    "sky": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "distantTrees": {
+      "x": 0.0,
+      "y": -2.0
+    },
+    "midgroundTrees": {
+      "x": 0.0,
+      "y": -4.0
+    },
+    "foregroundLeaves": {
+      "x": 6.0,
+      "y": -3.0
+    },
+    "ground": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "foregroundOverscanScale": 1.04,
+  "pauseSources": [
+    "sheet",
+    "inactiveTab",
+    "inactiveApp"
+  ],
+  "reduceMotion": {
+    "allTransformsZero": true,
+    "schedulesFrameCallback": false
+  },
+  "contentSurface": {
+    "backgroundToken": "cream50",
+    "foregroundTokens": [
+      "ink900",
+      "forest700",
+      "muted600"
+    ]
+  },
+  "memory": {
+    "forestDecodedBytes": 32060800,
+    "activeMascotDecodedBytes": 18870192,
+    "combinedDecodedBytes": 50930992,
+    "forestLimitBytes": 33554432,
+    "combinedLimitBytes": 54525952
+  }
+}

@@ -95,6 +95,10 @@
 		C20000000000000000000086 /* RebuildIntroMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000090 /* RebuildIntroMotionTests.swift */; };
 		C20000000000000000000087 /* RebuildIntroMotionSpec.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000091 /* RebuildIntroMotionSpec.swift */; };
 		C20000000000000000000088 /* RebuildIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000092 /* RebuildIntroView.swift */; };
+		C20000000000000000000089 /* ForestSceneMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000093 /* ForestSceneMotionTests.swift */; };
+		C20000000000000000000090 /* ForestSceneMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000094 /* ForestSceneMotion.swift */; };
+		C20000000000000000000091 /* ForestSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000095 /* ForestSceneView.swift */; };
+		C20000000000000000000092 /* ForestScene in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000096 /* ForestScene */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -200,6 +204,10 @@
 		C10000000000000000000090 /* RebuildIntroMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RebuildIntroMotionTests.swift; sourceTree = "<group>"; };
 		C10000000000000000000091 /* RebuildIntroMotionSpec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildIntroMotionSpec.swift; sourceTree = "<group>"; };
 		C10000000000000000000092 /* RebuildIntroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Onboarding/RebuildIntroView.swift; sourceTree = "<group>"; };
+		C10000000000000000000093 /* ForestSceneMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForestSceneMotionTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000094 /* ForestSceneMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/ForestSceneMotion.swift; sourceTree = "<group>"; };
+		C10000000000000000000095 /* ForestSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/ForestSceneView.swift; sourceTree = "<group>"; };
+		C10000000000000000000096 /* ForestScene */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/ForestScene; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -299,10 +307,13 @@
 				C10000000000000000000089 /* CollectionView.swift */,
 				C10000000000000000000091 /* RebuildIntroMotionSpec.swift */,
 				C10000000000000000000092 /* RebuildIntroView.swift */,
+				C10000000000000000000094 /* ForestSceneMotion.swift */,
+				C10000000000000000000095 /* ForestSceneView.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
 				C10000000000000000000083 /* MascotRig */,
+				C10000000000000000000096 /* ForestScene */,
 				C10000000000000000000027 /* SampleSchools.json */,
 				C10000000000000000000028 /* SampleMeals.json */,
 			);
@@ -330,6 +341,7 @@
 				C10000000000000000000085 /* GrowthPolicyTests.swift */,
 				C10000000000000000000086 /* GrowthRepositoryTests.swift */,
 				C10000000000000000000090 /* RebuildIntroMotionTests.swift */,
+				C10000000000000000000093 /* ForestSceneMotionTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -446,6 +458,7 @@
 				C20000000000000000000038 /* Animations in Resources */,
 				C20000000000000000000047 /* RebuildContracts in Resources */,
 				C20000000000000000000079 /* MascotRig in Resources */,
+				C20000000000000000000092 /* ForestScene in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -525,6 +538,8 @@
 				C20000000000000000000085 /* CollectionView.swift in Sources */,
 				C20000000000000000000087 /* RebuildIntroMotionSpec.swift in Sources */,
 				C20000000000000000000088 /* RebuildIntroView.swift in Sources */,
+				C20000000000000000000090 /* ForestSceneMotion.swift in Sources */,
+				C20000000000000000000091 /* ForestSceneView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -550,6 +565,7 @@
 				C20000000000000000000081 /* GrowthPolicyTests.swift in Sources */,
 				C20000000000000000000082 /* GrowthRepositoryTests.swift in Sources */,
 				C20000000000000000000086 /* RebuildIntroMotionTests.swift in Sources */,
+				C20000000000000000000089 /* ForestSceneMotionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

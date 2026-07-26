@@ -179,6 +179,19 @@ final class TodayForestViewModelTests: XCTestCase {
         )
     }
 
+    func testConsecutiveEqualSuccessMotionsAdvancePlaybackRevision() async throws {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        let item = try XCTUnwrap(viewModel.meal?.menuItems.first)
+
+        _ = try await viewModel.record(item: item, status: .finished)
+        let firstRevision = viewModel.motionRevision
+        _ = try await viewModel.record(item: item, status: .finished)
+
+        XCTAssertEqual(viewModel.motion, .mealSuccess)
+        XCTAssertEqual(viewModel.motionRevision, firstRevision + 1)
+    }
+
     private func makeViewModel(
         repository: TodayMealRepositoryStub = TodayMealRepositoryStub(
             states: [.cached(.todayFixture(), refreshedAt: nil)]

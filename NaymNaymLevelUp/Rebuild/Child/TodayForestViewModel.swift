@@ -148,6 +148,7 @@ final class TodayForestViewModel: ObservableObject {
     @Published private(set) var totalXP = 0
     @Published private(set) var lastGrantedXP = 0
     @Published private(set) var motion: RebuildMotionState = .idle
+    @Published private(set) var motionRevision = 0
     @Published private(set) var message: String?
 
     let dateText: String
@@ -280,6 +281,7 @@ final class TodayForestViewModel: ObservableObject {
         totalXP = result.totalXP
         lastGrantedXP = result.xpGranted
         motion = result.motion
+        motionRevision += 1
         message = result.xpGranted > 0
             ? "\(result.xpGranted) XP를 얻었어요!"
             : "오늘 기록을 저장했어요."

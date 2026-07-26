@@ -117,6 +117,71 @@ EXPECTED_GROWTH_TITLES = [
     "영양 마스터",
     "레전드 냠냠러",
 ]
+EXPECTED_FOREST_LAYER_ORDER = [
+    "sky",
+    "distantTrees",
+    "midgroundTrees",
+    "foregroundLeaves",
+    "ground",
+]
+EXPECTED_FOREST_KEYFRAMES = [
+    {"elapsedMs": 0, "progress": 0.0},
+    {"elapsedMs": 2000, "progress": 0.5},
+    {"elapsedMs": 4000, "progress": 1.0},
+    {"elapsedMs": 6000, "progress": 0.5},
+    {"elapsedMs": 8000, "progress": 0.0},
+]
+EXPECTED_FOREST_MOTION = {
+    "sky": {"x": 0.0, "y": 0.0},
+    "distantTrees": {"x": 0.0, "y": -2.0},
+    "midgroundTrees": {"x": 0.0, "y": -4.0},
+    "foregroundLeaves": {"x": 6.0, "y": -3.0},
+    "ground": {"x": 0.0, "y": 0.0},
+}
+EXPECTED_FOREST_MEMORY = {
+    "forestDecodedBytes": 32060800,
+    "activeMascotDecodedBytes": 18870192,
+    "combinedDecodedBytes": 50930992,
+    "forestLimitBytes": 33554432,
+    "combinedLimitBytes": 54525952,
+}
+EXPECTED_FOREST_LAYERS = {
+    "sky": {
+        "masterFilename": "sky.png",
+        "runtimeFilename": "forest_home_sky.png",
+        "pngColorType": 2,
+        "masterSha256": "0637af27204976fae7063dad80bbeceea6ac469a4d65ed6659f146ecc33b12d0",
+        "runtimeSha256": "31269847c3ea3825cfb0622c642bbf7bf58cd85f49c168a4b77864cb134151c6",
+    },
+    "distantTrees": {
+        "masterFilename": "distantTrees.png",
+        "runtimeFilename": "forest_home_distant_trees.png",
+        "pngColorType": 6,
+        "masterSha256": "48e7598f0aa73b459ce4e0861e150945bbf08e464dfe4182a892ed91b407b576",
+        "runtimeSha256": "9c2e598b7aaad3240a97930a796b499769950a3dcd3569e89fd728319d1e56f1",
+    },
+    "midgroundTrees": {
+        "masterFilename": "midgroundTrees.png",
+        "runtimeFilename": "forest_home_midground_trees.png",
+        "pngColorType": 6,
+        "masterSha256": "7c04b3032c359feed724fbbd4b102b315de67ca226bd274144c5d0a5168485c2",
+        "runtimeSha256": "19cd4380674504a333c31573432562ab3e3cb8730e7f2283c15d0e8c0b3e2dbf",
+    },
+    "foregroundLeaves": {
+        "masterFilename": "foregroundLeaves.png",
+        "runtimeFilename": "forest_home_foreground_leaves.png",
+        "pngColorType": 6,
+        "masterSha256": "04429a2b8b69e59847cf69b8ed5d0b52342e9587143d113bf68a78bb529d587a",
+        "runtimeSha256": "66893d6c0913a36962ec2b2855506bb26e47a0024bc65ceb662bf5b0e6759c28",
+    },
+    "ground": {
+        "masterFilename": "ground.png",
+        "runtimeFilename": "forest_home_ground.png",
+        "pngColorType": 6,
+        "masterSha256": "9d103ed0ec164fba18478a1f2d287541db2d7b48ac3ace0224dc42b19cefb5d1",
+        "runtimeSha256": "5468374dce57202cec48e94e11015b339f15140b458b183320239f6653e8b23f",
+    },
+}
 SAFE_EDUCATION_NOTICE = "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
 CHILD_OMISSION_COPY = "영양소를 조금 놓칠 수 있어요."
 
@@ -252,6 +317,35 @@ def matches_exact_json_types(actual, expected):
 def validate_design_tokens(tokens):
     if not matches_exact_json_types(tokens, EXPECTED_DESIGN_TOKENS):
         return ["design-tokens.json: must match the exact v1 content"]
+    return []
+
+
+def validate_forest_scene(scene):
+    if not isinstance(scene, dict):
+        return ["forest-scene.json: root must be an object"]
+    expected = {
+        "version": 1,
+        "masterCanvas": {"width": 1290, "height": 2796},
+        "runtimeCanvas": {"width": 860, "height": 1864},
+        "layerOrder": EXPECTED_FOREST_LAYER_ORDER,
+        "layers": EXPECTED_FOREST_LAYERS,
+        "cycleDurationMs": 8000,
+        "keyframes": EXPECTED_FOREST_KEYFRAMES,
+        "motion": EXPECTED_FOREST_MOTION,
+        "foregroundOverscanScale": 1.04,
+        "pauseSources": ["sheet", "inactiveTab", "inactiveApp"],
+        "reduceMotion": {
+            "allTransformsZero": True,
+            "schedulesFrameCallback": False,
+        },
+        "contentSurface": {
+            "backgroundToken": "cream50",
+            "foregroundTokens": ["ink900", "forest700", "muted600"],
+        },
+        "memory": EXPECTED_FOREST_MEMORY,
+    }
+    if not matches_exact_json_types(scene, expected):
+        return ["forest-scene.json: must match the exact v1 scene contract"]
     return []
 
 
@@ -578,6 +672,7 @@ def main():
         mascot_rig = load_json(CONTRACTS / "mascot-rig.json")
         mascot_motion = load_json(CONTRACTS / "mascot-motion.json")
         growth_policy = load_json(CONTRACTS / "growth-policy.json")
+        forest_scene = load_json(CONTRACTS / "forest-scene.json")
     except ValueError as error:
         print(f"native-rebuild-contract-validation: FAIL\n{error}", file=sys.stderr)
         return 1
@@ -593,6 +688,7 @@ def main():
     ))
     errors.extend(validate_meal_loop_fixtures(meal_loop_fixtures, nutrition_rules, xp_policy))
     errors.extend(validate_growth_policy(growth_policy))
+    errors.extend(validate_forest_scene(forest_scene))
     mascot_validator = runpy.run_path(
         str(ROOT / "scripts/validate-mascot-rig.py")
     )

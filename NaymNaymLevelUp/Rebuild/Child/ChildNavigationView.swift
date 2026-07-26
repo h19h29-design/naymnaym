@@ -26,6 +26,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
 }
 
 struct ChildNavigationView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var todayViewModel: TodayForestViewModel
     @State private var selection: RebuildChildTab = .today
     private let growthPolicy: GrowthPolicy
@@ -59,7 +60,9 @@ struct ChildNavigationView: View {
         TabView(selection: $selection) {
             TodayForestView(
                 viewModel: todayViewModel,
-                growthPolicy: growthPolicy
+                growthPolicy: growthPolicy,
+                isTabActive: selection == .today,
+                isAppActive: scenePhase == .active
             )
                 .tabItem {
                     Label(
