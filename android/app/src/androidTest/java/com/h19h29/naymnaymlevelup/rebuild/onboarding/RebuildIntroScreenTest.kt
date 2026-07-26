@@ -831,6 +831,85 @@ class RebuildIntroScreenTest {
         }
 
     @Test
+    fun cancellationAtReservationReturnReleasesLease() = runBlocking {
+        val context =
+            InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-reservation-cancel-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        assertTrue(
+            preferences
+                .edit()
+                .clear()
+                .putString(
+                    RebuildIntroDailyGate.StorageKey,
+                    "20260725",
+                )
+                .commit(),
+        )
+        val olderPublicationClaimed = CountDownLatch(1)
+        val releaseOlderPublication = CountDownLatch(1)
+        val olderStore = SharedPreferencesRebuildIntroDateStore(
+            preferences = preferences,
+            beforePublication = {
+                olderPublicationClaimed.countDown()
+                releaseOlderPublication.await(3, TimeUnit.SECONDS)
+            },
+        )
+        val reservationReturning = CountDownLatch(1)
+        val releaseReservation = CountDownLatch(1)
+        val cancelledStore = SharedPreferencesRebuildIntroDateStore(
+            preferences = preferences,
+            onReservationReturning = {
+                reservationReturning.countDown()
+                releaseReservation.await(3, TimeUnit.SECONDS)
+            },
+        )
+        val olderWrite = async(Dispatchers.Default) {
+            olderStore.writeDurably("20260726")
+        }
+
+        try {
+            assertTrue(
+                olderPublicationClaimed.await(1, TimeUnit.SECONDS),
+            )
+            val cancelledWrite = async(Dispatchers.Default) {
+                cancelledStore.writeDurably("20260727")
+            }
+            assertTrue(
+                reservationReturning.await(1, TimeUnit.SECONDS),
+            )
+            cancelledWrite.cancel()
+            releaseOlderPublication.countDown()
+            releaseReservation.countDown()
+            runCatching { cancelledWrite.await() }
+
+            assertTrue(cancelledWrite.isCancelled)
+            assertTrue(olderWrite.await())
+            assertEquals("20260726", olderStore.read())
+            assertEquals(
+                0,
+                olderStore.activeReservationCountForTesting,
+            )
+
+            val subsequentStore =
+                SharedPreferencesRebuildIntroDateStore(preferences)
+            assertTrue(subsequentStore.writeDurably("20260727"))
+            assertEquals("20260727", subsequentStore.read())
+            assertEquals(
+                0,
+                subsequentStore.activeReservationCountForTesting,
+            )
+        } finally {
+            releaseReservation.countDown()
+            releaseOlderPublication.countDown()
+            runCatching { olderWrite.await() }
+            assertTrue(preferences.edit().clear().commit())
+        }
+    }
+
+    @Test
     fun readCannotRecoverPendingTransactionWhileFailingWriterIsActive() =
         runBlocking {
             val context =

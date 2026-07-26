@@ -10,12 +10,17 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
@@ -243,8 +248,22 @@ interface RebuildIntroDateStore {
     fun read(): String?
     suspend fun writeDurably(value: String): Boolean
     fun observeCommittedValue(
-        listener: (String?) -> Unit,
+        listener: (String?, Long) -> Unit,
     ): AutoCloseable? = null
+}
+
+private class RebuildIntroReservationLease(
+    val requestId: Long,
+    val publicValue: String?,
+    private val release: (Long) -> Unit,
+) : AutoCloseable {
+    private val isClosed = AtomicBoolean(false)
+
+    override fun close() {
+        if (isClosed.compareAndSet(false, true)) {
+            release(requestId)
+        }
+    }
 }
 
 private class RebuildIntroPreferencesScope {
@@ -258,7 +277,8 @@ private class RebuildIntroPreferencesScope {
     private var hasLoadedCommittedValue = false
     private var version = 0L
     private var nextListenerId = 0L
-    private val listeners = mutableMapOf<Long, (String?) -> Unit>()
+    private val listeners =
+        mutableMapOf<Long, (String?, Long) -> Unit>()
 
     fun readThrough(
         authoritativeValue: () -> String?,
@@ -299,19 +319,24 @@ private class RebuildIntroPreferencesScope {
     }
 
     fun observe(
-        listener: (String?) -> Unit,
+        listener: (String?, Long) -> Unit,
     ): AutoCloseable {
         val snapshot = synchronized(this) {
             nextListenerId += 1
             listeners[nextListenerId] = listener
-            Triple(nextListenerId, committedValue, hasLoadedCommittedValue)
+            ObservationSnapshot(
+                listenerId = nextListenerId,
+                value = committedValue,
+                version = version,
+                isLoaded = hasLoadedCommittedValue,
+            )
         }
-        if (snapshot.third) {
-            listener(snapshot.second)
+        if (snapshot.isLoaded) {
+            listener(snapshot.value, snapshot.version)
         }
         return AutoCloseable {
             synchronized(this) {
-                listeners.remove(snapshot.first)
+                listeners.remove(snapshot.listenerId)
             }
         }
     }
@@ -336,28 +361,52 @@ private class RebuildIntroPreferencesScope {
         }
     }
 
-    suspend fun reserveRequestId(
+    suspend fun reserveRequest(
         value: String,
         readPublicValue: () -> String?,
-    ): Pair<Long, String?> {
+        onReservationReturning: () -> Unit,
+        isCallerActive: () -> Boolean,
+    ): RebuildIntroReservationLease {
         orderingMutex.lock()
         return try {
             withContext(Dispatchers.IO) {
                 val publicValue = readPublicValue()
-                synchronized(this@RebuildIntroPreferencesScope) {
+                val requestId = synchronized(
+                    this@RebuildIntroPreferencesScope,
+                ) {
                     if (!hasLoadedCommittedValue) {
                         committedValue = publicValue
                         hasLoadedCommittedValue = true
                     }
                     nextRequestId += 1
                     reservedValues[nextRequestId] = value
-                    nextRequestId to publicValue
+                    nextRequestId
+                }
+                RebuildIntroReservationLease(
+                    requestId = requestId,
+                    publicValue = publicValue,
+                    release = ::finishRequest,
+                ).also { lease ->
+                    try {
+                        onReservationReturning()
+                        if (!isCallerActive()) {
+                            throw CancellationException(
+                                "Intro reservation caller was cancelled",
+                            )
+                        }
+                    } catch (error: Throwable) {
+                        lease.close()
+                        throw error
+                    }
                 }
             }
         } finally {
             orderingMutex.unlock()
         }
     }
+
+    @Synchronized
+    fun reservationCountForTesting(): Int = reservedValues.size
 
     @Synchronized
     fun isSuperseded(
@@ -384,7 +433,9 @@ private class RebuildIntroPreferencesScope {
     ): Boolean {
         orderingMutex.lock()
         val result = try {
-            var listenersToNotify = emptyList<(String?) -> Unit>()
+            var listenersToNotify =
+                emptyList<(String?, Long) -> Unit>()
+            var publishedVersion = 0L
             val didComplete = synchronized(this) {
                 if (isSupersededLocked(requestId, value)) {
                     false
@@ -400,16 +451,23 @@ private class RebuildIntroPreferencesScope {
                         committedValue = value
                         hasLoadedCommittedValue = true
                         version += 1
+                        publishedVersion = version
                         listenersToNotify = listeners.values.toList()
                     }
                     true
                 }
             }
-            didComplete to listenersToNotify
+            Triple(
+                didComplete,
+                listenersToNotify,
+                publishedVersion,
+            )
         } finally {
             orderingMutex.unlock()
         }
-        result.second.forEach { it(value) }
+        if (result.third > 0L) {
+            result.second.forEach { it(value, result.third) }
+        }
         return result.first
     }
 
@@ -425,13 +483,21 @@ private class RebuildIntroPreferencesScope {
                 !isSupersededLocked(requestId, value)
             }
             if (!canPublish) {
-                false to emptyList()
+                Triple(
+                    false,
+                    emptyList<(String?, Long) -> Unit>(),
+                    0L,
+                )
             } else {
                 onClaimed()
                 if (!publication()) {
-                    false to emptyList()
+                    Triple(
+                        false,
+                        emptyList<(String?, Long) -> Unit>(),
+                        0L,
+                    )
                 } else {
-                    val listenersToNotify = synchronized(this) {
+                    synchronized(this) {
                         latestCommittedRequestId = maxOf(
                             latestCommittedRequestId,
                             requestId,
@@ -439,41 +505,53 @@ private class RebuildIntroPreferencesScope {
                         committedValue = value
                         hasLoadedCommittedValue = true
                         version += 1
-                        listeners.values.toList()
+                        Triple(
+                            true,
+                            listeners.values.toList(),
+                            version,
+                        )
                     }
-                    true to listenersToNotify
                 }
             }
         } finally {
             orderingMutex.unlock()
         }
-        result.second.forEach { it(value) }
+        if (result.third > 0L) {
+            result.second.forEach { it(value, result.third) }
+        }
         return result.first
     }
 
     private fun publishReadThrough(value: String?): String? {
-        var listenersToNotify = emptyList<(String?) -> Unit>()
         val result = synchronized(this) {
             if (activeWriteCount > 0) {
-                Pair(
+                Triple(
                     if (hasLoadedCommittedValue) committedValue else null,
-                    false,
+                    emptyList<(String?, Long) -> Unit>(),
+                    0L,
                 )
             } else if (
                 hasLoadedCommittedValue &&
                 committedValue == value
             ) {
-                value to false
+                Triple(
+                    value,
+                    emptyList<(String?, Long) -> Unit>(),
+                    0L,
+                )
             } else {
                 committedValue = value
                 hasLoadedCommittedValue = true
                 version += 1
-                listenersToNotify = listeners.values.toList()
-                value to true
+                Triple(
+                    value,
+                    listeners.values.toList(),
+                    version,
+                )
             }
         }
-        if (result.second) {
-            listenersToNotify.forEach { it(value) }
+        if (result.third > 0L) {
+            result.second.forEach { it(value, result.third) }
         }
         return result.first
     }
@@ -486,6 +564,13 @@ private class RebuildIntroPreferencesScope {
             reservedValues.any { (reservedId, reservedValue) ->
                 reservedId > requestId && reservedValue != value
             }
+
+    private data class ObservationSnapshot(
+        val listenerId: Long,
+        val value: String?,
+        val version: Long,
+        val isLoaded: Boolean,
+    )
 }
 
 private object RebuildIntroPreferencesRegistry {
@@ -526,6 +611,7 @@ class SharedPreferencesRebuildIntroDateStore(
     private val onPublicValueRead: () -> Unit = {},
     private val onPublicationClaimed: () -> Unit = {},
     private val onAuthoritativeReadStarted: () -> Unit = {},
+    private val onReservationReturning: () -> Unit = {},
 ) : RebuildIntroDateStore {
     private val scope =
         RebuildIntroPreferencesRegistry.scopeFor(preferences)
@@ -536,24 +622,39 @@ class SharedPreferencesRebuildIntroDateStore(
         }
 
     override fun observeCommittedValue(
-        listener: (String?) -> Unit,
+        listener: (String?, Long) -> Unit,
     ): AutoCloseable = scope.observe(listener)
 
+    internal val activeReservationCountForTesting: Int
+        get() = scope.reservationCountForTesting()
+
     override suspend fun writeDurably(value: String): Boolean {
-        val reservation = scope.reserveRequestId(
-            value = value,
-        ) {
-            preferences.getString(
-                RebuildIntroDailyGate.StorageKey,
-                null,
-            ).also {
-                onPublicValueRead()
-            }
-        }
-        val requestId = reservation.first
-        val publicValueAtRequest = reservation.second
-        onRequestReserved()
+        coroutineContext.ensureActive()
+        val callerJob = coroutineContext[Job]
+        var reservation: RebuildIntroReservationLease? = null
         return try {
+            val lease = withContext(NonCancellable) {
+                scope.reserveRequest(
+                    value = value,
+                    readPublicValue = {
+                        preferences.getString(
+                            RebuildIntroDailyGate.StorageKey,
+                            null,
+                        ).also {
+                            onPublicValueRead()
+                        }
+                    },
+                    onReservationReturning = onReservationReturning,
+                    isCallerActive = {
+                        callerJob?.isActive != false
+                    },
+                )
+            }
+            reservation = lease
+            coroutineContext.ensureActive()
+            val requestId = lease.requestId
+            val publicValueAtRequest = lease.publicValue
+            onRequestReserved()
             withContext(ioDispatcher) {
                 scope.withSerializedWrite {
                     val authoritativeValue =
@@ -766,7 +867,7 @@ class SharedPreferencesRebuildIntroDateStore(
                 }
             }
         } finally {
-            scope.finishRequest(requestId)
+            reservation?.close()
         }
     }
 
@@ -848,6 +949,11 @@ class SharedPreferencesRebuildIntroDateStore(
     }
 }
 
+internal data class RebuildIntroGateSnapshot(
+    val shouldPresent: Boolean,
+    val version: Long,
+)
+
 class RebuildIntroDailyGate(
     private val store: RebuildIntroDateStore,
     private val clock: Clock = Clock.systemUTC(),
@@ -856,20 +962,66 @@ class RebuildIntroDailyGate(
 ) {
     private data class CompletionAttempt(
         val day: String,
+        val observedVersionAtStart: Long,
         val result: CompletableDeferred<Boolean>,
     )
 
     private val completionLock = Any()
     @Volatile
     private var completionAttempt: CompletionAttempt? = null
+    private var lastObservedVersion = Long.MIN_VALUE
+    private var latestObservedCommittedDay: String? = null
 
-    fun shouldPresent(): Boolean = completionAttempt != null ||
-        store.read() != todayKey()
+    internal fun presentationSnapshot(): RebuildIntroGateSnapshot {
+        val today = todayKey()
+        val state = synchronized(completionLock) {
+            Triple(
+                completionAttempt?.observedVersionAtStart,
+                lastObservedVersion,
+                latestObservedCommittedDay,
+            )
+        }
+        val inFlightDecision = state.first?.let { observedVersionAtStart ->
+                val didObserveCurrentDayAfterAttempt =
+                state.second > observedVersionAtStart &&
+                    state.third == today
+                !didObserveCurrentDayAfterAttempt
+        }
+        if (inFlightDecision != null) {
+            return RebuildIntroGateSnapshot(
+                shouldPresent = inFlightDecision,
+                version = state.second,
+            )
+        }
+        if (state.second != Long.MIN_VALUE) {
+            return RebuildIntroGateSnapshot(
+                shouldPresent = state.third != today,
+                version = state.second,
+            )
+        }
+        return RebuildIntroGateSnapshot(
+            shouldPresent = store.read() != today,
+            version = state.second,
+        )
+    }
+
+    fun shouldPresent(): Boolean = presentationSnapshot().shouldPresent
 
     fun observeShouldPresent(
-        listener: (Boolean) -> Unit,
-    ): AutoCloseable? = store.observeCommittedValue { committedDay ->
-        listener(committedDay != todayKey())
+        listener: (Boolean, Long) -> Unit,
+    ): AutoCloseable? = store.observeCommittedValue { committedDay, version ->
+        val shouldApply = synchronized(completionLock) {
+            if (version < lastObservedVersion) {
+                false
+            } else {
+                lastObservedVersion = version
+                latestObservedCommittedDay = committedDay
+                true
+            }
+        }
+        if (shouldApply) {
+            listener(committedDay != todayKey(), version)
+        }
     }
 
     suspend fun markCompleted(): Boolean {
@@ -884,6 +1036,7 @@ class RebuildIntroDailyGate(
                 } else {
                     CompletionAttempt(
                         day = requestedDay,
+                        observedVersionAtStart = lastObservedVersion,
                         result = CompletableDeferred(),
                     ).also {
                         completionAttempt = it
@@ -908,13 +1061,33 @@ class RebuildIntroDailyGate(
             }
 
             return try {
-                val didComplete = store.writeDurably(requestedDay) &&
-                    requestedDay == todayKey()
-                synchronized(completionLock) {
+                val didPersist = store.writeDurably(requestedDay)
+                val currentDay = todayKey()
+                val didReadCurrentDay = store.read() == currentDay
+                val didComplete = synchronized(completionLock) {
+                    val hasNewerObservation =
+                        lastObservedVersion >
+                            attempt.observedVersionAtStart
+                    val result = if (hasNewerObservation) {
+                        latestObservedCommittedDay == currentDay
+                    } else {
+                        (didPersist && requestedDay == currentDay) ||
+                            didReadCurrentDay
+                    }
+                    if (result && !hasNewerObservation) {
+                        latestObservedCommittedDay = currentDay
+                        lastObservedVersion =
+                            if (lastObservedVersion == Long.MIN_VALUE) {
+                                0L
+                            } else {
+                                lastObservedVersion + 1L
+                            }
+                    }
                     if (completionAttempt === attempt) {
                         completionAttempt = null
                     }
-                    attempt.result.complete(didComplete)
+                    attempt.result.complete(result)
+                    result
                 }
                 didComplete
             } catch (error: Throwable) {
@@ -944,13 +1117,24 @@ class RebuildIntroEntryController(
 ) {
     var showIntro by mutableStateOf(dailyGate.shouldPresent())
         private set
+    private val observationLock = Any()
+    private var lastAppliedVersion = Long.MIN_VALUE
     private val gateObservation: AutoCloseable?
 
     init {
         val weakEntry = WeakReference(this)
         gateObservation =
-            dailyGate.observeShouldPresent { shouldPresent ->
-                weakEntry.get()?.showIntro = shouldPresent
+            dailyGate.observeShouldPresent { shouldPresent, version ->
+                weakEntry.get()?.let { entry ->
+                    synchronized(entry.observationLock) {
+                        if (version < entry.lastAppliedVersion) {
+                            return@synchronized
+                        } else {
+                            entry.lastAppliedVersion = version
+                            entry.showIntro = shouldPresent
+                        }
+                    }
+                }
             }
     }
 
@@ -962,15 +1146,21 @@ class RebuildIntroEntryController(
         get() = !showIntro
 
     fun refresh() {
-        showIntro = dailyGate.shouldPresent()
+        apply(dailyGate.presentationSnapshot())
     }
 
     suspend fun completeIntro(): Boolean {
-        if (!dailyGate.markCompleted()) {
-            showIntro = true
-            return false
-        }
-        showIntro = false
-        return true
+        val didComplete = dailyGate.markCompleted()
+        val canLoadBootstrap = apply(dailyGate.presentationSnapshot())
+        return didComplete || canLoadBootstrap
     }
+
+    private fun apply(snapshot: RebuildIntroGateSnapshot): Boolean =
+        synchronized(observationLock) {
+            if (snapshot.version >= lastAppliedVersion) {
+                lastAppliedVersion = snapshot.version
+                showIntro = snapshot.shouldPresent
+            }
+            !showIntro
+        }
 }

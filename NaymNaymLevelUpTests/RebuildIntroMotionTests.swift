@@ -257,6 +257,58 @@ final class RebuildIntroMotionTests: XCTestCase {
         XCTAssertEqual(malformedGate.entryPhase, .intro)
     }
 
+    func testObserverRegistrationIgnoresSnapshotOlderThanPublishedCallback() async throws {
+        let date = try XCTUnwrap(
+            DateUtils.apiDateFormatter.date(from: "20260726")
+        )
+        let store = RebuildIntroOutOfOrderObservationStore(
+            value: "20260725",
+            registrationEmissions: [
+                (day: "20260726", version: 2),
+                (day: "20260725", version: 1),
+            ]
+        )
+        let gate = RebuildIntroDailyGate(store: store, now: { date })
+
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertFalse(gate.shouldPresent)
+        XCTAssertEqual(gate.entryPhase, .bootstrap)
+    }
+
+    func testNewCurrentDayCommitCannotBeReopenedByDelayedStaleFailure() async throws {
+        let writeStarted = expectation(
+            description: "previous-day persistence started"
+        )
+        let store = RebuildIntroVersionedDelayedStore(
+            writeStarted: writeStarted
+        )
+        var currentDay = "20260726"
+        let gate = RebuildIntroDailyGate(
+            store: store,
+            now: Date.init,
+            dayKey: { _ in currentDay }
+        )
+
+        let staleCompletion = Task {
+            await gate.markCompleted()
+        }
+        await fulfillment(of: [writeStarted], timeout: 1)
+
+        currentDay = "20260727"
+        store.publish(day: currentDay, version: 2)
+        await Task.yield()
+        XCTAssertFalse(gate.shouldPresent)
+
+        await store.finish(returning: false)
+        let didComplete = await staleCompletion.value
+
+        XCTAssertTrue(didComplete)
+        XCTAssertFalse(gate.shouldPresent)
+        XCTAssertEqual(gate.entryPhase, .bootstrap)
+    }
+
     func testDailyGateReevaluatesInjectedLocalTimeZoneAfterTravel() async throws {
         let instant = try XCTUnwrap(
             ISO8601DateFormatter().date(from: "2026-07-26T16:30:00Z")
@@ -1437,6 +1489,90 @@ private final class RebuildIntroRolloverDateStore:
 
     func finishFirstWrite(returning value: Bool) async {
         await firstResultGate.resume(returning: value)
+    }
+}
+
+private final class RebuildIntroOutOfOrderObservationStore:
+    RebuildIntroDateStoring, @unchecked Sendable {
+    typealias Emission = (day: String?, version: Int)
+
+    private let lock = NSLock()
+    private var value: String?
+    private let registrationEmissions: [Emission]
+
+    init(
+        value: String?,
+        registrationEmissions: [Emission]
+    ) {
+        self.value = value
+        self.registrationEmissions = registrationEmissions
+    }
+
+    func read() -> String? {
+        lock.withLock { value }
+    }
+
+    func writeDurably(_ value: String) async -> Bool {
+        lock.withLock {
+            self.value = value
+        }
+        return true
+    }
+
+    func observeCommittedValue(
+        _ listener: @escaping @Sendable (String?, Int) -> Void
+    ) -> RebuildIntroDateStoreObservation? {
+        registrationEmissions.forEach {
+            listener($0.day, $0.version)
+        }
+        return RebuildIntroDateStoreObservation(cancellation: {})
+    }
+}
+
+private final class RebuildIntroVersionedDelayedStore:
+    RebuildIntroDateStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private let writeStarted: XCTestExpectation
+    private let resultGate = RebuildIntroBoolGate()
+    private var value: String?
+    private var listener: (@Sendable (String?, Int) -> Void)?
+
+    init(writeStarted: XCTestExpectation) {
+        self.writeStarted = writeStarted
+    }
+
+    func read() -> String? {
+        lock.withLock { value }
+    }
+
+    func writeDurably(_ value: String) async -> Bool {
+        writeStarted.fulfill()
+        return await resultGate.wait()
+    }
+
+    func observeCommittedValue(
+        _ listener: @escaping @Sendable (String?, Int) -> Void
+    ) -> RebuildIntroDateStoreObservation? {
+        lock.withLock {
+            self.listener = listener
+        }
+        return RebuildIntroDateStoreObservation { [weak self] in
+            self?.lock.withLock {
+                self?.listener = nil
+            }
+        }
+    }
+
+    func publish(day: String, version: Int) {
+        let listener = lock.withLock {
+            value = day
+            return self.listener
+        }
+        listener?(day, version)
+    }
+
+    func finish(returning value: Bool) async {
+        await resultGate.resume(returning: value)
     }
 }
 

@@ -3,11 +3,17 @@ package com.h19h29.naymnaymlevelup.rebuild.onboarding
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -352,6 +358,202 @@ class RebuildIntroMotionTest {
         assertFalse(entry.showIntro)
         assertTrue(entry.canLoadBootstrap)
     }
+
+    @Test
+    fun observerRegistrationIgnoresSnapshotOlderThanPublishedCallback() {
+        val store = object : RebuildIntroDateStore {
+            override fun read(): String? = "20260725"
+
+            override suspend fun writeDurably(value: String): Boolean = true
+
+            override fun observeCommittedValue(
+                listener: (String?, Long) -> Unit,
+            ): AutoCloseable {
+                listener("20260726", 2)
+                listener("20260725", 1)
+                return AutoCloseable {}
+            }
+        }
+        val zone = ZoneId.of("Asia/Seoul")
+        val clock = Clock.fixed(
+            Instant.parse("2026-07-26T03:00:00Z"),
+            zone,
+        )
+        val entry = RebuildIntroEntryController(
+            RebuildIntroDailyGate(store, clock, zone),
+        )
+
+        assertFalse(entry.showIntro)
+        assertTrue(entry.canLoadBootstrap)
+    }
+
+    @Test
+    fun newCurrentDayCommitCannotBeReopenedByDelayedStaleFailure() = runTest {
+        val writeStarted = CompletableDeferred<Unit>()
+        val writeResult = CompletableDeferred<Boolean>()
+        val store = object : RebuildIntroDateStore {
+            var value: String? = null
+            var listener: ((String?, Long) -> Unit)? = null
+
+            override fun read(): String? = value
+
+            override suspend fun writeDurably(value: String): Boolean {
+                writeStarted.complete(Unit)
+                return writeResult.await()
+            }
+
+            override fun observeCommittedValue(
+                listener: (String?, Long) -> Unit,
+            ): AutoCloseable {
+                this.listener = listener
+                return AutoCloseable {
+                    this.listener = null
+                }
+            }
+
+            fun publish(day: String, version: Long) {
+                value = day
+                listener?.invoke(day, version)
+            }
+        }
+        val instant = Instant.parse("2026-07-26T16:30:00Z")
+        var zone = ZoneId.of("UTC")
+        val entry = RebuildIntroEntryController(
+            RebuildIntroDailyGate(
+                store = store,
+                clock = Clock.fixed(instant, ZoneId.of("UTC")),
+                zoneProvider = { zone },
+            ),
+        )
+
+        val staleCompletion = async {
+            entry.completeIntro()
+        }
+        writeStarted.await()
+
+        zone = ZoneId.of("Asia/Seoul")
+        store.publish("20260727", 2)
+        assertFalse(entry.showIntro)
+
+        writeResult.complete(false)
+
+        assertTrue(staleCompletion.await())
+        assertFalse(entry.showIntro)
+        assertTrue(entry.canLoadBootstrap)
+    }
+
+    @Test
+    fun currentDayCallbackDuringFinalReadWinsStaleAttemptResult() =
+        runBlocking {
+            val postWriteReadEntered = CountDownLatch(1)
+            val releasePostWriteRead = CountDownLatch(1)
+            val writeReturned = AtomicBoolean(false)
+            val listenerReference =
+                AtomicReference<((String?, Long) -> Unit)?>(null)
+            val store = object : RebuildIntroDateStore {
+                override fun read(): String? {
+                    if (writeReturned.get()) {
+                        postWriteReadEntered.countDown()
+                        releasePostWriteRead.await(3, TimeUnit.SECONDS)
+                    }
+                    return null
+                }
+
+                override suspend fun writeDurably(value: String): Boolean {
+                    writeReturned.set(true)
+                    return false
+                }
+
+                override fun observeCommittedValue(
+                    listener: (String?, Long) -> Unit,
+                ): AutoCloseable {
+                    listenerReference.set(listener)
+                    return AutoCloseable {
+                        listenerReference.compareAndSet(listener, null)
+                    }
+                }
+            }
+            val zone = ZoneId.of("Asia/Seoul")
+            val clock = Clock.fixed(
+                Instant.parse("2026-07-26T03:00:00Z"),
+                zone,
+            )
+            val gate = RebuildIntroDailyGate(store, clock, zone)
+            val observation = gate.observeShouldPresent { _, _ -> }
+
+            try {
+                val completion = async(Dispatchers.Default) {
+                    gate.markCompleted()
+                }
+                assertTrue(
+                    postWriteReadEntered.await(1, TimeUnit.SECONDS),
+                )
+                listenerReference.get()?.invoke("20260726", 2)
+                releasePostWriteRead.countDown()
+
+                assertTrue(completion.await())
+                assertFalse(gate.shouldPresent())
+            } finally {
+                releasePostWriteRead.countDown()
+                observation?.close()
+            }
+        }
+
+    @Test
+    fun higherVersionNonCurrentCallbackBeatsStaleCurrentDayRead() =
+        runBlocking {
+            val postWriteReadEntered = CountDownLatch(1)
+            val releasePostWriteRead = CountDownLatch(1)
+            val writeReturned = AtomicBoolean(false)
+            val listenerReference =
+                AtomicReference<((String?, Long) -> Unit)?>(null)
+            val store = object : RebuildIntroDateStore {
+                override fun read(): String? {
+                    if (!writeReturned.get()) return null
+                    postWriteReadEntered.countDown()
+                    releasePostWriteRead.await(3, TimeUnit.SECONDS)
+                    return "20260726"
+                }
+
+                override suspend fun writeDurably(value: String): Boolean {
+                    writeReturned.set(true)
+                    return false
+                }
+
+                override fun observeCommittedValue(
+                    listener: (String?, Long) -> Unit,
+                ): AutoCloseable {
+                    listenerReference.set(listener)
+                    return AutoCloseable {
+                        listenerReference.compareAndSet(listener, null)
+                    }
+                }
+            }
+            val zone = ZoneId.of("Asia/Seoul")
+            val clock = Clock.fixed(
+                Instant.parse("2026-07-26T03:00:00Z"),
+                zone,
+            )
+            val gate = RebuildIntroDailyGate(store, clock, zone)
+            val observation = gate.observeShouldPresent { _, _ -> }
+
+            try {
+                val completion = async(Dispatchers.Default) {
+                    gate.markCompleted()
+                }
+                assertTrue(
+                    postWriteReadEntered.await(1, TimeUnit.SECONDS),
+                )
+                listenerReference.get()?.invoke("20260725", 3)
+                releasePostWriteRead.countDown()
+
+                assertFalse(completion.await())
+                assertTrue(gate.presentationSnapshot().shouldPresent)
+            } finally {
+                releasePostWriteRead.countDown()
+                observation?.close()
+            }
+        }
 
     @Test
     fun inFlightRefreshCannotConsumePendingValueAndRolloverBlocksCompletion() =

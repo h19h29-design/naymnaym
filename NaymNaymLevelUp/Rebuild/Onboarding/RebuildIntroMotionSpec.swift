@@ -234,13 +234,13 @@ protocol RebuildIntroDateStoring: AnyObject {
     func read() -> String?
     func writeDurably(_ value: String) async -> Bool
     func observeCommittedValue(
-        _ listener: @escaping @Sendable (String?) -> Void
+        _ listener: @escaping @Sendable (String?, Int) -> Void
     ) -> RebuildIntroDateStoreObservation?
 }
 
 extension RebuildIntroDateStoring {
     func observeCommittedValue(
-        _ listener: @escaping @Sendable (String?) -> Void
+        _ listener: @escaping @Sendable (String?, Int) -> Void
     ) -> RebuildIntroDateStoreObservation? {
         nil
     }
@@ -760,11 +760,9 @@ final class UserDefaultsRebuildIntroDateStore:
     }
 
     func observeCommittedValue(
-        _ listener: @escaping @Sendable (String?) -> Void
+        _ listener: @escaping @Sendable (String?, Int) -> Void
     ) -> RebuildIntroDateStoreObservation? {
-        coordinator.observe { value, _ in
-            listener(value)
-        }
+        coordinator.observe(listener)
     }
 
     func writeDurably(_ value: String) async -> Bool {
@@ -996,6 +994,7 @@ final class RebuildIntroDailyGate: ObservableObject {
 
     private struct CompletionAttempt {
         let day: String
+        let observedVersionAtStart: Int
         let task: Task<Bool, Never>
     }
 
@@ -1004,6 +1003,8 @@ final class RebuildIntroDailyGate: ObservableObject {
     private let dayKey: (Date) -> String
     private var completionAttempt: CompletionAttempt?
     private var storeObservation: RebuildIntroDateStoreObservation?
+    private var lastAppliedStoreVersion = Int.min
+    private var latestObservedCommittedDay: String?
 
     init(
         defaults: UserDefaults = .standard,
@@ -1040,12 +1041,17 @@ final class RebuildIntroDailyGate: ObservableObject {
     }
 
     func refresh(at date: Date? = nil) {
-        guard completionAttempt == nil else {
-            shouldPresent = true
+        let today = dayKey(date ?? now())
+        if let completionAttempt {
+            let didObserveCurrentDayAfterAttempt =
+                lastAppliedStoreVersion
+                    > completionAttempt.observedVersionAtStart
+                && latestObservedCommittedDay == today
+            shouldPresent = !didObserveCurrentDayAfterAttempt
             return
         }
-        let today = dayKey(date ?? now())
-        shouldPresent = store.read() != today
+        shouldPresent = latestObservedCommittedDay != today
+            && store.read() != today
     }
 
     @discardableResult
@@ -1072,17 +1078,31 @@ final class RebuildIntroDailyGate: ObservableObject {
             }
 
             shouldPresent = true
+            let observedVersionAtStart = lastAppliedStoreVersion
             let task = Task { @MainActor [weak self] in
                 guard let self else { return false }
                 let didPersist = await store.writeDurably(requestedDay)
                 let currentDay = dayKey(now())
-                let didComplete = didPersist && requestedDay == currentDay
-                shouldPresent = !didComplete
+                let didObserveCurrentDay =
+                    lastAppliedStoreVersion >= observedVersionAtStart
+                    && latestObservedCommittedDay == currentDay
+                let didComplete =
+                    (didPersist && requestedDay == currentDay)
+                    || store.read() == currentDay
+                    || didObserveCurrentDay
+                if didComplete {
+                    shouldPresent = false
+                } else if lastAppliedStoreVersion <= observedVersionAtStart {
+                    shouldPresent = true
+                } else {
+                    shouldPresent = latestObservedCommittedDay != currentDay
+                }
                 completionAttempt = nil
                 return didComplete
             }
             completionAttempt = CompletionAttempt(
                 day: requestedDay,
+                observedVersionAtStart: observedVersionAtStart,
                 task: task
             )
             return await task.value
@@ -1091,9 +1111,12 @@ final class RebuildIntroDailyGate: ObservableObject {
 
     private func observeStore() {
         storeObservation = store.observeCommittedValue {
-            [weak self] committedDay in
+            [weak self] committedDay, version in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                guard version >= lastAppliedStoreVersion else { return }
+                lastAppliedStoreVersion = version
+                latestObservedCommittedDay = committedDay
                 let today = dayKey(now())
                 shouldPresent = committedDay != today
             }
