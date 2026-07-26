@@ -455,30 +455,76 @@ git commit -m "feat: add seven-stage mascot growth"
 ### Task 6: 인트로 로고와 모션 접근성
 
 **Files:**
+- Create: `NaymNaymLevelUp/Rebuild/Onboarding/RebuildIntroMotionSpec.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Onboarding/RebuildIntroView.swift`
+- Modify: `NaymNaymLevelUp/App/RootView.swift`
+- Modify: `NaymNaymLevelUp.xcodeproj/project.pbxproj`
+- Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroMotionSpec.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroScreen.kt`
 - Create: `NaymNaymLevelUpTests/RebuildIntroMotionTests.swift`
 - Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroMotionTest.kt`
+- Create: `android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroScreenTest.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/ui/RebuildApp.kt`
 - Create: `docs/qa/native-rebuild-motion-matrix.md`
 
 **Interfaces:**
 - Produces: split ratio `0.40`
 - Produces: left start `0.04s`, right start `0.34s`, rise duration `0.76s`, shine start `1.18s`, shine duration `0.82s`
 - Guarantees: no logo movement after 2.00s
+- Produces: `RebuildIntroMotionSpec.frame(at:reduceMotion:) -> RebuildIntroLogoFrame`
+- Produces: `RebuildIntroMotionSpec.frameAt(elapsedMs, reduceMotion)`
+- Guarantees: the rebuild path retains the existing once-per-local-day intro
+  presentation policy instead of adding an unconditional launch splash
+- Guarantees: the original 357×86 RGBA logo is rendered directly; no derived
+  crop asset, marketing-site logo, overlapping mask, or duplicated stroke
 
-- [ ] **Step 1: Add exact timing tests**
+- [ ] **Step 1: Add genuine RED tests for the new frame model**
 
-Assert the same constants on both platforms and verify Reduce Motion replaces the sequence with a 0.25s whole-logo fade.
+Do not only retest the already-green legacy constants. Add focused tests against
+the missing rebuild frame-model interfaces and assert:
 
-- [ ] **Step 2: Implement safe-mask logo rendering**
+1. the exact timing constants on both platforms
+2. left/right opacity, translation, scale, and shine at boundary timestamps
+3. frame equality at `2.00s` and every later sampled timestamp
+4. Reduce Motion keeps translation, scale delta, and shine at zero while applying
+   only a `0.25s` whole-logo fade
+5. a second start request cannot restart the sequence
+6. cancellation prevents any remaining asynchronous work from mutating state
 
-Split only at normalized x `0.40`, preserve at least 8px equivalent safety padding around each mask, and render the original `357×86` logo aspect ratio. The shine uses the logo alpha as a mask and runs once.
+- [ ] **Step 2: Implement complementary safe-mask logo rendering**
 
-- [ ] **Step 3: Verify clipping and reduced motion**
+Render the immutable app logo whose SHA-256 is
+`0132e9075a8a3953cc87ae43154be317fb846630ea5e1f7dfbced8fb0860120b`.
+Its left word ends at source x=138, x=139...145 is fully transparent, and the
+right word begins at x=146. Use normalized split `0.40` inside that transparent
+gap with complementary, non-overlapping masks. Preserve at least 8px-equivalent
+padding around the outer logo viewport, not as mask overlap. Render the original
+`357×86` aspect ratio. The shine uses the logo alpha as a mask and runs once.
 
-Inspect at compact width, Pro Max width, 200% font scale, and Reduce Motion. Acceptance: `ㅑ` and `ㄹ` have no clipped or duplicated strokes and the logo becomes fully static.
+On Android, combine the system `MotionDurationScale.scaleFactor == 0f` signal
+with an explicit test override. Do not depend only on the legacy
+`IntroLogoMotionSpec.java`, which is package-private outside the rebuild package.
 
-- [ ] **Step 4: Run complete motion gate**
+- [ ] **Step 3: Integrate the real rebuild entry path**
+
+Replace the rebuild branch's missing intro with `RebuildIntroView` /
+`RebuildIntroScreen` in the actual iOS `RootView` and Android `RebuildApp`.
+Preserve the existing once-per-local-day behavior using persisted local state.
+The first rebuild launch, including a new user's onboarding launch, starts with
+the intro; subsequent launches that local day proceed directly. iOS deep links
+continue to dismiss/mark the daily intro before routing. Do not leave an
+unreferenced preview-only screen.
+
+- [ ] **Step 4: Verify clipping and reduced motion**
+
+Inspect 320pt, 393pt, Pro Max, Android 360×800, and a large Android screen at
+default and 200% text, both normal and Reduce Motion. Capture:
+`0.00, 0.04, 0.34, 0.80, 1.10, 1.18, 2.00, 2.50s`.
+Acceptance: `ㅑ` and `ㄹ` have no clipped or duplicated strokes; the 2.00s final
+render is pixel-equivalent to the static source logo; Reduce Motion has no
+spatial transform or shine.
+
+- [ ] **Step 5: Run complete motion gate**
 
 Run: `python3 scripts/validate-mascot-rig.py --root art/mascot-rig`
 
@@ -488,10 +534,26 @@ Run: `cd android && ./gradlew testDebugUnitTest connectedDebugAndroidTest assemb
 
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Update the existing Figma motion frames**
+
+Update existing normal frame `29:2` and Reduce Motion frame `31:2` in place.
+Document the complementary left/right mask tracks, timing markers, one-shot shine,
+and the 0.25s reduced fade. Do not create duplicate frames.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add NaymNaymLevelUp/Rebuild/Onboarding NaymNaymLevelUpTests/RebuildIntroMotionTests.swift android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/onboarding android/app/src/test docs/qa/native-rebuild-motion-matrix.md
+git add NaymNaymLevelUp/Rebuild/Onboarding/RebuildIntroMotionSpec.swift \
+  NaymNaymLevelUp/Rebuild/Onboarding/RebuildIntroView.swift \
+  NaymNaymLevelUp/App/RootView.swift \
+  NaymNaymLevelUpTests/RebuildIntroMotionTests.swift \
+  NaymNaymLevelUp.xcodeproj/project.pbxproj \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroMotionSpec.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroScreen.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/ui/RebuildApp.kt \
+  android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroMotionTest.kt \
+  android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/onboarding/RebuildIntroScreenTest.kt \
+  docs/qa/native-rebuild-motion-matrix.md
 git commit -m "feat: finish accessible mascot and logo motion"
 ```
 
