@@ -35,6 +35,29 @@ EXPECTED_RECORD_IDENTITIES = [
 
 
 class NativeRebuildContractTests(unittest.TestCase):
+    def test_intro_logo_assets_match_exact_rgba_pixel_and_hash_contract(self):
+        expected_hash = (
+            "0132e9075a8a3953cc87ae43154be317f"
+            "b846630ea5e1f7dfbced8fb0860120b"
+        )
+        assets = [
+            ROOT / (
+                "NaymNaymLevelUp/Resources/Assets.xcassets/"
+                "logo_naym_levelup.imageset/logo_naym_levelup.png"
+            ),
+            ROOT / "android/app/src/main/res/drawable/logo_naym_levelup.png",
+        ]
+
+        for asset in assets:
+            with self.subTest(asset=asset):
+                data = asset.read_bytes()
+                self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+                self.assertEqual(int.from_bytes(data[16:20], "big"), 357)
+                self.assertEqual(int.from_bytes(data[20:24], "big"), 86)
+                self.assertEqual(data[24], 8)
+                self.assertEqual(data[25], 6)
+                self.assertEqual(hashlib.sha256(data).hexdigest(), expected_hash)
+
     def test_growth_policy_preserves_shipped_thresholds_and_titles(self):
         policy = json.loads((CONTRACTS / "growth-policy.json").read_text())
 

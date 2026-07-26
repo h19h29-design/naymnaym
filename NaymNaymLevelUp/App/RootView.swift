@@ -1,19 +1,27 @@
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage("last-intro-date") private var lastIntroDate = ""
+    @StateObject private var rebuildIntroGate = RebuildIntroDailyGate()
     @State private var introDismissed = false
     @State private var selectedTab: MainTab = .today
 
     private var todayKey: String {
-        DateUtils.apiString(from: Date())
+        RebuildIntroLocalDay.key(for: Date())
     }
 
     var body: some View {
         Group {
             if RebuildFeatureGate.isEnabled() {
-                RebuildRootView()
+                if rebuildIntroGate.shouldPresent {
+                    RebuildIntroView {
+                        rebuildIntroGate.markCompleted()
+                    }
+                } else {
+                    RebuildRootView()
+                }
             } else if appState.hasProfile {
                 if appState.currentMode == .parent {
                     MainTabView(selection: $selectedTab)
@@ -64,6 +72,25 @@ struct RootView: View {
                 await handleOpenURL(url)
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            rebuildIntroGate.refresh()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+        ) { _ in
+            rebuildIntroGate.refresh()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .NSSystemTimeZoneDidChange
+            )
+        ) { _ in
+            rebuildIntroGate.refresh()
+        }
     }
 
     private var shouldShowIntro: Bool {
@@ -72,9 +99,17 @@ struct RootView: View {
 
     @MainActor
     private func handleOpenURL(_ url: URL) async {
-        guard let route = await appState.handleDeepLink(url) else { return }
-        introDismissed = true
-        lastIntroDate = todayKey
+        guard let route = await RebuildIntroDeepLinkCoordinator.resolve(
+            url: url,
+            resolver: appState.handleDeepLink,
+            markIntroCompleted: {
+                rebuildIntroGate.markCompleted()
+                introDismissed = true
+                lastIntroDate = todayKey
+            }
+        ) else {
+            return
+        }
 
         switch route {
         case .parentSummary:
