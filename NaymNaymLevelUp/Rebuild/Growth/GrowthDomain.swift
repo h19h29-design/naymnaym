@@ -165,27 +165,51 @@ struct GrowthEventPresentation: Equatable {
             separator: "|",
             omittingEmptySubsequences: false
         ).map(String.init)
+        let menu = parts[safe: 1] ?? ""
+        let normalizedMenu = menu
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
         guard parts.count == 3,
-              (try? datePattern.wholeMatch(in: parts[0])) != nil,
-              !parts[1].trimmingCharacters(
-                in: .whitespacesAndNewlines
-              ).isEmpty,
+              isCanonicalDate(parts[0]),
+              !normalizedMenu.isEmpty,
+              menu == normalizedMenu,
               let status = statusLabels[parts[2]]
         else {
             return nil
         }
-        return "\(parts[1].trimmingCharacters(in: .whitespacesAndNewlines)) · \(status)"
+        return "\(normalizedMenu) · \(status)"
     }
 
     private static let statusLabels = [
         "finished": "다 먹었어요",
+        "half": "절반 먹었어요",
         "oneBite": "한 입 도전",
         "smelledOnly": "냄새 맡기",
         "difficultToday": "오늘은 어려웠어요",
         "allergyAvoided": "알레르기 안전 기록",
     ]
 
-    private static let datePattern = try! Regex(#"\d{4}-\d{2}-\d{2}"#)
+    private static func isCanonicalDate(_ value: String) -> Bool {
+        guard value.range(
+            of: #"^\d{4}-\d{2}-\d{2}$"#,
+            options: .regularExpression
+        ) != nil,
+        let date = canonicalDateFormatter.date(from: value)
+        else {
+            return false
+        }
+        return canonicalDateFormatter.string(from: date) == value
+    }
+
+    private static let canonicalDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter
+    }()
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()

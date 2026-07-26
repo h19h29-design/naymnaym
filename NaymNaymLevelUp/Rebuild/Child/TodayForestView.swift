@@ -91,8 +91,6 @@ struct TodayForestView: View {
                 style: .continuous
             )
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("현재 캐릭터, \(characterMessage)")
     }
 
     private var mealSummary: some View {

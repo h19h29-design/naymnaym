@@ -64,6 +64,32 @@ class GrowthRepositoryTest {
     }
 
     @Test
+    fun canonicalMealPresentationRejectsNoncanonicalIdentityAndSupportsHalf() {
+        val cases = listOf(
+            "meal:2026-07-25|오이|half" to "오이 · 절반 먹었어요",
+            "meal:2026-02-30|오이|finished" to "성장 XP 획득",
+            "meal:2026-07-25| 오이 |finished" to "성장 XP 획득",
+            "meal:2026-07-25|SPINACH|finished" to "성장 XP 획득",
+            "meal:2026-07-25|spinach|finished" to
+                "spinach · 다 먹었어요",
+        )
+
+        cases.forEach { (id, expectedTitle) ->
+            assertEquals(
+                id,
+                expectedTitle,
+                GrowthEventPresentation.from(
+                    event(
+                        id = id,
+                        amount = 12,
+                        occurredAt = 100,
+                    ),
+                ).title,
+            )
+        }
+    }
+
+    @Test
     fun legacySourceRecordIdNeverInventsMealCopy() {
         val presentation = GrowthEventPresentation.from(
             event(

@@ -6,8 +6,11 @@ import com.h19h29.naymnaymlevelup.rebuild.data.ProgressEventEntity
 import com.h19h29.naymnaymlevelup.rebuild.meal.ContractLoadException
 import com.h19h29.naymnaymlevelup.rebuild.meal.RebuildContractReader
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeParseException
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class GrowthPolicy private constructor(
     val thresholds: List<Int>,
@@ -155,10 +158,10 @@ data class GrowthEventPresentation(
     val dateText: String,
 ) {
     companion object {
-        private val canonicalDate = Regex("""\d{4}-\d{2}-\d{2}""")
         private val dateFormatter = DateTimeFormatter.ofPattern("M월 d일")
         private val statusLabels = mapOf(
             "finished" to "다 먹었어요",
+            "half" to "절반 먹었어요",
             "oneBite" to "한 입 도전",
             "smelledOnly" to "냄새 맡기",
             "difficultToday" to "오늘은 어려웠어요",
@@ -188,8 +191,22 @@ data class GrowthEventPresentation(
             if (components.size != 3) return null
             val (date, menu, status) = components
             val statusLabel = statusLabels[status] ?: return null
-            if (!canonicalDate.matches(date) || menu.isBlank()) return null
-            return "${menu.trim()} · $statusLabel"
+            val normalizedMenu = menu.trim().lowercase(Locale.ROOT)
+            if (
+                !isCanonicalDate(date) ||
+                normalizedMenu.isEmpty() ||
+                menu != normalizedMenu
+            ) {
+                return null
+            }
+            return "$normalizedMenu · $statusLabel"
         }
+
+        private fun isCanonicalDate(value: String): Boolean =
+            try {
+                LocalDate.parse(value).toString() == value
+            } catch (_: DateTimeParseException) {
+                false
+            }
     }
 }

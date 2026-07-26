@@ -49,13 +49,40 @@ performed.
 
 ## iOS static-art memory gate
 
-- Added a checksum- and dimension-verified REST-only loader/cache.
+- Added a checksum- and dimension-verified REST-only thumbnail loader/cache.
 - Collection and next-unlock previews decode one REST frame per visible level
   instead of loading all three animation keyframes.
-- The focused cache test proves one REST cache entry and zero full-rig cache
-  entries after a static level load.
+- Hashing, source-dimension validation, and decoding run through a detached
+  loading worker rather than the main actor.
+- A static preview is downsampled to at most 256 px only after its original
+  1254×1254 source and SHA-256 have been verified.
+- The static cache is a byte-cost LRU capped at 2 MiB. Full keyframes and
+  semantic fallback layers each retain only the currently active level.
+- Focused tests prove off-main execution, thumbnail dimensions, byte-cost
+  eviction, and single-active-level full/fallback eviction.
 - Silent `try?` and legacy `Squirrel_Growth_Level_N` fallback rendering were
   removed. Loading is explicit, and failures expose an accessible retry state.
+
+## Post-review hardening
+
+- `MascotRestArtLoader` now accepts the requested level per load and rejects
+  stale completions. Changing a card from level 1 to level 4 loads level 4
+  rather than keeping the `@StateObject` initializer's original level.
+- `MascotRigView` renders only checksum-verified keyframes or verified
+  semantic fallback layers. If both fail, it exposes an independently
+  actionable retry button instead of silently showing a legacy asset.
+- Growth, Collection, and Today cards no longer combine away nested retry
+  actions with a fixed parent accessibility label.
+- Canonical meal copy now requires a real Gregorian `yyyy-MM-dd` date and an
+  already `trimAndLowercase` menu identity. Impossible dates, surrounding
+  whitespace, and uppercase ASCII identities remain truthful generic growth
+  records. Valid legacy `half` identities display `절반 먹었어요`.
+- The warm `#B87548` tone is now silhouette-only. Locked supporting text uses
+  Forest 700 and passes WCAG normal-text contrast on the warm locked surface.
+- Android replaced both unbounded mascot maps with deterministic
+  access-ordered caches: one active full rig/fallback level and a 2 MiB static
+  thumbnail cache. Android also verifies the 1254×1254 source before
+  downsampling static art to 256 px.
 
 ## TDD evidence
 
@@ -73,12 +100,28 @@ The following expected RED states were observed before their implementations:
   `cachedRestImageCount`, and `cachedRigImageSetCount` did not exist.
 - The truthful REST error test failed because `MascotRestArtLoader` did not
   exist.
+- The level-transition test failed because the REST loader required a fixed
+  initializer level.
+- The verified-failure tests failed because `MascotRigLoader` and its explicit
+  retry state did not exist.
+- Canonical meal parity failed on `half`, impossible `2026-02-30`, surrounding
+  menu whitespace, and uppercase `SPINACH` identities on both platforms.
+- Locked-text contrast tests failed before the dedicated silhouette/text
+  palette existed.
+- iOS cache tests failed before `restThumbnail`, byte-cost diagnostics, and
+  single-active-level eviction existed.
+- The off-main worker test failed before `MascotImageLoadingWorker` existed.
+- Android cache tests failed before `BoundedMascotCache` existed.
 
 Focused GREEN results:
 
 - iOS policy, repository ordering/copy, and title parity: 9/9.
-- iOS REST-only cache and explicit error state: 2/2.
+- iOS mascot motion, transition, verified fallback/error, worker, and bounded
+  cache tests: 25/25.
+- iOS canonical meal and locked-text contrast tests: PASS.
 - Android growth policy/repository/catalog/UI compilation: PASS.
+- Android canonical meal, locked-text contrast, and deterministic count/byte
+  eviction tests: PASS.
 - Android persisted-home-level instrumentation: 3/3.
 
 ## Final verification
@@ -94,12 +137,13 @@ Focused GREEN results:
 - `bash scripts/sync-native-rebuild-contracts.sh` and runtime `cmp`
   - PASS; both growth-policy mirrors are byte-identical.
 - XcodeBuildMCP `test_sim`
-  - 287 passed, 0 failed, 0 skipped; warnings 0, errors 0.
+  - 295 passed, 0 failed, 0 skipped; warnings 0, errors 0.
   - final build log:
-    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T06-23-38-568Z_pid42459_403f8754.log`
+    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T06-59-32-434Z_pid48667_5dd575cf.log`
 - Android:
   - `testDebugUnitTest connectedDebugAndroidTest assembleDebug`
   - BUILD SUCCESSFUL.
+  - JVM: 142/142 passed.
   - connected API-35 emulator: 33/33 passed.
   - The existing ASCII temporary build-output redirect was used because Kotlin
     test output is unreliable under the Korean workspace path. It was not
@@ -115,7 +159,9 @@ Focused GREEN results:
 390×844 panels in one 1170×844 comparison. Levels 1, 4, and 7 use the same
 300×300 source projection and the same `(627, 1128)` anchor baseline. Visual
 inspection confirms consistent foot baseline and scale while preserving the
-intended increase in costume detail.
+intended increase in costume detail. The comparison was re-opened and
+re-inspected after the cache hardening; downsampling affects only runtime
+static previews and does not alter approved source art.
 
 ## Figma
 

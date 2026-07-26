@@ -238,11 +238,11 @@ final class MascotMotionControllerTests: XCTestCase {
         )
     }
 
-    func testLevelOneApprovedAssetsAreVerifiedAndCached() throws {
+    func testLevelOneApprovedAssetsAreVerifiedAndCached() async throws {
         let store = MascotRigAssetStore()
 
-        let first = try store.images(level: 1, bundle: .main)
-        let second = try store.images(level: 1, bundle: .main)
+        let first = try await store.images(level: 1, bundle: .main)
+        let second = try await store.images(level: 1, bundle: .main)
 
         XCTAssertEqual(first.verifiedKeyframeCount, 3)
         XCTAssertEqual(first.semanticPartNames.count, 11)
@@ -255,28 +255,84 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertTrue(first.celebrate === second.celebrate)
     }
 
-    func testRestOnlyLoaderVerifiesAndCachesWithoutDecodingAnimationFrames() throws {
+    func testRestOnlyLoaderVerifiesAndCachesWithoutDecodingAnimationFrames() async throws {
         let store = MascotRigAssetStore()
 
-        let first = try store.restImage(level: 4, bundle: .main)
-        let second = try store.restImage(level: 4, bundle: .main)
+        let first = try await store.restThumbnail(
+            level: 4,
+            bundle: .main
+        )
+        let second = try await store.restThumbnail(
+            level: 4,
+            bundle: .main
+        )
+        let diagnostics = store.cacheDiagnostics()
 
-        XCTAssertEqual(first.size.width, 1254, accuracy: 0.001)
-        XCTAssertEqual(first.size.height, 1254, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(first.size.width, 256)
+        XCTAssertLessThanOrEqual(first.size.height, 256)
         XCTAssertTrue(first === second)
-        XCTAssertEqual(store.cachedRestImageCount, 1)
-        XCTAssertEqual(store.cachedRigImageSetCount, 0)
+        XCTAssertEqual(diagnostics.restLevels, [4])
+        XCTAssertEqual(diagnostics.rigLevels, [])
     }
 
-    func testRestArtLoaderExposesFailureWithoutLegacyFallback() {
+    func testRestThumbnailIsDownsampledAndEvictsByByteCost() async throws {
+        let store = MascotRigAssetStore(restCacheCostLimit: 300_000)
+
+        let first = try await store.restThumbnail(
+            level: 1,
+            bundle: .main
+        )
+        let cached = try await store.restThumbnail(
+            level: 1,
+            bundle: .main
+        )
+        XCTAssertTrue(first === cached)
+        XCTAssertLessThanOrEqual(first.cgImage?.width ?? .max, 256)
+        XCTAssertLessThanOrEqual(first.cgImage?.height ?? .max, 256)
+
+        _ = try await store.restThumbnail(level: 4, bundle: .main)
+        let diagnostics = store.cacheDiagnostics()
+
+        XCTAssertEqual(diagnostics.restLevels, [4])
+        XCTAssertLessThanOrEqual(diagnostics.restCost, 300_000)
+        XCTAssertEqual(diagnostics.rigLevels, [])
+    }
+
+    func testImageLoadingWorkerRunsOutsideTheMainThread() async throws {
+        let ranOnMainThread = try await MascotImageLoadingWorker.run {
+            Thread.isMainThread
+        }
+
+        XCTAssertFalse(ranOnMainThread)
+    }
+
+    func testFullRigAndFallbackCachesKeepOnlyTheActiveLevel() async throws {
+        let store = MascotRigAssetStore()
+
+        let levelOne = try await store.images(level: 1, bundle: .main)
+        let cachedLevelOne = try await store.images(
+            level: 1,
+            bundle: .main
+        )
+        XCTAssertTrue(levelOne.rest === cachedLevelOne.rest)
+
+        _ = try await store.images(level: 4, bundle: .main)
+        _ = try await store.fallbackLayers(level: 1, bundle: .main)
+        _ = try await store.fallbackLayers(level: 4, bundle: .main)
+        let diagnostics = store.cacheDiagnostics()
+
+        XCTAssertEqual(diagnostics.rigLevels, [4])
+        XCTAssertEqual(diagnostics.fallbackLevels, [4])
+    }
+
+    func testRestArtLoaderExposesFailureWithoutLegacyFallback() async {
         let loader = MascotRestArtLoader(
-            level: 3,
             loadImage: { _, _ in
                 throw MascotRigAssetError.missingAsset("composite-rest")
             }
         )
 
-        loader.load()
+        await loader.load(level: 3)
 
         XCTAssertNil(loader.image)
         XCTAssertFalse(loader.isLoading)
@@ -284,13 +340,93 @@ final class MascotMotionControllerTests: XCTestCase {
             loader.loadError,
             .missingAsset("composite-rest")
         )
+        XCTAssertTrue(loader.canRetry)
     }
 
-    func testSemanticFallbackLayersAreVerifiedAndCached() throws {
+    func testRestArtLoaderSwitchesToTheLatestRequestedLevel() async {
+        let levelOne = UIImage(
+            color: .red,
+            size: CGSize(width: 1, height: 1)
+        )
+        let levelFour = UIImage(
+            color: .green,
+            size: CGSize(width: 1, height: 1)
+        )
+        var requestedLevels: [Int] = []
+        let loader = MascotRestArtLoader(
+            loadImage: { level, _ in
+                requestedLevels.append(level)
+                return level == 1 ? levelOne : levelFour
+            }
+        )
+
+        await loader.load(level: 1)
+        XCTAssertTrue(loader.image === levelOne)
+
+        await loader.load(level: 4)
+
+        XCTAssertEqual(requestedLevels, [1, 4])
+        XCTAssertEqual(loader.loadedLevel, 4)
+        XCTAssertTrue(loader.image === levelFour)
+    }
+
+    func testRigLoaderUsesVerifiedSemanticFallbackAfterKeyframeFailure() async {
+        let fallbackImage = UIImage(
+            color: .orange,
+            size: CGSize(width: 1, height: 1)
+        )
+        let loader = MascotRigLoader(
+            loadImages: { _, _ in
+                throw MascotRigAssetError.checksumMismatch("composite-rest")
+            },
+            loadFallbackLayers: { _, _ in
+                [
+                    MascotRigFallbackLayer(
+                        part: .body,
+                        image: fallbackImage
+                    ),
+                ]
+            }
+        )
+
+        await loader.load(level: 2)
+
+        XCTAssertNil(loader.images)
+        XCTAssertEqual(loader.fallbackLayers?.map(\.part), [.body])
+        XCTAssertTrue(loader.fallbackLayers?.first?.image === fallbackImage)
+        XCTAssertNil(loader.loadError)
+        XCTAssertEqual(loader.loadedLevel, 2)
+    }
+
+    func testRigLoaderExposesRetryAfterAllVerifiedAssetsFail() async {
+        let loader = MascotRigLoader(
+            loadImages: { _, _ in
+                throw MascotRigAssetError.checksumMismatch("composite-rest")
+            },
+            loadFallbackLayers: { _, _ in
+                throw MascotRigAssetError.missingAsset("body")
+            }
+        )
+
+        await loader.load(level: 5)
+
+        XCTAssertNil(loader.images)
+        XCTAssertNil(loader.fallbackLayers)
+        XCTAssertEqual(loader.loadError, .missingAsset("body"))
+        XCTAssertTrue(loader.canRetry)
+    }
+
+    func testSemanticFallbackLayersAreVerifiedAndCached() async throws {
         let store = MascotRigAssetStore()
 
-        let first = try store.fallbackLayers(level: 1, bundle: .main)
-        let second = try store.fallbackLayers(level: 1, bundle: .main)
+        let first = try await store.fallbackLayers(
+            level: 1,
+            bundle: .main
+        )
+        let second = try await store.fallbackLayers(
+            level: 1,
+            bundle: .main
+        )
 
         XCTAssertEqual(first.count, 11)
         XCTAssertEqual(first.map(\.part), MascotRigSemanticPart.allCases)
@@ -299,7 +435,7 @@ final class MascotMotionControllerTests: XCTestCase {
         }
     }
 
-    func testAllSevenLevelsHaveDistinctExplicitKeyframesAndFallbacks() throws {
+    func testAllSevenLevelsHaveDistinctExplicitKeyframesAndFallbacks() async throws {
         let definitions = MascotRigLevelCatalog.definitions
 
         XCTAssertEqual(Array(definitions.keys).sorted(), Array(1...7))
@@ -329,15 +465,33 @@ final class MascotMotionControllerTests: XCTestCase {
 
         let store = MascotRigAssetStore()
         for level in [1, 4, 7] {
+            let images = try await store.images(
+                level: level,
+                bundle: .main
+            )
+            let fallbackLayers = try await store.fallbackLayers(
+                level: level,
+                bundle: .main
+            )
             XCTAssertEqual(
-                try store.images(level: level, bundle: .main)
-                    .verifiedKeyframeCount,
+                images.verifiedKeyframeCount,
                 3
             )
             XCTAssertEqual(
-                try store.fallbackLayers(level: level, bundle: .main).count,
+                fallbackLayers.count,
                 11
             )
         }
+    }
+}
+
+private extension UIImage {
+    convenience init(color: UIColor, size: CGSize) {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            color.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        self.init(cgImage: image.cgImage!)
     }
 }

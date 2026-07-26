@@ -124,7 +124,7 @@ fun CollectionScreenContent(
                     containerColor = if (unlocked) {
                         Color.White
                     } else {
-                        Color(0xFFFFF0DF)
+                        Color(LockedGrowthSurfaceArgb)
                     },
                 ),
             ) {
@@ -163,7 +163,7 @@ fun CollectionScreenContent(
                             color = if (unlocked) {
                                 Color(RebuildTokens.Forest700)
                             } else {
-                                WarmLockedMascot
+                                LockedGrowthText
                             },
                         )
                     }

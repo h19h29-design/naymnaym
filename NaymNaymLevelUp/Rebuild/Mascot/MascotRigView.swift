@@ -6,8 +6,7 @@ struct MascotRigView: View {
     let reduceMotion: Bool
 
     @StateObject private var controller: MascotMotionController
-    @State private var images: MascotRigImages?
-    @State private var fallbackLayers: [MascotRigFallbackLayer]?
+    @StateObject private var loader = MascotRigLoader()
 
     private static let productionSpec =
         (try? MascotMotionSpec.bundled()) ?? .fixture
@@ -28,31 +27,56 @@ struct MascotRigView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.clear
-
-            if !controller.isPlaybackActive {
-                rig(pose: controller.pose)
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) {
-                    context in
-                    rig(pose: controller.sampledPose(at: context.date))
+        Group {
+            if loader.canRetry {
+                Button {
+                    Task {
+                        await loader.load(level: level)
+                    }
+                } label: {
+                    VStack(spacing: RebuildDesignTokens.spacing[1]) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.title3)
+                        Text("캐릭터 다시 불러오기")
+                            .font(.caption.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundStyle(RebuildDesignTokens.forest700)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .accessibilityLabel(
+                    "레벨 \(level) 캐릭터를 불러오지 못했습니다. 다시 시도"
+                )
+                .accessibilityIdentifier("mascot_rig_retry_level_\(level)")
+            } else {
+                ZStack {
+                    Color.clear
+
+                    if loader.isLoading,
+                       loader.images == nil,
+                       loader.fallbackLayers == nil {
+                        ProgressView()
+                            .accessibilityHidden(true)
+                    } else if !controller.isPlaybackActive {
+                        rig(pose: controller.pose)
+                    } else {
+                        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) {
+                            context in
+                            rig(
+                                pose: controller.sampledPose(
+                                    at: context.date
+                                )
+                            )
+                        }
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("레벨 \(level) 냠냠 다람쥐")
             }
         }
         .aspectRatio(1, contentMode: .fit)
         .task(id: level) {
-            do {
-                images = try MascotRigAssetStore.shared.images(
-                    level: level,
-                    bundle: .main
-                )
-                fallbackLayers = nil
-            } catch {
-                images = nil
-                fallbackLayers = try? MascotRigAssetStore.shared
-                    .fallbackLayers(level: level, bundle: .main)
-            }
+            await loader.load(level: level)
         }
         .onAppear {
             controller.play(state, reduceMotion: reduceMotion)
@@ -63,8 +87,6 @@ struct MascotRigView: View {
         .onChange(of: reduceMotion) { isReduced in
             controller.play(state, reduceMotion: isReduced)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("레벨 \(level) 냠냠 다람쥐")
     }
 
     @ViewBuilder
@@ -74,7 +96,7 @@ struct MascotRigView: View {
             pose: pose
         )
 
-        if let images {
+        if let images = loader.images {
             let celebrationBlend = projection.celebrationBlend
             let expressionBlend: CGFloat = projection.eyesClosed ? 1 : 0
 
@@ -104,7 +126,7 @@ struct MascotRigView: View {
                 .easeInOut(duration: reduceMotion ? 0.125 : 0.08),
                 value: projection.eyesClosed
             )
-        } else if let fallbackLayers {
+        } else if let fallbackLayers = loader.fallbackLayers {
             ZStack {
                 ForEach(fallbackLayers, id: \.part) { layer in
                     if isVisible(layer.part, in: projection) {
@@ -126,12 +148,6 @@ struct MascotRigView: View {
                 .easeInOut(duration: reduceMotion ? 0.125 : 0.08),
                 value: projection.eyesClosed
             )
-        } else {
-            Image(legacyAssetName)
-                .resizable()
-                .interpolation(.high)
-                .antialiased(true)
-                .scaledToFit()
         }
     }
 
@@ -160,9 +176,5 @@ struct MascotRigView: View {
         case .tailBack, .body, .scarf, .head, .armLeft, .armRight, .sprout:
             return true
         }
-    }
-
-    private var legacyAssetName: String {
-        "Squirrel_Growth_Level_\(min(max(level, 1), 7))"
     }
 }

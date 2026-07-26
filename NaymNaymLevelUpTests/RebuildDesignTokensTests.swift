@@ -8,4 +8,19 @@ final class RebuildDesignTokensTests: XCTestCase {
         XCTAssertEqual(RebuildDesignTokens.hex(.forest700), "#1F5E43")
         XCTAssertEqual(RebuildDesignTokens.hex(.cream50), "#FFF9EC")
     }
+
+    func testLockedGrowthCopyMeetsNormalTextContrast() {
+        XCTAssertGreaterThanOrEqual(
+            AppReadabilityPolicy.contrastRatio(
+                foregroundHex: GrowthLockedPalette.textHex,
+                backgroundHex: GrowthLockedPalette.surfaceHex
+            ),
+            4.5
+        )
+        XCTAssertEqual(GrowthLockedPalette.silhouetteHex, "#B87548")
+        XCTAssertNotEqual(
+            GrowthLockedPalette.textHex,
+            GrowthLockedPalette.silhouetteHex
+        )
+    }
 }

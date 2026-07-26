@@ -1,6 +1,7 @@
 package com.h19h29.naymnaymlevelup.rebuild.mascot
 
 import android.content.res.Resources
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -37,6 +38,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val MASCOT_CANVAS_SIZE = 1_254f
+private const val MASCOT_THUMBNAIL_SIZE = 256
+private const val MASCOT_REST_CACHE_BYTES = 2 * 1_024 * 1_024
 
 @Composable
 fun MascotRig(
@@ -389,15 +392,69 @@ internal object MascotRigAssetCatalog {
     )
 }
 
-internal object MascotRigAssetStore {
-    private val cache = mutableMapOf<Int, MascotRigAssets>()
-    private val restCache = mutableMapOf<Int, ImageBitmap>()
+internal class BoundedMascotCache<Key, Value>(
+    private val maxEntries: Int,
+    private val maxCost: Int,
+    private val costOf: (Value) -> Int,
+) {
+    private data class Entry<Value>(
+        val value: Value,
+        val cost: Int,
+    )
+
+    private val entries = LinkedHashMap<Key, Entry<Value>>(
+        16,
+        0.75f,
+        true,
+    )
+    private var currentCost = 0
+
+    val totalCost: Int
+        @Synchronized get() = currentCost
 
     @Synchronized
-    fun load(resources: Resources, level: Int): MascotRigAssets = cache.getOrPut(level) {
+    operator fun get(key: Key): Value? = entries[key]?.value
+
+    @Synchronized
+    fun put(key: Key, value: Value) {
+        entries.remove(key)?.let { currentCost -= it.cost }
+        val cost = costOf(value).coerceAtLeast(0)
+        if (maxEntries <= 0 || maxCost <= 0 || cost > maxCost) return
+
+        entries[key] = Entry(value, cost)
+        currentCost += cost
+        while (
+            entries.size > maxEntries ||
+            currentCost > maxCost
+        ) {
+            val eldest = entries.entries.first()
+            entries.remove(eldest.key)
+            currentCost -= eldest.value.cost
+        }
+    }
+
+    @Synchronized
+    fun keysInLruOrder(): List<Key> = entries.keys.toList()
+}
+
+internal object MascotRigAssetStore {
+    private val cache = BoundedMascotCache<Int, MascotRigAssets>(
+        maxEntries = 1,
+        maxCost = Int.MAX_VALUE,
+        costOf = ::assetCost,
+    )
+    private val restCache = BoundedMascotCache<Int, ImageBitmap>(
+        maxEntries = MascotRigAssetCatalog.definitions.size,
+        maxCost = MASCOT_REST_CACHE_BYTES,
+        costOf = ::imageCost,
+    )
+
+    @Synchronized
+    fun load(resources: Resources, level: Int): MascotRigAssets {
+        cache[level]?.let { return it }
         val definition = MascotRigAssetCatalog.definitions[level]
             ?: error("Unsupported mascot level: $level")
-        runCatching {
+        val loaded = runCatching {
             MascotRigAssets.Keyframes(
                 rest = resources.decodeVerified(definition.rest),
                 blink = resources.decodeVerified(definition.blink),
@@ -410,24 +467,107 @@ internal object MascotRigAssetStore {
                 },
             )
         }
+        cache.put(level, loaded)
+        return loaded
     }
 
     @Synchronized
-    fun loadRest(resources: Resources, level: Int): ImageBitmap =
-        restCache.getOrPut(level) {
-            val definition = MascotRigAssetCatalog.definitions[level]
-                ?: error("Unsupported mascot level: $level")
-            resources.decodeVerified(definition.rest)
-        }
+    fun loadRest(resources: Resources, level: Int): ImageBitmap {
+        restCache[level]?.let { return it }
+        val definition = MascotRigAssetCatalog.definitions[level]
+            ?: error("Unsupported mascot level: $level")
+        val loaded = resources.decodeVerified(
+            descriptor = definition.rest,
+            thumbnailMaxPixelSize = MASCOT_THUMBNAIL_SIZE,
+        )
+        restCache.put(level, loaded)
+        return loaded
+    }
 
     private fun Resources.decodeVerified(
         descriptor: MascotAssetDescriptor,
+        thumbnailMaxPixelSize: Int? = null,
     ): ImageBitmap {
         val bytes = openRawResource(descriptor.resourceId).use { it.readBytes() }
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         check(digest == descriptor.sha256) { "Mascot checksum mismatch: ${descriptor.resourceId}" }
-        val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Mascot decode failed: ${descriptor.resourceId}" }
-        check(bitmap.width == MASCOT_CANVAS_SIZE.toInt() && bitmap.height == MASCOT_CANVAS_SIZE.toInt()) { "Mascot dimensions are invalid: ${descriptor.resourceId}" }
+
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        check(
+            bounds.outWidth == MASCOT_CANVAS_SIZE.toInt() &&
+                bounds.outHeight == MASCOT_CANVAS_SIZE.toInt(),
+        ) {
+            "Mascot dimensions are invalid: ${descriptor.resourceId}"
+        }
+
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inSampleSize = thumbnailMaxPixelSize?.let {
+                sampleSize(
+                    width = bounds.outWidth,
+                    height = bounds.outHeight,
+                    maxPixelSize = it,
+                )
+            } ?: 1
+        }
+        val decoded = requireNotNull(
+            BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size,
+                options,
+            ),
+        ) {
+            "Mascot decode failed: ${descriptor.resourceId}"
+        }
+        val bitmap = thumbnailMaxPixelSize?.let {
+            downsample(decoded, it)
+        } ?: decoded
         return bitmap.asImageBitmap()
     }
+
+    private fun sampleSize(
+        width: Int,
+        height: Int,
+        maxPixelSize: Int,
+    ): Int {
+        var sample = 1
+        while (
+            width / (sample * 2) >= maxPixelSize &&
+            height / (sample * 2) >= maxPixelSize
+        ) {
+            sample *= 2
+        }
+        return sample
+    }
+
+    private fun downsample(bitmap: Bitmap, maxPixelSize: Int): Bitmap {
+        val largestSide = maxOf(bitmap.width, bitmap.height)
+        if (largestSide <= maxPixelSize) return bitmap
+        val scale = maxPixelSize.toFloat() / largestSide
+        val scaled = Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1),
+            true,
+        )
+        if (scaled !== bitmap) bitmap.recycle()
+        return scaled
+    }
+
+    private fun assetCost(assets: MascotRigAssets): Int =
+        when (assets) {
+            is MascotRigAssets.Keyframes ->
+                imageCost(assets.rest) +
+                    imageCost(assets.blink) +
+                    imageCost(assets.celebrate)
+            is MascotRigAssets.Fallback ->
+                assets.layers.sumOf { (_, image) -> imageCost(image) }
+        }
+
+    private fun imageCost(image: ImageBitmap): Int =
+        image.width * image.height * 4
 }

@@ -94,10 +94,6 @@ struct GrowthView: View {
             )
             .stroke(RebuildDesignTokens.cream100, lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "현재 캐릭터, 레벨 \(level), \(policy.title(for: level))"
-        )
         .accessibilityIdentifier("growth_current_character")
     }
 
@@ -153,7 +149,7 @@ struct GrowthView: View {
             HStack(spacing: RebuildDesignTokens.spacing[3]) {
                 MascotRestArtView(
                     level: nextLevel,
-                    silhouetteColor: warmLockedMascotColor
+                    silhouetteColor: GrowthLockedPalette.silhouetteColor
                 )
                 .frame(width: 92, height: 92)
 
@@ -169,22 +165,18 @@ struct GrowthView: View {
                         .foregroundStyle(RebuildDesignTokens.ink900)
                     Text("\(nextThreshold) XP에 만나요")
                         .font(.footnote)
-                        .foregroundStyle(warmLockedMascotColor)
+                        .foregroundStyle(GrowthLockedPalette.textColor)
                 }
                 Spacer(minLength: 0)
             }
             .padding(RebuildDesignTokens.spacing[3])
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RebuildDesignTokens.cream100)
+            .background(GrowthLockedPalette.surfaceColor)
             .clipShape(
                 RoundedRectangle(
                     cornerRadius: RebuildDesignTokens.radii[1],
                     style: .continuous
                 )
-            )
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(
-                "다음 해금, 레벨 \(nextLevel), \(policy.title(for: nextLevel)), \(nextThreshold) XP"
             )
             .accessibilityIdentifier("growth_next_unlock")
         } else {
@@ -287,13 +279,27 @@ struct GrowthView: View {
     }
 }
 
-let warmLockedMascotColor = Color(
-    .sRGB,
-    red: 184.0 / 255.0,
-    green: 117.0 / 255.0,
-    blue: 72.0 / 255.0,
-    opacity: 1
-)
+enum GrowthLockedPalette {
+    static let silhouetteHex = "#B87548"
+    static let textHex = "#1F5E43"
+    static let surfaceHex = "#FFF0DF"
+
+    static let silhouetteColor = Color(
+        .sRGB,
+        red: 184.0 / 255.0,
+        green: 117.0 / 255.0,
+        blue: 72.0 / 255.0,
+        opacity: 1
+    )
+    static let textColor = RebuildDesignTokens.forest700
+    static let surfaceColor = Color(
+        .sRGB,
+        red: 1,
+        green: 240.0 / 255.0,
+        blue: 223.0 / 255.0,
+        opacity: 1
+    )
+}
 
 struct MascotRestArtView: View {
     let level: Int
@@ -307,7 +313,7 @@ struct MascotRestArtView: View {
         self.level = level
         self.silhouetteColor = silhouetteColor
         _loader = StateObject(
-            wrappedValue: MascotRestArtLoader(level: level)
+            wrappedValue: MascotRestArtLoader()
         )
     }
 
@@ -315,9 +321,11 @@ struct MascotRestArtView: View {
         Group {
             if let image = loader.image {
                 loadedArt(image)
-            } else if loader.loadError != nil {
+            } else if loader.canRetry {
                 Button {
-                    loader.load()
+                    Task {
+                        await loader.load(level: level)
+                    }
                 } label: {
                     VStack(spacing: RebuildDesignTokens.spacing[1]) {
                         Image(systemName: "arrow.clockwise")
@@ -331,6 +339,7 @@ struct MascotRestArtView: View {
                 .accessibilityLabel(
                     "레벨 \(level) 캐릭터를 불러오지 못했습니다. 다시 시도"
                 )
+                .accessibilityIdentifier("mascot_rest_retry_level_\(level)")
             } else {
                 ProgressView()
                     .accessibilityLabel(
@@ -340,7 +349,7 @@ struct MascotRestArtView: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .task(id: level) {
-            loader.load()
+            await loader.load(level: level)
         }
     }
 

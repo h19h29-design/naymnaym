@@ -69,7 +69,9 @@ struct CollectionView: View {
         return HStack(spacing: RebuildDesignTokens.spacing[3]) {
             MascotRestArtView(
                 level: level,
-                silhouetteColor: isUnlocked ? nil : warmLockedMascotColor
+                silhouetteColor: isUnlocked
+                    ? nil
+                    : GrowthLockedPalette.silhouetteColor
             )
             .frame(width: 112, height: 112)
 
@@ -99,7 +101,7 @@ struct CollectionView: View {
                 .foregroundStyle(
                     isUnlocked
                         ? RebuildDesignTokens.forest700
-                        : warmLockedMascotColor
+                        : GrowthLockedPalette.textColor
                 )
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -110,25 +112,13 @@ struct CollectionView: View {
         .background(
             isUnlocked
                 ? Color.white
-                : Color(
-                    .sRGB,
-                    red: 1,
-                    green: 240.0 / 255.0,
-                    blue: 223.0 / 255.0,
-                    opacity: 1
-                )
+                : GrowthLockedPalette.surfaceColor
         )
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[1],
                 style: .continuous
             )
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            isUnlocked
-                ? "레벨 \(level) 해금, \(policy.title(for: level))"
-                : "레벨 \(level) 잠김, \(threshold) XP에 해금"
         )
         .accessibilityIdentifier(
             isUnlocked

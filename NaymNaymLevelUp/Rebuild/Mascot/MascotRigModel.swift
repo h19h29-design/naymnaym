@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -150,7 +151,7 @@ enum MascotMotionSpecError: Error, Equatable {
     case unexpectedStateCount(Int)
 }
 
-enum MascotRigSemanticPart: String, CaseIterable {
+enum MascotRigSemanticPart: String, CaseIterable, Sendable {
     case tailBack
     case body
     case scarf
@@ -164,12 +165,12 @@ enum MascotRigSemanticPart: String, CaseIterable {
     case sprout
 }
 
-struct MascotRigKeyframeDescriptor {
+struct MascotRigKeyframeDescriptor: Sendable {
     let name: String
     let sha256: String
 }
 
-struct MascotRigLevelDefinition {
+struct MascotRigLevelDefinition: Sendable {
     let canvasSize: CGSize
     let anchor: CGPoint
     let rest: MascotRigKeyframeDescriptor
@@ -346,7 +347,7 @@ enum MascotRigLevelCatalog {
     }
 }
 
-final class MascotRigImages {
+final class MascotRigImages: @unchecked Sendable {
     let rest: UIImage
     let blink: UIImage
     let celebrate: UIImage
@@ -367,7 +368,7 @@ final class MascotRigImages {
     }
 }
 
-struct MascotRigFallbackLayer {
+struct MascotRigFallbackLayer: @unchecked Sendable {
     let part: MascotRigSemanticPart
     let image: UIImage
 }
@@ -382,41 +383,151 @@ enum MascotRigAssetError: Error, Equatable {
 
 @MainActor
 final class MascotRestArtLoader: ObservableObject {
-    typealias ImageLoader = @MainActor (Int, Bundle) throws -> UIImage
+    typealias ImageLoader =
+        @MainActor (Int, Bundle) async throws -> UIImage
 
-    let level: Int
     @Published private(set) var image: UIImage?
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: MascotRigAssetError?
+    @Published private(set) var loadedLevel: Int?
+
+    var canRetry: Bool { loadError != nil }
 
     private let loadImage: ImageLoader
+    private var requestID = 0
 
     init(
-        level: Int,
         loadImage: @escaping ImageLoader = { level, bundle in
-            try MascotRigAssetStore.shared.restImage(
+            try await MascotRigAssetStore.shared.restThumbnail(
                 level: level,
                 bundle: bundle
             )
         }
     ) {
-        self.level = level
         self.loadImage = loadImage
     }
 
-    func load(bundle: Bundle = .main) {
+    func load(
+        level: Int,
+        bundle: Bundle = .main
+    ) async {
+        requestID += 1
+        let activeRequestID = requestID
         isLoading = true
         loadError = nil
         image = nil
-        defer { isLoading = false }
+        loadedLevel = nil
 
         do {
-            image = try loadImage(level, bundle)
+            let loadedImage = try await loadImage(level, bundle)
+            guard activeRequestID == requestID else { return }
+            image = loadedImage
+            loadedLevel = level
         } catch let error as MascotRigAssetError {
+            guard activeRequestID == requestID else { return }
             loadError = error
         } catch {
+            guard activeRequestID == requestID else { return }
             loadError = .invalidImage("composite-rest")
         }
+        if activeRequestID == requestID {
+            isLoading = false
+        }
+    }
+}
+
+@MainActor
+final class MascotRigLoader: ObservableObject {
+    typealias ImagesLoader =
+        @MainActor (Int, Bundle) async throws -> MascotRigImages
+    typealias FallbackLoader =
+        @MainActor (Int, Bundle) async throws -> [MascotRigFallbackLayer]
+
+    @Published private(set) var images: MascotRigImages?
+    @Published private(set) var fallbackLayers: [MascotRigFallbackLayer]?
+    @Published private(set) var isLoading = false
+    @Published private(set) var loadError: MascotRigAssetError?
+    @Published private(set) var loadedLevel: Int?
+
+    var canRetry: Bool { loadError != nil }
+
+    private let loadImages: ImagesLoader
+    private let loadFallbackLayers: FallbackLoader
+    private var requestID = 0
+
+    init(
+        loadImages: @escaping ImagesLoader = { level, bundle in
+            try await MascotRigAssetStore.shared.images(
+                level: level,
+                bundle: bundle
+            )
+        },
+        loadFallbackLayers: @escaping FallbackLoader = { level, bundle in
+            try await MascotRigAssetStore.shared.fallbackLayers(
+                level: level,
+                bundle: bundle
+            )
+        }
+    ) {
+        self.loadImages = loadImages
+        self.loadFallbackLayers = loadFallbackLayers
+    }
+
+    func load(
+        level: Int,
+        bundle: Bundle = .main
+    ) async {
+        requestID += 1
+        let activeRequestID = requestID
+        isLoading = true
+        loadError = nil
+        loadedLevel = nil
+        images = nil
+        fallbackLayers = nil
+
+        do {
+            let loadedImages = try await loadImages(level, bundle)
+            guard activeRequestID == requestID else { return }
+            images = loadedImages
+            loadedLevel = level
+        } catch {
+            do {
+                let loadedLayers = try await loadFallbackLayers(
+                    level,
+                    bundle
+                )
+                guard activeRequestID == requestID else { return }
+                fallbackLayers = loadedLayers
+                loadedLevel = level
+            } catch let fallbackError as MascotRigAssetError {
+                guard activeRequestID == requestID else { return }
+                loadError = fallbackError
+            } catch {
+                guard activeRequestID == requestID else { return }
+                loadError = .invalidImage("semantic-fallback")
+            }
+        }
+        if activeRequestID == requestID {
+            isLoading = false
+        }
+    }
+}
+
+struct MascotRigCacheDiagnostics: Equatable {
+    let rigLevels: [Int]
+    let restLevels: [Int]
+    let fallbackLevels: [Int]
+    let restCost: Int
+}
+
+enum MascotImageLoadingWorker {
+    nonisolated static func run<Value: Sendable>(
+        _ operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await Task.detached(
+            priority: .userInitiated,
+            operation: operation
+        ).value
     }
 }
 
@@ -424,20 +535,62 @@ final class MascotRestArtLoader: ObservableObject {
 final class MascotRigAssetStore {
     static let shared = MascotRigAssetStore()
 
-    private var cache: [String: MascotRigImages] = [:]
-    private var restCache: [String: UIImage] = [:]
-    private var fallbackCache: [String: [MascotRigFallbackLayer]] = [:]
+    private struct RigCacheEntry {
+        let key: String
+        let level: Int
+        let images: MascotRigImages
+    }
 
-    var cachedRigImageSetCount: Int { cache.count }
-    var cachedRestImageCount: Int { restCache.count }
+    private struct RestCacheEntry {
+        let level: Int
+        let image: UIImage
+        let cost: Int
+    }
 
-    func restImage(
+    private struct FallbackCacheEntry {
+        let key: String
+        let level: Int
+        let layers: [MascotRigFallbackLayer]
+    }
+
+    private struct ImageLoadRequest: Sendable {
+        let part: MascotRigSemanticPart?
+        let descriptor: MascotRigKeyframeDescriptor
+        let url: URL
+    }
+
+    private struct LoadedImage: @unchecked Sendable {
+        let image: UIImage
+        let cost: Int
+    }
+
+    private let restCacheCostLimit: Int
+    private let restThumbnailMaxPixelSize: Int
+    private var rigCache: RigCacheEntry?
+    private var restCache: [String: RestCacheEntry] = [:]
+    private var restLRU: [String] = []
+    private var restCacheCost = 0
+    private var fallbackCache: FallbackCacheEntry?
+
+    init(
+        restCacheCostLimit: Int = 2 * 1_024 * 1_024,
+        restThumbnailMaxPixelSize: Int = 256
+    ) {
+        self.restCacheCostLimit = max(restCacheCostLimit, 0)
+        self.restThumbnailMaxPixelSize = max(
+            restThumbnailMaxPixelSize,
+            1
+        )
+    }
+
+    func restThumbnail(
         level: Int,
         bundle: Bundle = .main
-    ) throws -> UIImage {
+    ) async throws -> UIImage {
         let cacheKey = "\(bundle.bundleURL.path)#rest#\(level)"
         if let cached = restCache[cacheKey] {
-            return cached
+            touchRestCache(cacheKey)
+            return cached.image
         }
         guard let definition = MascotRigLevelCatalog.definitions[level] else {
             throw MascotRigAssetError.unsupportedLevel(level)
@@ -446,20 +599,36 @@ final class MascotRigAssetStore {
             format: "MascotRig/level_%02d",
             level
         )
-        let image = try load(
-            definition.rest,
-            definition: definition,
+        let request = try imageLoadRequest(
+            descriptor: definition.rest,
+            part: nil,
             bundle: bundle,
             subdirectory: subdirectory
         )
-        restCache[cacheKey] = image
-        return image
+        let maxPixelSize = restThumbnailMaxPixelSize
+        let loaded = try await MascotImageLoadingWorker.run {
+            try Self.loadVerifiedImage(
+                request,
+                definition: definition,
+                thumbnailMaxPixelSize: maxPixelSize
+            )
+        }
+        insertRestCache(
+            loaded,
+            level: level,
+            key: cacheKey
+        )
+        return loaded.image
     }
 
-    func images(level: Int, bundle: Bundle = .main) throws -> MascotRigImages {
+    func images(
+        level: Int,
+        bundle: Bundle = .main
+    ) async throws -> MascotRigImages {
         let cacheKey = "\(bundle.bundleURL.path)#\(level)"
-        if let cached = cache[cacheKey] {
-            return cached
+        if let cached = rigCache,
+           cached.key == cacheKey {
+            return cached.images
         }
 
         guard let definition = MascotRigLevelCatalog.definitions[level] else {
@@ -470,43 +639,67 @@ final class MascotRigAssetStore {
             level
         )
 
-        for part in MascotRigSemanticPart.allCases {
-            guard bundle.url(
-                forResource: part.rawValue,
-                withExtension: "png",
+        _ = try MascotRigSemanticPart.allCases.map {
+            try imageLoadRequest(
+                descriptor: definition.semanticParts[$0]!,
+                part: $0,
+                bundle: bundle,
                 subdirectory: subdirectory
-            ) != nil else {
-                throw MascotRigAssetError.missingAsset(part.rawValue)
-            }
+            )
         }
-
-        let result = MascotRigImages(
-            rest: try restImage(level: level, bundle: bundle),
-            blink: try load(
-                definition.blink,
-                definition: definition,
-                bundle: bundle,
-                subdirectory: subdirectory
-            ),
-            celebrate: try load(
-                definition.celebrate,
-                definition: definition,
-                bundle: bundle,
-                subdirectory: subdirectory
-            ),
-            semanticPartNames: MascotRigSemanticPart.allCases.map(\.rawValue)
+        let restRequest = try imageLoadRequest(
+            descriptor: definition.rest,
+            part: nil,
+            bundle: bundle,
+            subdirectory: subdirectory
         )
-        cache[cacheKey] = result
+        let blinkRequest = try imageLoadRequest(
+            descriptor: definition.blink,
+            part: nil,
+            bundle: bundle,
+            subdirectory: subdirectory
+        )
+        let celebrateRequest = try imageLoadRequest(
+            descriptor: definition.celebrate,
+            part: nil,
+            bundle: bundle,
+            subdirectory: subdirectory
+        )
+
+        let result = try await MascotImageLoadingWorker.run {
+            MascotRigImages(
+                rest: try Self.loadVerifiedImage(
+                    restRequest,
+                    definition: definition
+                ).image,
+                blink: try Self.loadVerifiedImage(
+                    blinkRequest,
+                    definition: definition
+                ).image,
+                celebrate: try Self.loadVerifiedImage(
+                    celebrateRequest,
+                    definition: definition
+                ).image,
+                semanticPartNames: MascotRigSemanticPart.allCases
+                    .map(\.rawValue)
+            )
+        }
+        rigCache = RigCacheEntry(
+            key: cacheKey,
+            level: level,
+            images: result
+        )
         return result
     }
 
     func fallbackLayers(
         level: Int,
         bundle: Bundle = .main
-    ) throws -> [MascotRigFallbackLayer] {
+    ) async throws -> [MascotRigFallbackLayer] {
         let cacheKey = "\(bundle.bundleURL.path)#fallback#\(level)"
-        if let cached = fallbackCache[cacheKey] {
-            return cached
+        if let cached = fallbackCache,
+           cached.key == cacheKey {
+            return cached.layers
         }
         guard let definition = MascotRigLevelCatalog.definitions[level] else {
             throw MascotRigAssetError.unsupportedLevel(level)
@@ -516,30 +709,51 @@ final class MascotRigAssetStore {
             format: "MascotRig/level_%02d",
             level
         )
-        let layers = try MascotRigSemanticPart.allCases.map { part in
+        let requests = try MascotRigSemanticPart.allCases.map { part in
             guard let descriptor = definition.semanticParts[part] else {
                 throw MascotRigAssetError.missingAsset(part.rawValue)
             }
-            return MascotRigFallbackLayer(
+            return try imageLoadRequest(
+                descriptor: descriptor,
                 part: part,
-                image: try load(
-                    descriptor,
-                    definition: definition,
-                    bundle: bundle,
-                    subdirectory: subdirectory
-                )
+                bundle: bundle,
+                subdirectory: subdirectory
             )
         }
-        fallbackCache[cacheKey] = layers
+        let layers = try await MascotImageLoadingWorker.run {
+            try requests.map { request in
+                MascotRigFallbackLayer(
+                    part: request.part!,
+                    image: try Self.loadVerifiedImage(
+                        request,
+                        definition: definition
+                    ).image
+                )
+            }
+        }
+        fallbackCache = FallbackCacheEntry(
+            key: cacheKey,
+            level: level,
+            layers: layers
+        )
         return layers
     }
 
-    private func load(
-        _ descriptor: MascotRigKeyframeDescriptor,
-        definition: MascotRigLevelDefinition,
+    func cacheDiagnostics() -> MascotRigCacheDiagnostics {
+        MascotRigCacheDiagnostics(
+            rigLevels: rigCache.map { [$0.level] } ?? [],
+            restLevels: restLRU.compactMap { restCache[$0]?.level },
+            fallbackLevels: fallbackCache.map { [$0.level] } ?? [],
+            restCost: restCacheCost
+        )
+    }
+
+    private func imageLoadRequest(
+        descriptor: MascotRigKeyframeDescriptor,
+        part: MascotRigSemanticPart?,
         bundle: Bundle,
         subdirectory: String
-    ) throws -> UIImage {
+    ) throws -> ImageLoadRequest {
         guard let url = bundle.url(
             forResource: descriptor.name,
             withExtension: "png",
@@ -547,22 +761,111 @@ final class MascotRigAssetStore {
         ) else {
             throw MascotRigAssetError.missingAsset(descriptor.name)
         }
-        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        return ImageLoadRequest(
+            part: part,
+            descriptor: descriptor,
+            url: url
+        )
+    }
+
+    nonisolated private static func loadVerifiedImage(
+        _ request: ImageLoadRequest,
+        definition: MascotRigLevelDefinition,
+        thumbnailMaxPixelSize: Int? = nil
+    ) throws -> LoadedImage {
+        let descriptor = request.descriptor
+        let data = try Data(
+            contentsOf: request.url,
+            options: .mappedIfSafe
+        )
         let digest = SHA256.hash(data: data)
             .map { String(format: "%02x", $0) }
             .joined()
         guard digest == descriptor.sha256 else {
             throw MascotRigAssetError.checksumMismatch(descriptor.name)
         }
-        guard let sourceImage = UIImage(data: data, scale: 1),
-              let cgImage = sourceImage.cgImage else {
+        guard let source = CGImageSourceCreateWithData(
+            data as CFData,
+            nil
+        ),
+        let properties = CGImageSourceCopyPropertiesAtIndex(
+            source,
+            0,
+            nil
+        ) as? [CFString: Any],
+        let width = properties[kCGImagePropertyPixelWidth] as? Int,
+        let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else {
             throw MascotRigAssetError.invalidImage(descriptor.name)
         }
-        guard cgImage.width == Int(definition.canvasSize.width),
-              cgImage.height == Int(definition.canvasSize.height) else {
+        guard width == Int(definition.canvasSize.width),
+              height == Int(definition.canvasSize.height) else {
             throw MascotRigAssetError.invalidDimensions(descriptor.name)
         }
-        return sourceImage.preparingForDisplay() ?? sourceImage
+
+        let cgImage: CGImage?
+        if let thumbnailMaxPixelSize {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: thumbnailMaxPixelSize,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+            ]
+            cgImage = CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                options as CFDictionary
+            )
+        } else {
+            cgImage = CGImageSourceCreateImageAtIndex(
+                source,
+                0,
+                [
+                    kCGImageSourceShouldCacheImmediately: true,
+                ] as CFDictionary
+            )
+        }
+        guard let cgImage else {
+            throw MascotRigAssetError.invalidImage(descriptor.name)
+        }
+        let image = UIImage(cgImage: cgImage, scale: 1, orientation: .up)
+        return LoadedImage(
+            image: image.preparingForDisplay() ?? image,
+            cost: cgImage.bytesPerRow * cgImage.height
+        )
     }
 
+    private func touchRestCache(_ key: String) {
+        restLRU.removeAll { $0 == key }
+        restLRU.append(key)
+    }
+
+    private func insertRestCache(
+        _ loaded: LoadedImage,
+        level: Int,
+        key: String
+    ) {
+        guard restCacheCostLimit > 0,
+              loaded.cost <= restCacheCostLimit else {
+            return
+        }
+        if let existing = restCache.removeValue(forKey: key) {
+            restCacheCost -= existing.cost
+        }
+        restLRU.removeAll { $0 == key }
+        while restCacheCost + loaded.cost > restCacheCostLimit,
+              let oldestKey = restLRU.first {
+            restLRU.removeFirst()
+            if let evicted = restCache.removeValue(forKey: oldestKey) {
+                restCacheCost -= evicted.cost
+            }
+        }
+        restCache[key] = RestCacheEntry(
+            level: level,
+            image: loaded.image,
+            cost: loaded.cost
+        )
+        restLRU.append(key)
+        restCacheCost += loaded.cost
+    }
 }

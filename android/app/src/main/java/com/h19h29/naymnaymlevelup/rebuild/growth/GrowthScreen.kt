@@ -231,7 +231,10 @@ fun GrowthScreenContent(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                             )
-                            Text("$nextThreshold XP에 만나요")
+                            Text(
+                                text = "$nextThreshold XP에 만나요",
+                                color = LockedGrowthText,
+                            )
                         }
                     }
                 }
@@ -307,4 +310,8 @@ fun GrowthScreenContent(
     }
 }
 
-internal val WarmLockedMascot = Color(0xFFB87548)
+internal const val WarmLockedMascotArgb = 0xFFB87548L
+internal const val LockedGrowthTextArgb = 0xFF1F5E43L
+internal const val LockedGrowthSurfaceArgb = 0xFFFFF0DFL
+internal val WarmLockedMascot = Color(WarmLockedMascotArgb)
+internal val LockedGrowthText = Color(LockedGrowthTextArgb)

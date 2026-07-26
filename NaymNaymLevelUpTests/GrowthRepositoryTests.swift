@@ -94,6 +94,45 @@ final class GrowthRepositoryTests: XCTestCase {
         XCTAssertEqual(presentation.xpText, "+18 XP")
     }
 
+    func testCanonicalMealPresentationRejectsNoncanonicalIdentityAndSupportsHalf() {
+        let cases: [(id: String, expectedTitle: String)] = [
+            (
+                "meal:2026-07-25|오이|half",
+                "오이 · 절반 먹었어요"
+            ),
+            (
+                "meal:2026-02-30|오이|finished",
+                "성장 XP 획득"
+            ),
+            (
+                "meal:2026-07-25| 오이 |finished",
+                "성장 XP 획득"
+            ),
+            (
+                "meal:2026-07-25|SPINACH|finished",
+                "성장 XP 획득"
+            ),
+            (
+                "meal:2026-07-25|spinach|finished",
+                "spinach · 다 먹었어요"
+            ),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                GrowthEventPresentation(
+                    event: RebuildProgressEvent(
+                        id: testCase.id,
+                        amount: 12,
+                        occurredAt: Date(timeIntervalSince1970: 100)
+                    )
+                ).title,
+                testCase.expectedTitle,
+                testCase.id
+            )
+        }
+    }
+
     func testLegacyIdentityNeverInventsMealCopyFromSourceRecordID() {
         let presentation = GrowthEventPresentation(
             event: RebuildProgressEvent(
