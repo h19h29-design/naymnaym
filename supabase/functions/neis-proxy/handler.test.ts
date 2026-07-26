@@ -205,8 +205,19 @@ Deno.test("accepts only the exact action and payload fields", async () => {
   }));
   const invalidBodies = [
     { action: "unknown", payload: {} },
-    { action: "searchSchools", payload: { keyword: "가람", extra: true } },
-    { action: "searchSchools", payload: { keyword: "가람" }, extra: true },
+    {
+      action: "searchSchools",
+      payload: { keyword: "가람", schoolType: "middle", extra: true },
+    },
+    {
+      action: "searchSchools",
+      payload: { keyword: "가람", schoolType: "middle" },
+      extra: true,
+    },
+    {
+      action: "searchSchools",
+      payload: { keyword: "가람", schoolType: "elementary" },
+    },
     { action: "searchSchools", payload: ["가람"] },
     null,
   ];
@@ -237,7 +248,10 @@ Deno.test("trims a valid keyword and rejects unsafe or out-of-range keywords", a
   }));
 
   const valid = await handler(
-    request({ action: "searchSchools", payload: { keyword: "  가람중  " } }),
+    request({
+      action: "searchSchools",
+      payload: { keyword: "  가람중  ", schoolType: "middle" },
+    }),
   );
   assertEquals(valid.status, 200);
   assertEquals(requested[0].searchParams.get("SCHUL_NM"), "가람중");
@@ -252,7 +266,10 @@ Deno.test("trims a valid keyword and rejects unsafe or out-of-range keywords", a
     ]
   ) {
     const response = await handler(
-      request({ action: "searchSchools", payload: { keyword } }),
+      request({
+        action: "searchSchools",
+        payload: { keyword, schoolType: "middle" },
+      }),
     );
     assertEquals(response.status, 400);
   }
@@ -364,7 +381,7 @@ Deno.test("calls only the fixed schoolInfo endpoint and normalizes school rows",
     }));
   }))(request({
     action: "searchSchools",
-    payload: { keyword: "가람" },
+    payload: { keyword: "가람", schoolType: "middle" },
   }));
 
   assertEquals(response.status, 200);
@@ -375,6 +392,7 @@ Deno.test("calls only the fixed schoolInfo endpoint and normalizes school rows",
   assertEquals(upstreamUrl?.searchParams.get("pIndex"), "1");
   assertEquals(upstreamUrl?.searchParams.get("pSize"), "20");
   assertEquals(upstreamUrl?.searchParams.get("SCHUL_NM"), "가람");
+  assertEquals(upstreamUrl?.searchParams.get("SCHUL_KND_SC_NM"), "중학교");
   assertEquals(await body(response), {
     ok: true,
     data: [{

@@ -86,13 +86,32 @@ function validateRequest(value: unknown): ProxyRequest | null {
   }
 
   if (value.action === "searchSchools") {
-    if (!hasOnlyKeys(value.payload, ["keyword"])) return null;
+    const payloadKeys = Object.keys(value.payload).sort();
+    const hasSupportedKeys = (
+      payloadKeys.length === 1 &&
+      payloadKeys[0] === "keyword"
+    ) || (
+      payloadKeys.length === 2 &&
+      payloadKeys[0] === "keyword" &&
+      payloadKeys[1] === "schoolType"
+    );
+    if (!hasSupportedKeys) return null;
     const keyword = typeof value.payload.keyword === "string"
       ? value.payload.keyword.trim()
       : "";
-    return SCHOOL_KEYWORD.test(keyword)
-      ? { action: "searchSchools", payload: { keyword } }
-      : null;
+    const schoolType = value.payload.schoolType;
+    if (
+      !SCHOOL_KEYWORD.test(keyword) ||
+      schoolType !== undefined &&
+        schoolType !== "middle" &&
+        schoolType !== "high"
+    ) {
+      return null;
+    }
+    return {
+      action: "searchSchools",
+      payload: schoolType === undefined ? { keyword } : { keyword, schoolType },
+    };
   }
 
   if (value.action === "fetchMeals") {
@@ -168,6 +187,12 @@ function neisUrl(request: ProxyRequest, apiKey: string): URL {
 
   if (request.action === "searchSchools") {
     url.searchParams.set("SCHUL_NM", request.payload.keyword);
+    if (request.payload.schoolType !== undefined) {
+      url.searchParams.set(
+        "SCHUL_KND_SC_NM",
+        request.payload.schoolType === "middle" ? "중학교" : "고등학교",
+      );
+    }
   } else {
     url.searchParams.set(
       "ATPT_OFCDC_SC_CODE",

@@ -28,7 +28,10 @@ export interface MealDay {
 }
 
 export type ProxyRequest =
-  | { action: "searchSchools"; payload: { keyword: string } }
+  | {
+    action: "searchSchools";
+    payload: { keyword: string; schoolType?: SchoolType };
+  }
   | {
     action: "fetchMeals";
     payload: { officeCode: string; schoolCode: string; date: string };

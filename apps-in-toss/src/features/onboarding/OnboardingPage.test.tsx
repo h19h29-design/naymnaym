@@ -137,7 +137,11 @@ describe('OnboardingPage', () => {
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), '가람');
     expect(searchSchools).not.toHaveBeenCalled();
-    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith('가람', expect.any(AbortSignal)));
+    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+      '가람',
+      'middle',
+      expect.any(AbortSignal),
+    ));
     await user.click(await screen.findByRole('button', { name: /가람중학교/ }));
     await user.click(screen.getByRole('button', { name: /시작하기/ }));
 
@@ -200,6 +204,7 @@ describe('OnboardingPage', () => {
     const searchSchools = vi.fn().mockResolvedValue([]);
     const user = renderOnboarding({ searchSchools });
 
+    await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), ' ');
     expect(searchSchools).not.toHaveBeenCalled();
 
@@ -220,11 +225,19 @@ describe('OnboardingPage', () => {
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), '가람');
-    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith('가람', expect.any(AbortSignal)));
+    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+      '가람',
+      'middle',
+      expect.any(AbortSignal),
+    ));
     await user.clear(screen.getByLabelText('학교 검색'));
     await user.type(screen.getByLabelText('학교 검색'), '나래');
     await user.click(screen.getByRole('radio', { name: '고등학교' }));
-    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith('나래', expect.any(AbortSignal)));
+    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+      '나래',
+      'high',
+      expect.any(AbortSignal),
+    ));
 
     firstResolve?.([school]);
     await waitFor(() => expect(screen.getByRole('button', { name: /가람고등학교/ }))

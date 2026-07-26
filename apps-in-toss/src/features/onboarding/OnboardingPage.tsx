@@ -10,7 +10,7 @@ const SCHOOL_KEYWORD = /^[가-힣A-Za-z0-9\s().-]{2,40}$/;
 const POST_ONBOARDING_PATHS = new Set(['/today', '/settings']);
 
 const copy = {
-  title: '냠냠레벨업 시작하기',
+  title: '급식레벨업 시작하기',
   privacy: '별명, 학교, 알레르기와 기록은 이 기기에만 저장돼요.',
   demo: '학교 없이 체험해 보기',
   noResults: '검색 결과가 없어요. 학교 이름을 다시 확인해 주세요.',
@@ -89,7 +89,7 @@ export function OnboardingPage() {
     if (isProfileLocked) return undefined;
     const normalized = keyword.trim();
     const requestId = ++requestIdRef.current;
-    if (!SCHOOL_KEYWORD.test(normalized)) {
+    if (schoolType === null || !SCHOOL_KEYWORD.test(normalized)) {
       setSchools([]);
       setSearchError(null);
       setIsSearching(false);
@@ -102,12 +102,10 @@ export function OnboardingPage() {
       setIsSearching(true);
       setSearchError(null);
       setHasSearched(false);
-      void neisClient.searchSchools(normalized, controller.signal)
+      void neisClient.searchSchools(normalized, schoolType, controller.signal)
         .then((results) => {
           if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-          setSchools(results
-            .filter((item) => schoolType === null || item.schoolType === schoolType)
-            .slice(0, 20));
+          setSchools(results.slice(0, 20));
           setHasSearched(true);
         })
         .catch((caught: unknown) => {

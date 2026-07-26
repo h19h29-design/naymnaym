@@ -4,6 +4,7 @@ import type {
   ProxyErrorCode,
   ProxyRequest,
   School,
+  SchoolType,
 } from '@nyam/neis-contract';
 import { clientEnv } from '../config/clientEnv';
 
@@ -51,8 +52,15 @@ export class NeisClient {
     this.fetchImpl = options.fetch ?? fetch;
   }
 
-  searchSchools(keyword: string, signal?: AbortSignal): Promise<School[]> {
-    return this.post({ action: 'searchSchools', payload: { keyword } }, signal);
+  searchSchools(
+    keyword: string,
+    schoolType: SchoolType,
+    signal?: AbortSignal,
+  ): Promise<School[]> {
+    return this.post({
+      action: 'searchSchools',
+      payload: { keyword, schoolType },
+    }, signal);
   }
 
   fetchMeal(school: School, date: string, signal?: AbortSignal): Promise<MealDay> {

@@ -24,7 +24,7 @@ describe('NeisClient', () => {
       fetch: fetchSpy,
     });
 
-    await client.searchSchools('가람');
+    await client.searchSchools('가람', 'middle');
 
     const [, init] = fetchSpy.mock.calls[0];
     expect(init?.headers).toMatchObject({
@@ -33,7 +33,7 @@ describe('NeisClient', () => {
     });
     expect(JSON.parse(String(init?.body))).toEqual({
       action: 'searchSchools',
-      payload: { keyword: '가람' },
+      payload: { keyword: '가람', schoolType: 'middle' },
     });
   });
 
@@ -104,7 +104,7 @@ describe('NeisClient', () => {
       message: '허용되지 않은 요청이에요.',
     }, 403);
 
-    await expect(client.searchSchools('가람')).rejects.toMatchObject({
+    await expect(client.searchSchools('가람', 'middle')).rejects.toMatchObject({
       code: 'FORBIDDEN_ORIGIN',
       message: '허용되지 않은 요청이에요.',
       status: 403,
@@ -122,7 +122,7 @@ describe('NeisClient', () => {
       }), { status: 404 }),
     });
 
-    await expect(client.searchSchools('가람')).rejects.toMatchObject({
+    await expect(client.searchSchools('가람', 'middle')).rejects.toMatchObject({
       code: 'UPSTREAM_ERROR',
       status: 404,
     });
@@ -135,7 +135,7 @@ describe('NeisClient', () => {
       fetch: async () => new Response(JSON.stringify({ unexpected: true }), { status: 200 }),
     });
 
-    await expect(client.searchSchools('가람'))
+    await expect(client.searchSchools('가람', 'middle'))
       .rejects.toMatchObject({ code: 'UPSTREAM_ERROR', status: 200 });
   });
 
@@ -146,6 +146,7 @@ describe('NeisClient', () => {
       fetch: async () => { throw new DOMException('Aborted', 'AbortError'); },
     });
 
-    await expect(client.searchSchools('가람')).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(client.searchSchools('가람', 'middle'))
+      .rejects.toMatchObject({ name: 'AbortError' });
   });
 });
