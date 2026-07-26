@@ -611,7 +611,7 @@ git commit -m "feat: finish accessible mascot and logo motion"
 - Guarantees: the release remains iPhone-only; iPad support is not silently added
   as part of this visual task
 
-- [ ] **Step 1: Add genuine RED contract, asset, and motion tests**
+- [x] **Step 1: Add genuine RED contract, asset, and motion tests**
 
 Before creating production layers or motion code, add failing tests for:
 
@@ -626,7 +626,7 @@ Before creating production layers or motion code, add failing tests for:
 7. monotonic consecutive-event revision plus independent sheet/tab/app pause/resume
 8. no Android emoji or text-symbol icon stand-ins in the production path
 
-- [ ] **Step 2: Establish the immutable visual reference**
+- [x] **Step 2: Establish the immutable visual reference**
 
 Copy the real reference files into `art/forest-scene/home/references` and record
 their original paths, dimensions, and SHA-256 values in `source-notes.md`:
@@ -643,7 +643,7 @@ their original paths, dimensions, and SHA-256 values in `source-notes.md`:
 Record approved palette IDs and verified contrast pairs from
 `design-tokens.json`. Do not use the duplicate docs copy as a new visual source.
 
-- [ ] **Step 3: Produce five aligned master and runtime layers**
+- [x] **Step 3: Produce five aligned master and runtime layers**
 
 Create an original portrait extension of the approved warm forest world. The sky layer is fully opaque; all other layers are RGBA and retain complete hidden edges for ±12px motion. Do not put characters, text, buttons, icons, or food into the background.
 
@@ -664,7 +664,7 @@ translation. This covers the full `+6pt/dp, -3pt/dp` travel at both 2× and 3×
 without changing the motion values. REST and maximum-motion acceptance
 composites must include this production overscan and show no exposed seam.
 
-- [ ] **Step 4: Implement matched depth motion**
+- [x] **Step 4: Implement matched depth motion**
 
 Use one shared deterministic 8-second cycle, with progress fixed at
 `0s=0%`, `2s=50%`, `4s=100%`, `6s=50%`, `8s=0%`:
@@ -687,7 +687,7 @@ monotonic `motionRevision` mapping for consecutive equal success events. Route
 real system Reduce Motion and tab/sheet/app pause ownership through the actual
 child navigation roots without recreating the scene on tab switches.
 
-- [ ] **Step 5: Protect content contrast and verify composition/performance**
+- [x] **Step 5: Protect content contrast and verify composition/performance**
 
 Place headings, body copy, and primary actions on opaque `cream50`-family
 surfaces with contract-token foreground colors. Do not rely on the existing
@@ -706,7 +706,7 @@ no transparent layer edge appears, frame pacing remains inside the release
 budget, and the decoded-memory limits hold both from cold home launch and after
 visiting Collection then returning home.
 
-- [ ] **Step 6: Save the approved scene system in Figma**
+- [x] **Step 6: Save the approved scene system in Figma**
 
 Create one `living-forest-scene` board in Figma file
 `PzhrBaw0BuAMNTX4BPyfsM` and place the
@@ -714,7 +714,7 @@ actual five approved production layers plus REST/maximum-motion frames, z-order,
 motion values, pause behavior, contrast surfaces, and memory notes. Reuse that
 board for any correction; do not create duplicates.
 
-- [ ] **Step 7: Run the complete cross-platform gate**
+- [x] **Step 7: Run the complete cross-platform gate**
 
 Run:
 
@@ -730,7 +730,7 @@ Run: `cd android && ./gradlew testDebugUnitTest connectedDebugAndroidTest assemb
 
 Expected: all PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add art/forest-scene contracts/native-rebuild/v1/forest-scene.json \

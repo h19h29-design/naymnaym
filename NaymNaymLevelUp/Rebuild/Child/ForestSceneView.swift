@@ -6,18 +6,20 @@ struct ForestSceneView<Content: View>: View {
     let activity: ForestSceneActivity
     let content: () -> Content
 
-    @State private var clock = ForestSceneMotionClock(
-        startTime: Date().timeIntervalSinceReferenceDate
-    )
+    @State private var clock: ForestSceneMotionClock
 
     init(
         reduceMotion: Bool,
         activity: ForestSceneActivity,
+        timeSource: RebuildMonotonicTimeSource = .system,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.reduceMotion = reduceMotion
         self.activity = activity
         self.content = content
+        _clock = State(
+            initialValue: ForestSceneMotionClock(timeSource: timeSource)
+        )
     }
 
     init(
@@ -43,12 +45,10 @@ struct ForestSceneView<Content: View>: View {
                 activity: activity
             ) {
                 TimelineView(.animation(minimumInterval: 1.0 / 60.0)) {
-                    context in
+                    _ in
                     layers(
                         frame: ForestSceneMotionSpec.frame(
-                            elapsed: clock.elapsed(
-                                at: context.date.timeIntervalSinceReferenceDate
-                            ),
+                            elapsed: clock.elapsed(),
                             reduceMotion: false
                         )
                     )
@@ -56,9 +56,7 @@ struct ForestSceneView<Content: View>: View {
             } else {
                 layers(
                     frame: ForestSceneMotionSpec.frame(
-                        elapsed: clock.elapsed(
-                            at: Date().timeIntervalSinceReferenceDate
-                        ),
+                        elapsed: clock.elapsed(),
                         reduceMotion: reduceMotion
                     )
                 )
@@ -69,16 +67,10 @@ struct ForestSceneView<Content: View>: View {
         }
         .background(RebuildDesignTokens.cream50)
         .onAppear {
-            clock.update(
-                activity: activity,
-                at: Date().timeIntervalSinceReferenceDate
-            )
+            clock.update(activity: activity)
         }
         .onChange(of: activity) { newActivity in
-            clock.update(
-                activity: newActivity,
-                at: Date().timeIntervalSinceReferenceDate
-            )
+            clock.update(activity: newActivity)
         }
     }
 

@@ -62,11 +62,9 @@ struct MascotRigView: View {
                         rig(pose: controller.pose)
                     } else {
                         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) {
-                            context in
+                            _ in
                             rig(
-                                pose: controller.sampledPose(
-                                    at: context.date
-                                )
+                                pose: controller.sampledPose()
                             )
                         }
                     }

@@ -61,19 +61,35 @@ struct ForestSceneActivity: Equatable {
     }
 }
 
+struct RebuildMonotonicTimeSource {
+    static let system = RebuildMonotonicTimeSource {
+        ProcessInfo.processInfo.systemUptime
+    }
+
+    private let read: () -> TimeInterval
+
+    init(read: @escaping () -> TimeInterval) {
+        self.read = read
+    }
+
+    func now() -> TimeInterval {
+        read()
+    }
+}
+
 struct ForestSceneMotionClock {
     private let startTime: TimeInterval
+    private let timeSource: RebuildMonotonicTimeSource
     private var accumulatedPauseDuration: TimeInterval = 0
     private var pauseStartedAt: TimeInterval?
 
-    init(startTime: TimeInterval) {
-        self.startTime = startTime
+    init(timeSource: RebuildMonotonicTimeSource = .system) {
+        self.timeSource = timeSource
+        self.startTime = timeSource.now()
     }
 
-    mutating func update(
-        activity: ForestSceneActivity,
-        at time: TimeInterval
-    ) {
+    mutating func update(activity: ForestSceneActivity) {
+        let time = timeSource.now()
         if activity.isPaused {
             if pauseStartedAt == nil {
                 pauseStartedAt = time
@@ -84,7 +100,8 @@ struct ForestSceneMotionClock {
         }
     }
 
-    func elapsed(at time: TimeInterval) -> TimeInterval {
+    func elapsed() -> TimeInterval {
+        let time = timeSource.now()
         let effectiveTime = pauseStartedAt ?? time
         return max(0, effectiveTime - startTime - accumulatedPauseDuration)
     }

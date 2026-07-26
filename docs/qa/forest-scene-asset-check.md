@@ -50,6 +50,11 @@ same monotonic clock. Resume subtracts paused time, so the scene does not jump.
 Reduce Motion fixes every transform at zero and schedules no display/frame
 callback.
 
+On iOS, forest and mascot runtime sampling use an injectable time source whose
+production implementation reads `ProcessInfo.processInfo.systemUptime`.
+`TimelineView` dates trigger redraws only; deterministic tests advance the
+injected uptime directly, so wall-clock adjustments cannot reset either motion.
+
 Decoded bounds use four bytes per pixel:
 
 - Forest: `860 × 1864 × 4 × 5 = 32,060,800` bytes (`30.576 MiB`), below
@@ -190,15 +195,16 @@ Fresh final results after all review corrections:
   `48.572 MiB`, and 10 checksum-matched runtime copies.
 - Native contract validator: PASS.
 - Native contract sync: PASS.
-- Python validator suites: 45/45 PASS in 95.414 seconds.
-- iOS XcodeBuildMCP `test_sim`: 351/351 PASS, 0 failures, 0 skips,
-  0 warnings, and 0 errors in 22.47 seconds.
+- Python validator suites: 45/45 PASS in 96.400 seconds.
+- iOS XcodeBuildMCP `test_sim`: 353/353 PASS, 0 failures, 0 skips,
+  0 warnings, and 0 errors in 10.32 seconds.
 - Android JVM tests: 166/166 PASS, including
   `processAssetCacheLoadsEachLayerOnlyOnce`.
-- Android API-35 instrumentation: 61/61 PASS, including fresh-XP reload
-  coverage for both Growth and Collection tab re-entry.
+- Android API-35 instrumentation: 63/63 PASS, including inactive-Today pointer
+  isolation and fresh-XP reload coverage for both Growth and Collection
+  tab re-entry.
 - Android `assembleDebug`: PASS. APK SHA-256:
-  `1f58b316df8dbb7e937d64deaf112f17500f7e8c84036369313dc8fb0197e32d`.
+  `4b32a381d24734e4e2217d7cd09a08f20325761423e871aaf296eb123ab2283c`.
 - `plutil -lint` and `git diff --check`: PASS.
 - `TARGETED_DEVICE_FAMILY = 1` remains unchanged in every build
   configuration.
@@ -208,6 +214,17 @@ produced no target-process `Skipped N frames` Choreographer entry. The iOS
 simulator does not support the Animation Hitches instrument, so this ledger does
 not invent a hardware frame-pacing number; a release-device Instruments trace
 remains an explicit release-candidate gate.
+
+## Figma record
+
+The approved scene system is stored once in Figma file
+`PzhrBaw0BuAMNTX4BPyfsM` as the `living-forest-scene` board at node `65:2`.
+The board contains the two approved scene states and all five actual production
+layer images. Final plugin validation found exactly one board and one of every
+stable named node, seven nonempty IMAGE fills, only `Noto Sans KR`, no missing
+fonts, no zero-sized or placeholder nodes, and no visible clipping in the
+1500×1510 final export. Its status and footer record the final iOS, Android, and
+Python gate counts.
 
 ## Independent scoped re-review
 
@@ -229,3 +246,10 @@ The approval covered these corrections:
 4. The final QA ledger contains package/memory evidence plus all 25 real
    viewport captures for REST, maximum motion, recorder pause, Reduce Motion,
    and 200% text.
+
+A separate whole-branch reviewer then found two Important runtime risks:
+inactive Android route pointer input and wall-clock-based iOS motion sampling.
+Both were reproduced with RED tests, corrected with an inactive-route pointer
+gate and injected monotonic uptime, and re-reviewed by that same reviewer. The
+final scoped verdict was `APPROVED`, with every prior Important and Minor item
+addressed and no new Critical or Important finding.

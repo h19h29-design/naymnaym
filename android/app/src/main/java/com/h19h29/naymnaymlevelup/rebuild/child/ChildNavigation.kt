@@ -21,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -100,7 +102,7 @@ fun ChildNavigation(
                         icon = {
                             Icon(
                                 imageVector = item.icon,
-                                contentDescription = item.title,
+                                contentDescription = null,
                             )
                         },
                         label = { Text(item.title) },
@@ -145,12 +147,22 @@ fun ChildNavigation(
     }
 }
 
-private fun Modifier.routeVisibility(isActive: Boolean): Modifier {
+internal fun Modifier.routeVisibility(isActive: Boolean): Modifier {
     val visual = alpha(if (isActive) 1f else 0f)
         .zIndex(if (isActive) 1f else 0f)
     return if (isActive) {
         visual
     } else {
-        visual.clearAndSetSemantics { }
+        visual
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                            .changes
+                            .forEach { it.consume() }
+                    }
+                }
+            }
+            .clearAndSetSemantics { }
     }
 }

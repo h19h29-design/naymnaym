@@ -1,26 +1,162 @@
 package com.h19h29.naymnaymlevelup.rebuild.child
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.h19h29.naymnaymlevelup.rebuild.data.ProgressEventEntity
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
+import com.h19h29.naymnaymlevelup.rebuild.meal.MealDay
+import com.h19h29.naymnaymlevelup.rebuild.meal.MealItem
+import com.h19h29.naymnaymlevelup.rebuild.meal.NutritionInfo
+import com.h19h29.naymnaymlevelup.rebuild.meal.RoomMealDayStore
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.OnboardingDestination
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.OnboardingRole
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.RebuildUserProfile
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTheme
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
 class ChildNavigationTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun inactiveRouteVisibilityBlocksPointerInputForItsButton() {
+        val isActive = mutableStateOf(true)
+        var clickCount = 0
+        composeRule.setContent {
+            Button(
+                onClick = { clickCount += 1 },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .routeVisibility(isActive.value)
+                    .testTag("route_button"),
+            ) {
+                Text("Route action")
+            }
+        }
+        val actionCenter = composeRule.onNodeWithTag("route_button")
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .center
+        composeRule.onRoot().performTouchInput {
+            click(actionCenter)
+        }
+        composeRule.runOnIdle {
+            assertEquals(1, clickCount)
+            isActive.value = false
+        }
+
+        composeRule.onRoot().performTouchInput {
+            click(actionCenter)
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(1, clickCount)
+        }
+    }
+
+    @Test
+    fun inactiveTodayCannotOpenRecorderThroughOtherTabs() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val database = Room.inMemoryDatabaseBuilder(
+            context,
+            RebuildDatabase::class.java,
+        ).build()
+        try {
+            val today = LocalDate.now(ZoneId.of("Asia/Seoul")).toString()
+            runBlocking {
+                RoomMealDayStore(database.mealDayDao()).save(
+                    meal = MealDay(
+                        date = today,
+                        menuItems = listOf(
+                            MealItem(
+                                name = "테스트 급식",
+                                allergyCodes = emptyList(),
+                                nutrients = emptyList(),
+                                tags = emptyList(),
+                                sourceRawText = "테스트 급식",
+                            ),
+                        ),
+                        calorie = "500 Kcal",
+                        nutrition = NutritionInfo.empty,
+                    ),
+                    refreshedAt = Instant.EPOCH,
+                    source = "test",
+                )
+            }
+            composeRule.setContent {
+                RebuildTheme {
+                    ChildNavigation(
+                        profile = RebuildUserProfile(
+                            id = "child",
+                            role = OnboardingRole.Child,
+                            nickname = "냠냠이",
+                            school = null,
+                            allergyCodes = emptyList(),
+                            destination = OnboardingDestination.Today,
+                        ),
+                        database = database,
+                        isAppActive = true,
+                    )
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("today_primary_action")
+                        .assertIsEnabled()
+                }.isSuccess
+            }
+            composeRule.onNodeWithTag("today_forest_list")
+                .performScrollToIndex(3)
+            val primaryActionCenter = composeRule
+                .onNodeWithTag("today_primary_action")
+                .assertIsDisplayed()
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .center
+            composeRule.onRoot().performTouchInput {
+                click(primaryActionCenter)
+            }
+            composeRule.onNodeWithText("급식 기록").assertIsDisplayed()
+            composeRule.onNodeWithText("닫기").performClick()
+            composeRule.onNodeWithText("급식 기록").assertDoesNotExist()
+
+            listOf("growth", "collection").forEach { route ->
+                composeRule.onNodeWithTag("child_route_$route").performClick()
+                composeRule.waitForIdle()
+                composeRule.onRoot().performTouchInput {
+                    click(primaryActionCenter)
+                }
+
+                composeRule.onNodeWithText("급식 기록").assertDoesNotExist()
+            }
+        } finally {
+            database.close()
+        }
+    }
 
     @Test
     fun growthReloadsPersistedXpWheneverItsTabBecomesActive() {

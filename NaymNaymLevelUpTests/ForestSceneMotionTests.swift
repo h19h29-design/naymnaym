@@ -72,43 +72,49 @@ final class ForestSceneMotionTests: XCTestCase {
     }
 
     func testSheetTabAndAppPauseSourcesFreezeThenResumeWithoutJump() {
-        var clock = ForestSceneMotionClock(startTime: 0)
+        var now: TimeInterval = 0
+        var clock = ForestSceneMotionClock(
+            timeSource: RebuildMonotonicTimeSource { now }
+        )
 
-        XCTAssertEqual(clock.elapsed(at: 1), 1, accuracy: 0.0001)
+        now = 1
+        XCTAssertEqual(clock.elapsed(), 1, accuracy: 0.0001)
 
         clock.update(
             activity: ForestSceneActivity(
                 isSheetPresented: true,
                 isTabActive: true,
                 isAppActive: true
-            ),
-            at: 1
+            )
         )
-        XCTAssertEqual(clock.elapsed(at: 5), 1, accuracy: 0.0001)
+        now = 5
+        XCTAssertEqual(clock.elapsed(), 1, accuracy: 0.0001)
 
-        clock.update(activity: .active, at: 5)
-        XCTAssertEqual(clock.elapsed(at: 6), 2, accuracy: 0.0001)
+        clock.update(activity: .active)
+        now = 6
+        XCTAssertEqual(clock.elapsed(), 2, accuracy: 0.0001)
 
         clock.update(
             activity: ForestSceneActivity(
                 isSheetPresented: false,
                 isTabActive: false,
                 isAppActive: true
-            ),
-            at: 6
+            )
         )
-        XCTAssertEqual(clock.elapsed(at: 9), 2, accuracy: 0.0001)
+        now = 9
+        XCTAssertEqual(clock.elapsed(), 2, accuracy: 0.0001)
 
-        clock.update(activity: .active, at: 9)
+        clock.update(activity: .active)
+        now = 10
         clock.update(
             activity: ForestSceneActivity(
                 isSheetPresented: false,
                 isTabActive: true,
                 isAppActive: false
-            ),
-            at: 10
+            )
         )
-        XCTAssertEqual(clock.elapsed(at: 14), 3, accuracy: 0.0001)
+        now = 14
+        XCTAssertEqual(clock.elapsed(), 3, accuracy: 0.0001)
 
         XCTAssertFalse(
             ForestSceneMotionSpec.shouldScheduleFrameCallback(
@@ -126,5 +132,26 @@ final class ForestSceneMotionTests: XCTestCase {
                 activity: .active
             )
         )
+    }
+
+    func testInjectedMonotonicTimelineResumesWithoutReset() {
+        var now: TimeInterval = 1_000
+        var clock = ForestSceneMotionClock(
+            timeSource: RebuildMonotonicTimeSource { now }
+        )
+
+        now = 1_001
+        clock.update(
+            activity: ForestSceneActivity(
+                isSheetPresented: true,
+                isTabActive: true,
+                isAppActive: true
+            )
+        )
+        now = 1_002
+        clock.update(activity: .active)
+        now = 1_003
+
+        XCTAssertEqual(clock.elapsed(), 2, accuracy: 0.0001)
     }
 }

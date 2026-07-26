@@ -83,14 +83,29 @@ final class MascotMotionControllerTests: XCTestCase {
         )
     }
 
-    func testSampledPoseUsesThePlaybackStartDate() {
+    func testSampledPoseUsesThePlaybackStartTime() {
         let controller = MascotMotionController(spec: .fixture)
-        let start = Date(timeIntervalSince1970: 1_000)
+        let start: TimeInterval = 1_000
         controller.play(.mealSuccess, at: start)
 
         let pose = controller.sampledPose(
-            at: start.addingTimeInterval(0.7)
+            at: start + 0.7
         )
+
+        XCTAssertLessThan(pose.bodyOffsetY, 0)
+        XCTAssertEqual(pose.bodyScaleY, 0.96, accuracy: 0.001)
+    }
+
+    func testInjectedMonotonicSourceDrivesRuntimeSampling() {
+        var now: TimeInterval = 1_000
+        let controller = MascotMotionController(
+            spec: .fixture,
+            timeSource: RebuildMonotonicTimeSource { now }
+        )
+        controller.play(.mealSuccess)
+        now = 1_000.7
+
+        let pose = controller.sampledPose()
 
         XCTAssertLessThan(pose.bodyOffsetY, 0)
         XCTAssertEqual(pose.bodyScaleY, 0.96, accuracy: 0.001)
@@ -102,7 +117,7 @@ final class MascotMotionControllerTests: XCTestCase {
         controller.play(
             .mealSuccess,
             reduceMotion: true,
-            at: Date(timeIntervalSince1970: 1_000)
+            at: 1_000
         )
 
         XCTAssertEqual(controller.activeState, .reducedMotion)
@@ -117,7 +132,7 @@ final class MascotMotionControllerTests: XCTestCase {
 
         controller.play(
             .idle,
-            at: Date(timeIntervalSince1970: 1_000)
+            at: 1_000
         )
 
         XCTAssertFalse(controller.isPlaybackActive)
@@ -130,7 +145,7 @@ final class MascotMotionControllerTests: XCTestCase {
 
         controller.play(
             .mealSuccess,
-            at: Date(timeIntervalSince1970: 1_000)
+            at: 1_000
         )
 
         XCTAssertTrue(controller.isPlaybackActive)

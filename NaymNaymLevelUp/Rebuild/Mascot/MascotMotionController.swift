@@ -5,34 +5,40 @@ import SwiftUI
 final class MascotMotionController: ObservableObject {
     @Published private(set) var pose: MascotPose = .rest
     @Published private(set) var activeState: RebuildMotionState = .idle
-    @Published private(set) var playbackStartedAt = Date()
+    @Published private(set) var playbackStartedAt: TimeInterval
     @Published private(set) var isPlaybackActive = false
 
     let spec: MascotMotionSpec
+    private let timeSource: RebuildMonotonicTimeSource
     private var completionTask: Task<Void, Never>?
     private var playbackGeneration = 0
 
-    init(spec: MascotMotionSpec) {
+    init(
+        spec: MascotMotionSpec,
+        timeSource: RebuildMonotonicTimeSource = .system
+    ) {
         self.spec = spec
+        self.timeSource = timeSource
+        self.playbackStartedAt = timeSource.now()
     }
 
     func play(_ state: RebuildMotionState) {
-        play(state, reduceMotion: false, at: Date())
+        play(state, reduceMotion: false)
     }
 
-    func play(_ state: RebuildMotionState, at date: Date) {
-        play(state, reduceMotion: false, at: date)
+    func play(_ state: RebuildMotionState, at time: TimeInterval) {
+        play(state, reduceMotion: false, at: time)
     }
 
     func play(
         _ state: RebuildMotionState,
         reduceMotion: Bool,
-        at date: Date = Date()
+        at time: TimeInterval? = nil
     ) {
         completionTask?.cancel()
         playbackGeneration += 1
         let generation = playbackGeneration
-        playbackStartedAt = date
+        playbackStartedAt = time ?? timeSource.now()
 
         if reduceMotion {
             activeState = .reducedMotion
@@ -64,9 +70,13 @@ final class MascotMotionController: ObservableObject {
         }
     }
 
-    func sampledPose(at date: Date) -> MascotPose {
+    func sampledPose() -> MascotPose {
+        sampledPose(at: timeSource.now())
+    }
+
+    func sampledPose(at time: TimeInterval) -> MascotPose {
         guard isPlaybackActive else { return pose }
-        let elapsed = date.timeIntervalSince(playbackStartedAt)
+        let elapsed = time - playbackStartedAt
         let sampledProgress = progress(
             for: activeState,
             elapsed: elapsed
@@ -225,7 +235,7 @@ final class MascotMotionController: ObservableObject {
             }
             self.isPlaybackActive = false
             self.activeState = .idle
-            self.playbackStartedAt = Date()
+            self.playbackStartedAt = self.timeSource.now()
             self.pose = .rest
         }
     }
