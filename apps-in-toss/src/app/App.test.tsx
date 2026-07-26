@@ -68,7 +68,7 @@ describe('direct routes', () => {
   it('redirects a first-time /today deep link to onboarding', async () => {
     renderTestApp({ initialEntry: '/today', profile: null });
 
-    expect(await screen.findByRole('heading', { name: '냠냠레벨업 시작하기' }))
+    expect(await screen.findByRole('heading', { name: '급식레벨업 시작하기' }))
       .toBeInTheDocument();
   });
 
@@ -89,14 +89,14 @@ describe('direct routes', () => {
   it('does not treat other query values as demo mode', async () => {
     renderTestApp({ initialEntry: '/today?demo=true', profile: null });
 
-    expect(await screen.findByRole('heading', { name: '냠냠레벨업 시작하기' }))
+    expect(await screen.findByRole('heading', { name: '급식레벨업 시작하기' }))
       .toBeInTheDocument();
   });
 
   it('routes an unconfigured settings deep link to onboarding', async () => {
     renderTestApp({ initialEntry: '/settings', profile: null });
 
-    expect(await screen.findByRole('heading', { name: '냠냠레벨업 시작하기' }))
+    expect(await screen.findByRole('heading', { name: '급식레벨업 시작하기' }))
       .toBeInTheDocument();
   });
 
@@ -109,7 +109,7 @@ describe('direct routes', () => {
   it('recovers an unknown route to onboarding for a new user', async () => {
     renderTestApp({ initialEntry: '/unknown-route', profile: null });
 
-    expect(await screen.findByRole('heading', { name: '냠냠레벨업 시작하기' }))
+    expect(await screen.findByRole('heading', { name: '급식레벨업 시작하기' }))
       .toBeInTheDocument();
   });
 

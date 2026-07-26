@@ -5,7 +5,7 @@ import { requireEnv } from './src/config/env';
 export default defineConfig({
   appName: requireEnv('AIT_APP_NAME'),
   brand: {
-    displayName: '냠냠레벨업',
+    displayName: '급식레벨업',
     primaryColor: '#FF9F43',
     icon: requireEnv('AIT_ICON_URL'),
   },

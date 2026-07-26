@@ -1,4 +1,4 @@
-# 냠냠레벨업 앱인토스 클라이언트
+# 급식레벨업 앱인토스 클라이언트
 
 토스 안에서 동작하는 무료 MVP입니다. 별명, 학교, 알레르기, 식사 기록, XP, 레벨, 급식 캐시는 토스 `Storage`에 저장합니다. 서버는 NEIS 요청을 중계하는 Supabase Edge Function `neis-proxy` 하나뿐이며, 미니앱 코드는 이 데이터를 Supabase DB/Auth/Storage/Realtime에 사용자 기록으로 작성하지 않습니다. 학교 검색어 또는 학교 코드·날짜와 통상적인 요청/호출 메타데이터는 Edge 및 NEIS 처리 과정에 전달될 수 있습니다.
 
