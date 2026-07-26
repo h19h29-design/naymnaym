@@ -578,13 +578,21 @@ git commit -m "feat: finish accessible mascot and logo motion"
 - Create: `NaymNaymLevelUp/Rebuild/Child/ForestSceneMotion.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Child/ForestSceneView.swift`
 - Modify: `NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift`
+- Modify: `NaymNaymLevelUp/Rebuild/Child/TodayForestViewModel.swift`
+- Modify: `NaymNaymLevelUp/Rebuild/Child/ChildNavigationView.swift`
 - Modify: `NaymNaymLevelUp/Rebuild/Mascot/MascotRigView.swift`
 - Create: `NaymNaymLevelUpTests/ForestSceneMotionTests.swift`
+- Modify: `NaymNaymLevelUpTests/TodayForestViewModelTests.swift`
 - Modify: `NaymNaymLevelUp.xcodeproj/project.pbxproj`
 - Create: `android/app/src/main/res/drawable-nodpi/forest_home_*.png`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotion.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestScene.kt`
 - Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestScreen.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ChildNavigation.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestViewModel.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/ui/RebuildApp.kt`
+- Modify: `android/app/build.gradle.kts` only if the existing Compose icon set
+  does not contain the required real icons
 - Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotionTest.kt`
 - Create: `android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneTest.kt`
 - Create: `docs/qa/forest-scene-asset-check.md`
@@ -595,6 +603,8 @@ git commit -m "feat: finish accessible mascot and logo motion"
 - Produces: `ForestSceneView(reduceMotion:isPaused:content:)`
 - Produces: `@Composable ForestScene(reduceMotion, isPaused, content)`
 - Produces: contract-backed shared layer order and deterministic 8-second frame model
+- Produces: monotonic `TodayForestViewModel.motionRevision` parity
+- Guarantees: real sheet/tab/app pause ownership is integrated on both platforms
 - Guarantees: text and primary actions remain on high-contrast surfaces, not directly over detailed leaves
 - Guarantees: decoded forest layers stay at or below 32 MiB and combined forest
   plus active three-frame mascot art stays at or below 52 MiB
@@ -613,15 +623,21 @@ Before creating production layers or motion code, add failing tests for:
    scene, then resuming without a jump
 5. foreground layers remaining below mascot, text, and primary actions in z-order
 6. all user-facing copy sitting on opaque `cream50`-family high-contrast surfaces
+7. monotonic consecutive-event revision plus independent sheet/tab/app pause/resume
+8. no Android emoji or text-symbol icon stand-ins in the production path
 
 - [ ] **Step 2: Establish the immutable visual reference**
 
 Copy the real reference files into `art/forest-scene/home/references` and record
 their original paths, dimensions, and SHA-256 values in `source-notes.md`:
 
-- Intro `853×1844`, SHA-256
+- Intro
+  `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Intro_Background.imageset/Squirrel_Intro_Background.png`,
+  `853×1844`, SHA-256
   `954f62cb4c5989d0acb24e63f731025746d9bac09266a9905def32dabd4dc365`
-- Home `1672×941`, SHA-256
+- Home
+  `NaymNaymLevelUp/Resources/Assets.xcassets/Squirrel_Home_Background.imageset/Squirrel_Home_Background.png`,
+  `1672×941`, SHA-256
   `94566b4593a99918d79c5f2cac1927714474c47afeadb842ade48e66e80d0ee7`
 
 Record approved palette IDs and verified contrast pairs from
@@ -639,6 +655,9 @@ synced runtime copies. Acceptance composites at REST and maximum motion must sho
 no transparent edge or halo. Runtime forest-layer decoded memory must be
 `<=32 MiB`, combined runtime forest plus the active three-frame mascot must be
 `<=52 MiB`, and packaged runtime forest PNGs must be recorded in the QA document.
+The bounded decoded estimate is `30.576 MiB` for five runtime layers plus
+`17.996 MiB` for three active mascot frames, `48.572 MiB` combined. Do not
+package master layers in either runtime bundle.
 
 - [ ] **Step 4: Implement matched depth motion**
 
@@ -658,16 +677,19 @@ schedule a display/frame callback. On Android, read the real system motion scale
 instead of passing a hard-coded `false`. The character remains the strongest
 moving object.
 
-As part of the iOS home composition update, replace the remaining legacy flat
-character in `TodayForestView` with the approved `MascotRigView`, mapping the
-existing `TodayForestViewModel` motion state, a monotonic `motionRevision` for
-consecutive equal success events, and the system Reduce Motion value.
+`TodayForestView` already uses `MascotRigView`; preserve it and add the missing
+monotonic `motionRevision` mapping for consecutive equal success events. Route
+real system Reduce Motion and tab/sheet/app pause ownership through the actual
+child navigation roots without recreating the scene on tab switches.
 
 - [ ] **Step 5: Protect content contrast and verify composition/performance**
 
 Place headings, body copy, and primary actions on opaque `cream50`-family
 surfaces with contract-token foreground colors. Do not rely on the existing
 0.84/0.88 translucent character cards for AA contrast over detailed leaves.
+Use the verified `ink900/cream50`, `forest700/cream50`, and
+`muted600/cream50` pairs. Replace Android `🌿`, `📈`, `📚`, `✨`, and `●`
+stand-ins with Material icons and native shape primitives.
 
 Capture compact iPhone, 390×844, Pro Max, and Android 360×800 at REST, maximum
 motion, recorder-sheet pause, Reduce Motion, and 200% text. The app is currently
@@ -681,7 +703,8 @@ visiting Collection then returning home.
 
 - [ ] **Step 6: Save the approved scene system in Figma**
 
-Create one `living-forest-scene` board in the existing Figma file and place the
+Create one `living-forest-scene` board in Figma file
+`PzhrBaw0BuAMNTX4BPyfsM` and place the
 actual five approved production layers plus REST/maximum-motion frames, z-order,
 motion values, pause behavior, contrast surfaces, and memory notes. Reuse that
 board for any correction; do not create duplicates.
