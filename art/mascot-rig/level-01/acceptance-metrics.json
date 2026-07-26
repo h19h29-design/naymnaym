@@ -8,26 +8,27 @@
   "referenceVsRestChangedPixels": 0,
   "blinkAcceptance": {
     "expressionImageGenSourceSha256": "834f4187d55dc02b707e548692759018a470bc33989780a0ffd08e077ea35c08",
-    "outsideEyesAndMouthRoiChangedPixels": 0,
+    "outsideClosedEyesRoiChangedPixels": 0,
     "immutableEyebrowChangedPixels": 0,
+    "immutableNoseMouthMuzzleChangedPixels": 0,
     "eyesRoiAlphaBounds": [
-      372,
-      423,
-      784,
-      626
+      398,
+      429,
+      751,
+      590
     ],
-    "mouthRoiAlphaBounds": [
+    "deferredMouthNeutralMasterAlphaBounds": [
       438,
       467,
       678,
       736
     ],
     "expressionRoiColorAdjustmentRgb": [
-      0,
-      0,
+      -1,
+      -1,
       -2
     ],
-    "nonRoiImageGenPixelsAccepted": 0,
+    "nonEyeImageGenPixelsVisibleInBlink": 0,
     "backgroundInspections": [
       "dark",
       "light",
@@ -100,12 +101,12 @@
       ]
     },
     "eyesClosed": {
-      "nonzeroAlphaPixels": 60792,
+      "nonzeroAlphaPixels": 31238,
       "alphaBounds": [
-        372,
-        423,
-        784,
-        626
+        398,
+        429,
+        751,
+        590
       ]
     },
     "mouthNeutral": {
@@ -185,8 +186,9 @@
   },
   "poses": {
     "rest": "exact source pixels",
-    "blink": "eyes closed + tightly feathered ImageGen neutral mouth ROI",
+    "blink": "closed eyes only; source mouth, nose, and muzzle unchanged",
     "celebrate": {
+      "renderMethod": "semantic part-weight-map soft skinning keyframe",
       "armLeftDegrees": 12,
       "armRightDegrees": -12,
       "tailDegrees": 8,

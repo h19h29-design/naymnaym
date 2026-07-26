@@ -4,7 +4,7 @@
 
 **Goal:** 현재 다람쥐 외형을 유지하면서 7단계 캐릭터를 실제 파츠 리깅으로 다시 구성하고, 상황별 모션·성장·도감·인트로 로고를 양 플랫폼에 구현한다.
 
-**Architecture:** 모든 캐릭터 단계는 1254×1254 공통 캔버스와 동일한 파츠 이름을 사용한다. 모션 타이밍과 키프레임은 플랫폼 중립 JSON으로 관리하고, SwiftUI와 Compose가 각각 파츠를 합성해 같은 상태를 재생한다.
+**Architecture:** 모든 캐릭터 단계는 1254×1254 공통 캔버스와 동일한 파츠 이름을 사용한다. 11개 파츠의 알파는 의미론적 모션 가중치 맵이며, 승인된 축하 포즈는 이 가중치 맵을 사용한 심리스 소프트 스키닝 키프레임으로 렌더링한다. 앱은 검증·체크섬 고정된 포즈 키프레임과 표정 레이어를 소비한다. 모션 타이밍과 키프레임은 플랫폼 중립 JSON으로 관리하고, SwiftUI와 Compose가 같은 상태를 재생한다.
 
 **Tech Stack:** PNG RGBA assets, Python 3 validator, JSON motion spec, SwiftUI animation, Compose animation, XCTest, JUnit/Compose UI Test
 
@@ -153,17 +153,17 @@ git commit -m "test: define mascot rig contract"
 
 Copy `Squirrel_Growth_Level_1.png` to `reference-flat.png`; record its SHA-256 in `source-notes.md`. Do not modify the original asset.
 
-- [ ] **Step 2: Produce the 11 exact parts on the shared canvas**
+- [ ] **Step 2: Produce the 11 exact semantic parts on the shared canvas**
 
-For every part, paint the covered area that becomes visible during motion rather than cutting only visible pixels. Preserve the reference face proportions, outline, color, leaf scarf, and sprout. Export straight-alpha RGBA PNG without color-profile conversion.
+For every part, paint the covered area that becomes visible during motion rather than cutting only visible pixels. Their alpha channels are the semantic soft-skinning weights used to render seam-free approved keyframes; they are not a promise that an unfeathered rigid cutout composition is visually acceptable. Preserve the reference face proportions, outline, color, leaf scarf, and sprout. Export straight-alpha RGBA PNG without color-profile conversion.
 
 - [ ] **Step 3: Render the three acceptance composites**
 
 Use a deterministic composition script or graphics editor positions from `mascot-rig.json`:
 
 - `composite-rest.png`: exact rest pose
-- `composite-blink.png`: closed eyes and neutral mouth
-- `composite-celebrate.png`: both arms raised 12°, tail rotated 8°, body scaled x=1.04/y=0.96
+- `composite-blink.png`: closed eyes only; source mouth, nose, and muzzle remain exact
+- `composite-celebrate.png`: seam-free semantic part-weight-map soft-skinning keyframe with both arms raised 12°, tail rotated 8°, body scaled x=1.04/y=0.96
 
 - [ ] **Step 4: Validate and visually compare**
 
@@ -229,7 +229,7 @@ struct MascotPose: Equatable {
 }
 ```
 
-Render all parts in a 1254×1254 `ZStack` in manifest order. Use `TimelineView(.animation)` only while a non-rest state is active. For `reduceMotion`, crossfade eyes and mouth without offset, scale, rotation, or shine translation.
+Render the checksum-verified rest, blink, and soft-skinned pose keyframes with their expression layers in a 1254×1254 `ZStack`; use semantic part assets for state metadata and compositional fallback, not unfeathered rigid transform previews. Use `TimelineView(.animation)` only while a non-rest state is active. For `reduceMotion`, crossfade eyes without offset, scale, rotation, or shine translation.
 
 - [ ] **Step 4: Run tests and profile the prototype**
 
@@ -280,7 +280,7 @@ Expected: FAIL because the mascot package does not exist.
 
 - [ ] **Step 3: Implement deterministic Compose transforms**
 
-Use a 1:1 `BoxWithConstraints`, draw parts in manifest order with `Image`, and apply transforms through `graphicsLayer`. Load drawable IDs from a level-to-parts map; never use reflection on resource names. `LocalMotionDurationScale` and the app accessibility state must route to `reducedMotion`.
+Use a 1:1 `BoxWithConstraints`, draw checksum-verified pose keyframes and required expression layers with `Image`, and apply only the approved pose interpolation through `graphicsLayer`; semantic part assets support state metadata and compositional fallback, never an unfeathered rigid cutout preview. Load drawable IDs from a level-to-assets map; never use reflection on resource names. `LocalMotionDurationScale` and the app accessibility state must route to `reducedMotion`.
 
 - [ ] **Step 4: Run unit, Compose, and performance checks**
 

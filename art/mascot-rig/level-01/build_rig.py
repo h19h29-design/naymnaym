@@ -191,6 +191,7 @@ def source_brow_mask(source: Image.Image) -> Image.Image:
 
 def imagegen_expression_layers(
     source: Image.Image,
+    eyes_allowed: Image.Image,
 ) -> tuple[
     Image.Image,
     Image.Image,
@@ -219,7 +220,13 @@ def imagegen_expression_layers(
     eyes_feather = ImageChops.multiply(
         eyes_feather, ImageChops.invert(source_brow_mask(source))
     )
-
+    eyes_allowed_feather = eyes_allowed.filter(
+        ImageFilter.MinFilter(11)
+    ).filter(ImageFilter.GaussianBlur(5))
+    eyes_feather = ImageChops.multiply(
+        eyes_feather, eyes_allowed_feather
+    )
+    eyes_feather = intersection(eyes_feather, eyes_allowed)
     mouth_core = blank("L")
     ImageDraw.Draw(mouth_core).polygon(
         [
@@ -299,11 +306,11 @@ def affine_about(
     )
 
 
-def smooth_pose(source: Image.Image, layers: dict[str, Image.Image]) -> Image.Image:
-    """Preview the rigid rig through a feathered deformation field.
+def skinned_pose(source: Image.Image, layers: dict[str, Image.Image]) -> Image.Image:
+    """Render a keyframe from semantic part alpha weight maps.
 
-    The transforms are the contract values, while the 24 px feather behaves
-    like skinning weights so preview joints cannot expose crop seams.
+    The 11 part masters define stable semantic regions. Their feathered alpha
+    maps drive the exact transform contract without revealing hard crop joints.
     """
     height, width = SIZE[1], SIZE[0]
     grid_y, grid_x = np.indices((height, width), dtype=np.float32)
@@ -625,7 +632,7 @@ def main() -> None:
         layers["mouthNeutral"],
         mouth_neutral_roi,
         expression_color_adjustment,
-    ) = imagegen_expression_layers(source)
+    ) = imagegen_expression_layers(source, eyes_region)
 
     for name in PARTS:
         save_rgba(layers[name], HERE / f"{name}.png")
@@ -641,31 +648,12 @@ def main() -> None:
         "mouthSmile",
         "sprout",
     }
-    blink_active = rest_active - {"eyesOpen", "mouthSmile"} | {
-        "eyesClosed",
-        "mouthNeutral",
-    }
+    blink_active = rest_active - {"eyesOpen"} | {"eyesClosed"}
     rest = compose(layers, rest_active)
     blink = compose(layers, blink_active)
     brow_regions = source_brow_mask(source)
 
-    celebrate_layers = dict(layers)
-    celebrate_layers["tailBack"] = affine_about(
-        layers["tailBack"], pivot=(817, 858), degrees=8
-    )
-    celebrate_layers["body"] = affine_about(
-        layers["body"], pivot=(627, 842), scale_x=1.04, scale_y=0.96
-    )
-    celebrate_layers["armLeft"] = affine_about(
-        layers["armLeft"], pivot=(407, 735), degrees=12
-    )
-    celebrate_layers["armRight"] = affine_about(
-        layers["armRight"], pivot=(740, 765), degrees=-12
-    )
-    # The layer composite above proves each rigid transform is constructible.
-    # The visual acceptance preview uses the same transforms with feathered
-    # skinning weights, which removes crop seams at shoulders and tail base.
-    celebrate = smooth_pose(source, layers)
+    celebrate = skinned_pose(source, layers)
 
     save_rgba(rest, HERE / "composite-rest.png")
     save_rgba(blink, HERE / "composite-blink.png")
@@ -757,10 +745,7 @@ def main() -> None:
         raise SystemExit(f"rest/source pixel mismatch: {exact_difference} pixels")
     if any(count == 0 for count in counts.values()):
         raise SystemExit(f"empty layer detected: {counts}")
-    allowed_mouth_roi = union(mouth_region, mouth_neutral_roi)
-    allowed_blink_roi = union(
-        eyes_region, eyes_closed_roi, allowed_mouth_roi
-    )
+    allowed_blink_roi = union(eyes_region, eyes_closed_roi)
     allowed_blink_roi = allowed_blink_roi.point(
         lambda value: 255 if value else 0
     )
@@ -770,7 +755,7 @@ def main() -> None:
     blink_outside_changed = changed_pixel_count(source, blink_outside_roi)
     if blink_outside_changed:
         raise SystemExit(
-            "blink changed pixels outside eyes/mouth ROI: "
+            "blink changed pixels outside closed-eye ROI: "
             f"{blink_outside_changed}"
         )
     def changed_within(mask: Image.Image) -> int:
@@ -782,6 +767,22 @@ def main() -> None:
         raise SystemExit(
             f"immutable eyebrow pixels changed: {eyebrow_changed}"
         )
+    nose_mouth_regions = union(
+        subtract(mouth_region, eyes_region),
+        shape_mask(
+            polygon=[
+                (520, 480),
+                (598, 480),
+                (598, 574),
+                (520, 574),
+            ]
+        ),
+    )
+    nose_mouth_changed = changed_within(nose_mouth_regions)
+    if nose_mouth_changed:
+        raise SystemExit(
+            f"immutable blink nose/mouth pixels changed: {nose_mouth_changed}"
+        )
 
     metrics = {
         "sourceSha256": source_sha,
@@ -789,12 +790,15 @@ def main() -> None:
         "referenceVsRestChangedPixels": exact_difference,
         "blinkAcceptance": {
             "expressionImageGenSourceSha256": EYES_EDIT_SHA256,
-            "outsideEyesAndMouthRoiChangedPixels": blink_outside_changed,
+            "outsideClosedEyesRoiChangedPixels": blink_outside_changed,
             "immutableEyebrowChangedPixels": eyebrow_changed,
+            "immutableNoseMouthMuzzleChangedPixels": nose_mouth_changed,
             "eyesRoiAlphaBounds": alpha_bbox(layers["eyesClosed"]),
-            "mouthRoiAlphaBounds": alpha_bbox(layers["mouthNeutral"]),
+            "deferredMouthNeutralMasterAlphaBounds": alpha_bbox(
+                layers["mouthNeutral"]
+            ),
             "expressionRoiColorAdjustmentRgb": expression_color_adjustment,
-            "nonRoiImageGenPixelsAccepted": 0,
+            "nonEyeImageGenPixelsVisibleInBlink": 0,
             "backgroundInspections": ["dark", "light", "checker"],
             "faceCropInspectionScale": "1:1",
         },
@@ -830,8 +834,9 @@ def main() -> None:
         },
         "poses": {
             "rest": "exact source pixels",
-            "blink": "eyes closed + tightly feathered ImageGen neutral mouth ROI",
+            "blink": "closed eyes only; source mouth, nose, and muzzle unchanged",
             "celebrate": {
+                "renderMethod": "semantic part-weight-map soft skinning keyframe",
                 "armLeftDegrees": 12,
                 "armRightDegrees": -12,
                 "tailDegrees": 8,
