@@ -82,6 +82,11 @@
 		C20000000000000000000073 /* TodayForestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000077 /* TodayForestView.swift */; };
 		C20000000000000000000074 /* MealRecordingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000078 /* MealRecordingSheet.swift */; };
 		C20000000000000000000075 /* TodayForestViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000079 /* TodayForestViewModel.swift */; };
+		C20000000000000000000076 /* MascotMotionControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000080 /* MascotMotionControllerTests.swift */; };
+		C20000000000000000000077 /* MascotRigModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000081 /* MascotRigModel.swift */; };
+		C20000000000000000000078 /* MascotMotionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000082 /* MascotMotionController.swift */; };
+		C20000000000000000000079 /* MascotRig in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000083 /* MascotRig */; };
+		C20000000000000000000080 /* MascotRigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000084 /* MascotRigView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -174,6 +179,11 @@
 		C10000000000000000000077 /* TodayForestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/TodayForestView.swift; sourceTree = "<group>"; };
 		C10000000000000000000078 /* MealRecordingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/MealRecordingSheet.swift; sourceTree = "<group>"; };
 		C10000000000000000000079 /* TodayForestViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/TodayForestViewModel.swift; sourceTree = "<group>"; };
+		C10000000000000000000080 /* MascotMotionControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotMotionControllerTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000081 /* MascotRigModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Mascot/MascotRigModel.swift; sourceTree = "<group>"; };
+		C10000000000000000000082 /* MascotMotionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Mascot/MascotMotionController.swift; sourceTree = "<group>"; };
+		C10000000000000000000083 /* MascotRig */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/MascotRig; sourceTree = "<group>"; };
+		C10000000000000000000084 /* MascotRigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Mascot/MascotRigView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -265,9 +275,13 @@
 				C10000000000000000000077 /* TodayForestView.swift */,
 				C10000000000000000000078 /* MealRecordingSheet.swift */,
 				C10000000000000000000079 /* TodayForestViewModel.swift */,
+				C10000000000000000000081 /* MascotRigModel.swift */,
+				C10000000000000000000082 /* MascotMotionController.swift */,
+				C10000000000000000000084 /* MascotRigView.swift */,
 				C10000000000000000000026 /* Assets.xcassets */,
 				C10000000000000000000051 /* RebuildContracts */,
 				C10000000000000000000043 /* Animations */,
+				C10000000000000000000083 /* MascotRig */,
 				C10000000000000000000027 /* SampleSchools.json */,
 				C10000000000000000000028 /* SampleMeals.json */,
 			);
@@ -291,6 +305,7 @@
 				C10000000000000000000066 /* RebuildRecordMealUseCaseTests.swift */,
 				C10000000000000000000074 /* RebuildOnboardingViewModelTests.swift */,
 				C10000000000000000000075 /* TodayForestViewModelTests.swift */,
+				C10000000000000000000080 /* MascotMotionControllerTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -406,6 +421,7 @@
 				C20000000000000000000034 /* PrivacyInfo.xcprivacy in Resources */,
 				C20000000000000000000038 /* Animations in Resources */,
 				C20000000000000000000047 /* RebuildContracts in Resources */,
+				C20000000000000000000079 /* MascotRig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -477,6 +493,9 @@
 				C20000000000000000000073 /* TodayForestView.swift in Sources */,
 				C20000000000000000000074 /* MealRecordingSheet.swift in Sources */,
 				C20000000000000000000075 /* TodayForestViewModel.swift in Sources */,
+				C20000000000000000000077 /* MascotRigModel.swift in Sources */,
+				C20000000000000000000078 /* MascotMotionController.swift in Sources */,
+				C20000000000000000000080 /* MascotRigView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -498,6 +517,7 @@
 				C20000000000000000000062 /* RebuildRecordMealUseCaseTests.swift in Sources */,
 				C20000000000000000000070 /* RebuildOnboardingViewModelTests.swift in Sources */,
 				C20000000000000000000071 /* TodayForestViewModelTests.swift in Sources */,
+				C20000000000000000000076 /* MascotMotionControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
