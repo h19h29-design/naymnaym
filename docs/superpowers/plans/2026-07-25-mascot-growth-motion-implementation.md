@@ -561,32 +561,87 @@ git commit -m "feat: finish accessible mascot and logo motion"
 
 **Files:**
 - Create: `art/forest-scene/home/source-notes.md`
+- Create: `art/forest-scene/home/references/{intro,home}.png`
+- Create: `art/forest-scene/home/master-1290x2796.png`
 - Create: `art/forest-scene/home/{sky,distantTrees,midgroundTrees,foregroundLeaves,ground}.png`
+- Create: `art/forest-scene/home/acceptance-{rest,max-motion}.png`
+- Create: `contracts/native-rebuild/v1/forest-scene.json`
+- Create: `NaymNaymLevelUp/Resources/RebuildContracts/forest-scene.json`
+- Create: `android/app/src/main/assets/rebuild-contracts/forest-scene.json`
+- Create: `scripts/validate-forest-scene.py`
+- Create: `scripts/tests/test_validate_forest_scene.py`
+- Modify: `scripts/validate-native-rebuild-contracts.py`
+- Modify: `scripts/tests/test_native_rebuild_contracts.py`
 - Create: `NaymNaymLevelUp/Resources/ForestScene/Home/*.png`
+- Create: `NaymNaymLevelUp/Rebuild/Child/ForestSceneMotion.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Child/ForestSceneView.swift`
 - Modify: `NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift`
+- Modify: `NaymNaymLevelUp/Rebuild/Mascot/MascotRigView.swift`
+- Create: `NaymNaymLevelUpTests/ForestSceneMotionTests.swift`
+- Modify: `NaymNaymLevelUp.xcodeproj/project.pbxproj`
 - Create: `android/app/src/main/res/drawable-nodpi/forest_home_*.png`
+- Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotion.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestScene.kt`
 - Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestScreen.kt`
+- Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotionTest.kt`
+- Create: `android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneTest.kt`
 - Create: `docs/qa/forest-scene-asset-check.md`
 
 **Interfaces:**
 - Produces: 1290×2796 portrait master with five aligned layers
-- Produces: `ForestSceneView(reduceMotion:content:)`
-- Produces: `@Composable ForestScene(reduceMotion, content)`
+- Produces: 860×1864 runtime derivatives for both app bundles
+- Produces: `ForestSceneView(reduceMotion:isPaused:content:)`
+- Produces: `@Composable ForestScene(reduceMotion, isPaused, content)`
+- Produces: contract-backed shared layer order and deterministic 8-second frame model
 - Guarantees: text and primary actions remain on high-contrast surfaces, not directly over detailed leaves
+- Guarantees: decoded forest layers stay at or below 32 MiB and combined forest
+  plus active three-frame mascot art stays at or below 52 MiB
+- Guarantees: the release remains iPhone-only; iPad support is not silently added
+  as part of this visual task
 
-- [ ] **Step 1: Establish the immutable visual reference**
+- [ ] **Step 1: Add genuine RED contract, asset, and motion tests**
 
-Copy `Squirrel_Intro_Background.png` and `Squirrel_Home_Background.png` into `source-notes.md` as paths and SHA-256 values. Record the approved palette IDs from `design-tokens.json`.
+Before creating production layers or motion code, add failing tests for:
 
-- [ ] **Step 2: Produce five aligned production layers**
+1. the exact five filenames/order, 1290×2796 master dimensions, RGB/RGBA rules,
+   unique hashes, fully opaque sky, and transparent non-sky edges
+2. the same cross-platform motion values at `0s`, `2s`, `4s`, `6s`, and `8s`
+3. Reduce Motion producing all-zero transforms and no frame callback
+4. elapsed time freezing while a sheet, inactive tab, or inactive app pauses the
+   scene, then resuming without a jump
+5. foreground layers remaining below mascot, text, and primary actions in z-order
+6. all user-facing copy sitting on opaque `cream50`-family high-contrast surfaces
+
+- [ ] **Step 2: Establish the immutable visual reference**
+
+Copy the real reference files into `art/forest-scene/home/references` and record
+their original paths, dimensions, and SHA-256 values in `source-notes.md`:
+
+- Intro `853×1844`, SHA-256
+  `954f62cb4c5989d0acb24e63f731025746d9bac09266a9905def32dabd4dc365`
+- Home `1672×941`, SHA-256
+  `94566b4593a99918d79c5f2cac1927714474c47afeadb842ade48e66e80d0ee7`
+
+Record approved palette IDs and verified contrast pairs from
+`design-tokens.json`. Do not use the duplicate docs copy as a new visual source.
+
+- [ ] **Step 3: Produce five aligned master and runtime layers**
 
 Create an original portrait extension of the approved warm forest world. The sky layer is fully opaque; all other layers are RGBA and retain complete hidden edges for ±12px motion. Do not put characters, text, buttons, icons, or food into the background.
 
-- [ ] **Step 3: Implement matched depth motion**
+Keep the editable/master layers at `1290×2796` under `art/forest-scene/home`.
+Generate deterministic `860×1864` runtime derivatives for iOS and Android; never
+decode five full master-size RGBA layers in the app. Add
+`forest-scene.json`, the dedicated validator, native contract validation, and
+synced runtime copies. Acceptance composites at REST and maximum motion must show
+no transparent edge or halo. Runtime forest-layer decoded memory must be
+`<=32 MiB`, combined runtime forest plus the active three-frame mascot must be
+`<=52 MiB`, and packaged runtime forest PNGs must be recorded in the QA document.
 
-At idle, apply a single 8-second ease-in-out cycle:
+- [ ] **Step 4: Implement matched depth motion**
+
+Use one shared deterministic 8-second cycle, with progress fixed at
+`0s=0%`, `2s=50%`, `4s=100%`, `6s=50%`, `8s=0%`:
 
 ```text
 distantTrees: y -2pt/dp
@@ -595,19 +650,77 @@ foregroundLeaves: x +6pt/dp, y -3pt/dp
 ground: stationary
 ```
 
-Pause the cycle while a sheet is open. In Reduce Motion, render all transforms at zero. The character remains the strongest moving object.
+Pause the cycle while the meal recorder sheet is open, the tab is inactive, or
+the app is inactive. In Reduce Motion, render all transforms at zero and do not
+schedule a display/frame callback. On Android, read the real system motion scale
+instead of passing a hard-coded `false`. The character remains the strongest
+moving object.
 
 As part of the iOS home composition update, replace the remaining legacy flat
 character in `TodayForestView` with the approved `MascotRigView`, mapping the
-existing `TodayForestViewModel` motion state and system Reduce Motion value.
+existing `TodayForestViewModel` motion state, a monotonic `motionRevision` for
+consecutive equal success events, and the system Reduce Motion value.
 
-- [ ] **Step 4: Verify composition and performance**
+- [ ] **Step 5: Protect content contrast and verify composition/performance**
 
-Capture the child home at compact phone, Pro Max, iPad portrait, and Android 360×800. Confirm the character is not covered, the primary action contrast passes, no transparent layer edge appears, and warm decoded memory remains inside the release performance budget.
+Place headings, body copy, and primary actions on opaque `cream50`-family
+surfaces with contract-token foreground colors. Do not rely on the existing
+0.84/0.88 translucent character cards for AA contrast over detailed leaves.
 
-- [ ] **Step 5: Commit**
+Capture compact iPhone, 390×844, Pro Max, and Android 360×800 at REST, maximum
+motion, recorder-sheet pause, Reduce Motion, and 200% text. The app is currently
+iPhone-only (`TARGETED_DEVICE_FAMILY=1`); do not add an iPad acceptance capture
+unless device support is expanded in a separate approved task.
+
+Confirm the character is never covered, primary-action and copy contrast pass,
+no transparent layer edge appears, frame pacing remains inside the release
+budget, and the decoded-memory limits hold both from cold home launch and after
+visiting Collection then returning home.
+
+- [ ] **Step 6: Save the approved scene system in Figma**
+
+Create one `living-forest-scene` board in the existing Figma file and place the
+actual five approved production layers plus REST/maximum-motion frames, z-order,
+motion values, pause behavior, contrast surfaces, and memory notes. Reuse that
+board for any correction; do not create duplicates.
+
+- [ ] **Step 7: Run the complete cross-platform gate**
+
+Run:
 
 ```bash
-git add art/forest-scene NaymNaymLevelUp/Resources/ForestScene NaymNaymLevelUp/Rebuild/Child android/app/src/main/res/drawable-nodpi android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child docs/qa/forest-scene-asset-check.md
+python3 scripts/validate-forest-scene.py --root art/forest-scene/home
+python3 scripts/validate-native-rebuild-contracts.py
+bash scripts/sync-native-rebuild-contracts.sh
+```
+
+Run XcodeBuildMCP `test_sim`.
+
+Run: `cd android && ./gradlew testDebugUnitTest connectedDebugAndroidTest assembleDebug`
+
+Expected: all PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add art/forest-scene contracts/native-rebuild/v1/forest-scene.json \
+  scripts/validate-forest-scene.py scripts/tests/test_validate_forest_scene.py \
+  scripts/validate-native-rebuild-contracts.py scripts/tests/test_native_rebuild_contracts.py \
+  NaymNaymLevelUp/Resources/ForestScene \
+  NaymNaymLevelUp/Resources/RebuildContracts/forest-scene.json \
+  NaymNaymLevelUp/Rebuild/Child/ForestSceneMotion.swift \
+  NaymNaymLevelUp/Rebuild/Child/ForestSceneView.swift \
+  NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift \
+  NaymNaymLevelUp/Rebuild/Mascot/MascotRigView.swift \
+  NaymNaymLevelUpTests/ForestSceneMotionTests.swift \
+  NaymNaymLevelUp.xcodeproj/project.pbxproj \
+  android/app/src/main/assets/rebuild-contracts/forest-scene.json \
+  android/app/src/main/res/drawable-nodpi/forest_home_*.png \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotion.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestScene.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestScreen.kt \
+  android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneMotionTest.kt \
+  android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/child/ForestSceneTest.kt \
+  docs/qa/forest-scene-asset-check.md
 git commit -m "art: add layered living forest scene"
 ```
