@@ -57,7 +57,7 @@ performed.
 - A static preview is downsampled to at most 256 px only after its original
   1254×1254 source and SHA-256 have been verified.
 - The static cache is a byte-cost LRU capped at 2 MiB. Full keyframes and
-  semantic fallback layers each retain only the currently active level.
+  semantic fallback layers share one heavy slot for the active level.
 - Focused tests prove off-main execution, thumbnail dimensions, byte-cost
   eviction, and single-active-level full/fallback eviction.
 - Silent `try?` and legacy `Squirrel_Growth_Level_N` fallback rendering were
@@ -83,6 +83,30 @@ performed.
   access-ordered caches: one active full rig/fallback level and a 2 MiB static
   thumbnail cache. Android also verifies the 1254×1254 source before
   downsampling static art to 256 px.
+
+## Second-review cache serialization
+
+- iOS now uses one generation-guarded heavy cache for either the current
+  three-frame rig or the current semantic fallback. The two representations
+  cannot remain cached together.
+- Requests for the same representation and level coalesce into one task.
+  A new key cancels and removes older in-flight work, and an older completion
+  cannot replace the newest cached value.
+- Already-cancelled callers are rejected before cache generation, eviction, or
+  loading. The detached image worker checks cancellation before and after
+  decoding and receives caller cancellation.
+- REST and rig loaders treat cancellation as a silent transition rather than a
+  load error. A cancelled keyframe request cannot start semantic fallback and
+  cancel the next level's active request.
+- Growth and rig views render assets only when `loadedLevel` equals the
+  requested level, so a level transition cannot expose the prior character for
+  one frame.
+- Semantic fallback files retain their immutable SHA and original 1254×1254
+  dimension checks, then decode to a maximum 512×512 transparent canvas.
+  Layer order remains the canonical eleven-part order.
+- Diagnostics use decoded byte cost. The active full rig is bounded below
+  20 MiB in the fixture and the eleven-layer fallback below 12 MiB, both under
+  the 24 MiB heavy-cache ceiling.
 
 ## TDD evidence
 
@@ -112,6 +136,20 @@ The following expected RED states were observed before their implementations:
   single-active-level eviction existed.
 - The off-main worker test failed before `MascotImageLoadingWorker` existed.
 - Android cache tests failed before `BoundedMascotCache` existed.
+- The second-review cache tests failed while rig and fallback could both retain
+  level 4 and while fallback images still decoded at 1254 px:
+  `test_sim_2026-07-26T07-20-39-454Z_pid85607_28ed53cb.log`.
+- Heavy-cost assertions failed to compile before diagnostics exposed
+  `heavyCost`:
+  `test_sim_2026-07-26T07-21-01-137Z_pid85607_d82ac9dd.log`.
+- Generation, same-key coalescing, different-key cancellation, and detached
+  worker propagation tests failed before `LatestActiveAssetCache` and worker
+  cancellation hardening.
+- Four cancellation regressions failed before loaders handled
+  `CancellationError` explicitly: the cancelled cache caller replaced its
+  predecessor, REST exposed `invalidImage`, rig entered fallback, and stale
+  level 1 work replaced level 4 with `fallback-4`:
+  `test_sim_2026-07-26T07-25-02-652Z_pid85607_bb92a066.log`.
 
 Focused GREEN results:
 
@@ -123,6 +161,9 @@ Focused GREEN results:
 - Android canonical meal, locked-text contrast, and deterministic count/byte
   eviction tests: PASS.
 - Android persisted-home-level instrumentation: 3/3.
+- Second-review heavy-cache and 512 px fallback tests: 2/2.
+- Cancellation and stale-active-key regressions: 4/4.
+- Final iOS mascot motion/cache/loader suite: 36/36; warnings 0, errors 0.
 
 ## Final verification
 
@@ -137,9 +178,9 @@ Focused GREEN results:
 - `bash scripts/sync-native-rebuild-contracts.sh` and runtime `cmp`
   - PASS; both growth-policy mirrors are byte-identical.
 - XcodeBuildMCP `test_sim`
-  - 295 passed, 0 failed, 0 skipped; warnings 0, errors 0.
+  - 306 passed, 0 failed, 0 skipped; warnings 0, errors 0.
   - final build log:
-    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T06-59-32-434Z_pid48667_5dd575cf.log`
+    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T07-34-00-269Z_pid85607_073c0b29.log`
 - Android:
   - `testDebugUnitTest connectedDebugAndroidTest assembleDebug`
   - BUILD SUCCESSFUL.
@@ -160,8 +201,11 @@ Focused GREEN results:
 300×300 source projection and the same `(627, 1128)` anchor baseline. Visual
 inspection confirms consistent foot baseline and scale while preserving the
 intended increase in costume detail. The comparison was re-opened and
-re-inspected after the cache hardening; downsampling affects only runtime
-static previews and does not alter approved source art.
+re-inspected after the cache hardening. A temporary QA sheet also rendered the
+runtime-equivalent 512 px semantic REST stack beside `composite-rest` for
+levels 1, 4, and 7. All pairs kept canonical layer overlap, transparent
+full-square alignment, and the same foot baseline. The temporary QA artifact
+was removed after inspection; approved source art was not changed.
 
 ## Figma
 

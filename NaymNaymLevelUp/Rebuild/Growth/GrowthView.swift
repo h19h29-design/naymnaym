@@ -319,9 +319,9 @@ struct MascotRestArtView: View {
 
     var body: some View {
         Group {
-            if let image = loader.image {
+            if let image = loader.renderedImage(for: level) {
                 loadedArt(image)
-            } else if loader.canRetry {
+            } else if loader.canRetry(for: level) {
                 Button {
                     Task {
                         await loader.load(level: level)

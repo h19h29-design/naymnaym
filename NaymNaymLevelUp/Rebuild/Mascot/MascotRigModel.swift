@@ -390,8 +390,17 @@ final class MascotRestArtLoader: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: MascotRigAssetError?
     @Published private(set) var loadedLevel: Int?
+    @Published private(set) var requestedLevel: Int?
 
     var canRetry: Bool { loadError != nil }
+
+    func renderedImage(for level: Int) -> UIImage? {
+        loadedLevel == level ? image : nil
+    }
+
+    func canRetry(for level: Int) -> Bool {
+        requestedLevel == level && loadError != nil
+    }
 
     private let loadImage: ImageLoader
     private var requestID = 0
@@ -413,6 +422,7 @@ final class MascotRestArtLoader: ObservableObject {
     ) async {
         requestID += 1
         let activeRequestID = requestID
+        requestedLevel = level
         isLoading = true
         loadError = nil
         image = nil
@@ -420,9 +430,15 @@ final class MascotRestArtLoader: ObservableObject {
 
         do {
             let loadedImage = try await loadImage(level, bundle)
+            try Task.checkCancellation()
             guard activeRequestID == requestID else { return }
             image = loadedImage
             loadedLevel = level
+        } catch is CancellationError {
+            if activeRequestID == requestID {
+                isLoading = false
+            }
+            return
         } catch let error as MascotRigAssetError {
             guard activeRequestID == requestID else { return }
             loadError = error
@@ -448,8 +464,23 @@ final class MascotRigLoader: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: MascotRigAssetError?
     @Published private(set) var loadedLevel: Int?
+    @Published private(set) var requestedLevel: Int?
 
     var canRetry: Bool { loadError != nil }
+
+    func renderedImages(for level: Int) -> MascotRigImages? {
+        loadedLevel == level ? images : nil
+    }
+
+    func renderedFallbackLayers(
+        for level: Int
+    ) -> [MascotRigFallbackLayer]? {
+        loadedLevel == level ? fallbackLayers : nil
+    }
+
+    func canRetry(for level: Int) -> Bool {
+        requestedLevel == level && loadError != nil
+    }
 
     private let loadImages: ImagesLoader
     private let loadFallbackLayers: FallbackLoader
@@ -479,6 +510,7 @@ final class MascotRigLoader: ObservableObject {
     ) async {
         requestID += 1
         let activeRequestID = requestID
+        requestedLevel = level
         isLoading = true
         loadError = nil
         loadedLevel = nil
@@ -487,18 +519,32 @@ final class MascotRigLoader: ObservableObject {
 
         do {
             let loadedImages = try await loadImages(level, bundle)
+            try Task.checkCancellation()
             guard activeRequestID == requestID else { return }
             images = loadedImages
             loadedLevel = level
+        } catch is CancellationError {
+            if activeRequestID == requestID {
+                isLoading = false
+            }
+            return
         } catch {
             do {
+                guard activeRequestID == requestID else { return }
+                try Task.checkCancellation()
                 let loadedLayers = try await loadFallbackLayers(
                     level,
                     bundle
                 )
+                try Task.checkCancellation()
                 guard activeRequestID == requestID else { return }
                 fallbackLayers = loadedLayers
                 loadedLevel = level
+            } catch is CancellationError {
+                if activeRequestID == requestID {
+                    isLoading = false
+                }
+                return
             } catch let fallbackError as MascotRigAssetError {
                 guard activeRequestID == requestID else { return }
                 loadError = fallbackError
@@ -517,6 +563,7 @@ struct MascotRigCacheDiagnostics: Equatable {
     let rigLevels: [Int]
     let restLevels: [Int]
     let fallbackLevels: [Int]
+    let heavyCost: Int
     let restCost: Int
 }
 
@@ -524,10 +571,148 @@ enum MascotImageLoadingWorker {
     nonisolated static func run<Value: Sendable>(
         _ operation: @escaping @Sendable () throws -> Value
     ) async throws -> Value {
-        try await Task.detached(
-            priority: .userInitiated,
-            operation: operation
-        ).value
+        let task = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let value = try operation()
+            try Task.checkCancellation()
+            return value
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+}
+
+@MainActor
+final class LatestActiveAssetCache<
+    Key: Hashable & Sendable,
+    Value: Sendable
+> {
+    private struct CachedEntry {
+        let key: Key
+        let value: Value
+        let cost: Int
+    }
+
+    private struct InFlightEntry {
+        let id: Int
+        var latestGeneration: Int
+        let task: Task<Value, Error>
+    }
+
+    private let maxCost: Int
+    private let costOf: (Value) -> Int
+    private var generation = 0
+    private var nextRequestID = 0
+    private var cached: CachedEntry?
+    private var inFlight: [Key: InFlightEntry] = [:]
+
+    var cachedKey: Key? { cached?.key }
+    var cachedValue: Value? { cached?.value }
+    var cachedCost: Int { cached?.cost ?? 0 }
+
+    init(
+        maxCost: Int,
+        costOf: @escaping (Value) -> Int
+    ) {
+        self.maxCost = max(maxCost, 0)
+        self.costOf = costOf
+    }
+
+    func value(
+        for key: Key,
+        load: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        try Task.checkCancellation()
+        generation += 1
+        let requestGeneration = generation
+        cancelInFlight(except: key)
+
+        if cached?.key == key,
+           let cached {
+            return cached.value
+        }
+        cached = nil
+
+        let requestID: Int
+        let task: Task<Value, Error>
+        if var existing = inFlight[key] {
+            existing.latestGeneration = requestGeneration
+            inFlight[key] = existing
+            requestID = existing.id
+            task = existing.task
+        } else {
+            nextRequestID += 1
+            requestID = nextRequestID
+            task = Task {
+                try await load()
+            }
+            inFlight[key] = InFlightEntry(
+                id: requestID,
+                latestGeneration: requestGeneration,
+                task: task
+            )
+        }
+
+        do {
+            let value = try await task.value
+            finish(
+                key: key,
+                requestID: requestID,
+                value: value
+            )
+            return value
+        } catch {
+            finishFailure(key: key, requestID: requestID)
+            throw error
+        }
+    }
+
+    private func finish(
+        key: Key,
+        requestID: Int,
+        value: Value
+    ) {
+        guard let entry = inFlight[key],
+              entry.id == requestID else {
+            return
+        }
+        inFlight[key] = nil
+        guard entry.latestGeneration == generation else {
+            return
+        }
+        let cost = max(costOf(value), 0)
+        guard cost <= maxCost else {
+            cached = nil
+            return
+        }
+        cached = CachedEntry(
+            key: key,
+            value: value,
+            cost: cost
+        )
+    }
+
+    private func finishFailure(
+        key: Key,
+        requestID: Int
+    ) {
+        guard inFlight[key]?.id == requestID else {
+            return
+        }
+        inFlight[key] = nil
+    }
+
+    private func cancelInFlight(except key: Key) {
+        let supersededKeys = inFlight.keys.filter { $0 != key }
+        for supersededKey in supersededKeys {
+            let task = inFlight.removeValue(
+                forKey: supersededKey
+            )?.task
+            task?.cancel()
+        }
     }
 }
 
@@ -535,22 +720,31 @@ enum MascotImageLoadingWorker {
 final class MascotRigAssetStore {
     static let shared = MascotRigAssetStore()
 
-    private struct RigCacheEntry {
-        let key: String
-        let level: Int
-        let images: MascotRigImages
+    private enum HeavyRepresentation: @unchecked Sendable {
+        case rig(
+            level: Int,
+            images: MascotRigImages,
+            cost: Int
+        )
+        case fallback(
+            level: Int,
+            layers: [MascotRigFallbackLayer],
+            cost: Int
+        )
+
+        var cost: Int {
+            switch self {
+            case let .rig(_, _, cost),
+                 let .fallback(_, _, cost):
+                return cost
+            }
+        }
     }
 
     private struct RestCacheEntry {
         let level: Int
         let image: UIImage
         let cost: Int
-    }
-
-    private struct FallbackCacheEntry {
-        let key: String
-        let level: Int
-        let layers: [MascotRigFallbackLayer]
     }
 
     private struct ImageLoadRequest: Sendable {
@@ -566,20 +760,33 @@ final class MascotRigAssetStore {
 
     private let restCacheCostLimit: Int
     private let restThumbnailMaxPixelSize: Int
-    private var rigCache: RigCacheEntry?
+    private let fallbackThumbnailMaxPixelSize: Int
+    private let heavyCache: LatestActiveAssetCache<
+        String,
+        HeavyRepresentation
+    >
     private var restCache: [String: RestCacheEntry] = [:]
     private var restLRU: [String] = []
     private var restCacheCost = 0
-    private var fallbackCache: FallbackCacheEntry?
 
     init(
         restCacheCostLimit: Int = 2 * 1_024 * 1_024,
-        restThumbnailMaxPixelSize: Int = 256
+        restThumbnailMaxPixelSize: Int = 256,
+        heavyCacheCostLimit: Int = 24 * 1_024 * 1_024,
+        fallbackThumbnailMaxPixelSize: Int = 512
     ) {
         self.restCacheCostLimit = max(restCacheCostLimit, 0)
         self.restThumbnailMaxPixelSize = max(
             restThumbnailMaxPixelSize,
             1
+        )
+        self.fallbackThumbnailMaxPixelSize = max(
+            fallbackThumbnailMaxPixelSize,
+            1
+        )
+        heavyCache = LatestActiveAssetCache(
+            maxCost: heavyCacheCostLimit,
+            costOf: \.cost
         )
     }
 
@@ -625,15 +832,10 @@ final class MascotRigAssetStore {
         level: Int,
         bundle: Bundle = .main
     ) async throws -> MascotRigImages {
-        let cacheKey = "\(bundle.bundleURL.path)#\(level)"
-        if let cached = rigCache,
-           cached.key == cacheKey {
-            return cached.images
-        }
-
         guard let definition = MascotRigLevelCatalog.definitions[level] else {
             throw MascotRigAssetError.unsupportedLevel(level)
         }
+        let cacheKey = "\(bundle.bundleURL.path)#rig#\(level)"
         let subdirectory = String(
             format: "MascotRig/level_%02d",
             level
@@ -666,30 +868,40 @@ final class MascotRigAssetStore {
             subdirectory: subdirectory
         )
 
-        let result = try await MascotImageLoadingWorker.run {
-            MascotRigImages(
-                rest: try Self.loadVerifiedImage(
+        let representation = try await heavyCache.value(
+            for: cacheKey
+        ) {
+            try await MascotImageLoadingWorker.run {
+                let rest = try Self.loadVerifiedImage(
                     restRequest,
                     definition: definition
-                ).image,
-                blink: try Self.loadVerifiedImage(
+                )
+                let blink = try Self.loadVerifiedImage(
                     blinkRequest,
                     definition: definition
-                ).image,
-                celebrate: try Self.loadVerifiedImage(
+                )
+                let celebrate = try Self.loadVerifiedImage(
                     celebrateRequest,
                     definition: definition
-                ).image,
-                semanticPartNames: MascotRigSemanticPart.allCases
-                    .map(\.rawValue)
-            )
+                )
+                return .rig(
+                    level: level,
+                    images: MascotRigImages(
+                        rest: rest.image,
+                        blink: blink.image,
+                        celebrate: celebrate.image,
+                        semanticPartNames: MascotRigSemanticPart.allCases
+                            .map(\.rawValue)
+                    ),
+                    cost: rest.cost + blink.cost + celebrate.cost
+                )
+            }
         }
-        rigCache = RigCacheEntry(
-            key: cacheKey,
-            level: level,
-            images: result
-        )
-        return result
+        guard case let .rig(cachedLevel, images, _) = representation,
+              cachedLevel == level else {
+            throw MascotRigAssetError.invalidImage("rig-\(level)")
+        }
+        return images
     }
 
     func fallbackLayers(
@@ -697,10 +909,6 @@ final class MascotRigAssetStore {
         bundle: Bundle = .main
     ) async throws -> [MascotRigFallbackLayer] {
         let cacheKey = "\(bundle.bundleURL.path)#fallback#\(level)"
-        if let cached = fallbackCache,
-           cached.key == cacheKey {
-            return cached.layers
-        }
         guard let definition = MascotRigLevelCatalog.definitions[level] else {
             throw MascotRigAssetError.unsupportedLevel(level)
         }
@@ -720,30 +928,68 @@ final class MascotRigAssetStore {
                 subdirectory: subdirectory
             )
         }
-        let layers = try await MascotImageLoadingWorker.run {
-            try requests.map { request in
-                MascotRigFallbackLayer(
-                    part: request.part!,
-                    image: try Self.loadVerifiedImage(
+        let thumbnailMaxPixelSize = fallbackThumbnailMaxPixelSize
+        let representation = try await heavyCache.value(
+            for: cacheKey
+        ) {
+            try await MascotImageLoadingWorker.run {
+                var cost = 0
+                let layers = try requests.map { request in
+                    guard let part = request.part else {
+                        throw MascotRigAssetError.invalidImage(
+                            request.descriptor.name
+                        )
+                    }
+                    let loaded = try Self.loadVerifiedImage(
                         request,
-                        definition: definition
-                    ).image
+                        definition: definition,
+                        thumbnailMaxPixelSize: thumbnailMaxPixelSize
+                    )
+                    cost += loaded.cost
+                    return MascotRigFallbackLayer(
+                        part: part,
+                        image: loaded.image
+                    )
+                }
+                return .fallback(
+                    level: level,
+                    layers: layers,
+                    cost: cost
                 )
             }
         }
-        fallbackCache = FallbackCacheEntry(
-            key: cacheKey,
-            level: level,
-            layers: layers
-        )
+        guard case let .fallback(
+            cachedLevel,
+            layers,
+            _
+        ) = representation,
+        cachedLevel == level else {
+            throw MascotRigAssetError.invalidImage(
+                "semantic-fallback-\(level)"
+            )
+        }
         return layers
     }
 
     func cacheDiagnostics() -> MascotRigCacheDiagnostics {
-        MascotRigCacheDiagnostics(
-            rigLevels: rigCache.map { [$0.level] } ?? [],
+        let rigLevels: [Int]
+        let fallbackLevels: [Int]
+        switch heavyCache.cachedValue {
+        case let .rig(level, _, _):
+            rigLevels = [level]
+            fallbackLevels = []
+        case let .fallback(level, _, _):
+            rigLevels = []
+            fallbackLevels = [level]
+        case nil:
+            rigLevels = []
+            fallbackLevels = []
+        }
+        return MascotRigCacheDiagnostics(
+            rigLevels: rigLevels,
             restLevels: restLRU.compactMap { restCache[$0]?.level },
-            fallbackLevels: fallbackCache.map { [$0.level] } ?? [],
+            fallbackLevels: fallbackLevels,
+            heavyCost: heavyCache.cachedCost,
             restCost: restCacheCost
         )
     }
@@ -773,6 +1019,7 @@ final class MascotRigAssetStore {
         definition: MascotRigLevelDefinition,
         thumbnailMaxPixelSize: Int? = nil
     ) throws -> LoadedImage {
+        try Task.checkCancellation()
         let descriptor = request.descriptor
         let data = try Data(
             contentsOf: request.url,
@@ -784,6 +1031,7 @@ final class MascotRigAssetStore {
         guard digest == descriptor.sha256 else {
             throw MascotRigAssetError.checksumMismatch(descriptor.name)
         }
+        try Task.checkCancellation()
         guard let source = CGImageSourceCreateWithData(
             data as CFData,
             nil
@@ -828,10 +1076,13 @@ final class MascotRigAssetStore {
         guard let cgImage else {
             throw MascotRigAssetError.invalidImage(descriptor.name)
         }
+        try Task.checkCancellation()
         let image = UIImage(cgImage: cgImage, scale: 1, orientation: .up)
+        let preparedImage = image.preparingForDisplay() ?? image
+        let preparedCGImage = preparedImage.cgImage ?? cgImage
         return LoadedImage(
-            image: image.preparingForDisplay() ?? image,
-            cost: cgImage.bytesPerRow * cgImage.height
+            image: preparedImage,
+            cost: preparedCGImage.bytesPerRow * preparedCGImage.height
         )
     }
 

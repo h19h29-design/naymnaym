@@ -28,7 +28,7 @@ struct MascotRigView: View {
 
     var body: some View {
         Group {
-            if loader.canRetry {
+            if loader.canRetry(for: level) {
                 Button {
                     Task {
                         await loader.load(level: level)
@@ -52,9 +52,7 @@ struct MascotRigView: View {
                 ZStack {
                     Color.clear
 
-                    if loader.isLoading,
-                       loader.images == nil,
-                       loader.fallbackLayers == nil {
+                    if loader.loadedLevel != level {
                         ProgressView()
                             .accessibilityHidden(true)
                     } else if !controller.isPlaybackActive {
@@ -96,7 +94,7 @@ struct MascotRigView: View {
             pose: pose
         )
 
-        if let images = loader.images {
+        if let images = loader.renderedImages(for: level) {
             let celebrationBlend = projection.celebrationBlend
             let expressionBlend: CGFloat = projection.eyesClosed ? 1 : 0
 
@@ -126,7 +124,8 @@ struct MascotRigView: View {
                 .easeInOut(duration: reduceMotion ? 0.125 : 0.08),
                 value: projection.eyesClosed
             )
-        } else if let fallbackLayers = loader.fallbackLayers {
+        } else if let fallbackLayers =
+            loader.renderedFallbackLayers(for: level) {
             ZStack {
                 ForEach(fallbackLayers, id: \.part) { layer in
                     if isVisible(layer.part, in: projection) {

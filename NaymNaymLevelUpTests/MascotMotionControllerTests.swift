@@ -306,6 +306,345 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertFalse(ranOnMainThread)
     }
 
+    func testImageLoadingWorkerPropagatesCallerCancellation() async {
+        let started = expectation(description: "detached work started")
+        let task = Task {
+            try await MascotImageLoadingWorker.run {
+                started.fulfill()
+                let deadline = Date().addingTimeInterval(0.25)
+                while Date() < deadline {
+                    try Task.checkCancellation()
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+                return false
+            }
+        }
+        await fulfillment(of: [started], timeout: 1)
+
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Cancelling the caller must cancel detached image work")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testLatestActiveCacheRejectsAnAlreadyCancelledCaller() async throws {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        _ = try await cache.value(for: "level-1-rig") {
+            "level-1"
+        }
+        let gate = AsyncTestGate()
+        let counter = AsyncTestCounter()
+        let waiting = expectation(description: "caller waiting")
+        let task = Task { @MainActor in
+            waiting.fulfill()
+            await gate.wait()
+            return try await cache.value(for: "level-4-rig") {
+                await counter.increment()
+                return "level-4"
+            }
+        }
+        await fulfillment(of: [waiting], timeout: 1)
+
+        task.cancel()
+        await gate.open()
+
+        do {
+            _ = try await task.value
+            XCTFail("An already cancelled caller must not mutate the cache")
+        } catch is CancellationError {
+            // Expected.
+        }
+        let loadCount = await counter.value
+        XCTAssertEqual(loadCount, 0)
+        XCTAssertEqual(cache.cachedKey, "level-1-rig")
+        XCTAssertEqual(cache.cachedValue, "level-1")
+    }
+
+    func testLatestActiveCacheRejectsAnOlderOutOfOrderCompletion() async throws {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let olderGate = AsyncTestGate()
+        let newerGate = AsyncTestGate()
+        let olderStarted = expectation(description: "older load started")
+        let newerStarted = expectation(description: "newer load started")
+
+        let olderTask = Task { @MainActor in
+            try await cache.value(for: "level-1-rig") {
+                olderStarted.fulfill()
+                await olderGate.wait()
+                return "older"
+            }
+        }
+        await fulfillment(of: [olderStarted], timeout: 1)
+
+        let newerTask = Task { @MainActor in
+            try await cache.value(for: "level-4-rig") {
+                newerStarted.fulfill()
+                await newerGate.wait()
+                return "newer"
+            }
+        }
+        await fulfillment(of: [newerStarted], timeout: 1)
+
+        await newerGate.open()
+        let newerResult = try await newerTask.value
+        XCTAssertEqual(newerResult, "newer")
+        XCTAssertEqual(cache.cachedKey, "level-4-rig")
+
+        await olderGate.open()
+        let olderResult = try await olderTask.value
+        XCTAssertEqual(olderResult, "older")
+        XCTAssertEqual(cache.cachedKey, "level-4-rig")
+        XCTAssertEqual(cache.cachedValue, "newer")
+    }
+
+    func testLatestActiveCacheCoalescesConcurrentSameKeyLoads() async throws {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let gate = AsyncTestGate()
+        let counter = AsyncTestCounter()
+        let firstStarted = expectation(description: "first load started")
+        let secondCallerEntered = expectation(
+            description: "second caller entered"
+        )
+
+        let firstTask = Task { @MainActor in
+            try await cache.value(for: "level-4-rig") {
+                await counter.increment()
+                firstStarted.fulfill()
+                await gate.wait()
+                return "shared"
+            }
+        }
+        await fulfillment(of: [firstStarted], timeout: 1)
+
+        let secondTask = Task { @MainActor in
+            secondCallerEntered.fulfill()
+            return try await cache.value(for: "level-4-rig") {
+                await counter.increment()
+                return "duplicate"
+            }
+        }
+        await fulfillment(of: [secondCallerEntered], timeout: 1)
+        await gate.open()
+
+        let firstResult = try await firstTask.value
+        let secondResult = try await secondTask.value
+        XCTAssertEqual(firstResult, "shared")
+        XCTAssertEqual(secondResult, "shared")
+        let loadCount = await counter.value
+        XCTAssertEqual(loadCount, 1)
+        XCTAssertEqual(cache.cachedValue, "shared")
+    }
+
+    func testLatestActiveCacheCancelsAnOlderDifferentKeyLoad() async throws {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let gate = AsyncTestGate()
+        let olderStarted = expectation(description: "older load started")
+        let olderCancelled = expectation(
+            description: "older load cancelled"
+        )
+
+        let olderTask = Task { @MainActor in
+            try await cache.value(for: "level-1-rig") {
+                olderStarted.fulfill()
+                return try await withTaskCancellationHandler {
+                    await gate.wait()
+                    try Task.checkCancellation()
+                    return "older"
+                } onCancel: {
+                    olderCancelled.fulfill()
+                }
+            }
+        }
+        await fulfillment(of: [olderStarted], timeout: 1)
+
+        let newer = try await cache.value(for: "level-4-rig") {
+            "newer"
+        }
+        XCTAssertEqual(newer, "newer")
+        await fulfillment(of: [olderCancelled], timeout: 1)
+
+        await gate.open()
+        do {
+            _ = try await olderTask.value
+            XCTFail("The superseded heavy load must be cancelled")
+        } catch is CancellationError {
+            // Expected.
+        }
+        XCTAssertEqual(cache.cachedKey, "level-4-rig")
+        XCTAssertEqual(cache.cachedValue, "newer")
+    }
+
+    func testRestLoaderTreatsCancellationAsSilent() async {
+        let gate = AsyncTestGate()
+        let started = expectation(description: "rest load started")
+        let image = UIImage(
+            color: .red,
+            size: CGSize(width: 1, height: 1)
+        )
+        let loader = MascotRestArtLoader(
+            loadImage: { _, _ in
+                started.fulfill()
+                await gate.wait()
+                try Task.checkCancellation()
+                return image
+            }
+        )
+        let task = Task { @MainActor in
+            await loader.load(level: 1)
+        }
+        await fulfillment(of: [started], timeout: 1)
+
+        task.cancel()
+        await gate.open()
+        await task.value
+
+        XCTAssertNil(loader.image)
+        XCTAssertNil(loader.loadedLevel)
+        XCTAssertNil(loader.loadError)
+        XCTAssertFalse(loader.isLoading)
+    }
+
+    func testRigLoaderDoesNotFallbackAfterCancellation() async {
+        let gate = AsyncTestGate()
+        let counter = AsyncTestCounter()
+        let started = expectation(description: "rig load started")
+        let image = UIImage(
+            color: .green,
+            size: CGSize(width: 1, height: 1)
+        )
+        let loader = MascotRigLoader(
+            loadImages: { _, _ in
+                started.fulfill()
+                await gate.wait()
+                try Task.checkCancellation()
+                return MascotRigImages(
+                    rest: image,
+                    blink: image,
+                    celebrate: image,
+                    semanticPartNames: []
+                )
+            },
+            loadFallbackLayers: { _, _ in
+                await counter.increment()
+                return [
+                    MascotRigFallbackLayer(
+                        part: .body,
+                        image: image
+                    ),
+                ]
+            }
+        )
+        let task = Task { @MainActor in
+            await loader.load(level: 1)
+        }
+        await fulfillment(of: [started], timeout: 1)
+
+        task.cancel()
+        await gate.open()
+        await task.value
+
+        let fallbackCount = await counter.value
+        XCTAssertEqual(fallbackCount, 0)
+        XCTAssertNil(loader.images)
+        XCTAssertNil(loader.fallbackLayers)
+        XCTAssertNil(loader.loadedLevel)
+        XCTAssertNil(loader.loadError)
+        XCTAssertFalse(loader.isLoading)
+    }
+
+    func testCancelledStaleRigLoadCannotReplaceTheNewActiveCacheKey() async {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let levelOneGate = AsyncTestGate()
+        let levelFourGate = AsyncTestGate()
+        let fallbackCounter = AsyncTestCounter()
+        let levelOneStarted = expectation(
+            description: "level one rig started"
+        )
+        let levelFourStarted = expectation(
+            description: "level four rig started"
+        )
+        let image = UIImage(
+            color: .orange,
+            size: CGSize(width: 1, height: 1)
+        )
+        let keyframes = MascotRigImages(
+            rest: image,
+            blink: image,
+            celebrate: image,
+            semanticPartNames: []
+        )
+        let loader = MascotRigLoader(
+            loadImages: { level, _ in
+                _ = try await cache.value(for: "rig-\(level)") {
+                    if level == 1 {
+                        levelOneStarted.fulfill()
+                        await levelOneGate.wait()
+                    } else {
+                        levelFourStarted.fulfill()
+                        await levelFourGate.wait()
+                    }
+                    try Task.checkCancellation()
+                    return "rig-\(level)"
+                }
+                return keyframes
+            },
+            loadFallbackLayers: { level, _ in
+                await fallbackCounter.increment()
+                _ = try await cache.value(for: "fallback-\(level)") {
+                    "fallback-\(level)"
+                }
+                return [
+                    MascotRigFallbackLayer(
+                        part: .body,
+                        image: image
+                    ),
+                ]
+            }
+        )
+        let staleTask = Task { @MainActor in
+            await loader.load(level: 1)
+        }
+        await fulfillment(of: [levelOneStarted], timeout: 1)
+
+        staleTask.cancel()
+        let activeTask = Task { @MainActor in
+            await loader.load(level: 4)
+        }
+        await fulfillment(of: [levelFourStarted], timeout: 1)
+
+        await levelOneGate.open()
+        await staleTask.value
+        await levelFourGate.open()
+        await activeTask.value
+
+        let fallbackCount = await fallbackCounter.value
+        XCTAssertEqual(fallbackCount, 0)
+        XCTAssertEqual(cache.cachedKey, "rig-4")
+        XCTAssertTrue(loader.renderedImages(for: 4) === keyframes)
+        XCTAssertNil(loader.renderedFallbackLayers(for: 4))
+    }
+
     func testFullRigAndFallbackCachesKeepOnlyTheActiveLevel() async throws {
         let store = MascotRigAssetStore()
 
@@ -317,12 +656,26 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertTrue(levelOne.rest === cachedLevelOne.rest)
 
         _ = try await store.images(level: 4, bundle: .main)
+        let rigDiagnostics = store.cacheDiagnostics()
+        XCTAssertEqual(rigDiagnostics.rigLevels, [4])
+        XCTAssertEqual(rigDiagnostics.fallbackLevels, [])
+        XCTAssertGreaterThan(rigDiagnostics.heavyCost, 0)
+        XCTAssertLessThanOrEqual(
+            rigDiagnostics.heavyCost,
+            20 * 1_024 * 1_024
+        )
+
         _ = try await store.fallbackLayers(level: 1, bundle: .main)
         _ = try await store.fallbackLayers(level: 4, bundle: .main)
         let diagnostics = store.cacheDiagnostics()
 
-        XCTAssertEqual(diagnostics.rigLevels, [4])
+        XCTAssertEqual(diagnostics.rigLevels, [])
         XCTAssertEqual(diagnostics.fallbackLevels, [4])
+        XCTAssertGreaterThan(diagnostics.heavyCost, 0)
+        XCTAssertLessThanOrEqual(
+            diagnostics.heavyCost,
+            12 * 1_024 * 1_024
+        )
     }
 
     func testRestArtLoaderExposesFailureWithoutLegacyFallback() async {
@@ -368,6 +721,64 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertEqual(requestedLevels, [1, 4])
         XCTAssertEqual(loader.loadedLevel, 4)
         XCTAssertTrue(loader.image === levelFour)
+    }
+
+    func testRestLoaderDoesNotExposeAPreviousImageForANewRequestedLevel() async {
+        let levelOne = UIImage(
+            color: .red,
+            size: CGSize(width: 1, height: 1)
+        )
+        let loader = MascotRestArtLoader(
+            loadImage: { _, _ in levelOne }
+        )
+        await loader.load(level: 1)
+
+        XCTAssertTrue(loader.renderedImage(for: 1) === levelOne)
+        XCTAssertNil(loader.renderedImage(for: 4))
+    }
+
+    func testRigLoaderDoesNotExposePreviousKeyframesForANewRequestedLevel() async {
+        let image = UIImage(
+            color: .green,
+            size: CGSize(width: 1, height: 1)
+        )
+        let keyframes = MascotRigImages(
+            rest: image,
+            blink: image,
+            celebrate: image,
+            semanticPartNames: []
+        )
+        let loader = MascotRigLoader(
+            loadImages: { _, _ in keyframes },
+            loadFallbackLayers: { _, _ in [] }
+        )
+        await loader.load(level: 1)
+
+        XCTAssertTrue(loader.renderedImages(for: 1) === keyframes)
+        XCTAssertNil(loader.renderedImages(for: 4))
+    }
+
+    func testRigLoaderDoesNotExposePreviousFallbackForANewRequestedLevel() async {
+        let image = UIImage(
+            color: .orange,
+            size: CGSize(width: 1, height: 1)
+        )
+        let fallback = [
+            MascotRigFallbackLayer(part: .body, image: image),
+        ]
+        let loader = MascotRigLoader(
+            loadImages: { _, _ in
+                throw MascotRigAssetError.missingAsset("rest")
+            },
+            loadFallbackLayers: { _, _ in fallback }
+        )
+        await loader.load(level: 1)
+
+        XCTAssertEqual(
+            loader.renderedFallbackLayers(for: 1)?.count,
+            1
+        )
+        XCTAssertNil(loader.renderedFallbackLayers(for: 4))
     }
 
     func testRigLoaderUsesVerifiedSemanticFallbackAfterKeyframeFailure() async {
@@ -432,6 +843,20 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertEqual(first.map(\.part), MascotRigSemanticPart.allCases)
         for (firstLayer, secondLayer) in zip(first, second) {
             XCTAssertTrue(firstLayer.image === secondLayer.image)
+            let cgImage = try XCTUnwrap(firstLayer.image.cgImage)
+            XCTAssertLessThanOrEqual(cgImage.width, 512)
+            XCTAssertLessThanOrEqual(cgImage.height, 512)
+            XCTAssertEqual(cgImage.width, cgImage.height)
+            XCTAssertTrue(
+                [
+                    CGImageAlphaInfo.first,
+                    .last,
+                    .premultipliedFirst,
+                    .premultipliedLast,
+                    .alphaOnly,
+                ].contains(cgImage.alphaInfo),
+                "\(firstLayer.part) must preserve alpha"
+            )
         }
     }
 
@@ -493,5 +918,32 @@ private extension UIImage {
             context.fill(CGRect(origin: .zero, size: size))
         }
         self.init(cgImage: image.cgImage!)
+    }
+}
+
+private actor AsyncTestGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        let continuations = waiters
+        waiters.removeAll()
+        continuations.forEach { $0.resume() }
+    }
+}
+
+private actor AsyncTestCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
     }
 }
