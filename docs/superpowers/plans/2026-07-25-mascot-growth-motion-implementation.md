@@ -311,31 +311,96 @@ git commit -m "feat: add Android mascot rig motion"
 - Create: `NaymNaymLevelUp/Resources/MascotRig/level_02` … `level_07`
 - Create: `android/app/src/main/res/drawable-nodpi/mascot_l02_*` … `mascot_l07_*`
 - Create: `contracts/native-rebuild/v1/growth-policy.json`
+- Create: `NaymNaymLevelUp/Resources/RebuildContracts/growth-policy.json`
+- Create: `android/app/src/main/assets/rebuild-contracts/growth-policy.json`
+- Modify: `scripts/validate-mascot-rig.py`
+- Modify: `scripts/tests/test_validate_mascot_rig.py`
+- Modify: `scripts/validate-native-rebuild-contracts.py`
+- Modify: `scripts/tests/test_native_rebuild_contracts.py`
+- Modify: `NaymNaymLevelUp/Rebuild/Mascot/MascotRigModel.swift`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotRig.kt`
 - Create: `NaymNaymLevelUp/Rebuild/Growth/GrowthDomain.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Growth/GrowthView.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Growth/CollectionView.swift`
+- Modify: `NaymNaymLevelUp/Rebuild/Data/RebuildRepositories.swift`
+- Modify: `NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift`
+- Modify: `NaymNaymLevelUp/Rebuild/Child/ChildNavigationView.swift`
+- Create: `NaymNaymLevelUpTests/GrowthPolicyTests.swift`
+- Create: `NaymNaymLevelUpTests/GrowthRepositoryTests.swift`
+- Modify: `NaymNaymLevelUp.xcodeproj/project.pbxproj`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/growth/GrowthDomain.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/growth/GrowthScreen.kt`
 - Create: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/growth/CollectionScreen.kt`
-- Modify: both child navigation files
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/data/RebuildDao.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestScreen.kt`
+- Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ChildNavigation.kt`
+- Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/growth/GrowthPolicyTest.kt`
+- Create: `android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/growth/GrowthRepositoryTest.kt`
+- Create: `android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/growth/GrowthScreenTest.kt`
 
 **Interfaces:**
 - Produces: `GrowthPolicy.level(totalXP) -> 1...7`
+- Produces: one contract-backed title list shared by both platforms, using the current
+  `PlayerProgress.levelTitles` values
+- Produces: explicit level 1–7 mascot definitions, hashes, and semantic fallback
+  maps on both platforms; no reflection, runtime identifier lookup, or level-1 reuse
+- Produces: bounded recent positive progress events ordered by
+  `occurredAt DESC, id DESC`
 - Produces: unlocked-level collection with no grayscale full-character treatment
+- Guarantees: every REST composite matches its own immutable
+  `Squirrel_Growth_Level_N` source; every level has distinct source/part hashes
+- Guarantees: migrated or reconciliation events never receive invented meal copy
 
 - [ ] **Step 1: Add failing policy tests on both platforms**
 
-Use exact thresholds from current `PlayerProgress.level`, copied into `growth-policy.json`, and assert boundary values for all seven levels. Assert that negative XP resolves to level 1.
+Use exact thresholds `[0, 80, 180, 320, 500, 720, 1000]` from the current
+`PlayerProgress.level`, copied into `growth-policy.json`. Assert every exact
+threshold, every `threshold - 1`, negative XP, and the maximum integer on both
+platforms. Use the current `PlayerProgress.levelTitles` values as the canonical
+seven-title list and remove the conflicting duplicate visual-title policy.
 
-- [ ] **Step 2: Produce and validate levels 2–7**
+- [ ] **Step 2: Lock, validate, and sync the shared growth contract**
+
+Extend `validate-native-rebuild-contracts.py` and its tests to load and validate
+`growth-policy.json`, including increasing thresholds, seven unique levels/titles,
+and platform parity. Run:
+
+```bash
+python3 scripts/validate-native-rebuild-contracts.py
+bash scripts/sync-native-rebuild-contracts.sh
+```
+
+Confirm the canonical file is byte-identical to the iOS and Android runtime copies.
+
+- [ ] **Step 3: Produce and validate levels 2–7**
 
 Repeat the accepted level-1 canvas, part names, hidden-area painting, and three acceptance composites for each current `Squirrel_Growth_Level_N` reference.
+
+Extend `validate-mascot-rig.py` and its tests so it cannot accept copied level-1
+assets: validate each level's immutable source hash, REST-source identity, unique
+part hashes, and REST/BLINK/CELEBRATE composites. Register explicit level 1–7
+definitions in both production mascot stores. `mouthNeutral` must be a meaningful
+neutral expression, while BLINK preserves the immutable source mouth.
 
 Run: `python3 scripts/validate-mascot-rig.py --root art/mascot-rig`
 
 Expected: `77 parts: PASS`.
 
-- [ ] **Step 3: Implement growth policy and screens**
+- [ ] **Step 4: Implement persisted growth data and real navigation**
+
+Add repository/DAO queries for persisted positive events only (`amount > 0`),
+ordered deterministically by `occurredAt DESC, id DESC`, with a bounded limit.
+Derive truthful meal identity only from canonical `meal:` event IDs. Legacy UUID
+`sourceRecordID` values are not meal identity; render them as generic `+N XP/date`
+events, and label `legacy:progress-reconciliation` explicitly.
+
+Replace the real iOS and Android Growth and Collection tab destinations instead
+of leaving legacy or placeholder routes. Inject the same Core Data/Room stores
+used by meal recording and reload when a tab becomes active. Derive the home
+level from persisted total XP through `GrowthPolicy`; do not combine persisted XP
+with a stale legacy level.
+
+- [ ] **Step 5: Implement growth policy and screens**
 
 Growth screen order:
 
@@ -346,7 +411,12 @@ Growth screen order:
 
 Collection uses lit full-color art for unlocked levels and a warm silhouette plus lock label for locked levels. It must not turn the entire original art grayscale.
 
-- [ ] **Step 4: Run both platform suites and visually compare**
+- [ ] **Step 6: Run both platform suites and visually compare**
+
+Run the focused policy, repository-ordering, navigation, and locked-art tests
+first. On iOS, ensure every new Swift/test file is manually registered in the
+correct target and source phase; the existing `MascotRig` folder resource
+reference must continue to bundle level directories exactly once.
 
 Run: XcodeBuildMCP `test_sim`.
 
@@ -356,10 +426,29 @@ Expected: PASS.
 
 Capture level 1, 4, and 7 at the same 390×844-equivalent viewport and compare baseline, anchor, and scale.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add art/mascot-rig contracts/native-rebuild/v1/growth-policy.json NaymNaymLevelUp/Resources/MascotRig NaymNaymLevelUp/Rebuild/Growth android/app/src/main/res/drawable-nodpi android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/growth
+git add art/mascot-rig contracts/native-rebuild/v1/growth-policy.json \
+  scripts/validate-mascot-rig.py scripts/tests/test_validate_mascot_rig.py \
+  scripts/validate-native-rebuild-contracts.py scripts/tests/test_native_rebuild_contracts.py \
+  NaymNaymLevelUp/Resources/MascotRig NaymNaymLevelUp/Resources/RebuildContracts \
+  NaymNaymLevelUp/Rebuild/Mascot/MascotRigModel.swift \
+  NaymNaymLevelUp/Rebuild/Growth NaymNaymLevelUp/Rebuild/Data/RebuildRepositories.swift \
+  NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift \
+  NaymNaymLevelUp/Rebuild/Child/ChildNavigationView.swift \
+  NaymNaymLevelUpTests/GrowthPolicyTests.swift \
+  NaymNaymLevelUpTests/GrowthRepositoryTests.swift \
+  NaymNaymLevelUp.xcodeproj/project.pbxproj \
+  android/app/src/main/assets/rebuild-contracts \
+  android/app/src/main/res/drawable-nodpi \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotRig.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/growth \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/data/RebuildDao.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/TodayForestScreen.kt \
+  android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/child/ChildNavigation.kt \
+  android/app/src/test/java/com/h19h29/naymnaymlevelup/rebuild/growth \
+  android/app/src/androidTest/java/com/h19h29/naymnaymlevelup/rebuild/growth
 git commit -m "feat: add seven-stage mascot growth"
 ```
 
