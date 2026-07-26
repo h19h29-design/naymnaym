@@ -374,7 +374,10 @@ final class RebuildIntroMotionTests: XCTestCase {
         XCTAssertTrue(didWrite)
         XCTAssertEqual(successStore.read(), "20260726")
         XCTAssertEqual(successThread.wasMainThread, false)
-        XCTAssertEqual(successPublicValues.values, [nil])
+        XCTAssertEqual(
+            successPublicValues.values,
+            [nil, "20260726"]
+        )
 
         defaults.set(
             "20260725",
@@ -457,36 +460,333 @@ final class RebuildIntroMotionTests: XCTestCase {
         let concurrentDefaults = try XCTUnwrap(
             UserDefaults(suiteName: suiteName)
         )
+        let concurrentRequest = RebuildIntroRequestReservationProbe(
+            entered: expectation(
+                description: "recreated gate reserved completion"
+            )
+        )
         let concurrentStore = UserDefaultsRebuildIntroDateStore(
-            defaults: concurrentDefaults
+            defaults: concurrentDefaults,
+            queue: DispatchQueue(label: "\(suiteName).concurrent"),
+            synchronize: { defaults in
+                synchronizer.synchronize(defaults)
+            },
+            onRequestReserved: {
+                concurrentRequest.signal()
+            }
         )
         let concurrentGate = RebuildIntroDailyGate(
             store: concurrentStore,
             now: { date }
         )
         XCTAssertTrue(concurrentGate.shouldPresent)
+        let concurrentCompletion = Task {
+            return await concurrentGate.markCompleted()
+        }
+        await fulfillment(
+            of: [concurrentRequest.entered],
+            timeout: 1
+        )
 
         synchronizer.resume()
         let route = await deepLink.value
+        let didCompleteConcurrentGate = await concurrentCompletion.value
         XCTAssertEqual(route, .parentSummary)
+        XCTAssertTrue(didCompleteConcurrentGate)
         XCTAssertEqual(
             defaults.string(forKey: RebuildIntroDailyGate.storageKey),
             "20260726"
         )
         XCTAssertFalse(gate.shouldPresent)
+        XCTAssertFalse(concurrentGate.shouldPresent)
         XCTAssertTrue(didApplyDismissal)
+        XCTAssertEqual(
+            synchronizer.durableStates,
+            ["pending", "published"]
+        )
+    }
+
+    func testPublishedRecordDoesNotOverrideLegacySharedKeyWrite() async throws {
+        let suiteName = "RebuildIntroLegacyWrite.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            "20260725",
+            forKey: RebuildIntroDailyGate.storageKey
+        )
+        let store = UserDefaultsRebuildIntroDateStore(defaults: defaults)
+        let didWrite = await store.writeDurably("20260726")
+        XCTAssertTrue(didWrite)
 
         defaults.set(
             "20260725",
             forKey: RebuildIntroDailyGate.storageKey
         )
-        let recoveredStore = UserDefaultsRebuildIntroDateStore(
+        XCTAssertTrue(defaults.synchronize())
+        let recreatedStore = UserDefaultsRebuildIntroDateStore(
             defaults: defaults
         )
-        XCTAssertEqual(recoveredStore.read(), "20260726")
+        XCTAssertEqual(recreatedStore.read(), "20260725")
+        XCTAssertEqual(
+            defaults.string(forKey: RebuildIntroDailyGate.storageKey),
+            "20260725"
+        )
+    }
+
+    func testOwnedPendingTransactionRecoversPublicMirror() throws {
+        let suiteName = "RebuildIntroPendingRecovery.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            "20260725",
+            forKey: RebuildIntroDailyGate.storageKey
+        )
+        defaults.set(
+            [
+                "owner": "rebuild-intro-daily-gate-v1",
+                "version": 1,
+                "state": "pending",
+                "value": "20260726",
+                "previousPublicValue": "20260725",
+            ],
+            forKey: "last-intro-date.rebuild-durable-record"
+        )
+        XCTAssertTrue(defaults.synchronize())
+
+        let store = UserDefaultsRebuildIntroDateStore(defaults: defaults)
+        XCTAssertEqual(store.read(), "20260726")
         XCTAssertEqual(
             defaults.string(forKey: RebuildIntroDailyGate.storageKey),
             "20260726"
+        )
+    }
+
+    func testInvalidPendingTransactionCannotRecoverPublicMirror() throws {
+        let invalidRecords: [[String: Any]] = [
+            [
+                "version": 1,
+                "state": "pending",
+                "value": "20260726",
+                "previousPublicValue": "20260725",
+            ],
+            [
+                "owner": "legacy-intro-writer",
+                "version": 1,
+                "state": "pending",
+                "value": "20260726",
+                "previousPublicValue": "20260725",
+            ],
+            [
+                "owner": "rebuild-intro-daily-gate-v1",
+                "version": 0,
+                "state": "pending",
+                "value": "20260726",
+                "previousPublicValue": "20260725",
+            ],
+            [
+                "owner": "rebuild-intro-daily-gate-v1",
+                "state": "pending",
+                "value": "20260726",
+                "previousPublicValue": "20260725",
+            ],
+        ]
+
+        for record in invalidRecords {
+            let suiteName =
+                "RebuildIntroInvalidRecovery.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(
+                UserDefaults(suiteName: suiteName)
+            )
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            defaults.set(
+                "20260725",
+                forKey: RebuildIntroDailyGate.storageKey
+            )
+            defaults.set(
+                record,
+                forKey: "last-intro-date.rebuild-durable-record"
+            )
+            XCTAssertTrue(defaults.synchronize())
+
+            let store = UserDefaultsRebuildIntroDateStore(
+                defaults: defaults
+            )
+            XCTAssertEqual(store.read(), "20260725")
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: RebuildIntroDailyGate.storageKey
+                ),
+                "20260725"
+            )
+        }
+    }
+
+    func testQueuedPreviousDayWriteCannotOverwriteCurrentDayRoute() async throws {
+        let suiteName = "RebuildIntroWriterOrder.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let staleQueue = DispatchQueue(label: "\(suiteName).stale")
+        let staleQueueBlocked = expectation(
+            description: "stale persistence queue blocked"
+        )
+        let releaseStaleQueue = DispatchSemaphore(value: 0)
+        staleQueue.async {
+            staleQueueBlocked.fulfill()
+            releaseStaleQueue.wait()
+        }
+        await fulfillment(of: [staleQueueBlocked], timeout: 1)
+        let staleRequest = RebuildIntroRequestReservationProbe(
+            entered: expectation(
+                description: "previous-day write reserved"
+            )
+        )
+        let staleStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: staleQueue,
+            onRequestReserved: {
+                staleRequest.signal()
+            }
+        )
+        let staleWrite = Task {
+            return await staleStore.writeDurably("20260726")
+        }
+        await fulfillment(of: [staleRequest.entered], timeout: 1)
+
+        let currentStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: DispatchQueue(label: "\(suiteName).current")
+        )
+        var didApplyRoute = false
+        let route = await RebuildIntroDeepLinkCoordinator.resolve(
+            url: URL(string: "naymnaym://invite")!,
+            resolver: { _ in .parentSummary },
+            persistIntroCompletion: {
+                await currentStore.writeDurably("20260727")
+            },
+            applyIntroCompletion: {
+                didApplyRoute = true
+            }
+        )
+
+        XCTAssertEqual(route, .parentSummary)
+        XCTAssertTrue(didApplyRoute)
+        XCTAssertEqual(currentStore.read(), "20260727")
+
+        releaseStaleQueue.signal()
+        let staleResult = await staleWrite.value
+        XCTAssertFalse(staleResult)
+        XCTAssertEqual(currentStore.read(), "20260727")
+        XCTAssertEqual(
+            defaults.string(forKey: RebuildIntroDailyGate.storageKey),
+            "20260727"
+        )
+    }
+
+    func testQueuedWriteCannotOverwriteDirectPublicCommit() async throws {
+        let suiteName = "RebuildIntroDirectWriterOrder.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            "20260725",
+            forKey: RebuildIntroDailyGate.storageKey
+        )
+        XCTAssertTrue(defaults.synchronize())
+        let staleQueue = DispatchQueue(label: "\(suiteName).stale")
+        let staleQueueBlocked = expectation(
+            description: "stale persistence queue blocked"
+        )
+        let releaseStaleQueue = DispatchSemaphore(value: 0)
+        staleQueue.async {
+            staleQueueBlocked.fulfill()
+            releaseStaleQueue.wait()
+        }
+        await fulfillment(of: [staleQueueBlocked], timeout: 1)
+        let staleRequest = RebuildIntroRequestReservationProbe(
+            entered: expectation(
+                description: "stale direct-write request reserved"
+            )
+        )
+        let staleStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: staleQueue,
+            onRequestReserved: {
+                staleRequest.signal()
+            }
+        )
+        let staleWrite = Task {
+            await staleStore.writeDurably("20260726")
+        }
+        await fulfillment(of: [staleRequest.entered], timeout: 1)
+
+        defaults.set(
+            "20260727",
+            forKey: RebuildIntroDailyGate.storageKey
+        )
+        XCTAssertTrue(defaults.synchronize())
+        releaseStaleQueue.signal()
+
+        let staleResult = await staleWrite.value
+        XCTAssertFalse(staleResult)
+        XCTAssertEqual(staleStore.read(), "20260727")
+        XCTAssertEqual(
+            defaults.string(forKey: RebuildIntroDailyGate.storageKey),
+            "20260727"
+        )
+    }
+
+    func testLaterDateWinsAtFinalPublicationBoundary() async throws {
+        let suiteName =
+            "RebuildIntroPublicationOrder.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            "20260725",
+            forKey: RebuildIntroDailyGate.storageKey
+        )
+        XCTAssertTrue(defaults.synchronize())
+        let publication = RebuildIntroPublicationBarrier(
+            entered: expectation(
+                description: "previous-day publication paused"
+            )
+        )
+        let staleStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: DispatchQueue(label: "\(suiteName).stale"),
+            beforePublication: {
+                publication.wait()
+            }
+        )
+        let staleWrite = Task {
+            await staleStore.writeDurably("20260726")
+        }
+        await fulfillment(of: [publication.entered], timeout: 1)
+
+        let currentRequest = RebuildIntroRequestReservationProbe(
+            entered: expectation(
+                description: "current-day publication reserved"
+            )
+        )
+        let currentStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: DispatchQueue(label: "\(suiteName).current"),
+            onRequestReserved: {
+                currentRequest.signal()
+            }
+        )
+        let currentWrite = Task {
+            await currentStore.writeDurably("20260727")
+        }
+        await fulfillment(of: [currentRequest.entered], timeout: 1)
+        publication.resume()
+
+        let staleResult = await staleWrite.value
+        let currentResult = await currentWrite.value
+        XCTAssertFalse(staleResult)
+        XCTAssertTrue(currentResult)
+        XCTAssertEqual(currentStore.read(), "20260727")
+        XCTAssertEqual(
+            defaults.string(forKey: RebuildIntroDailyGate.storageKey),
+            "20260727"
         )
     }
 
@@ -920,16 +1220,65 @@ private final class RebuildIntroStringObservation: @unchecked Sendable {
 private final class RebuildIntroBlockingSynchronizer: @unchecked Sendable {
     let entered: XCTestExpectation
 
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var callCount = 0
+    private var storedDurableStates: [String?] = []
+
+    init(entered: XCTestExpectation) {
+        self.entered = entered
+    }
+
+    var durableStates: [String?] {
+        lock.withLock { storedDurableStates }
+    }
+
+    func synchronize(_ defaults: UserDefaults) -> Bool {
+        let shouldBlock = lock.withLock {
+            callCount += 1
+            let record = defaults.dictionary(
+                forKey: "last-intro-date.rebuild-durable-record"
+            )
+            storedDurableStates.append(record?["state"] as? String)
+            return callCount == 1
+        }
+        if shouldBlock {
+            entered.fulfill()
+            semaphore.wait()
+        }
+        return defaults.synchronize()
+    }
+
+    func resume() {
+        semaphore.signal()
+    }
+}
+
+private final class RebuildIntroRequestReservationProbe:
+    @unchecked Sendable {
+    let entered: XCTestExpectation
+
+    init(entered: XCTestExpectation) {
+        self.entered = entered
+    }
+
+    func signal() {
+        entered.fulfill()
+    }
+}
+
+private final class RebuildIntroPublicationBarrier: @unchecked Sendable {
+    let entered: XCTestExpectation
+
     private let semaphore = DispatchSemaphore(value: 0)
 
     init(entered: XCTestExpectation) {
         self.entered = entered
     }
 
-    func synchronize(_ defaults: UserDefaults) -> Bool {
+    func wait() {
         entered.fulfill()
         semaphore.wait()
-        return defaults.synchronize()
     }
 
     func resume() {

@@ -246,6 +246,9 @@ private object RebuildIntroPreferencesCoordinator {
     private val writerLock =
         java.util.concurrent.locks.ReentrantLock()
     private var activeWriteCount = 0
+    private var nextRequestId = 0L
+    private var latestCommittedRequestId = 0L
+    private val reservedValues = mutableMapOf<Long, String>()
 
     fun beginWrite() {
         writerLock.lock()
@@ -266,6 +269,36 @@ private object RebuildIntroPreferencesCoordinator {
     ): Result = synchronized(this) {
         block(activeWriteCount > 0)
     }
+
+    @Synchronized
+    fun reserveRequestId(value: String): Long {
+        nextRequestId += 1
+        reservedValues[nextRequestId] = value
+        return nextRequestId
+    }
+
+    @Synchronized
+    fun isSuperseded(
+        requestId: Long,
+        value: String,
+    ): Boolean =
+        requestId < latestCommittedRequestId ||
+            reservedValues.any { (reservedId, reservedValue) ->
+                reservedId > requestId && reservedValue != value
+            }
+
+    @Synchronized
+    fun finishRequest(requestId: Long) {
+        reservedValues.remove(requestId)
+    }
+
+    @Synchronized
+    fun markCommitted(requestId: Long) {
+        latestCommittedRequestId = maxOf(
+            latestCommittedRequestId,
+            requestId,
+        )
+    }
 }
 
 class SharedPreferencesRebuildIntroDateStore(
@@ -274,49 +307,74 @@ class SharedPreferencesRebuildIntroDateStore(
     private val commit: (SharedPreferences.Editor) -> Boolean = {
         it.commit()
     },
+    private val onRequestReserved: () -> Unit = {},
+    private val beforePublication: () -> Unit = {},
 ) : RebuildIntroDateStore {
     override fun read(): String? =
         RebuildIntroPreferencesCoordinator.withStableRead {
             isWriteInFlight ->
-            val publicValue = preferences.getString(
-                RebuildIntroDailyGate.StorageKey,
-                null,
-            )
             if (isWriteInFlight) {
-                return@withStableRead publicValue
+                return@withStableRead preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                )
             }
-            if (!preferences.contains(DurableValueKey) ||
-                !preferences.contains(DurablePreviousPublicValueKey)
-            ) {
-                return@withStableRead publicValue
-            }
-
-            val durableValue = preferences.getString(DurableValueKey, null)
-                ?: return@withStableRead publicValue
-            val previousPublicValue = preferences.getString(
-                DurablePreviousPublicValueKey,
-                null,
-            ) ?: return@withStableRead publicValue
-            if (publicValue == durableValue) {
-                return@withStableRead durableValue
-            }
-            if ((publicValue ?: "") != previousPublicValue) {
-                return@withStableRead publicValue
-            }
-
-            preferences
-                .edit()
-                .putString(RebuildIntroDailyGate.StorageKey, durableValue)
-                .apply()
-            durableValue
+            authoritativeCommittedValue()
         }
 
-    override suspend fun writeDurably(value: String): Boolean =
-        withContext(ioDispatcher) {
-            RebuildIntroPreferencesCoordinator.beginWrite()
-            try {
+    override suspend fun writeDurably(value: String): Boolean {
+        val publicValueAtRequest = preferences.getString(
+            RebuildIntroDailyGate.StorageKey,
+            null,
+        )
+        val requestId =
+            RebuildIntroPreferencesCoordinator.reserveRequestId(value)
+        onRequestReserved()
+        return try {
+            withContext(ioDispatcher) {
+                RebuildIntroPreferencesCoordinator.beginWrite()
+                try {
+                val authoritativeValue = authoritativeCommittedValue()
+                if (authoritativeValue == value) {
+                    RebuildIntroPreferencesCoordinator.markCommitted(
+                        requestId,
+                    )
+                    return@withContext true
+                }
+                if (authoritativeValue != publicValueAtRequest) {
+                    return@withContext false
+                }
+                if (RebuildIntroPreferencesCoordinator.isSuperseded(
+                        requestId,
+                        value,
+                    )
+                ) {
+                    return@withContext false
+                }
+
                 val previousPublicValue = preferences.getString(
                     RebuildIntroDailyGate.StorageKey,
+                    null,
+                )
+                if (previousPublicValue != publicValueAtRequest) {
+                    return@withContext false
+                }
+                val hadPreviousDurableOwner =
+                    preferences.contains(DurableOwnerKey)
+                val previousDurableOwner = preferences.getString(
+                    DurableOwnerKey,
+                    null,
+                )
+                val hadPreviousDurableVersion =
+                    preferences.contains(DurableVersionKey)
+                val previousDurableVersion = preferences.getLong(
+                    DurableVersionKey,
+                    0L,
+                )
+                val hadPreviousDurableState =
+                    preferences.contains(DurableStateKey)
+                val previousDurableState = preferences.getString(
+                    DurableStateKey,
                     null,
                 )
                 val hadPreviousDurableValue =
@@ -331,9 +389,16 @@ class SharedPreferencesRebuildIntroDateStore(
                     DurablePreviousPublicValueKey,
                     null,
                 )
+                val version = maxOf(
+                    requestId,
+                    previousDurableVersion + 1L,
+                )
                 val didCommit = commit(
                     preferences
                         .edit()
+                        .putString(DurableOwnerKey, DurableOwner)
+                        .putLong(DurableVersionKey, version)
+                        .putString(DurableStateKey, PendingState)
                         .putString(DurableValueKey, value)
                         .putString(
                             DurablePreviousPublicValueKey,
@@ -341,49 +406,178 @@ class SharedPreferencesRebuildIntroDateStore(
                         ),
                 )
                 val didReadBack =
-                    preferences.getString(DurableValueKey, null) == value &&
+                    preferences.getString(DurableOwnerKey, null) ==
+                        DurableOwner &&
+                        preferences.getLong(DurableVersionKey, 0L) ==
+                        version &&
+                        preferences.getString(DurableStateKey, null) ==
+                        PendingState &&
+                        preferences.getString(DurableValueKey, null) ==
+                        value &&
                         preferences.getString(
                             DurablePreviousPublicValueKey,
                             null,
                         ) == (previousPublicValue ?: "")
 
-                if (didCommit && didReadBack) {
+                if (!didCommit || !didReadBack) {
+                    val rollback = preferences.edit()
+                    restoreString(
+                        rollback,
+                        DurableOwnerKey,
+                        hadPreviousDurableOwner,
+                        previousDurableOwner,
+                    )
+                    if (hadPreviousDurableVersion) {
+                        rollback.putLong(
+                            DurableVersionKey,
+                            previousDurableVersion,
+                        )
+                    } else {
+                        rollback.remove(DurableVersionKey)
+                    }
+                    restoreString(
+                        rollback,
+                        DurableStateKey,
+                        hadPreviousDurableState,
+                        previousDurableState,
+                    )
+                    restoreString(
+                        rollback,
+                        DurableValueKey,
+                        hadPreviousDurableValue,
+                        previousDurableValue,
+                    )
+                    restoreString(
+                        rollback,
+                        DurablePreviousPublicValueKey,
+                        hadPreviousDurablePublicValue,
+                        previousDurablePublicValue,
+                    )
+                    rollback.commit()
+                    return@withContext false
+                }
+
+                beforePublication()
+                if (RebuildIntroPreferencesCoordinator.isSuperseded(
+                        requestId,
+                        value,
+                    )
+                ) {
+                    commit(
+                        preferences
+                            .edit()
+                            .putString(DurableStateKey, SupersededState),
+                    )
+                    return@withContext false
+                }
+                val publicValueBeforePublication = preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                )
+                if (publicValueBeforePublication != previousPublicValue &&
+                    publicValueBeforePublication != value
+                ) {
+                    commit(
+                        preferences
+                            .edit()
+                            .putString(DurableStateKey, SupersededState),
+                    )
+                    return@withContext false
+                }
+                commit(
                     preferences
                         .edit()
-                        .putString(RebuildIntroDailyGate.StorageKey, value)
-                        .apply()
-                    true
-                } else {
-                    val rollback = preferences.edit()
-                    if (hadPreviousDurableValue) {
-                        rollback.putString(
-                            DurableValueKey,
-                            previousDurableValue,
+                        .putString(
+                            RebuildIntroDailyGate.StorageKey,
+                            value,
                         )
-                    } else {
-                        rollback.remove(DurableValueKey)
-                    }
-                    if (hadPreviousDurablePublicValue) {
-                        rollback.putString(
-                            DurablePreviousPublicValueKey,
-                            previousDurablePublicValue,
-                        )
-                    } else {
-                        rollback.remove(DurablePreviousPublicValueKey)
-                    }
-                    rollback.commit()
-                    false
+                        .putString(DurableStateKey, PublishedState),
+                )
+                RebuildIntroPreferencesCoordinator.markCommitted(requestId)
+                true
+                } finally {
+                    RebuildIntroPreferencesCoordinator.endWrite()
                 }
-            } finally {
-                RebuildIntroPreferencesCoordinator.endWrite()
             }
+        } finally {
+            RebuildIntroPreferencesCoordinator.finishRequest(requestId)
         }
+    }
+
+    private fun authoritativeCommittedValue(): String? {
+        val publicValue = preferences.getString(
+            RebuildIntroDailyGate.StorageKey,
+            null,
+        )
+        if (preferences.getString(DurableOwnerKey, null) != DurableOwner ||
+            preferences.getLong(DurableVersionKey, 0L) <= 0L
+        ) {
+            return publicValue
+        }
+        val state = preferences.getString(DurableStateKey, null)
+            ?: return publicValue
+        val durableValue = preferences.getString(DurableValueKey, null)
+            ?: return publicValue
+        val previousPublicValue = preferences.getString(
+            DurablePreviousPublicValueKey,
+            null,
+        ) ?: return publicValue
+
+        if (state == PublishedState || state == SupersededState) {
+            return publicValue
+        }
+        if (state != PendingState) return publicValue
+
+        if (publicValue == durableValue) {
+            preferences
+                .edit()
+                .putString(DurableStateKey, PublishedState)
+                .apply()
+            return durableValue
+        }
+        if ((publicValue ?: "") == previousPublicValue) {
+            preferences
+                .edit()
+                .putString(RebuildIntroDailyGate.StorageKey, durableValue)
+                .putString(DurableStateKey, PublishedState)
+                .apply()
+            return durableValue
+        }
+        preferences
+            .edit()
+            .putString(DurableStateKey, SupersededState)
+            .apply()
+        return publicValue
+    }
+
+    private fun restoreString(
+        editor: SharedPreferences.Editor,
+        key: String,
+        hadValue: Boolean,
+        value: String?,
+    ) {
+        if (hadValue) {
+            editor.putString(key, value)
+        } else {
+            editor.remove(key)
+        }
+    }
 
     private companion object {
+        const val DurableOwnerKey =
+            "last-intro-date.rebuild-durable-owner"
+        const val DurableVersionKey =
+            "last-intro-date.rebuild-durable-version"
+        const val DurableStateKey =
+            "last-intro-date.rebuild-durable-state"
         const val DurableValueKey =
             "last-intro-date.rebuild-durable-value"
         const val DurablePreviousPublicValueKey =
             "last-intro-date.rebuild-durable-previous-public-value"
+        const val DurableOwner = "rebuild-intro-daily-gate-v1"
+        const val PendingState = "pending"
+        const val PublishedState = "published"
+        const val SupersededState = "superseded"
     }
 }
 

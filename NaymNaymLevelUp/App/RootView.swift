@@ -6,6 +6,7 @@ struct RootView: View {
     @AppStorage("last-intro-date") private var lastIntroDate = ""
     @StateObject private var rebuildIntroGate = RebuildIntroDailyGate()
     @State private var introDismissed = false
+    @State private var isPersistingLegacyIntro = false
     @State private var selectedTab: MainTab = .today
 
     private var todayKey: String {
@@ -32,22 +33,35 @@ struct RootView: View {
                         primaryTitle: "오늘 급식 보러가기",
                         primarySubtitle: "실제 급식과 한 입 미션 확인",
                         onPrimary: {
-                            selectedTab = appState.mealStatus.needsSettingsCheck ? .settings : .today
-                            lastIntroDate = todayKey
-                            introDismissed = true
+                            Task { @MainActor in
+                                guard await persistLegacyIntro() else {
+                                    return
+                                }
+                                selectedTab = appState.mealStatus
+                                    .needsSettingsCheck ? .settings : .today
+                                introDismissed = true
+                            }
                         },
                         onDemo: {
-                            appState.startDemoMode()
-                            selectedTab = .today
-                            lastIntroDate = todayKey
-                            introDismissed = true
-                            Task { await appState.loadMeals() }
+                            Task { @MainActor in
+                                guard await persistLegacyIntro() else {
+                                    return
+                                }
+                                appState.startDemoMode()
+                                selectedTab = .today
+                                introDismissed = true
+                                await appState.loadMeals()
+                            }
                         },
                         onParent: {
-                            appState.updateUserMode(.parent)
-                            selectedTab = .parent
-                            lastIntroDate = todayKey
-                            introDismissed = true
+                            Task { @MainActor in
+                                guard await persistLegacyIntro() else {
+                                    return
+                                }
+                                appState.updateUserMode(.parent)
+                                selectedTab = .parent
+                                introDismissed = true
+                            }
                         }
                     )
                     .task {
@@ -95,6 +109,17 @@ struct RootView: View {
 
     private var shouldShowIntro: Bool {
         !introDismissed && lastIntroDate != todayKey
+    }
+
+    @MainActor
+    private func persistLegacyIntro() async -> Bool {
+        guard !isPersistingLegacyIntro else { return false }
+        isPersistingLegacyIntro = true
+        defer { isPersistingLegacyIntro = false }
+        return await UserDefaultsRebuildIntroDateStore(
+            defaults: .standard
+        )
+        .writeDurably(todayKey)
     }
 
     @MainActor

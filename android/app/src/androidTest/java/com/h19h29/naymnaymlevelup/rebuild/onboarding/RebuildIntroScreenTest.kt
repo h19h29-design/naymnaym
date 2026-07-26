@@ -36,6 +36,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.security.MessageDigest
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -48,6 +49,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
 
@@ -202,10 +204,57 @@ class RebuildIntroScreenTest {
             preferences.getString(RebuildIntroDailyGate.StorageKey, null),
         )
 
-        preferences
-            .edit()
-            .remove(RebuildIntroDailyGate.StorageKey)
-            .apply()
+        assertTrue(
+            preferences
+                .edit()
+                .putString(RebuildIntroDailyGate.StorageKey, "20260725")
+                .commit(),
+        )
+        val legacyUpdatedStore =
+            SharedPreferencesRebuildIntroDateStore(preferences)
+        assertEquals("20260725", legacyUpdatedStore.read())
+        assertEquals(
+            "20260725",
+            preferences.getString(RebuildIntroDailyGate.StorageKey, null),
+        )
+        assertTrue(preferences.edit().clear().commit())
+        }
+
+    @Test
+    fun ownedPendingSharedPreferencesRecordRecoversPublicMirror() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-pending-test-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        assertTrue(
+            preferences
+                .edit()
+                .clear()
+                .putString(RebuildIntroDailyGate.StorageKey, "20260725")
+                .putString(
+                    "last-intro-date.rebuild-durable-owner",
+                    "rebuild-intro-daily-gate-v1",
+                )
+                .putLong(
+                    "last-intro-date.rebuild-durable-version",
+                    1L,
+                )
+                .putString(
+                    "last-intro-date.rebuild-durable-state",
+                    "pending",
+                )
+                .putString(
+                    "last-intro-date.rebuild-durable-value",
+                    "20260726",
+                )
+                .putString(
+                    "last-intro-date.rebuild-durable-previous-public-value",
+                    "20260725",
+                )
+                .commit(),
+        )
+
         val recoveredStore =
             SharedPreferencesRebuildIntroDateStore(preferences)
         assertEquals("20260726", recoveredStore.read())
@@ -213,8 +262,74 @@ class RebuildIntroScreenTest {
             "20260726",
             preferences.getString(RebuildIntroDailyGate.StorageKey, null),
         )
+        assertEquals(
+            "published",
+            preferences.getString(
+                "last-intro-date.rebuild-durable-state",
+                null,
+            ),
+        )
         assertTrue(preferences.edit().clear().commit())
+    }
+
+    @Test
+    fun invalidPendingSharedPreferencesRecordCannotRecoverPublicMirror() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-invalid-pending-test-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        val invalidOwnershipAndVersions =
+            listOf<Pair<String?, Long?>>(
+                null to 1L,
+                "legacy-intro-writer" to 1L,
+                "rebuild-intro-daily-gate-v1" to 0L,
+                "rebuild-intro-daily-gate-v1" to null,
+            )
+
+        for ((owner, version) in invalidOwnershipAndVersions) {
+            val editor = preferences
+                .edit()
+                .clear()
+                .putString(RebuildIntroDailyGate.StorageKey, "20260725")
+                .putString(
+                    "last-intro-date.rebuild-durable-state",
+                    "pending",
+                )
+                .putString(
+                    "last-intro-date.rebuild-durable-value",
+                    "20260726",
+                )
+                .putString(
+                    "last-intro-date.rebuild-durable-previous-public-value",
+                    "20260725",
+                )
+            if (owner != null) {
+                editor.putString(
+                    "last-intro-date.rebuild-durable-owner",
+                    owner,
+                )
+            }
+            if (version != null) {
+                editor.putLong(
+                    "last-intro-date.rebuild-durable-version",
+                    version,
+                )
+            }
+            assertTrue(editor.commit())
+
+            val store = SharedPreferencesRebuildIntroDateStore(preferences)
+            assertEquals("20260725", store.read())
+            assertEquals(
+                "20260725",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
         }
+        assertTrue(preferences.edit().clear().commit())
+    }
 
     @Test
     fun publicDateAndConcurrentRecreationWaitForDurableCommit() = runBlocking {
@@ -239,15 +354,24 @@ class RebuildIntroScreenTest {
             .asCoroutineDispatcher()
         val commitCompleted = CountDownLatch(1)
         val returnCommitResult = CountDownLatch(1)
+        val durableStates = CopyOnWriteArrayList<String?>()
+        val commitHook: (android.content.SharedPreferences.Editor) -> Boolean =
+            { editor ->
+                val didCommit = editor.commit()
+                durableStates += preferences.getString(
+                    "last-intro-date.rebuild-durable-state",
+                    null,
+                )
+                if (durableStates.size == 1) {
+                    commitCompleted.countDown()
+                    check(returnCommitResult.await(1, TimeUnit.SECONDS))
+                }
+                didCommit
+            }
         val store = SharedPreferencesRebuildIntroDateStore(
             preferences = preferences,
             ioDispatcher = dispatcher,
-            commit = { editor ->
-                val didCommit = editor.commit()
-                commitCompleted.countDown()
-                check(returnCommitResult.await(1, TimeUnit.SECONDS))
-                didCommit
-            },
+            commit = commitHook,
         )
         val gate = RebuildIntroDailyGate(store, clock, zone)
 
@@ -263,15 +387,29 @@ class RebuildIntroScreenTest {
                     null,
                 ),
             )
+            val concurrentRequestReserved = CountDownLatch(1)
             val concurrentGate = RebuildIntroDailyGate(
-                SharedPreferencesRebuildIntroDateStore(preferences),
+                SharedPreferencesRebuildIntroDateStore(
+                    preferences = preferences,
+                    commit = commitHook,
+                    onRequestReserved = {
+                        concurrentRequestReserved.countDown()
+                    },
+                ),
                 clock,
                 zone,
             )
             assertTrue(concurrentGate.shouldPresent())
+            val concurrentCompletion = async(Dispatchers.Default) {
+                concurrentGate.markCompleted()
+            }
+            assertTrue(
+                concurrentRequestReserved.await(1, TimeUnit.SECONDS),
+            )
 
             returnCommitResult.countDown()
             assertTrue(completion.await())
+            assertTrue(concurrentCompletion.await())
             assertEquals(
                 "20260726",
                 preferences.getString(
@@ -280,9 +418,204 @@ class RebuildIntroScreenTest {
                 ),
             )
             assertTrue(!gate.shouldPresent())
+            assertTrue(!concurrentGate.shouldPresent())
+            assertEquals(
+                listOf("pending", "published"),
+                durableStates.toList(),
+            )
         } finally {
             returnCommitResult.countDown()
             dispatcher.close()
+            assertTrue(preferences.edit().clear().commit())
+        }
+    }
+
+    @Test
+    fun queuedPreviousDayWriteCannotOverwriteCurrentDay() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-order-test-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        assertTrue(preferences.edit().clear().commit())
+        val staleExecutor = Executors.newSingleThreadExecutor()
+        val staleDispatcher = staleExecutor.asCoroutineDispatcher()
+        val staleQueueBlocked = CountDownLatch(1)
+        val releaseStaleQueue = CountDownLatch(1)
+        staleExecutor.execute {
+            staleQueueBlocked.countDown()
+            check(releaseStaleQueue.await(3, TimeUnit.SECONDS))
+        }
+        assertTrue(staleQueueBlocked.await(1, TimeUnit.SECONDS))
+        val staleRequestReserved = CountDownLatch(1)
+        val staleStore = SharedPreferencesRebuildIntroDateStore(
+            preferences = preferences,
+            ioDispatcher = staleDispatcher,
+            onRequestReserved = {
+                staleRequestReserved.countDown()
+            },
+        )
+
+        try {
+            val staleWrite = async(Dispatchers.Default) {
+                staleStore.writeDurably("20260726")
+            }
+            assertTrue(staleRequestReserved.await(1, TimeUnit.SECONDS))
+            val currentStore =
+                SharedPreferencesRebuildIntroDateStore(preferences)
+            assertTrue(currentStore.writeDurably("20260727"))
+            assertEquals(
+                "20260727",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
+
+            releaseStaleQueue.countDown()
+            assertFalse(staleWrite.await())
+            assertEquals("20260727", currentStore.read())
+            assertEquals(
+                "20260727",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
+        } finally {
+            releaseStaleQueue.countDown()
+            staleDispatcher.close()
+            assertTrue(preferences.edit().clear().commit())
+        }
+    }
+
+    @Test
+    fun queuedWriteCannotOverwriteDirectPublicCommit() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-direct-order-test-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        assertTrue(
+            preferences
+                .edit()
+                .clear()
+                .putString(RebuildIntroDailyGate.StorageKey, "20260725")
+                .commit(),
+        )
+        val staleExecutor = Executors.newSingleThreadExecutor()
+        val staleDispatcher = staleExecutor.asCoroutineDispatcher()
+        val staleQueueBlocked = CountDownLatch(1)
+        val releaseStaleQueue = CountDownLatch(1)
+        staleExecutor.execute {
+            staleQueueBlocked.countDown()
+            check(releaseStaleQueue.await(3, TimeUnit.SECONDS))
+        }
+        assertTrue(staleQueueBlocked.await(1, TimeUnit.SECONDS))
+        val staleRequestReserved = CountDownLatch(1)
+        val staleStore = SharedPreferencesRebuildIntroDateStore(
+            preferences = preferences,
+            ioDispatcher = staleDispatcher,
+            onRequestReserved = {
+                staleRequestReserved.countDown()
+            },
+        )
+
+        try {
+            val staleWrite = async(Dispatchers.Default) {
+                staleStore.writeDurably("20260726")
+            }
+            assertTrue(staleRequestReserved.await(1, TimeUnit.SECONDS))
+            assertTrue(
+                preferences
+                    .edit()
+                    .putString(
+                        RebuildIntroDailyGate.StorageKey,
+                        "20260727",
+                    )
+                    .commit(),
+            )
+
+            releaseStaleQueue.countDown()
+            assertFalse(staleWrite.await())
+            assertEquals("20260727", staleStore.read())
+            assertEquals(
+                "20260727",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
+        } finally {
+            releaseStaleQueue.countDown()
+            staleDispatcher.close()
+            assertTrue(preferences.edit().clear().commit())
+        }
+    }
+
+    @Test
+    fun laterDateWinsAtFinalPublicationBoundary() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-publication-order-test-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        assertTrue(
+            preferences
+                .edit()
+                .clear()
+                .putString(RebuildIntroDailyGate.StorageKey, "20260725")
+                .commit(),
+        )
+        val stalePublicationEntered = CountDownLatch(1)
+        val releaseStalePublication = CountDownLatch(1)
+        val staleStore = SharedPreferencesRebuildIntroDateStore(
+            preferences = preferences,
+            beforePublication = {
+                stalePublicationEntered.countDown()
+                check(
+                    releaseStalePublication.await(
+                        3,
+                        TimeUnit.SECONDS,
+                    ),
+                )
+            },
+        )
+
+        try {
+            val staleWrite = async(Dispatchers.Default) {
+                staleStore.writeDurably("20260726")
+            }
+            assertTrue(
+                stalePublicationEntered.await(1, TimeUnit.SECONDS),
+            )
+            val currentRequestReserved = CountDownLatch(1)
+            val currentStore = SharedPreferencesRebuildIntroDateStore(
+                preferences = preferences,
+                onRequestReserved = {
+                    currentRequestReserved.countDown()
+                },
+            )
+            val currentWrite = async(Dispatchers.Default) {
+                currentStore.writeDurably("20260727")
+            }
+            assertTrue(
+                currentRequestReserved.await(1, TimeUnit.SECONDS),
+            )
+
+            releaseStalePublication.countDown()
+            assertFalse(staleWrite.await())
+            assertTrue(currentWrite.await())
+            assertEquals("20260727", currentStore.read())
+            assertEquals(
+                "20260727",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
+        } finally {
+            releaseStalePublication.countDown()
             assertTrue(preferences.edit().clear().commit())
         }
     }

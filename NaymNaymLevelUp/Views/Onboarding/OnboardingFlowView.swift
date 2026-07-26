@@ -10,11 +10,11 @@ private enum OnboardingStep {
 
 struct OnboardingFlowView: View {
     @EnvironmentObject private var appState: AppState
-    @AppStorage("last-intro-date") private var lastIntroDate = ""
     @State private var step: OnboardingStep = .intro
+    @State private var isPersistingIntro = false
 
     private var todayKey: String {
-        DateUtils.apiString(from: Date())
+        RebuildIntroLocalDay.key(for: Date())
     }
 
     var body: some View {
@@ -39,18 +39,24 @@ struct OnboardingFlowView: View {
                 primaryTitle: "오늘 급식 보러가기",
                 primarySubtitle: "학교 등록하고 시작",
                 onPrimary: {
-                    markIntroSeen()
-                    step = .mode
+                    Task { @MainActor in
+                        guard await markIntroSeen() else { return }
+                        step = .mode
+                    }
                 },
                 onDemo: {
-                    markIntroSeen()
-                    appState.startDemoMode(mode: .elementary)
-                    Task { await appState.loadMeals() }
+                    Task { @MainActor in
+                        guard await markIntroSeen() else { return }
+                        appState.startDemoMode(mode: .elementary)
+                        await appState.loadMeals()
+                    }
                 },
                 onParent: {
-                    markIntroSeen()
-                    appState.draftUserMode = .parent
-                    step = .profile
+                    Task { @MainActor in
+                        guard await markIntroSeen() else { return }
+                        appState.draftUserMode = .parent
+                        step = .profile
+                    }
                 }
             )
         case .mode:
@@ -83,8 +89,15 @@ struct OnboardingFlowView: View {
         }
     }
 
-    private func markIntroSeen() {
-        lastIntroDate = todayKey
+    @MainActor
+    private func markIntroSeen() async -> Bool {
+        guard !isPersistingIntro else { return false }
+        isPersistingIntro = true
+        defer { isPersistingIntro = false }
+        return await UserDefaultsRebuildIntroDateStore(
+            defaults: .standard
+        )
+        .writeDurably(todayKey)
     }
 
     private var title: String {

@@ -54,17 +54,23 @@ at the same three effective canvas widths.
 - The first rebuild presentation, including onboarding, shows the intro before
   bootstrap work begins.
 - Completion is published under `last-intro-date` only after playback finishes
-  and a private durable record is synchronized/read back on the iOS utility
-  queue or committed/read back on Android `Dispatchers.IO`.
-- The durable record can repair an older public mirror after restart. Stable
-  reads and process-wide writer serialization keep a fresh store wrapper from
-  accepting an in-memory candidate before the durable operation returns.
+  and an owned, versioned `pending` transaction is synchronized/read back on
+  the iOS utility queue or committed/read back on Android `Dispatchers.IO`.
+- Only that explicit `pending` transaction can repair its recorded predecessor
+  after restart. `published` or `superseded` records never overwrite a later
+  legacy `last-intro-date` write from another app flow.
+- Stable reads, process-wide writer serialization, and request ordering keep a
+  fresh store wrapper from accepting an in-memory candidate before the durable
+  operation returns. All production `last-intro-date` writers use this path.
+  A queued older-day request revalidates after taking the writer lock and again
+  at final publication, so a later reserved day cannot be overwritten.
 - A durable-write failure restores the previous record without changing the
   public date, keeps the intro active, and exposes the accessible
   `저장 다시 시도` action without recreating the screen.
 - Completion is asynchronous end-to-end. Retry remains disabled while a write
-  is in flight. Same-day callers share one write, while a new-day caller waits
-  for a stale write and then claims exactly one current-day write.
+  is in flight. Same-day callers, including gates recreated during the write,
+  converge on one transaction, while a new-day caller waits for a stale write
+  and then claims exactly one current-day write.
 - An already-completed current day returns success with zero additional writes
   and does not reopen the intro. Cancelled Android rollover waiters propagate
   cancellation and cannot claim a new write.
@@ -87,14 +93,14 @@ at the same three effective canvas widths.
 
 ## Final automated gate
 
-- iOS XcodeBuildMCP `test_sim`: `333 passed, 0 failed, 0 skipped`;
+- iOS XcodeBuildMCP `test_sim`: `339 passed, 0 failed, 0 skipped`;
   warnings `0`, errors `0`.
 - Android fresh ASCII build:
   - JVM: `157 passed, 0 failed`.
-  - API-35 emulator: `46 passed, 0 failed`.
+  - API-35 emulator: `51 passed, 0 failed`.
   - `assembleDebug`: PASS.
-- Task 6 focused: iOS `21/21`, Android JVM `15/15`, Android
-  instrumentation `13/13`.
+- Task 6 focused: iOS `27/27`, Android JVM `15/15`, Android
+  instrumentation `18/18`.
 - Android large-screen / 200% Task 6 rerun: `10 passed, 0 failed`.
 - Mascot validator: `77 parts: PASS`.
 - Native contract validator: PASS.
