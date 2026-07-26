@@ -36,10 +36,14 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -197,8 +201,91 @@ class RebuildIntroScreenTest {
             "20260726",
             preferences.getString(RebuildIntroDailyGate.StorageKey, null),
         )
+
+        preferences
+            .edit()
+            .remove(RebuildIntroDailyGate.StorageKey)
+            .apply()
+        val recoveredStore =
+            SharedPreferencesRebuildIntroDateStore(preferences)
+        assertEquals("20260726", recoveredStore.read())
+        assertEquals(
+            "20260726",
+            preferences.getString(RebuildIntroDailyGate.StorageKey, null),
+        )
         assertTrue(preferences.edit().clear().commit())
         }
+
+    @Test
+    fun publicDateAndConcurrentRecreationWaitForDurableCommit() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "rebuild-intro-visible-test-${System.nanoTime()}",
+            Context.MODE_PRIVATE,
+        )
+        assertTrue(
+            preferences
+                .edit()
+                .clear()
+                .putString(RebuildIntroDailyGate.StorageKey, "20260725")
+                .commit(),
+        )
+        val zone = ZoneId.of("Asia/Seoul")
+        val clock = Clock.fixed(
+            Instant.parse("2026-07-26T03:00:00Z"),
+            zone,
+        )
+        val dispatcher = Executors.newSingleThreadExecutor()
+            .asCoroutineDispatcher()
+        val commitCompleted = CountDownLatch(1)
+        val returnCommitResult = CountDownLatch(1)
+        val store = SharedPreferencesRebuildIntroDateStore(
+            preferences = preferences,
+            ioDispatcher = dispatcher,
+            commit = { editor ->
+                val didCommit = editor.commit()
+                commitCompleted.countDown()
+                check(returnCommitResult.await(1, TimeUnit.SECONDS))
+                didCommit
+            },
+        )
+        val gate = RebuildIntroDailyGate(store, clock, zone)
+
+        try {
+            val completion = async(Dispatchers.Default) {
+                gate.markCompleted()
+            }
+            assertTrue(commitCompleted.await(3, TimeUnit.SECONDS))
+            assertEquals(
+                "20260725",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
+            val concurrentGate = RebuildIntroDailyGate(
+                SharedPreferencesRebuildIntroDateStore(preferences),
+                clock,
+                zone,
+            )
+            assertTrue(concurrentGate.shouldPresent())
+
+            returnCommitResult.countDown()
+            assertTrue(completion.await())
+            assertEquals(
+                "20260726",
+                preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                ),
+            )
+            assertTrue(!gate.shouldPresent())
+        } finally {
+            returnCommitResult.countDown()
+            dispatcher.close()
+            assertTrue(preferences.edit().clear().commit())
+        }
+    }
 
     @Test
     fun sharedPreferencesCommitRunsOffMainAndFailureKeepsIntroActive() =

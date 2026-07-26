@@ -242,6 +242,32 @@ interface RebuildIntroDateStore {
     suspend fun writeDurably(value: String): Boolean
 }
 
+private object RebuildIntroPreferencesCoordinator {
+    private val writerLock =
+        java.util.concurrent.locks.ReentrantLock()
+    private var activeWriteCount = 0
+
+    fun beginWrite() {
+        writerLock.lock()
+        synchronized(this) {
+            activeWriteCount += 1
+        }
+    }
+
+    fun endWrite() {
+        synchronized(this) {
+            activeWriteCount -= 1
+        }
+        writerLock.unlock()
+    }
+
+    fun <Result> withStableRead(
+        block: (isWriteInFlight: Boolean) -> Result,
+    ): Result = synchronized(this) {
+        block(activeWriteCount > 0)
+    }
+}
+
 class SharedPreferencesRebuildIntroDateStore(
     private val preferences: SharedPreferences,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -249,46 +275,116 @@ class SharedPreferencesRebuildIntroDateStore(
         it.commit()
     },
 ) : RebuildIntroDateStore {
-    override fun read(): String? = preferences.getString(
-        RebuildIntroDailyGate.StorageKey,
-        null,
-    )
+    override fun read(): String? =
+        RebuildIntroPreferencesCoordinator.withStableRead {
+            isWriteInFlight ->
+            val publicValue = preferences.getString(
+                RebuildIntroDailyGate.StorageKey,
+                null,
+            )
+            if (isWriteInFlight) {
+                return@withStableRead publicValue
+            }
+            if (!preferences.contains(DurableValueKey) ||
+                !preferences.contains(DurablePreviousPublicValueKey)
+            ) {
+                return@withStableRead publicValue
+            }
+
+            val durableValue = preferences.getString(DurableValueKey, null)
+                ?: return@withStableRead publicValue
+            val previousPublicValue = preferences.getString(
+                DurablePreviousPublicValueKey,
+                null,
+            ) ?: return@withStableRead publicValue
+            if (publicValue == durableValue) {
+                return@withStableRead durableValue
+            }
+            if ((publicValue ?: "") != previousPublicValue) {
+                return@withStableRead publicValue
+            }
+
+            preferences
+                .edit()
+                .putString(RebuildIntroDailyGate.StorageKey, durableValue)
+                .apply()
+            durableValue
+        }
 
     override suspend fun writeDurably(value: String): Boolean =
         withContext(ioDispatcher) {
-            val hadPreviousValue = preferences.contains(
-                RebuildIntroDailyGate.StorageKey,
-            )
-            val previousValue = preferences.getString(
-                RebuildIntroDailyGate.StorageKey,
-                null,
-            )
-            val didCommit = commit(
-                preferences
-                    .edit()
-                    .putString(RebuildIntroDailyGate.StorageKey, value),
-            )
-            val didReadBack = preferences.getString(
-                RebuildIntroDailyGate.StorageKey,
-                null,
-            ) == value
+            RebuildIntroPreferencesCoordinator.beginWrite()
+            try {
+                val previousPublicValue = preferences.getString(
+                    RebuildIntroDailyGate.StorageKey,
+                    null,
+                )
+                val hadPreviousDurableValue =
+                    preferences.contains(DurableValueKey)
+                val previousDurableValue = preferences.getString(
+                    DurableValueKey,
+                    null,
+                )
+                val hadPreviousDurablePublicValue =
+                    preferences.contains(DurablePreviousPublicValueKey)
+                val previousDurablePublicValue = preferences.getString(
+                    DurablePreviousPublicValueKey,
+                    null,
+                )
+                val didCommit = commit(
+                    preferences
+                        .edit()
+                        .putString(DurableValueKey, value)
+                        .putString(
+                            DurablePreviousPublicValueKey,
+                            previousPublicValue ?: "",
+                        ),
+                )
+                val didReadBack =
+                    preferences.getString(DurableValueKey, null) == value &&
+                        preferences.getString(
+                            DurablePreviousPublicValueKey,
+                            null,
+                        ) == (previousPublicValue ?: "")
 
-            if (didCommit && didReadBack) {
-                true
-            } else {
-                val rollback = preferences.edit()
-                if (hadPreviousValue) {
-                    rollback.putString(
-                        RebuildIntroDailyGate.StorageKey,
-                        previousValue,
-                    )
+                if (didCommit && didReadBack) {
+                    preferences
+                        .edit()
+                        .putString(RebuildIntroDailyGate.StorageKey, value)
+                        .apply()
+                    true
                 } else {
-                    rollback.remove(RebuildIntroDailyGate.StorageKey)
+                    val rollback = preferences.edit()
+                    if (hadPreviousDurableValue) {
+                        rollback.putString(
+                            DurableValueKey,
+                            previousDurableValue,
+                        )
+                    } else {
+                        rollback.remove(DurableValueKey)
+                    }
+                    if (hadPreviousDurablePublicValue) {
+                        rollback.putString(
+                            DurablePreviousPublicValueKey,
+                            previousDurablePublicValue,
+                        )
+                    } else {
+                        rollback.remove(DurablePreviousPublicValueKey)
+                    }
+                    rollback.commit()
+                    false
                 }
-                rollback.commit()
-                false
+            } finally {
+                RebuildIntroPreferencesCoordinator.endWrite()
             }
         }
+
+    private companion object {
+        const val DurableValueKey =
+            "last-intro-date.rebuild-durable-value"
+        const val DurablePreviousPublicValueKey =
+            "last-intro-date.rebuild-durable-previous-public-value"
+    }
 }
 
 class RebuildIntroDailyGate(
@@ -297,42 +393,72 @@ class RebuildIntroDailyGate(
     private val zoneId: ZoneId? = null,
     private val zoneProvider: () -> ZoneId = ZoneId::systemDefault,
 ) {
+    private data class CompletionAttempt(
+        val day: String,
+        val result: CompletableDeferred<Boolean>,
+    )
+
     private val completionLock = Any()
     @Volatile
-    private var completionInFlight = false
-    private var completionResult: CompletableDeferred<Boolean>? = null
+    private var completionAttempt: CompletionAttempt? = null
 
-    fun shouldPresent(): Boolean = completionInFlight ||
+    fun shouldPresent(): Boolean = completionAttempt != null ||
         store.read() != todayKey()
 
     suspend fun markCompleted(): Boolean {
-        var ownsCompletion = false
-        val result = synchronized(completionLock) {
-            completionResult ?: CompletableDeferred<Boolean>().also {
-                completionResult = it
-                completionInFlight = true
-                ownsCompletion = true
+        while (true) {
+            val requestedDay = todayKey()
+            var ownsCompletion = false
+            var isAlreadyCompleted = false
+            val attempt = synchronized(completionLock) {
+                completionAttempt ?: if (store.read() == requestedDay) {
+                    isAlreadyCompleted = true
+                    null
+                } else {
+                    CompletionAttempt(
+                        day = requestedDay,
+                        result = CompletableDeferred(),
+                    ).also {
+                        completionAttempt = it
+                        ownsCompletion = true
+                    }
+                }
             }
-        }
-        if (!ownsCompletion) return result.await()
+            if (isAlreadyCompleted) return true
+            checkNotNull(attempt)
 
-        val completedDay = todayKey()
-        return try {
-            val didComplete = store.writeDurably(completedDay) &&
-                completedDay == todayKey()
-            synchronized(completionLock) {
-                completionInFlight = false
-                completionResult = null
-                result.complete(didComplete)
+            if (!ownsCompletion) {
+                val didComplete = try {
+                    attempt.result.await()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Throwable) {
+                    if (attempt.day != todayKey()) continue
+                    throw error
+                }
+                if (attempt.day == todayKey()) return didComplete
+                continue
             }
-            didComplete
-        } catch (error: Throwable) {
-            synchronized(completionLock) {
-                completionInFlight = false
-                completionResult = null
-                result.completeExceptionally(error)
+
+            return try {
+                val didComplete = store.writeDurably(requestedDay) &&
+                    requestedDay == todayKey()
+                synchronized(completionLock) {
+                    if (completionAttempt === attempt) {
+                        completionAttempt = null
+                    }
+                    attempt.result.complete(didComplete)
+                }
+                didComplete
+            } catch (error: Throwable) {
+                synchronized(completionLock) {
+                    if (completionAttempt === attempt) {
+                        completionAttempt = null
+                    }
+                    attempt.result.completeExceptionally(error)
+                }
+                throw error
             }
-            throw error
         }
     }
 

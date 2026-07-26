@@ -53,14 +53,21 @@ at the same three effective canvas widths.
 
 - The first rebuild presentation, including onboarding, shows the intro before
   bootstrap work begins.
-- Completion is stored under `last-intro-date` only after playback finishes.
-  iOS synchronizes and reads back on a dedicated utility queue; Android commits
-  and reads back on `Dispatchers.IO`.
-- A durable-write failure restores the previous value, keeps the intro active,
-  and exposes the accessible `저장 다시 시도` action without recreating the
-  screen.
+- Completion is published under `last-intro-date` only after playback finishes
+  and a private durable record is synchronized/read back on the iOS utility
+  queue or committed/read back on Android `Dispatchers.IO`.
+- The durable record can repair an older public mirror after restart. Stable
+  reads and process-wide writer serialization keep a fresh store wrapper from
+  accepting an in-memory candidate before the durable operation returns.
+- A durable-write failure restores the previous record without changing the
+  public date, keeps the intro active, and exposes the accessible
+  `저장 다시 시도` action without recreating the screen.
 - Completion is asynchronous end-to-end. Retry remains disabled while a write
-  is in flight, and duplicate gate callers share the same write and result.
+  is in flight. Same-day callers share one write, while a new-day caller waits
+  for a stale write and then claims exactly one current-day write.
+- An already-completed current day returns success with zero additional writes
+  and does not reopen the intro. Cancelled Android rollover waiters propagate
+  cancellation and cannot claim a new write.
 - A second start on the same controller cannot reset playback.
 - Cancellation is generation-safe and cannot deliver a late completion.
 - Reduce Motion is latched for one presentation, so changing the system setting
@@ -75,18 +82,19 @@ at the same three effective canvas widths.
 - A valid iOS deep link is resolved first, awaits durable persistence, applies
   dismissal state, and only then routes. Invalid routes and persistence
   failures cannot dismiss or route. A deep link arriving during automatic
-  completion joins the existing write instead of being dropped.
+  completion joins the matching-day write; after a local-day rollover it waits
+  for the stale result, persists the current day, and then routes.
 
 ## Final automated gate
 
-- iOS XcodeBuildMCP `test_sim`: `330 passed, 0 failed, 0 skipped`;
+- iOS XcodeBuildMCP `test_sim`: `333 passed, 0 failed, 0 skipped`;
   warnings `0`, errors `0`.
 - Android fresh ASCII build:
-  - JVM: `154 passed, 0 failed`.
-  - API-35 emulator: `45 passed, 0 failed`.
+  - JVM: `157 passed, 0 failed`.
+  - API-35 emulator: `46 passed, 0 failed`.
   - `assembleDebug`: PASS.
-- Task 6 focused: iOS `18/18`, Android JVM `12/12`, Android
-  instrumentation `12/12`.
+- Task 6 focused: iOS `21/21`, Android JVM `15/15`, Android
+  instrumentation `13/13`.
 - Android large-screen / 200% Task 6 rerun: `10 passed, 0 failed`.
 - Mascot validator: `77 parts: PASS`.
 - Native contract validator: PASS.

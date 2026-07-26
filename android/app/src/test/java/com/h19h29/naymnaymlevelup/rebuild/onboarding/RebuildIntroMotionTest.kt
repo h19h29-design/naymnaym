@@ -6,6 +6,8 @@ import java.time.ZoneId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -247,6 +249,27 @@ class RebuildIntroMotionTest {
     }
 
     @Test
+    fun completedTodayReturnsSuccessWithoutWritingOrReopeningIntro() = runTest {
+        val zone = ZoneId.of("Asia/Seoul")
+        val clock = Clock.fixed(
+            Instant.parse("2026-07-26T03:00:00Z"),
+            zone,
+        )
+        val store = MemoryIntroDateStore().apply {
+            value = "20260726"
+        }
+        val entry = RebuildIntroEntryController(
+            RebuildIntroDailyGate(store, clock, zone),
+        )
+
+        assertFalse(entry.showIntro)
+        assertTrue(entry.completeIntro())
+        assertFalse(entry.showIntro)
+        assertTrue(entry.canLoadBootstrap)
+        assertEquals(0, store.writeCount)
+    }
+
+    @Test
     fun failedDurableCommitKeepsIntroActiveAndBootstrapBlocked() = runTest {
         val zone = ZoneId.of("Asia/Seoul")
         val clock = Clock.fixed(
@@ -372,6 +395,91 @@ class RebuildIntroMotionTest {
             assertFalse(entry.canLoadBootstrap)
             assertEquals("20260726", storedValue)
         }
+
+    @Test
+    fun rolloverRequestPersistsCurrentDayAfterStaleWrite() = runTest {
+        val firstWriteStarted = CompletableDeferred<Unit>()
+        val firstWriteResult = CompletableDeferred<Boolean>()
+        var storedValue: String? = null
+        var writeCount = 0
+        val store = object : RebuildIntroDateStore {
+            override fun read(): String? = storedValue
+
+            override suspend fun writeDurably(value: String): Boolean {
+                storedValue = value
+                writeCount += 1
+                if (writeCount == 1) {
+                    firstWriteStarted.complete(Unit)
+                    return firstWriteResult.await()
+                }
+                return true
+            }
+        }
+        val instant = Instant.parse("2026-07-26T16:30:00Z")
+        var zone = ZoneId.of("UTC")
+        val entry = RebuildIntroEntryController(
+            RebuildIntroDailyGate(
+                store = store,
+                clock = Clock.fixed(instant, ZoneId.of("UTC")),
+                zoneProvider = { zone },
+            ),
+        )
+
+        val staleCompletion = async { entry.completeIntro() }
+        firstWriteStarted.await()
+        zone = ZoneId.of("Asia/Seoul")
+        entry.refresh()
+        val currentDayCompletion = async { entry.completeIntro() }
+        val secondCurrentDayCompletion = async { entry.completeIntro() }
+        runCurrent()
+        assertEquals(1, writeCount)
+
+        firstWriteResult.complete(true)
+        assertFalse(staleCompletion.await())
+        assertTrue(currentDayCompletion.await())
+        assertTrue(secondCurrentDayCompletion.await())
+        assertEquals(2, writeCount)
+        assertEquals("20260727", storedValue)
+        assertFalse(entry.showIntro)
+        assertTrue(entry.canLoadBootstrap)
+    }
+
+    @Test
+    fun cancelledRolloverWaiterDoesNotClaimCurrentDayWrite() = runTest {
+        val firstWriteStarted = CompletableDeferred<Unit>()
+        val firstWriteResult = CompletableDeferred<Boolean>()
+        var writeCount = 0
+        val store = object : RebuildIntroDateStore {
+            override fun read(): String? = null
+
+            override suspend fun writeDurably(value: String): Boolean {
+                writeCount += 1
+                firstWriteStarted.complete(Unit)
+                return firstWriteResult.await()
+            }
+        }
+        val instant = Instant.parse("2026-07-26T16:30:00Z")
+        var zone = ZoneId.of("UTC")
+        val gate = RebuildIntroDailyGate(
+            store = store,
+            clock = Clock.fixed(instant, ZoneId.of("UTC")),
+            zoneProvider = { zone },
+        )
+
+        val staleCompletion = async { gate.markCompleted() }
+        firstWriteStarted.await()
+        zone = ZoneId.of("Asia/Seoul")
+        val cancelledWaiter = launch { gate.markCompleted() }
+        runCurrent()
+
+        cancelledWaiter.cancelAndJoin()
+        assertTrue(cancelledWaiter.isCancelled)
+        assertEquals(1, writeCount)
+
+        firstWriteResult.complete(true)
+        assertFalse(staleCompletion.await())
+        assertEquals(1, writeCount)
+    }
 
     private class MemoryIntroDateStore(
         var acceptsWrites: Boolean = true,

@@ -236,6 +236,41 @@ protocol RebuildIntroDateStoring: AnyObject {
 }
 
 private let rebuildIntroStorageKey = "last-intro-date"
+private let rebuildIntroDurableStorageKey =
+    "last-intro-date.rebuild-durable-record"
+
+private final class RebuildIntroPersistenceCoordinator:
+    @unchecked Sendable {
+    static let shared = RebuildIntroPersistenceCoordinator()
+
+    private let stateLock = NSLock()
+    private let writerLock = NSLock()
+    private var activeWriteCount = 0
+
+    private init() {}
+
+    func beginWrite() {
+        writerLock.lock()
+        stateLock.withLock {
+            activeWriteCount += 1
+        }
+    }
+
+    func endWrite() {
+        stateLock.withLock {
+            activeWriteCount -= 1
+        }
+        writerLock.unlock()
+    }
+
+    func withStableRead<Result>(
+        _ body: (_ isWriteInFlight: Bool) -> Result
+    ) -> Result {
+        stateLock.withLock {
+            body(activeWriteCount > 0)
+        }
+    }
+}
 
 enum RebuildIntroLocalDay {
     static func key(
@@ -282,36 +317,83 @@ final class UserDefaultsRebuildIntroDateStore:
     }
 
     func read() -> String? {
-        defaults.string(forKey: rebuildIntroStorageKey)
+        RebuildIntroPersistenceCoordinator.shared.withStableRead {
+            isWriteInFlight in
+            let publicValue = defaults.string(
+                forKey: rebuildIntroStorageKey
+            )
+            guard !isWriteInFlight else {
+                return publicValue
+            }
+            guard
+                let record = defaults.dictionary(
+                    forKey: rebuildIntroDurableStorageKey
+                ),
+                let durableValue = record["value"] as? String,
+                let previousPublicValue =
+                    record["previousPublicValue"] as? String
+            else {
+                return publicValue
+            }
+
+            if publicValue == durableValue {
+                return durableValue
+            }
+            guard (publicValue ?? "") == previousPublicValue else {
+                return publicValue
+            }
+
+            defaults.set(durableValue, forKey: rebuildIntroStorageKey)
+            return durableValue
+        }
     }
 
     func writeDurably(_ value: String) async -> Bool {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
-                let previousValue = defaults.object(
+                let coordinator = RebuildIntroPersistenceCoordinator.shared
+                coordinator.beginWrite()
+                let previousPublicValue = defaults.string(
                     forKey: rebuildIntroStorageKey
                 )
-                defaults.set(value, forKey: rebuildIntroStorageKey)
+                let previousDurableRecord = defaults.object(
+                    forKey: rebuildIntroDurableStorageKey
+                )
+                defaults.set(
+                    [
+                        "value": value,
+                        "previousPublicValue": previousPublicValue ?? "",
+                    ],
+                    forKey: rebuildIntroDurableStorageKey
+                )
                 let didSynchronize = synchronize(defaults)
-                let didReadBack = defaults.string(
-                    forKey: rebuildIntroStorageKey
-                ) == value
+                let durableRecord = defaults.dictionary(
+                    forKey: rebuildIntroDurableStorageKey
+                )
+                let didReadBack =
+                    durableRecord?["value"] as? String == value
+                    && durableRecord?["previousPublicValue"] as? String
+                        == previousPublicValue ?? ""
 
                 guard didSynchronize, didReadBack else {
-                    if let previousValue {
+                    if let previousDurableRecord {
                         defaults.set(
-                            previousValue,
-                            forKey: rebuildIntroStorageKey
+                            previousDurableRecord,
+                            forKey: rebuildIntroDurableStorageKey
                         )
                     } else {
                         defaults.removeObject(
-                            forKey: rebuildIntroStorageKey
+                            forKey: rebuildIntroDurableStorageKey
                         )
                     }
                     _ = synchronize(defaults)
+                    coordinator.endWrite()
                     continuation.resume(returning: false)
                     return
                 }
+
+                defaults.set(value, forKey: rebuildIntroStorageKey)
+                coordinator.endWrite()
                 continuation.resume(returning: true)
             }
         }
@@ -325,14 +407,19 @@ enum RebuildIntroEntryPhase: Equatable {
 
 @MainActor
 final class RebuildIntroDailyGate: ObservableObject {
-    static let storageKey = rebuildIntroStorageKey
+    nonisolated static let storageKey = rebuildIntroStorageKey
 
     @Published private(set) var shouldPresent: Bool
+
+    private struct CompletionAttempt {
+        let day: String
+        let task: Task<Bool, Never>
+    }
 
     private let store: RebuildIntroDateStoring
     private let now: () -> Date
     private let dayKey: (Date) -> String
-    private var completionTask: Task<Bool, Never>?
+    private var completionAttempt: CompletionAttempt?
 
     init(
         defaults: UserDefaults = .standard,
@@ -367,7 +454,7 @@ final class RebuildIntroDailyGate: ObservableObject {
     }
 
     func refresh(at date: Date? = nil) {
-        guard completionTask == nil else {
+        guard completionAttempt == nil else {
             shouldPresent = true
             return
         }
@@ -377,22 +464,43 @@ final class RebuildIntroDailyGate: ObservableObject {
 
     @discardableResult
     func markCompleted(at date: Date? = nil) async -> Bool {
-        if let completionTask {
-            return await completionTask.value
-        }
-        shouldPresent = true
-        let completedDay = dayKey(date ?? now())
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return false }
-            let didPersist = await store.writeDurably(completedDay)
+        while true {
+            let requestedDay = dayKey(date ?? now())
+
+            if let completionAttempt {
+                let didComplete = await completionAttempt.task.value
+                let refreshedRequestedDay = dayKey(date ?? now())
+                let refreshedCurrentDay = dayKey(now())
+                if completionAttempt.day == refreshedRequestedDay,
+                   completionAttempt.day == refreshedCurrentDay {
+                    return didComplete
+                }
+                continue
+            }
+
             let currentDay = dayKey(now())
-            let didComplete = didPersist && completedDay == currentDay
-            shouldPresent = !didComplete
-            completionTask = nil
-            return didComplete
+            if requestedDay == currentDay,
+               store.read() == requestedDay {
+                shouldPresent = false
+                return true
+            }
+
+            shouldPresent = true
+            let task = Task { @MainActor [weak self] in
+                guard let self else { return false }
+                let didPersist = await store.writeDurably(requestedDay)
+                let currentDay = dayKey(now())
+                let didComplete = didPersist && requestedDay == currentDay
+                shouldPresent = !didComplete
+                completionAttempt = nil
+                return didComplete
+            }
+            completionAttempt = CompletionAttempt(
+                day: requestedDay,
+                task: task
+            )
+            return await task.value
         }
-        completionTask = task
-        return await task.value
     }
 }
 
