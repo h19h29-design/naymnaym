@@ -319,6 +319,7 @@ git commit -m "feat: add Android mascot rig motion"
 - Modify: `scripts/tests/test_native_rebuild_contracts.py`
 - Modify: `NaymNaymLevelUp/Rebuild/Mascot/MascotRigModel.swift`
 - Modify: `android/app/src/main/java/com/h19h29/naymnaymlevelup/rebuild/mascot/MascotRig.kt`
+- Modify: `NaymNaymLevelUp/Models/AppModels.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Growth/GrowthDomain.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Growth/GrowthView.swift`
 - Create: `NaymNaymLevelUp/Rebuild/Growth/CollectionView.swift`
@@ -434,6 +435,7 @@ git add art/mascot-rig contracts/native-rebuild/v1/growth-policy.json \
   scripts/validate-native-rebuild-contracts.py scripts/tests/test_native_rebuild_contracts.py \
   NaymNaymLevelUp/Resources/MascotRig NaymNaymLevelUp/Resources/RebuildContracts \
   NaymNaymLevelUp/Rebuild/Mascot/MascotRigModel.swift \
+  NaymNaymLevelUp/Models/AppModels.swift \
   NaymNaymLevelUp/Rebuild/Growth NaymNaymLevelUp/Rebuild/Data/RebuildRepositories.swift \
   NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift \
   NaymNaymLevelUp/Rebuild/Child/ChildNavigationView.swift \
