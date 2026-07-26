@@ -3,9 +3,10 @@ import SwiftUI
 struct RebuildIntroView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var controller = RebuildIntroMotionController()
-    @State private var completionFailed = false
+    @StateObject private var completionController =
+        RebuildIntroCompletionController()
 
-    let onCompleted: () -> Bool
+    let onCompleted: @MainActor () async -> Bool
 
     var body: some View {
         ZStack {
@@ -33,12 +34,13 @@ struct RebuildIntroView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("냠냠레벨업")
 
-            if completionFailed {
+            if completionController.completionFailed {
                 Button("저장 다시 시도") {
-                    completionFailed = !onCompleted()
+                    completionController.attempt(onCompleted)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(RebuildDesignTokens.forest700)
+                .disabled(completionController.isAttemptInFlight)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, RebuildDesignTokens.spacing[6])
             }
@@ -47,7 +49,7 @@ struct RebuildIntroView: View {
             controller.start(
                 reduceMotion: reduceMotion,
                 onCompleted: {
-                    completionFailed = !onCompleted()
+                    completionController.attempt(onCompleted)
                 }
             )
         }

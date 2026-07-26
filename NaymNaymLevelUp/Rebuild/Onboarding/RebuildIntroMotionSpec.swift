@@ -232,7 +232,7 @@ final class RebuildIntroMotionController: ObservableObject {
 
 protocol RebuildIntroDateStoring: AnyObject {
     func read() -> String?
-    func writeSynchronously(_ value: String) -> Bool
+    func writeDurably(_ value: String) async -> Bool
 }
 
 private let rebuildIntroStorageKey = "last-intro-date"
@@ -260,22 +260,61 @@ enum RebuildIntroLocalDay {
     }
 }
 
-private final class UserDefaultsRebuildIntroDateStore:
-    RebuildIntroDateStoring {
-    private let defaults: UserDefaults
+final class UserDefaultsRebuildIntroDateStore:
+    RebuildIntroDateStoring, @unchecked Sendable {
+    typealias Synchronize = @Sendable (UserDefaults) -> Bool
 
-    init(defaults: UserDefaults) {
+    private let defaults: UserDefaults
+    private let queue: DispatchQueue
+    private let synchronize: Synchronize
+
+    init(
+        defaults: UserDefaults,
+        queue: DispatchQueue = DispatchQueue(
+            label: "com.h19h29.naymnaymlevelup.rebuild-intro-persistence",
+            qos: .utility
+        ),
+        synchronize: @escaping Synchronize = { $0.synchronize() }
+    ) {
         self.defaults = defaults
+        self.queue = queue
+        self.synchronize = synchronize
     }
 
     func read() -> String? {
         defaults.string(forKey: rebuildIntroStorageKey)
     }
 
-    func writeSynchronously(_ value: String) -> Bool {
-        defaults.set(value, forKey: rebuildIntroStorageKey)
-        return defaults.string(forKey: rebuildIntroStorageKey)
-            == value
+    func writeDurably(_ value: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                let previousValue = defaults.object(
+                    forKey: rebuildIntroStorageKey
+                )
+                defaults.set(value, forKey: rebuildIntroStorageKey)
+                let didSynchronize = synchronize(defaults)
+                let didReadBack = defaults.string(
+                    forKey: rebuildIntroStorageKey
+                ) == value
+
+                guard didSynchronize, didReadBack else {
+                    if let previousValue {
+                        defaults.set(
+                            previousValue,
+                            forKey: rebuildIntroStorageKey
+                        )
+                    } else {
+                        defaults.removeObject(
+                            forKey: rebuildIntroStorageKey
+                        )
+                    }
+                    _ = synchronize(defaults)
+                    continuation.resume(returning: false)
+                    return
+                }
+                continuation.resume(returning: true)
+            }
+        }
     }
 }
 
@@ -293,6 +332,7 @@ final class RebuildIntroDailyGate: ObservableObject {
     private let store: RebuildIntroDateStoring
     private let now: () -> Date
     private let dayKey: (Date) -> String
+    private var completionTask: Task<Bool, Never>?
 
     init(
         defaults: UserDefaults = .standard,
@@ -327,19 +367,62 @@ final class RebuildIntroDailyGate: ObservableObject {
     }
 
     func refresh(at date: Date? = nil) {
+        guard completionTask == nil else {
+            shouldPresent = true
+            return
+        }
         let today = dayKey(date ?? now())
         shouldPresent = store.read() != today
     }
 
     @discardableResult
-    func markCompleted(at date: Date? = nil) -> Bool {
-        let today = dayKey(date ?? now())
-        guard store.writeSynchronously(today) else {
-            shouldPresent = true
-            return false
+    func markCompleted(at date: Date? = nil) async -> Bool {
+        if let completionTask {
+            return await completionTask.value
         }
-        shouldPresent = false
+        shouldPresent = true
+        let completedDay = dayKey(date ?? now())
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            let didPersist = await store.writeDurably(completedDay)
+            let currentDay = dayKey(now())
+            let didComplete = didPersist && completedDay == currentDay
+            shouldPresent = !didComplete
+            completionTask = nil
+            return didComplete
+        }
+        completionTask = task
+        return await task.value
+    }
+}
+
+@MainActor
+final class RebuildIntroCompletionController: ObservableObject {
+    @Published private(set) var completionFailed = false
+    @Published private(set) var isAttemptInFlight = false
+
+    private var attemptTask: Task<Void, Never>?
+
+    @discardableResult
+    func attempt(
+        _ operation: @escaping @MainActor () async -> Bool
+    ) -> Bool {
+        guard !isAttemptInFlight else { return false }
+        isAttemptInFlight = true
+        attemptTask = Task { [weak self] in
+            let succeeded = await operation()
+            guard let self else { return }
+            completionFailed = !succeeded
+            isAttemptInFlight = false
+            attemptTask = nil
+        }
         return true
+    }
+
+    func waitUntilSettled() async {
+        while isAttemptInFlight {
+            await Task.yield()
+        }
     }
 }
 
@@ -348,10 +431,12 @@ enum RebuildIntroDeepLinkCoordinator {
     static func resolve(
         url: URL,
         resolver: (URL) async -> AppDeepLinkRoute?,
-        markIntroCompleted: () -> Void
+        persistIntroCompletion: () async -> Bool,
+        applyIntroCompletion: () -> Void
     ) async -> AppDeepLinkRoute? {
         guard let route = await resolver(url) else { return nil }
-        markIntroCompleted()
+        guard await persistIntroCompletion() else { return nil }
+        applyIntroCompletion()
         return route
     }
 }

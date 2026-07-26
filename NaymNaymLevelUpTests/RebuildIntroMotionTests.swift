@@ -204,7 +204,7 @@ final class RebuildIntroMotionTests: XCTestCase {
         }
     }
 
-    func testDailyGateWritesOnlyOnCompletionAndRefreshesAcrossLocalMidnight() throws {
+    func testDailyGateWritesOnlyOnCompletionAndRefreshesAcrossLocalMidnight() async throws {
         let suiteName = "RebuildIntroMotionTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -220,7 +220,8 @@ final class RebuildIntroMotionTests: XCTestCase {
         XCTAssertTrue(gate.shouldPresent)
         XCTAssertNil(defaults.string(forKey: RebuildIntroDailyGate.storageKey))
 
-        gate.markCompleted(at: beforeMidnight)
+        let didComplete = await gate.markCompleted(at: beforeMidnight)
+        XCTAssertTrue(didComplete)
         XCTAssertFalse(gate.shouldPresent)
         XCTAssertEqual(
             defaults.string(forKey: RebuildIntroDailyGate.storageKey),
@@ -256,7 +257,7 @@ final class RebuildIntroMotionTests: XCTestCase {
         XCTAssertEqual(malformedGate.entryPhase, .intro)
     }
 
-    func testDailyGateReevaluatesInjectedLocalTimeZoneAfterTravel() throws {
+    func testDailyGateReevaluatesInjectedLocalTimeZoneAfterTravel() async throws {
         let instant = try XCTUnwrap(
             ISO8601DateFormatter().date(from: "2026-07-26T16:30:00Z")
         )
@@ -270,7 +271,8 @@ final class RebuildIntroMotionTests: XCTestCase {
             }
         )
 
-        XCTAssertTrue(gate.markCompleted())
+        let didCompleteBeforeTravel = await gate.markCompleted()
+        XCTAssertTrue(didCompleteBeforeTravel)
         XCTAssertEqual(store.value, "20260726")
         XCTAssertFalse(gate.shouldPresent)
 
@@ -278,11 +280,12 @@ final class RebuildIntroMotionTests: XCTestCase {
         gate.refresh()
 
         XCTAssertTrue(gate.shouldPresent)
-        XCTAssertTrue(gate.markCompleted())
+        let didCompleteAfterTravel = await gate.markCompleted()
+        XCTAssertTrue(didCompleteAfterTravel)
         XCTAssertEqual(store.value, "20260727")
     }
 
-    func testFailedDailyWriteKeepsIntroActiveAndBlocksBootstrap() throws {
+    func testFailedDailyWriteKeepsIntroActiveAndBlocksBootstrap() async throws {
         let date = try XCTUnwrap(
             DateUtils.apiDateFormatter.date(from: "20260726")
         )
@@ -292,19 +295,21 @@ final class RebuildIntroMotionTests: XCTestCase {
         )
         let gate = RebuildIntroDailyGate(store: store, now: { date })
 
-        XCTAssertFalse(gate.markCompleted(at: date))
+        let failedCompletion = await gate.markCompleted(at: date)
+        XCTAssertFalse(failedCompletion)
 
         XCTAssertTrue(gate.shouldPresent)
         XCTAssertEqual(gate.entryPhase, .intro)
         XCTAssertNil(store.value)
 
         store.acceptsWrites = true
-        XCTAssertTrue(gate.markCompleted(at: date))
+        let retryCompletion = await gate.markCompleted(at: date)
+        XCTAssertTrue(retryCompletion)
         XCTAssertEqual(gate.entryPhase, .bootstrap)
         XCTAssertEqual(store.value, "20260726")
     }
 
-    func testSuccessfulDailyWriteMovesEntryFromIntroToBootstrap() throws {
+    func testSuccessfulDailyWriteMovesEntryFromIntroToBootstrap() async throws {
         let date = try XCTUnwrap(
             DateUtils.apiDateFormatter.date(from: "20260726")
         )
@@ -312,10 +317,126 @@ final class RebuildIntroMotionTests: XCTestCase {
         let gate = RebuildIntroDailyGate(store: store, now: { date })
         XCTAssertEqual(gate.entryPhase, .intro)
 
-        XCTAssertTrue(gate.markCompleted(at: date))
+        let didComplete = await gate.markCompleted(at: date)
+        XCTAssertTrue(didComplete)
 
         XCTAssertEqual(gate.entryPhase, .bootstrap)
         XCTAssertEqual(store.value, "20260726")
+    }
+
+    func testProductionStoreSynchronizesOffMainAndRollsBackFailedWrite() async throws {
+        let suiteName = "RebuildIntroDurableStore.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let successThread = RebuildIntroThreadObservation()
+        let successStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: DispatchQueue(label: "\(suiteName).success"),
+            synchronize: { defaults in
+                successThread.recordCurrentThread()
+                return defaults.synchronize()
+            }
+        )
+
+        let didWrite = await successStore.writeDurably("20260726")
+        XCTAssertTrue(didWrite)
+        XCTAssertEqual(successStore.read(), "20260726")
+        XCTAssertEqual(successThread.wasMainThread, false)
+
+        defaults.set(
+            "20260725",
+            forKey: RebuildIntroDailyGate.storageKey
+        )
+        XCTAssertTrue(defaults.synchronize())
+        let failureThread = RebuildIntroThreadObservation()
+        let failureStore = UserDefaultsRebuildIntroDateStore(
+            defaults: defaults,
+            queue: DispatchQueue(label: "\(suiteName).failure"),
+            synchronize: { _ in
+                failureThread.recordCurrentThread()
+                return false
+            }
+        )
+
+        let didFail = await failureStore.writeDurably("20260727")
+        XCTAssertFalse(didFail)
+        XCTAssertEqual(failureStore.read(), "20260725")
+        XCTAssertEqual(failureThread.wasMainThread, false)
+    }
+
+    func testCompletionAttemptsCannotOverlapAndRetryCanSucceed() async {
+        let firstAttemptStarted = expectation(
+            description: "first completion attempt started"
+        )
+        let firstAttemptGate = RebuildIntroBoolGate()
+        let controller = RebuildIntroCompletionController()
+        var attempts = 0
+
+        XCTAssertTrue(
+            controller.attempt {
+                attempts += 1
+                firstAttemptStarted.fulfill()
+                return await firstAttemptGate.wait()
+            }
+        )
+        await fulfillment(of: [firstAttemptStarted], timeout: 1)
+        XCTAssertTrue(controller.isAttemptInFlight)
+        XCTAssertFalse(
+            controller.attempt {
+                attempts += 100
+                return true
+            }
+        )
+        XCTAssertEqual(attempts, 1)
+
+        await firstAttemptGate.resume(returning: false)
+        await controller.waitUntilSettled()
+        XCTAssertFalse(controller.isAttemptInFlight)
+        XCTAssertTrue(controller.completionFailed)
+
+        XCTAssertTrue(
+            controller.attempt {
+                attempts += 1
+                return true
+            }
+        )
+        await controller.waitUntilSettled()
+        XCTAssertEqual(attempts, 2)
+        XCTAssertFalse(controller.completionFailed)
+    }
+
+    func testInFlightRefreshCannotConsumePendingValueAndRolloverBlocksCompletion() async throws {
+        let instant = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-07-26T16:30:00Z")
+        )
+        var timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let writeStarted = expectation(description: "durable write started")
+        let store = RebuildIntroDelayedDateStore(writeStarted: writeStarted)
+        let gate = RebuildIntroDailyGate(
+            store: store,
+            now: { instant },
+            dayKey: {
+                RebuildIntroLocalDay.key(for: $0, timeZone: timeZone)
+            }
+        )
+
+        let completion = Task {
+            await gate.markCompleted()
+        }
+        await fulfillment(of: [writeStarted], timeout: 1)
+        XCTAssertEqual(store.read(), "20260726")
+
+        gate.refresh()
+        XCTAssertTrue(gate.shouldPresent)
+
+        timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Seoul"))
+        gate.refresh()
+        await store.finish(returning: true)
+
+        let didComplete = await completion.value
+        XCTAssertFalse(didComplete)
+        XCTAssertTrue(gate.shouldPresent)
+        XCTAssertEqual(store.read(), "20260726")
     }
 
     func testDeepLinkMarksIntroOnlyAfterRouteResolutionSucceeds() async {
@@ -326,8 +447,12 @@ final class RebuildIntroMotionTests: XCTestCase {
                 events.append("resolve-invalid")
                 return nil
             },
-            markIntroCompleted: {
-                events.append("mark-invalid")
+            persistIntroCompletion: {
+                events.append("persist-invalid")
+                return true
+            },
+            applyIntroCompletion: {
+                events.append("apply-invalid")
             }
         )
         XCTAssertNil(invalid)
@@ -340,12 +465,91 @@ final class RebuildIntroMotionTests: XCTestCase {
                 events.append("resolve")
                 return .parentSummary
             },
-            markIntroCompleted: {
-                events.append("mark")
+            persistIntroCompletion: {
+                events.append("persist")
+                return true
+            },
+            applyIntroCompletion: {
+                events.append("apply")
             }
         )
         XCTAssertEqual(valid, .parentSummary)
-        XCTAssertEqual(events, ["resolve", "mark"])
+        XCTAssertEqual(events, ["resolve", "persist", "apply"])
+    }
+
+    func testDeepLinkStorageFailureStopsBeforeDismissalAndRouting() async {
+        var events: [String] = []
+        var introDismissed = false
+        var legacyDateWritten = false
+        let route = await RebuildIntroDeepLinkCoordinator.resolve(
+            url: URL(string: "naymnaym://invite")!,
+            resolver: { _ in
+                events.append("resolve")
+                return .parentSummary
+            },
+            persistIntroCompletion: { () async -> Bool in
+                events.append("persist")
+                return false
+            },
+            applyIntroCompletion: {
+                introDismissed = true
+                legacyDateWritten = true
+                events.append("apply")
+            }
+        )
+
+        if route != nil {
+            events.append("route")
+        }
+
+        XCTAssertNil(route)
+        XCTAssertFalse(introDismissed)
+        XCTAssertFalse(legacyDateWritten)
+        XCTAssertEqual(events, ["resolve", "persist"])
+    }
+
+    func testValidDeepLinkCoalescesWithInFlightCompletionAndStillRoutes() async throws {
+        let date = try XCTUnwrap(
+            DateUtils.apiDateFormatter.date(from: "20260726")
+        )
+        let writeStarted = expectation(description: "durable write started")
+        let persistenceJoined = expectation(
+            description: "deep link joined persistence"
+        )
+        let store = RebuildIntroDelayedDateStore(writeStarted: writeStarted)
+        let gate = RebuildIntroDailyGate(store: store, now: { date })
+        var didApplyIntroCompletion = false
+
+        let automaticCompletion = Task {
+            await gate.markCompleted()
+        }
+        await fulfillment(of: [writeStarted], timeout: 1)
+
+        let deepLink = Task {
+            await RebuildIntroDeepLinkCoordinator.resolve(
+                url: URL(string: "naymnaym://invite")!,
+                resolver: { _ in .parentSummary },
+                persistIntroCompletion: {
+                    persistenceJoined.fulfill()
+                    return await gate.markCompleted()
+                },
+                applyIntroCompletion: {
+                    didApplyIntroCompletion = true
+                }
+            )
+        }
+        await fulfillment(of: [persistenceJoined], timeout: 1)
+        XCTAssertEqual(store.writeCount, 1)
+        XCTAssertFalse(didApplyIntroCompletion)
+
+        await store.finish(returning: true)
+        let didComplete = await automaticCompletion.value
+        let route = await deepLink.value
+
+        XCTAssertTrue(didComplete)
+        XCTAssertEqual(route, .parentSummary)
+        XCTAssertTrue(didApplyIntroCompletion)
+        XCTAssertEqual(store.writeCount, 1)
     }
 
     private func renderLogo(
@@ -379,6 +583,72 @@ private actor RebuildIntroSleepGate {
     }
 }
 
+private actor RebuildIntroBoolGate {
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    func wait() async -> Bool {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func resume(returning value: Bool) {
+        continuation?.resume(returning: value)
+        continuation = nil
+    }
+}
+
+private final class RebuildIntroDelayedDateStore:
+    RebuildIntroDateStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private let writeStarted: XCTestExpectation
+    private let resultGate = RebuildIntroBoolGate()
+    private var value: String?
+    private var storedWriteCount = 0
+
+    init(writeStarted: XCTestExpectation) {
+        self.writeStarted = writeStarted
+    }
+
+    func read() -> String? {
+        lock.withLock { value }
+    }
+
+    var writeCount: Int {
+        lock.withLock { storedWriteCount }
+    }
+
+    func writeDurably(_ value: String) async -> Bool {
+        lock.withLock {
+            self.value = value
+            storedWriteCount += 1
+        }
+        writeStarted.fulfill()
+        return await resultGate.wait()
+    }
+
+    func finish(returning value: Bool) async {
+        await resultGate.resume(returning: value)
+    }
+}
+
+private final class RebuildIntroThreadObservation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedWasMainThread: Bool?
+
+    var wasMainThread: Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedWasMainThread
+    }
+
+    func recordCurrentThread() {
+        lock.lock()
+        storedWasMainThread = Thread.isMainThread
+        lock.unlock()
+    }
+}
+
 private final class RebuildIntroDateStoreStub: RebuildIntroDateStoring {
     var value: String?
     var acceptsWrites: Bool
@@ -392,7 +662,7 @@ private final class RebuildIntroDateStoreStub: RebuildIntroDateStoring {
         value
     }
 
-    func writeSynchronously(_ value: String) -> Bool {
+    func writeDurably(_ value: String) async -> Bool {
         guard acceptsWrites else { return false }
         self.value = value
         return true

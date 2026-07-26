@@ -54,8 +54,13 @@ at the same three effective canvas widths.
 - The first rebuild presentation, including onboarding, shows the intro before
   bootstrap work begins.
 - Completion is stored under `last-intro-date` only after playback finishes.
-- A synchronous persistence failure keeps the intro active and exposes the
-  accessible `저장 다시 시도` action without recreating the screen.
+  iOS synchronizes and reads back on a dedicated utility queue; Android commits
+  and reads back on `Dispatchers.IO`.
+- A durable-write failure restores the previous value, keeps the intro active,
+  and exposes the accessible `저장 다시 시도` action without recreating the
+  screen.
+- Completion is asynchronous end-to-end. Retry remains disabled while a write
+  is in flight, and duplicate gate callers share the same write and result.
 - A second start on the same controller cannot reset playback.
 - Cancellation is generation-safe and cannot deliver a late completion.
 - Reduce Motion is latched for one presentation, so changing the system setting
@@ -64,17 +69,24 @@ at the same three effective canvas widths.
 - Local-day keys reevaluate the current time zone. Active/date/time-zone
   notifications refresh the gate, and UTC→Seoul travel is covered on both
   platforms.
-- A valid iOS deep link is resolved first, then the intro is marked complete,
-  then tab routing occurs. Invalid routes do not consume the daily gate.
+- Refresh cannot consume an in-memory value while persistence is pending.
+  Completion rechecks the current local day after durable storage, so a
+  midnight or time-zone rollover keeps the new day's intro active.
+- A valid iOS deep link is resolved first, awaits durable persistence, applies
+  dismissal state, and only then routes. Invalid routes and persistence
+  failures cannot dismiss or route. A deep link arriving during automatic
+  completion joins the existing write instead of being dropped.
 
 ## Final automated gate
 
-- iOS XcodeBuildMCP `test_sim`: `325 passed, 0 failed, 0 skipped`;
+- iOS XcodeBuildMCP `test_sim`: `330 passed, 0 failed, 0 skipped`;
   warnings `0`, errors `0`.
 - Android fresh ASCII build:
-  - JVM: `152 passed, 0 failed`.
-  - API-35 emulator: `43 passed, 0 failed`.
+  - JVM: `154 passed, 0 failed`.
+  - API-35 emulator: `45 passed, 0 failed`.
   - `assembleDebug`: PASS.
+- Task 6 focused: iOS `18/18`, Android JVM `12/12`, Android
+  instrumentation `12/12`.
 - Android large-screen / 200% Task 6 rerun: `10 passed, 0 failed`.
 - Mascot validator: `77 parts: PASS`.
 - Native contract validator: PASS.

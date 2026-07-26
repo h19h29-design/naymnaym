@@ -1,5 +1,6 @@
 package com.h19h29.naymnaymlevelup.rebuild.onboarding
 
+import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -9,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -26,6 +28,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.BitmapFactory
+import android.os.Looper
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildApp
 import com.h19h29.naymnaymlevelup.R
@@ -33,6 +36,11 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.security.MessageDigest
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertEquals
@@ -157,7 +165,8 @@ class RebuildIntroScreenTest {
     }
 
     @Test
-    fun sharedPreferencesCompletionIsVisibleToImmediateSameDayRecreation() {
+    fun sharedPreferencesCompletionIsVisibleToImmediateSameDayRecreation() =
+        runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val preferences = context.getSharedPreferences(
             "rebuild-intro-test-${System.nanoTime()}",
@@ -189,7 +198,83 @@ class RebuildIntroScreenTest {
             preferences.getString(RebuildIntroDailyGate.StorageKey, null),
         )
         assertTrue(preferences.edit().clear().commit())
-    }
+        }
+
+    @Test
+    fun sharedPreferencesCommitRunsOffMainAndFailureKeepsIntroActive() =
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val preferences = context.getSharedPreferences(
+                "rebuild-intro-io-test-${System.nanoTime()}",
+                Context.MODE_PRIVATE,
+            )
+            assertTrue(preferences.edit().clear().commit())
+            val dispatcher = Executors.newSingleThreadExecutor {
+                Thread(it, "rebuild-intro-persistence-test")
+            }.asCoroutineDispatcher()
+            val commitThread = AtomicReference<Thread>()
+            val zone = ZoneId.of("Asia/Seoul")
+            val clock = Clock.fixed(
+                Instant.parse("2026-07-26T03:00:00Z"),
+                zone,
+            )
+
+            try {
+                val successEntry = RebuildIntroEntryController(
+                    RebuildIntroDailyGate(
+                        SharedPreferencesRebuildIntroDateStore(
+                            preferences = preferences,
+                            ioDispatcher = dispatcher,
+                            commit = { editor ->
+                                commitThread.set(Thread.currentThread())
+                                editor.commit()
+                            },
+                        ),
+                        clock,
+                        zone,
+                    ),
+                )
+
+                assertTrue(successEntry.completeIntro())
+                assertEquals(
+                    "rebuild-intro-persistence-test",
+                    commitThread.get().name,
+                )
+                assertTrue(commitThread.get() !== Looper.getMainLooper().thread)
+                assertTrue(successEntry.canLoadBootstrap)
+
+                assertTrue(preferences.edit().clear().commit())
+                val failedEntry = RebuildIntroEntryController(
+                    RebuildIntroDailyGate(
+                        SharedPreferencesRebuildIntroDateStore(
+                            preferences = preferences,
+                            ioDispatcher = dispatcher,
+                            commit = { editor ->
+                                commitThread.set(Thread.currentThread())
+                                editor.commit()
+                                false
+                            },
+                        ),
+                        clock,
+                        zone,
+                    ),
+                )
+
+                assertTrue(!failedEntry.completeIntro())
+                assertTrue(commitThread.get() !== Looper.getMainLooper().thread)
+                assertTrue(failedEntry.showIntro)
+                assertTrue(!failedEntry.canLoadBootstrap)
+                assertTrue(
+                    preferences.getString(
+                        RebuildIntroDailyGate.StorageKey,
+                        null,
+                    ) == null,
+                )
+            } finally {
+                dispatcher.close()
+                assertTrue(preferences.edit().clear().commit())
+            }
+        }
 
     @Test
     fun changingReduceMotionDuringPlaybackDoesNotLoseCompletion() {
@@ -309,6 +394,54 @@ class RebuildIntroScreenTest {
             composeRule.onAllNodesWithText("저장 다시 시도")
                 .fetchSemanticsNodes().isEmpty(),
         )
+    }
+
+    @Test
+    fun retryCompletionCannotStartOverlappingPersistenceAttempts() {
+        composeRule.mainClock.autoAdvance = false
+        val retryStarted = CompletableDeferred<Unit>()
+        val retryResult = CompletableDeferred<Boolean>()
+        var attempts = 0
+        composeRule.setContent {
+            RebuildIntroScreen(
+                reduceMotionOverride = true,
+                onCompleted = {
+                    attempts += 1
+                    if (attempts == 1) {
+                        false
+                    } else {
+                        retryStarted.complete(Unit)
+                        retryResult.await()
+                    }
+                },
+            )
+        }
+
+        composeRule.mainClock.advanceTimeBy(400)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("저장 다시 시도")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 2_000) {
+            retryStarted.isCompleted
+        }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("저장 다시 시도")
+            .assertIsNotEnabled()
+        composeRule.runOnIdle {
+            assertEquals(2, attempts)
+        }
+
+        retryResult.complete(true)
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.waitUntil(timeoutMillis = 2_000) {
+            composeRule.onAllNodesWithText("저장 다시 시도")
+                .fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.runOnIdle {
+            assertEquals(2, attempts)
+        }
     }
 
     @Test

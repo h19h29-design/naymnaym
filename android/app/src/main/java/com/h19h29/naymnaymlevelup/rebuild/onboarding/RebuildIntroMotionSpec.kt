@@ -11,7 +11,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 data class RebuildIntroWordFrame(
     val opacity: Float,
@@ -235,21 +239,56 @@ class RebuildIntroMotionController(
 
 interface RebuildIntroDateStore {
     fun read(): String?
-    fun writeSynchronously(value: String): Boolean
+    suspend fun writeDurably(value: String): Boolean
 }
 
 class SharedPreferencesRebuildIntroDateStore(
     private val preferences: SharedPreferences,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val commit: (SharedPreferences.Editor) -> Boolean = {
+        it.commit()
+    },
 ) : RebuildIntroDateStore {
     override fun read(): String? = preferences.getString(
         RebuildIntroDailyGate.StorageKey,
         null,
     )
 
-    override fun writeSynchronously(value: String): Boolean = preferences
-        .edit()
-        .putString(RebuildIntroDailyGate.StorageKey, value)
-        .commit()
+    override suspend fun writeDurably(value: String): Boolean =
+        withContext(ioDispatcher) {
+            val hadPreviousValue = preferences.contains(
+                RebuildIntroDailyGate.StorageKey,
+            )
+            val previousValue = preferences.getString(
+                RebuildIntroDailyGate.StorageKey,
+                null,
+            )
+            val didCommit = commit(
+                preferences
+                    .edit()
+                    .putString(RebuildIntroDailyGate.StorageKey, value),
+            )
+            val didReadBack = preferences.getString(
+                RebuildIntroDailyGate.StorageKey,
+                null,
+            ) == value
+
+            if (didCommit && didReadBack) {
+                true
+            } else {
+                val rollback = preferences.edit()
+                if (hadPreviousValue) {
+                    rollback.putString(
+                        RebuildIntroDailyGate.StorageKey,
+                        previousValue,
+                    )
+                } else {
+                    rollback.remove(RebuildIntroDailyGate.StorageKey)
+                }
+                rollback.commit()
+                false
+            }
+        }
 }
 
 class RebuildIntroDailyGate(
@@ -258,9 +297,44 @@ class RebuildIntroDailyGate(
     private val zoneId: ZoneId? = null,
     private val zoneProvider: () -> ZoneId = ZoneId::systemDefault,
 ) {
-    fun shouldPresent(): Boolean = store.read() != todayKey()
+    private val completionLock = Any()
+    @Volatile
+    private var completionInFlight = false
+    private var completionResult: CompletableDeferred<Boolean>? = null
 
-    fun markCompleted(): Boolean = store.writeSynchronously(todayKey())
+    fun shouldPresent(): Boolean = completionInFlight ||
+        store.read() != todayKey()
+
+    suspend fun markCompleted(): Boolean {
+        var ownsCompletion = false
+        val result = synchronized(completionLock) {
+            completionResult ?: CompletableDeferred<Boolean>().also {
+                completionResult = it
+                completionInFlight = true
+                ownsCompletion = true
+            }
+        }
+        if (!ownsCompletion) return result.await()
+
+        val completedDay = todayKey()
+        return try {
+            val didComplete = store.writeDurably(completedDay) &&
+                completedDay == todayKey()
+            synchronized(completionLock) {
+                completionInFlight = false
+                completionResult = null
+                result.complete(didComplete)
+            }
+            didComplete
+        } catch (error: Throwable) {
+            synchronized(completionLock) {
+                completionInFlight = false
+                completionResult = null
+                result.completeExceptionally(error)
+            }
+            throw error
+        }
+    }
 
     private fun todayKey(): String = LocalDate.now(
         clock.withZone(zoneId ?: zoneProvider()),
@@ -285,7 +359,7 @@ class RebuildIntroEntryController(
         showIntro = dailyGate.shouldPresent()
     }
 
-    fun completeIntro(): Boolean {
+    suspend fun completeIntro(): Boolean {
         if (!dailyGate.markCompleted()) {
             showIntro = true
             return false

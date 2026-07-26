@@ -17,7 +17,7 @@ struct RootView: View {
             if RebuildFeatureGate.isEnabled() {
                 if rebuildIntroGate.shouldPresent {
                     RebuildIntroView {
-                        rebuildIntroGate.markCompleted()
+                        await rebuildIntroGate.markCompleted()
                     }
                 } else {
                     RebuildRootView()
@@ -102,10 +102,11 @@ struct RootView: View {
         guard let route = await RebuildIntroDeepLinkCoordinator.resolve(
             url: url,
             resolver: appState.handleDeepLink,
-            markIntroCompleted: {
-                rebuildIntroGate.markCompleted()
+            persistIntroCompletion: {
+                await rebuildIntroGate.markCompleted()
+            },
+            applyIntroCompletion: {
                 introDismissed = true
-                lastIntroDate = todayKey
             }
         ) else {
             return

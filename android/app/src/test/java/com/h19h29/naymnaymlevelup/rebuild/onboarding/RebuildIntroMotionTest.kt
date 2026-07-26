@@ -171,7 +171,8 @@ class RebuildIntroMotionTest {
     }
 
     @Test
-    fun dailyGateCommitsOnlyOnCompletionAndSurvivesRecreationInLocalZone() {
+    fun dailyGateCommitsOnlyOnCompletionAndSurvivesRecreationInLocalZone() =
+        runTest {
         val zone = ZoneId.of("Asia/Seoul")
         val firstDayClock = Clock.fixed(
             Instant.parse("2026-07-26T14:59:00Z"),
@@ -198,7 +199,7 @@ class RebuildIntroMotionTest {
         val nextDay = RebuildIntroDailyGate(store, nextDayClock, zone)
         assertTrue(nextDay.shouldPresent())
         assertEquals(1, store.writeCount)
-    }
+        }
 
     @Test
     fun missingAndMalformedDailyValuesKeepIntroAheadOfBootstrap() {
@@ -224,7 +225,7 @@ class RebuildIntroMotionTest {
     }
 
     @Test
-    fun dailyGateReevaluatesInjectedLocalZoneAfterTravel() {
+    fun dailyGateReevaluatesInjectedLocalZoneAfterTravel() = runTest {
         val instant = Instant.parse("2026-07-26T16:30:00Z")
         val store = MemoryIntroDateStore()
         var zone = ZoneId.of("UTC")
@@ -246,7 +247,7 @@ class RebuildIntroMotionTest {
     }
 
     @Test
-    fun failedSynchronousCommitKeepsIntroActiveAndBootstrapBlocked() {
+    fun failedDurableCommitKeepsIntroActiveAndBootstrapBlocked() = runTest {
         val zone = ZoneId.of("Asia/Seoul")
         val clock = Clock.fixed(
             Instant.parse("2026-07-26T03:00:00Z"),
@@ -272,7 +273,7 @@ class RebuildIntroMotionTest {
     }
 
     @Test
-    fun activeIntroMustCompleteBeforeBootstrapCanLoad() {
+    fun activeIntroMustCompleteBeforeBootstrapCanLoad() = runTest {
         val zone = ZoneId.of("Asia/Seoul")
         val clock = Clock.fixed(
             Instant.parse("2026-07-26T03:00:00Z"),
@@ -290,6 +291,88 @@ class RebuildIntroMotionTest {
         assertTrue(entry.canLoadBootstrap)
     }
 
+    @Test
+    fun delayedPersistenceKeepsIntroActiveUntilCommitSucceeds() = runTest {
+        val writeStarted = CompletableDeferred<Unit>()
+        val writeResult = CompletableDeferred<Boolean>()
+        var writeCount = 0
+        val store = object : RebuildIntroDateStore {
+            override fun read(): String? = null
+
+            override suspend fun writeDurably(value: String): Boolean {
+                writeCount += 1
+                writeStarted.complete(Unit)
+                return writeResult.await()
+            }
+        }
+        val zone = ZoneId.of("Asia/Seoul")
+        val clock = Clock.fixed(
+            Instant.parse("2026-07-26T03:00:00Z"),
+            zone,
+        )
+        val entry = RebuildIntroEntryController(
+            RebuildIntroDailyGate(store, clock, zone),
+        )
+
+        val completion = async { entry.completeIntro() }
+        writeStarted.await()
+        val joinedCompletion = async { entry.completeIntro() }
+        runCurrent()
+        assertEquals(1, writeCount)
+        assertTrue(entry.showIntro)
+        assertFalse(entry.canLoadBootstrap)
+
+        writeResult.complete(true)
+        assertTrue(completion.await())
+        assertTrue(joinedCompletion.await())
+        assertEquals(1, writeCount)
+        assertFalse(entry.showIntro)
+        assertTrue(entry.canLoadBootstrap)
+    }
+
+    @Test
+    fun inFlightRefreshCannotConsumePendingValueAndRolloverBlocksCompletion() =
+        runTest {
+            val writeStarted = CompletableDeferred<Unit>()
+            val writeResult = CompletableDeferred<Boolean>()
+            var storedValue: String? = null
+            val store = object : RebuildIntroDateStore {
+                override fun read(): String? = storedValue
+
+                override suspend fun writeDurably(value: String): Boolean {
+                    storedValue = value
+                    writeStarted.complete(Unit)
+                    return writeResult.await()
+                }
+            }
+            val instant = Instant.parse("2026-07-26T16:30:00Z")
+            var zone = ZoneId.of("UTC")
+            val entry = RebuildIntroEntryController(
+                RebuildIntroDailyGate(
+                    store = store,
+                    clock = Clock.fixed(instant, ZoneId.of("UTC")),
+                    zoneProvider = { zone },
+                ),
+            )
+
+            val completion = async { entry.completeIntro() }
+            writeStarted.await()
+            assertEquals("20260726", storedValue)
+
+            entry.refresh()
+            assertTrue(entry.showIntro)
+            assertFalse(entry.canLoadBootstrap)
+
+            zone = ZoneId.of("Asia/Seoul")
+            entry.refresh()
+            writeResult.complete(true)
+
+            assertFalse(completion.await())
+            assertTrue(entry.showIntro)
+            assertFalse(entry.canLoadBootstrap)
+            assertEquals("20260726", storedValue)
+        }
+
     private class MemoryIntroDateStore(
         var acceptsWrites: Boolean = true,
     ) : RebuildIntroDateStore {
@@ -298,7 +381,7 @@ class RebuildIntroMotionTest {
 
         override fun read(): String? = value
 
-        override fun writeSynchronously(value: String): Boolean {
+        override suspend fun writeDurably(value: String): Boolean {
             writeCount += 1
             if (!acceptsWrites) return false
             this.value = value

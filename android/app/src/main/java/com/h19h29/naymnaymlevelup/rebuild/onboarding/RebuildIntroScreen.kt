@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,10 +52,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.h19h29.naymnaymlevelup.R
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 fun RebuildIntroScreen(
-    onCompleted: () -> Boolean,
+    onCompleted: suspend () -> Boolean,
     reduceMotionOverride: Boolean? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -63,15 +66,31 @@ fun RebuildIntroScreen(
     val reduceMotion = systemReduceMotion || reduceMotionOverride == true
     val controller = remember { RebuildIntroMotionController() }
     var completionFailed by remember { mutableStateOf(false) }
+    var completionAttemptInFlight by remember { mutableStateOf(false) }
+    val currentOnCompleted by rememberUpdatedState(onCompleted)
     val effectiveReduceMotion = controller.effectiveReduceMotion
         ?: reduceMotion
+
+    fun attemptCompletion() {
+        if (completionAttemptInFlight) return
+        completionAttemptInFlight = true
+        scope.launch {
+            try {
+                completionFailed = !currentOnCompleted()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                completionFailed = true
+            } finally {
+                completionAttemptInFlight = false
+            }
+        }
+    }
 
     LaunchedEffect(controller) {
         controller.start(
             reduceMotion = reduceMotion,
-            onCompleted = {
-                completionFailed = !onCompleted()
-            },
+            onCompleted = ::attemptCompletion,
         )
     }
     DisposableEffect(controller) {
@@ -114,9 +133,8 @@ fun RebuildIntroScreen(
 
         if (completionFailed) {
             Button(
-                onClick = {
-                    completionFailed = !onCompleted()
-                },
+                onClick = ::attemptCompletion,
+                enabled = !completionAttemptInFlight,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 32.dp),
