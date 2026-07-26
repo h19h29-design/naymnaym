@@ -86,12 +86,12 @@ performed.
 
 ## Second-review cache serialization
 
-- iOS now uses one generation-guarded heavy cache for either the current
+- iOS now uses one request-ID-guarded heavy cache for either the current
   three-frame rig or the current semantic fallback. The two representations
   cannot remain cached together.
 - Requests for the same representation and level coalesce into one task.
-  A new key cancels and removes older in-flight work, and an older completion
-  cannot replace the newest cached value.
+  A new key cancels and detaches every older caller while retaining a drain
+  dependency, and an older completion cannot replace the newest cached value.
 - Already-cancelled callers are rejected before cache generation, eviction, or
   loading. The detached image worker checks cancellation before and after
   decoding and receives caller cancellation.
@@ -107,6 +107,29 @@ performed.
 - Diagnostics use decoded byte cost. The active full rig is bounded below
   20 MiB in the fixture and the eleven-layer fallback below 12 MiB, both under
   the 24 MiB heavy-cache ceiling.
+
+## Third-review waiter and drain hardening
+
+- The heavy cache now owns one continuation per caller instead of exposing the
+  shared loading task directly. Same-key callers still coalesce, but cancelling
+  one waiter resumes only that waiter with `CancellationError`.
+- Waiter reference counting cancels the shared decode when its last waiter
+  leaves. A cancelled sole caller cannot retain a completed 19 MiB rig in the
+  cache, while cancelling one of two coalesced callers leaves the other caller
+  and shared decode active.
+- A lock-protected waiter token records cancellation synchronously inside the
+  task cancellation handler. Completion must atomically claim each active
+  waiter before delivering or caching a value, closing the race in which the
+  main-actor cleanup task could previously run after completion.
+- Replacing a key immediately cancels and resumes every old caller with
+  `CancellationError`, regardless of whether cancellation-ignoring work later
+  succeeds or throws a general error.
+- Replacement work waits for the superseded monitor to drain before decoding.
+  For a rapid A → B → C transition, B never starts, A and C never overlap, and
+  only C can populate the cache.
+- The rig loader therefore treats a superseded general failure as
+  cancellation, never enters semantic fallback, and keeps the current rig key
+  intact.
 
 ## TDD evidence
 
@@ -150,6 +173,16 @@ The following expected RED states were observed before their implementations:
   predecessor, REST exposed `invalidImage`, rig entered fallback, and stale
   level 1 work replaced level 4 with `fallback-4`:
   `test_sim_2026-07-26T07-25-02-652Z_pid85607_bb92a066.log`.
+- The six third-review waiter/drain tests failed before continuation ownership,
+  waiter reference counting, and predecessor draining were implemented:
+  superseded success and general error leaked, a sole cancelled waiter cached
+  19 MiB, one cancelled coalesced waiter received the shared value, A/B/C
+  reached three concurrent loads, and the old rig error entered fallback:
+  `test_sim_2026-07-26T07-46-28-104Z_pid9550_97da8bef.log`.
+- The deterministic completion/cancellation race then failed before synchronous
+  waiter tokens were added: completion retained the rig key, value, and
+  19 MiB cost before delayed main-actor cleanup:
+  `test_sim_2026-07-26T07-50-22-146Z_pid9550_9ead083f.log`.
 
 Focused GREEN results:
 
@@ -163,7 +196,13 @@ Focused GREEN results:
 - Android persisted-home-level instrumentation: 3/3.
 - Second-review heavy-cache and 512 px fallback tests: 2/2.
 - Cancellation and stale-active-key regressions: 4/4.
-- Final iOS mascot motion/cache/loader suite: 36/36; warnings 0, errors 0.
+- Third-review supersession, waiter, drain, loader, and completion-race tests:
+  7/7; warnings 0, errors 0.
+  - focused log:
+    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T07-52-18-659Z_pid9550_1068124f.log`
+- Final iOS mascot motion/cache/loader suite: 42/42; warnings 0, errors 0.
+  - mascot log:
+    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T07-52-58-196Z_pid9550_16aaceef.log`
 
 ## Final verification
 
@@ -178,14 +217,18 @@ Focused GREEN results:
 - `bash scripts/sync-native-rebuild-contracts.sh` and runtime `cmp`
   - PASS; both growth-policy mirrors are byte-identical.
 - XcodeBuildMCP `test_sim`
-  - 306 passed, 0 failed, 0 skipped; warnings 0, errors 0.
+  - 312 passed, 0 failed, 0 skipped; warnings 0, errors 0.
   - final build log:
-    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T07-34-00-269Z_pid85607_073c0b29.log`
+    `~/Library/Developer/XcodeBuildMCP/workspaces/workspace-f281014df961/logs/test_sim_2026-07-26T07-53-37-115Z_pid9550_e722bb3a.log`
 - Android:
   - `testDebugUnitTest connectedDebugAndroidTest assembleDebug`
   - BUILD SUCCESSFUL.
   - JVM: 142/142 passed.
   - connected API-35 emulator: 33/33 passed.
+  - The first connected run had one unrelated Compose
+    `SnapshotStateObserver` thread-race failure in `GrowthScreenTest`. The same
+    test passed 1/1 in isolation, then the complete connected suite passed
+    33/33 on a fresh rerun.
   - The existing ASCII temporary build-output redirect was used because Kotlin
     test output is unreliable under the Korean workspace path. It was not
     committed.
@@ -201,7 +244,9 @@ Focused GREEN results:
 300×300 source projection and the same `(627, 1128)` anchor baseline. Visual
 inspection confirms consistent foot baseline and scale while preserving the
 intended increase in costume detail. The comparison was re-opened and
-re-inspected after the cache hardening. A temporary QA sheet also rendered the
+re-inspected after both cache-hardening reviews. The third-review diff contains
+no art files, and no clipping or overlap regression was visible. A temporary
+QA sheet also rendered the
 runtime-equivalent 512 px semantic REST stack beside `composite-rest` for
 levels 1, 4, and 7. All pairs kept canonical layer overlap, transparent
 full-square alignment, and the same foot baseline. The temporary QA artifact

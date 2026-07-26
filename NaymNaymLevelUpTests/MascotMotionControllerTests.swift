@@ -1,3 +1,4 @@
+import Dispatch
 import XCTest
 @testable import NaymNaymLevelUp
 
@@ -369,21 +370,30 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertEqual(cache.cachedValue, "level-1")
     }
 
-    func testLatestActiveCacheRejectsAnOlderOutOfOrderCompletion() async throws {
+    func testSupersededSuccessSurfacesCancellationBeforeTheLoadDrains() async {
         let cache = LatestActiveAssetCache<String, String>(
             maxCost: 100,
             costOf: { $0.utf8.count }
         )
         let olderGate = AsyncTestGate()
-        let newerGate = AsyncTestGate()
         let olderStarted = expectation(description: "older load started")
+        let olderCancelled = expectation(
+            description: "older caller cancelled"
+        )
         let newerStarted = expectation(description: "newer load started")
 
         let olderTask = Task { @MainActor in
-            try await cache.value(for: "level-1-rig") {
-                olderStarted.fulfill()
-                await olderGate.wait()
-                return "older"
+            do {
+                _ = try await cache.value(for: "level-1-rig") {
+                    olderStarted.fulfill()
+                    await olderGate.wait()
+                    return "older"
+                }
+                XCTFail("A superseded success must not reach its caller")
+            } catch is CancellationError {
+                olderCancelled.fulfill()
+            } catch {
+                XCTFail("Unexpected error: \(error)")
             }
         }
         await fulfillment(of: [olderStarted], timeout: 1)
@@ -391,20 +401,69 @@ final class MascotMotionControllerTests: XCTestCase {
         let newerTask = Task { @MainActor in
             try await cache.value(for: "level-4-rig") {
                 newerStarted.fulfill()
-                await newerGate.wait()
                 return "newer"
             }
         }
-        await fulfillment(of: [newerStarted], timeout: 1)
-
-        await newerGate.open()
-        let newerResult = try await newerTask.value
-        XCTAssertEqual(newerResult, "newer")
-        XCTAssertEqual(cache.cachedKey, "level-4-rig")
+        await fulfillment(of: [olderCancelled], timeout: 1)
 
         await olderGate.open()
-        let olderResult = try await olderTask.value
-        XCTAssertEqual(olderResult, "older")
+        await olderTask.value
+        await fulfillment(of: [newerStarted], timeout: 1)
+        do {
+            let newerResult = try await newerTask.value
+            XCTAssertEqual(newerResult, "newer")
+        } catch {
+            XCTFail("Unexpected newer error: \(error)")
+        }
+        XCTAssertEqual(cache.cachedKey, "level-4-rig")
+        XCTAssertEqual(cache.cachedValue, "newer")
+    }
+
+    func testSupersededGenericErrorSurfacesCancellationNotTheOriginalError() async {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let olderGate = AsyncTestGate()
+        let olderStarted = expectation(description: "older load started")
+        let olderCancelled = expectation(
+            description: "older caller cancelled"
+        )
+        let newerStarted = expectation(description: "newer load started")
+
+        let olderTask = Task { @MainActor in
+            do {
+                _ = try await cache.value(for: "level-1-rig") {
+                    olderStarted.fulfill()
+                    await olderGate.wait()
+                    throw AsyncTestError.failed
+                }
+                XCTFail("The old generic error load cannot succeed")
+            } catch is CancellationError {
+                olderCancelled.fulfill()
+            } catch {
+                XCTFail("Superseded error leaked to caller: \(error)")
+            }
+        }
+        await fulfillment(of: [olderStarted], timeout: 1)
+
+        let newerTask = Task { @MainActor in
+            try await cache.value(for: "level-4-rig") {
+                newerStarted.fulfill()
+                return "newer"
+            }
+        }
+        await fulfillment(of: [olderCancelled], timeout: 1)
+
+        await olderGate.open()
+        await olderTask.value
+        await fulfillment(of: [newerStarted], timeout: 1)
+        do {
+            let newerResult = try await newerTask.value
+            XCTAssertEqual(newerResult, "newer")
+        } catch {
+            XCTFail("Unexpected newer error: \(error)")
+        }
         XCTAssertEqual(cache.cachedKey, "level-4-rig")
         XCTAssertEqual(cache.cachedValue, "newer")
     }
@@ -450,6 +509,156 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertEqual(cache.cachedValue, "shared")
     }
 
+    func testCancellingTheOnlyWaiterCancelsAndDoesNotCacheHeavyLoad() async {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 24 * 1_024 * 1_024,
+            costOf: { _ in 19 * 1_024 * 1_024 }
+        )
+        let gate = AsyncTestGate()
+        let loadStarted = expectation(description: "heavy load started")
+        let loadCancelled = expectation(
+            description: "heavy task received cancellation"
+        )
+        let callerCancelled = expectation(
+            description: "only waiter resumed with cancellation"
+        )
+        let caller = Task { @MainActor in
+            do {
+                _ = try await cache.value(for: "level-1-rig") {
+                    loadStarted.fulfill()
+                    return await withTaskCancellationHandler {
+                        await gate.wait()
+                        return "nineteen-mebibytes"
+                    } onCancel: {
+                        loadCancelled.fulfill()
+                    }
+                }
+                XCTFail("A cancelled sole waiter must not receive the value")
+            } catch is CancellationError {
+                callerCancelled.fulfill()
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+        await fulfillment(of: [loadStarted], timeout: 1)
+
+        caller.cancel()
+        await fulfillment(
+            of: [callerCancelled, loadCancelled],
+            timeout: 1
+        )
+
+        await gate.open()
+        await caller.value
+        XCTAssertNil(cache.cachedKey)
+        XCTAssertNil(cache.cachedValue)
+        XCTAssertEqual(cache.cachedCost, 0)
+    }
+
+    func testCancellationWinningDuringCompletionDoesNotCacheOrDeliverValue() async {
+        let race = CompletionCancellationRace()
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 24 * 1_024 * 1_024,
+            costOf: { _ in race.blockingHeavyCost() }
+        )
+        let caller = Task { @MainActor in
+            do {
+                _ = try await cache.value(for: "level-1-rig") {
+                    "nineteen-mebibytes"
+                }
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+                return false
+            }
+        }
+        let canceller = Task.detached {
+            let reachedCompletion = race.waitForCompletion()
+            if reachedCompletion {
+                caller.cancel()
+            }
+            race.releaseCompletion()
+            return reachedCompletion
+        }
+
+        let reachedCompletion = await canceller.value
+        let callerWasCancelled = await caller.value
+
+        XCTAssertTrue(reachedCompletion)
+        XCTAssertTrue(callerWasCancelled)
+        XCTAssertNil(cache.cachedKey)
+        XCTAssertNil(cache.cachedValue)
+        XCTAssertEqual(cache.cachedCost, 0)
+    }
+
+    func testCancellingOneOfTwoWaitersKeepsTheSharedLoadAlive() async {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let gate = AsyncTestGate()
+        let counter = AsyncTestCounter()
+        let loadStarted = expectation(description: "shared load started")
+        let loadCancelled = expectation(
+            description: "shared load must not be cancelled"
+        )
+        loadCancelled.isInverted = true
+        let firstCancelled = expectation(
+            description: "first waiter cancelled"
+        )
+        let secondEntered = expectation(
+            description: "second waiter entered"
+        )
+        let first = Task { @MainActor in
+            do {
+                _ = try await cache.value(for: "level-4-rig") {
+                    await counter.increment()
+                    loadStarted.fulfill()
+                    return await withTaskCancellationHandler {
+                        await gate.wait()
+                        return "shared"
+                    } onCancel: {
+                        loadCancelled.fulfill()
+                    }
+                }
+                XCTFail("The cancelled waiter must not receive shared data")
+            } catch is CancellationError {
+                firstCancelled.fulfill()
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+        await fulfillment(of: [loadStarted], timeout: 1)
+
+        let second = Task { @MainActor in
+            secondEntered.fulfill()
+            return try await cache.value(for: "level-4-rig") {
+                await counter.increment()
+                return "duplicate"
+            }
+        }
+        await fulfillment(of: [secondEntered], timeout: 1)
+
+        first.cancel()
+        await fulfillment(of: [firstCancelled], timeout: 1)
+        await gate.open()
+
+        await first.value
+        do {
+            let secondResult = try await second.value
+            XCTAssertEqual(secondResult, "shared")
+        } catch {
+            XCTFail("Unexpected remaining waiter error: \(error)")
+        }
+        await fulfillment(of: [loadCancelled], timeout: 0.05)
+        let loadCount = await counter.value
+        XCTAssertEqual(loadCount, 1)
+        XCTAssertEqual(cache.cachedKey, "level-4-rig")
+        XCTAssertEqual(cache.cachedValue, "shared")
+    }
+
     func testLatestActiveCacheCancelsAnOlderDifferentKeyLoad() async throws {
         let cache = LatestActiveAssetCache<String, String>(
             maxCost: 100,
@@ -475,10 +684,11 @@ final class MascotMotionControllerTests: XCTestCase {
         }
         await fulfillment(of: [olderStarted], timeout: 1)
 
-        let newer = try await cache.value(for: "level-4-rig") {
-            "newer"
+        let newerTask = Task { @MainActor in
+            try await cache.value(for: "level-4-rig") {
+                "newer"
+            }
         }
-        XCTAssertEqual(newer, "newer")
         await fulfillment(of: [olderCancelled], timeout: 1)
 
         await gate.open()
@@ -488,8 +698,103 @@ final class MascotMotionControllerTests: XCTestCase {
         } catch is CancellationError {
             // Expected.
         }
+        let newer = try await newerTask.value
+        XCTAssertEqual(newer, "newer")
         XCTAssertEqual(cache.cachedKey, "level-4-rig")
         XCTAssertEqual(cache.cachedValue, "newer")
+    }
+
+    func testRapidDifferentKeysDrainBeforeStartingOnlyTheFinalLoad() async {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let gateA = AsyncTestGate()
+        let gateB = AsyncTestGate()
+        let gateC = AsyncTestGate()
+        let probe = AsyncLoadConcurrencyProbe()
+        let aStarted = expectation(description: "A load started")
+        let cStarted = expectation(description: "C load started")
+        let aCancelled = expectation(description: "A caller cancelled")
+        let bCancelled = expectation(description: "B caller cancelled")
+        let bEntered = expectation(description: "B caller entered")
+        let cEntered = expectation(description: "C caller entered")
+
+        let taskA = Task { @MainActor in
+            do {
+                _ = try await cache.value(for: "A") {
+                    await probe.begin("A")
+                    aStarted.fulfill()
+                    await gateA.wait()
+                    await probe.end()
+                    return "A"
+                }
+                XCTFail("A must be superseded")
+            } catch is CancellationError {
+                aCancelled.fulfill()
+            } catch {
+                XCTFail("Unexpected A error: \(error)")
+            }
+        }
+        await fulfillment(of: [aStarted], timeout: 1)
+
+        let taskB = Task { @MainActor in
+            bEntered.fulfill()
+            do {
+                _ = try await cache.value(for: "B") {
+                    await probe.begin("B")
+                    await gateB.wait()
+                    await probe.end()
+                    return "B"
+                }
+                XCTFail("B must be superseded before loading")
+            } catch is CancellationError {
+                bCancelled.fulfill()
+            } catch {
+                XCTFail("Unexpected B error: \(error)")
+            }
+        }
+        await fulfillment(of: [bEntered], timeout: 1)
+
+        let taskC = Task { @MainActor in
+            cEntered.fulfill()
+            return try await cache.value(for: "C") {
+                await probe.begin("C")
+                cStarted.fulfill()
+                await gateC.wait()
+                await probe.end()
+                return "C"
+            }
+        }
+        await fulfillment(of: [cEntered], timeout: 1)
+        await fulfillment(
+            of: [aCancelled, bCancelled],
+            timeout: 1
+        )
+
+        let beforeDrain = await probe.snapshot()
+        XCTAssertEqual(beforeDrain.started, ["A"])
+        XCTAssertEqual(beforeDrain.maxConcurrent, 1)
+
+        await gateA.open()
+        await fulfillment(of: [cStarted], timeout: 1)
+        await gateB.open()
+        await gateC.open()
+        await taskA.value
+        await taskB.value
+        do {
+            let resultC = try await taskC.value
+            XCTAssertEqual(resultC, "C")
+        } catch {
+            XCTFail("Unexpected C error: \(error)")
+        }
+
+        let afterDrain = await probe.snapshot()
+        XCTAssertEqual(afterDrain.started, ["A", "C"])
+        XCTAssertEqual(afterDrain.maxConcurrent, 1)
+        XCTAssertEqual(afterDrain.active, 0)
+        XCTAssertEqual(cache.cachedKey, "C")
+        XCTAssertEqual(cache.cachedValue, "C")
     }
 
     func testRestLoaderTreatsCancellationAsSilent() async {
@@ -631,10 +936,10 @@ final class MascotMotionControllerTests: XCTestCase {
         let activeTask = Task { @MainActor in
             await loader.load(level: 4)
         }
-        await fulfillment(of: [levelFourStarted], timeout: 1)
 
         await levelOneGate.open()
         await staleTask.value
+        await fulfillment(of: [levelFourStarted], timeout: 1)
         await levelFourGate.open()
         await activeTask.value
 
@@ -643,6 +948,87 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertEqual(cache.cachedKey, "rig-4")
         XCTAssertTrue(loader.renderedImages(for: 4) === keyframes)
         XCTAssertNil(loader.renderedFallbackLayers(for: 4))
+    }
+
+    func testSupersededRigErrorCannotFallbackAndReplaceCurrentCacheKey() async {
+        let cache = LatestActiveAssetCache<String, String>(
+            maxCost: 100,
+            costOf: { $0.utf8.count }
+        )
+        let oldGate = AsyncTestGate()
+        let currentGate = AsyncTestGate()
+        let fallbackCounter = AsyncTestCounter()
+        let oldStarted = expectation(description: "old rig started")
+        let oldLoaderFinished = expectation(
+            description: "old loader cancelled before drain"
+        )
+        let currentStarted = expectation(
+            description: "current rig started after drain"
+        )
+        let image = UIImage(
+            color: .purple,
+            size: CGSize(width: 1, height: 1)
+        )
+        let keyframes = MascotRigImages(
+            rest: image,
+            blink: image,
+            celebrate: image,
+            semanticPartNames: []
+        )
+        let fallback: MascotRigLoader.FallbackLoader = { level, _ in
+            await fallbackCounter.increment()
+            _ = try await cache.value(for: "fallback-\(level)") {
+                "fallback-\(level)"
+            }
+            return [
+                MascotRigFallbackLayer(part: .body, image: image),
+            ]
+        }
+        let oldLoader = MascotRigLoader(
+            loadImages: { _, _ in
+                _ = try await cache.value(for: "rig-1") {
+                    oldStarted.fulfill()
+                    await oldGate.wait()
+                    throw AsyncTestError.failed
+                }
+                return keyframes
+            },
+            loadFallbackLayers: fallback
+        )
+        let currentLoader = MascotRigLoader(
+            loadImages: { _, _ in
+                _ = try await cache.value(for: "rig-4") {
+                    currentStarted.fulfill()
+                    await currentGate.wait()
+                    return "rig-4"
+                }
+                return keyframes
+            },
+            loadFallbackLayers: fallback
+        )
+
+        let oldTask = Task { @MainActor in
+            await oldLoader.load(level: 1)
+            oldLoaderFinished.fulfill()
+        }
+        await fulfillment(of: [oldStarted], timeout: 1)
+
+        let currentTask = Task { @MainActor in
+            await currentLoader.load(level: 4)
+        }
+        await fulfillment(of: [oldLoaderFinished], timeout: 1)
+
+        await oldGate.open()
+        await fulfillment(of: [currentStarted], timeout: 1)
+        await currentGate.open()
+        await oldTask.value
+        await currentTask.value
+
+        let fallbackCount = await fallbackCounter.value
+        XCTAssertEqual(fallbackCount, 0)
+        XCTAssertEqual(cache.cachedKey, "rig-4")
+        XCTAssertTrue(currentLoader.renderedImages(for: 4) === keyframes)
+        XCTAssertNil(currentLoader.renderedFallbackLayers(for: 4))
     }
 
     func testFullRigAndFallbackCachesKeepOnlyTheActiveLevel() async throws {
@@ -945,5 +1331,54 @@ private actor AsyncTestCounter {
 
     func increment() {
         value += 1
+    }
+}
+
+private enum AsyncTestError: Error {
+    case failed
+}
+
+private actor AsyncLoadConcurrencyProbe {
+    private(set) var active = 0
+    private(set) var maxConcurrent = 0
+    private(set) var started: [String] = []
+
+    func begin(_ key: String) {
+        active += 1
+        maxConcurrent = max(maxConcurrent, active)
+        started.append(key)
+    }
+
+    func end() {
+        active -= 1
+    }
+
+    func snapshot() -> (
+        active: Int,
+        maxConcurrent: Int,
+        started: [String]
+    ) {
+        (active, maxConcurrent, started)
+    }
+}
+
+private final class CompletionCancellationRace: @unchecked Sendable {
+    private let completionEntered = DispatchSemaphore(value: 0)
+    private let completionRelease = DispatchSemaphore(value: 0)
+
+    func blockingHeavyCost() -> Int {
+        completionEntered.signal()
+        completionRelease.wait()
+        return 19 * 1_024 * 1_024
+    }
+
+    func waitForCompletion() -> Bool {
+        completionEntered.wait(
+            timeout: .now() + 1
+        ) == .success
+    }
+
+    func releaseCompletion() {
+        completionRelease.signal()
     }
 }

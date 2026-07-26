@@ -596,18 +596,65 @@ final class LatestActiveAssetCache<
         let cost: Int
     }
 
+    private final class WaiterCancellation: @unchecked Sendable {
+        private enum State {
+            case waiting
+            case cancelled
+            case completed
+        }
+
+        private let lock = NSLock()
+        private var state = State.waiting
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if case .cancelled = state {
+                return true
+            }
+            return false
+        }
+
+        func cancel() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard case .waiting = state else {
+                return
+            }
+            state = .cancelled
+        }
+
+        func claimForCompletion() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard case .waiting = state else {
+                return false
+            }
+            state = .completed
+            return true
+        }
+    }
+
+    private struct Waiter {
+        let continuation: CheckedContinuation<Value, Error>
+        let cancellation: WaiterCancellation
+    }
+
     private struct InFlightEntry {
         let id: Int
-        var latestGeneration: Int
+        let key: Key
         let task: Task<Value, Error>
+        var acceptsWaiters: Bool
+        var waiters: [Int: Waiter]
     }
 
     private let maxCost: Int
     private let costOf: (Value) -> Int
-    private var generation = 0
     private var nextRequestID = 0
+    private var nextWaiterID = 0
     private var cached: CachedEntry?
-    private var inFlight: [Key: InFlightEntry] = [:]
+    private var inFlight: InFlightEntry?
+    private var serialTail: Task<Void, Never>?
 
     var cachedKey: Key? { cached?.key }
     var cachedValue: Value? { cached?.value }
@@ -626,92 +673,181 @@ final class LatestActiveAssetCache<
         load: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
         try Task.checkCancellation()
-        generation += 1
-        let requestGeneration = generation
-        cancelInFlight(except: key)
-
         if cached?.key == key,
            let cached {
             return cached.value
         }
-        cached = nil
 
-        let requestID: Int
-        let task: Task<Value, Error>
-        if var existing = inFlight[key] {
-            existing.latestGeneration = requestGeneration
-            inFlight[key] = existing
-            requestID = existing.id
-            task = existing.task
-        } else {
-            nextRequestID += 1
-            requestID = nextRequestID
-            task = Task {
-                try await load()
+        nextWaiterID += 1
+        let waiterID = nextWaiterID
+        let cancellation = WaiterCancellation()
+        let value: Value = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation {
+                continuation in
+                register(
+                    waiterID: waiterID,
+                    key: key,
+                    continuation: continuation,
+                    cancellation: cancellation,
+                    load: load
+                )
             }
-            inFlight[key] = InFlightEntry(
-                id: requestID,
-                latestGeneration: requestGeneration,
-                task: task
-            )
+        } onCancel: {
+            cancellation.cancel()
+            Task { @MainActor [weak self] in
+                self?.cancelWaiter(waiterID)
+            }
         }
-
-        do {
-            let value = try await task.value
-            finish(
-                key: key,
-                requestID: requestID,
-                value: value
-            )
-            return value
-        } catch {
-            finishFailure(key: key, requestID: requestID)
-            throw error
-        }
+        try Task.checkCancellation()
+        return value
     }
 
-    private func finish(
+    private func register(
+        waiterID: Int,
         key: Key,
-        requestID: Int,
-        value: Value
+        continuation: CheckedContinuation<Value, Error>,
+        cancellation: WaiterCancellation,
+        load: @escaping @Sendable () async throws -> Value
     ) {
-        guard let entry = inFlight[key],
+        guard !cancellation.isCancelled else {
+            continuation.resume(throwing: CancellationError())
+            return
+        }
+        if cached?.key == key,
+           let cached {
+            continuation.resume(returning: cached.value)
+            return
+        }
+
+        if var existing = inFlight,
+           existing.key == key,
+           existing.acceptsWaiters {
+            existing.waiters[waiterID] = Waiter(
+                continuation: continuation,
+                cancellation: cancellation
+            )
+            inFlight = existing
+            return
+        }
+
+        supersedeCurrent()
+        cached = nil
+        nextRequestID += 1
+        let requestID = nextRequestID
+        let predecessor = serialTail
+        let task = Task<Value, Error> {
+            if let predecessor {
+                await predecessor.value
+            }
+            try Task.checkCancellation()
+            return try await load()
+        }
+        inFlight = InFlightEntry(
+            id: requestID,
+            key: key,
+            task: task,
+            acceptsWaiters: true,
+            waiters: [
+                waiterID: Waiter(
+                    continuation: continuation,
+                    cancellation: cancellation
+                ),
+            ]
+        )
+        let monitor = Task<Void, Never> { [weak self] in
+            let result = await task.result
+            self?.complete(
+                requestID: requestID,
+                result: result
+            )
+        }
+        serialTail = monitor
+    }
+
+    private func complete(
+        requestID: Int,
+        result: Result<Value, Error>
+    ) {
+        guard let entry = inFlight,
               entry.id == requestID else {
             return
         }
-        inFlight[key] = nil
-        guard entry.latestGeneration == generation else {
+        inFlight = nil
+        serialTail = nil
+        let waiters = Array(entry.waiters.values)
+
+        switch result {
+        case let .success(value):
+            let cost = waiters.isEmpty
+                ? 0
+                : max(costOf(value), 0)
+            let activeWaiters = waiters.filter {
+                $0.cancellation.claimForCompletion()
+            }
+            if !activeWaiters.isEmpty,
+               cost <= maxCost {
+                cached = CachedEntry(
+                    key: entry.key,
+                    value: value,
+                    cost: cost
+                )
+            } else {
+                cached = nil
+            }
+            for waiter in activeWaiters {
+                waiter.continuation.resume(returning: value)
+            }
+            for waiter in waiters where waiter.cancellation.isCancelled {
+                waiter.continuation.resume(
+                    throwing: CancellationError()
+                )
+            }
+        case let .failure(error):
+            for waiter in waiters {
+                if waiter.cancellation.claimForCompletion() {
+                    waiter.continuation.resume(throwing: error)
+                } else if waiter.cancellation.isCancelled {
+                    waiter.continuation.resume(
+                        throwing: CancellationError()
+                    )
+                }
+            }
+        }
+    }
+
+    private func cancelWaiter(_ waiterID: Int) {
+        guard var entry = inFlight,
+              let continuation = entry.waiters.removeValue(
+                  forKey: waiterID
+              ) else {
             return
         }
-        let cost = max(costOf(value), 0)
-        guard cost <= maxCost else {
-            cached = nil
-            return
+        let shouldCancelLoad = entry.waiters.isEmpty
+        if shouldCancelLoad {
+            entry.acceptsWaiters = false
         }
-        cached = CachedEntry(
-            key: key,
-            value: value,
-            cost: cost
+        inFlight = entry
+        if shouldCancelLoad {
+            entry.task.cancel()
+        }
+        continuation.cancellation.cancel()
+        continuation.continuation.resume(
+            throwing: CancellationError()
         )
     }
 
-    private func finishFailure(
-        key: Key,
-        requestID: Int
-    ) {
-        guard inFlight[key]?.id == requestID else {
+    private func supersedeCurrent() {
+        guard let entry = inFlight else {
             return
         }
-        inFlight[key] = nil
-    }
-
-    private func cancelInFlight(except key: Key) {
-        let supersededKeys = inFlight.keys.filter { $0 != key }
-        for supersededKey in supersededKeys {
-            let task = inFlight.removeValue(
-                forKey: supersededKey
-            )?.task
-            task?.cancel()
+        inFlight = nil
+        entry.task.cancel()
+        for waiter in entry.waiters.values {
+            waiter.cancellation.cancel()
+            waiter.continuation.resume(
+                throwing: CancellationError()
+            )
         }
     }
 }
