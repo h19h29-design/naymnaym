@@ -6,6 +6,35 @@
     "mode": "RGBA"
   },
   "referenceVsRestChangedPixels": 0,
+  "blinkAcceptance": {
+    "expressionImageGenSourceSha256": "834f4187d55dc02b707e548692759018a470bc33989780a0ffd08e077ea35c08",
+    "outsideEyesAndMouthRoiChangedPixels": 0,
+    "immutableEyebrowChangedPixels": 0,
+    "eyesRoiAlphaBounds": [
+      372,
+      423,
+      784,
+      626
+    ],
+    "mouthRoiAlphaBounds": [
+      438,
+      467,
+      678,
+      736
+    ],
+    "expressionRoiColorAdjustmentRgb": [
+      0,
+      0,
+      -2
+    ],
+    "nonRoiImageGenPixelsAccepted": 0,
+    "backgroundInspections": [
+      "dark",
+      "light",
+      "checker"
+    ],
+    "faceCropInspectionScale": "1:1"
+  },
   "parts": {
     "tailBack": {
       "nonzeroAlphaPixels": 61766,
@@ -71,21 +100,21 @@
       ]
     },
     "eyesClosed": {
-      "nonzeroAlphaPixels": 2675,
+      "nonzeroAlphaPixels": 60792,
       "alphaBounds": [
-        405,
-        481,
-        742,
-        513
+        372,
+        423,
+        784,
+        626
       ]
     },
     "mouthNeutral": {
-      "nonzeroAlphaPixels": 464,
+      "nonzeroAlphaPixels": 56844,
       "alphaBounds": [
-        527,
-        605,
-        590,
-        620
+        438,
+        467,
+        678,
+        736
       ]
     },
     "mouthSmile": {
@@ -156,7 +185,7 @@
   },
   "poses": {
     "rest": "exact source pixels",
-    "blink": "eyes closed + neutral mouth",
+    "blink": "eyes closed + tightly feathered ImageGen neutral mouth ROI",
     "celebrate": {
       "armLeftDegrees": 12,
       "armRightDegrees": -12,

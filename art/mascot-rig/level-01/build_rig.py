@@ -21,6 +21,8 @@ SOURCE = (
     / "Squirrel_Growth_Level_1.imageset/Squirrel_Growth_Level_1.png"
 )
 EXPECTED_SHA256 = "e5469a7652dc91989ddbf6c11ccb6355724fb831b4dac90ee66f249939882cfa"
+EYES_EDIT_SOURCE = HERE / "eyes-closed-imagegen-source.png"
+EYES_EDIT_SHA256 = "834f4187d55dc02b707e548692759018a470bc33989780a0ffd08e077ea35c08"
 SIZE = (1254, 1254)
 PARTS = [
     "tailBack",
@@ -74,10 +76,6 @@ def source_layer(source: Image.Image, mask: Image.Image) -> Image.Image:
     return Image.composite(source, blank(), mask)
 
 
-def rgba_fill(color: tuple[int, int, int, int], mask: Image.Image) -> Image.Image:
-    return Image.composite(Image.new("RGBA", SIZE, color), blank(), mask)
-
-
 def textured_fill(
     color: tuple[int, int, int], mask: Image.Image, seed: int
 ) -> Image.Image:
@@ -115,78 +113,6 @@ def overlay_underpaint(
     return Image.alpha_composite(layer, textured_fill(color, missing, seed))
 
 
-def boundary_inpaint(
-    source: Image.Image,
-    bbox: tuple[int, int, int, int],
-    mask: Image.Image,
-    seed: int,
-) -> Image.Image:
-    """Interpolate neighboring muzzle/eye-patch colors across a hidden oval."""
-    result = blank()
-    source_pixels = source.load()
-    result_pixels = result.load()
-    mask_pixels = mask.load()
-    left, top, right, bottom = bbox
-    center_x = (left + right) / 2
-    center_y = (top + bottom) / 2
-    radius_x = (right - left) / 2
-    radius_y = (bottom - top) / 2
-    for y in range(top, bottom + 1):
-        normalized_y = (y - center_y) / radius_y
-        if abs(normalized_y) > 1:
-            continue
-        half_width = radius_x * math.sqrt(max(0, 1 - normalized_y**2))
-        row_left = max(left, int(center_x - half_width))
-        row_right = min(right, int(center_x + half_width))
-        sample_left = max(0, row_left - 4)
-        sample_right = min(SIZE[0] - 1, row_right + 4)
-        left_color = source_pixels[sample_left, y][:3]
-        right_color = source_pixels[sample_right, y][:3]
-        span = max(1, row_right - row_left)
-        for x in range(row_left, row_right + 1):
-            if not mask_pixels[x, y]:
-                continue
-            amount = (x - row_left) / span
-            noise = ((x * 11 + y * 19 + seed * 41) % 5) - 2
-            color = tuple(
-                max(
-                    0,
-                    min(
-                        255,
-                        round(left_color[channel] * (1 - amount) + right_color[channel] * amount)
-                        + noise,
-                    ),
-                )
-                for channel in range(3)
-            )
-            result_pixels[x, y] = (*color, 255)
-    return result
-
-
-def face_gradient(
-    bbox: tuple[int, int, int, int],
-    mask: Image.Image,
-    top_color: tuple[int, int, int],
-    bottom_color: tuple[int, int, int],
-) -> Image.Image:
-    """Crisp deterministic face base with no blur or source-color smearing."""
-    result = blank()
-    pixels = result.load()
-    mask_pixels = mask.load()
-    left, top, right, bottom = bbox
-    height = max(1, bottom - top)
-    for y in range(top, bottom + 1):
-        amount = (y - top) / height
-        color = tuple(
-            round(top_color[channel] * (1 - amount) + bottom_color[channel] * amount)
-            for channel in range(3)
-        )
-        for x in range(left, right + 1):
-            if mask_pixels[x, y]:
-                pixels[x, y] = (*color, 255)
-    return result
-
-
 def muzzle_texture(source: Image.Image, mask: Image.Image) -> Image.Image:
     """Transfer only fur luminance from the cream belly into the mouth patch."""
     bbox = (516, 565, 603, 666)
@@ -221,26 +147,107 @@ def muzzle_texture(source: Image.Image, mask: Image.Image) -> Image.Image:
     return output
 
 
-def draw_expression_layers() -> tuple[Image.Image, Image.Image]:
-    eyes = blank()
-    eye_draw = ImageDraw.Draw(eyes)
-    dark = (93, 48, 17, 255)
-    # Four-pixel landmark tolerance is enforced below; curves remain centered
-    # on the exact open-eye centers.
-    eye_draw.arc((402, 481, 510, 549), 198, 342, fill=dark, width=12)
-    eye_draw.arc((628, 484, 744, 552), 198, 342, fill=dark, width=12)
-    eye_draw.arc((411, 489, 501, 543), 200, 340, fill=(139, 76, 24, 210), width=4)
-    eye_draw.arc((638, 492, 734, 546), 200, 340, fill=(139, 76, 24, 210), width=4)
-
-    mouth = blank()
-    mouth_draw = ImageDraw.Draw(mouth)
-    mouth_draw.line(
-        [(528, 608), (542, 613), (558, 615), (574, 613), (588, 608)],
-        fill=dark,
-        width=8,
-        joint="curve",
+def source_brow_mask(source: Image.Image) -> Image.Image:
+    """Protect only the original orange-brown eyebrow strokes."""
+    rgb = np.asarray(source.convert("RGB"))
+    yy, xx = np.indices((SIZE[1], SIZE[0]))
+    boxes = (
+        ((xx >= 420) & (xx <= 510) & (yy >= 355) & (yy <= 420))
+        | ((xx >= 645) & (xx <= 745) & (yy >= 355) & (yy <= 420))
     )
-    return eyes, mouth
+    brow_color = (
+        (rgb[:, :, 0] > 115)
+        & (rgb[:, :, 0] < 245)
+        & (rgb[:, :, 1] < 175)
+        & (rgb[:, :, 2] < 105)
+        & ((rgb[:, :, 0].astype(np.int16) - rgb[:, :, 1]) > 38)
+    )
+    mask = Image.fromarray(
+        np.where(boxes & brow_color, 255, 0).astype(np.uint8)
+    )
+    return mask.filter(ImageFilter.MaxFilter(3))
+
+
+def imagegen_expression_layers(
+    source: Image.Image,
+) -> tuple[
+    Image.Image,
+    Image.Image,
+    Image.Image,
+    Image.Image,
+    list[int],
+]:
+    """Extract one coherent closed-eye/neutral-mouth expression source."""
+    actual_sha = hashlib.sha256(EYES_EDIT_SOURCE.read_bytes()).hexdigest()
+    if actual_sha != EYES_EDIT_SHA256:
+        raise SystemExit(f"expression edit checksum mismatch: {actual_sha}")
+    generated = Image.open(EYES_EDIT_SOURCE).convert("RGBA")
+    if generated.size != SIZE:
+        raise SystemExit(
+            f"unexpected expression edit dimensions: {generated.size}"
+        )
+
+    eyes_core = blank("L")
+    eyes_draw = ImageDraw.Draw(eyes_core)
+    eyes_draw.ellipse((385, 436, 535, 610), fill=255)
+    eyes_draw.ellipse((600, 436, 770, 612), fill=255)
+    eyes_feather = eyes_core.filter(ImageFilter.MaxFilter(7)).filter(
+        ImageFilter.GaussianBlur(4)
+    )
+    eyes_feather = ImageChops.lighter(eyes_core, eyes_feather)
+    eyes_feather = ImageChops.multiply(
+        eyes_feather, ImageChops.invert(source_brow_mask(source))
+    )
+
+    mouth_core = blank("L")
+    ImageDraw.Draw(mouth_core).polygon(
+        [
+            (475, 490),
+            (640, 490),
+            (654, 545),
+            (650, 625),
+            (630, 682),
+            (592, 712),
+            (524, 712),
+            (486, 682),
+            (466, 625),
+            (461, 545),
+        ],
+        fill=255,
+    )
+    mouth_feather = mouth_core.filter(ImageFilter.MaxFilter(11)).filter(
+        ImageFilter.GaussianBlur(7)
+    )
+    mouth_feather = ImageChops.lighter(mouth_core, mouth_feather)
+
+    source_rgb = np.asarray(source.convert("RGB"), dtype=np.int16)
+    generated_rgb = np.asarray(generated.convert("RGB"), dtype=np.int16)
+    expression_mask = union(eyes_feather, mouth_feather)
+    alpha_array = np.asarray(expression_mask)
+    transition = (alpha_array > 12) & (alpha_array < 220)
+    delta = np.median(
+        source_rgb[transition] - generated_rgb[transition], axis=0
+    )
+    delta = np.clip(np.rint(delta), -18, 18).astype(np.int16)
+    matched_rgb = np.clip(generated_rgb + delta, 0, 255).astype(np.uint8)
+
+    def localized_layer(mask: Image.Image) -> Image.Image:
+        alpha = np.asarray(mask)
+        rgba = np.zeros((SIZE[1], SIZE[0], 4), dtype=np.uint8)
+        rgba[:, :, :3] = matched_rgb
+        rgba[:, :, 3] = alpha
+        rgba[alpha == 0, :3] = 0
+        return Image.fromarray(rgba)
+
+    eyes_layer = localized_layer(eyes_feather)
+    mouth_layer = localized_layer(mouth_feather)
+    return (
+        eyes_layer,
+        eyes_feather,
+        mouth_layer,
+        mouth_feather,
+        [int(value) for value in delta],
+    )
 
 
 def affine_about(
@@ -572,7 +579,13 @@ def main() -> None:
         (222, 139, 43),
         4,
     )
-    layers["eyesClosed"], layers["mouthNeutral"] = draw_expression_layers()
+    (
+        layers["eyesClosed"],
+        eyes_closed_roi,
+        layers["mouthNeutral"],
+        mouth_neutral_roi,
+        expression_color_adjustment,
+    ) = imagegen_expression_layers(source)
 
     for name in PARTS:
         save_rgba(layers[name], HERE / f"{name}.png")
@@ -594,6 +607,7 @@ def main() -> None:
     }
     rest = compose(layers, rest_active)
     blink = compose(layers, blink_active)
+    brow_regions = source_brow_mask(source)
 
     celebrate_layers = dict(layers)
     celebrate_layers["tailBack"] = affine_about(
@@ -625,6 +639,77 @@ def main() -> None:
         optimize=False,
         interlace=False,
     )
+    blink_comparison = Image.new(
+        "RGBA", (SIZE[0] * 2, SIZE[1]), (0, 0, 0, 0)
+    )
+    blink_comparison.alpha_composite(source, (0, 0))
+    blink_comparison.alpha_composite(blink, (SIZE[0], 0))
+    save_rgba(blink_comparison, HERE / "comparison-reference-blink.png")
+
+    def checker(color_one, color_two, tile=42):
+        background = Image.new("RGBA", SIZE, color_one)
+        draw = ImageDraw.Draw(background)
+        for y in range(0, SIZE[1], tile):
+            for x in range(0, SIZE[0], tile):
+                if (x // tile + y // tile) % 2:
+                    draw.rectangle(
+                        (x, y, x + tile - 1, y + tile - 1),
+                        fill=color_two,
+                    )
+        return background
+
+    backgrounds = [
+        Image.new("RGBA", SIZE, (18, 18, 20, 255)),
+        Image.new("RGBA", SIZE, (248, 246, 239, 255)),
+        checker((224, 224, 224, 255), (250, 250, 250, 255)),
+    ]
+    inspection = Image.new(
+        "RGBA", (SIZE[0] * 2, SIZE[1] * 3), (0, 0, 0, 255)
+    )
+    for row, background in enumerate(backgrounds):
+        reference_on_background = Image.alpha_composite(background, source)
+        blink_on_background = Image.alpha_composite(background, blink)
+        inspection.alpha_composite(
+            reference_on_background, (0, SIZE[1] * row)
+        )
+        inspection.alpha_composite(
+            blink_on_background, (SIZE[0], SIZE[1] * row)
+        )
+    save_rgba(
+        inspection, HERE / "inspection-reference-blink-backgrounds.png"
+    )
+    face_box = (350, 340, 910, 760)
+    face_width = face_box[2] - face_box[0]
+    face_height = face_box[3] - face_box[1]
+    face_inspection = Image.new(
+        "RGBA", (face_width * 2, face_height * 3), (0, 0, 0, 255)
+    )
+    for row, background in enumerate(backgrounds):
+        reference_face = Image.alpha_composite(
+            background, source
+        ).crop(face_box)
+        blink_face = Image.alpha_composite(background, blink).crop(face_box)
+        face_inspection.alpha_composite(
+            reference_face, (0, face_height * row)
+        )
+        face_inspection.alpha_composite(
+            blink_face, (face_width, face_height * row)
+        )
+    save_rgba(
+        face_inspection, HERE / "inspection-blink-face-crops-1x.png"
+    )
+    mouth_neutral_roi.save(
+        HERE / "mouth-neutral-roi-mask.png",
+        format="PNG",
+        optimize=False,
+        interlace=False,
+    )
+    eyes_closed_roi.save(
+        HERE / "eyes-closed-roi-mask.png",
+        format="PNG",
+        optimize=False,
+        interlace=False,
+    )
 
     exact_difference = changed_pixel_count(source, rest)
     counts = {name: alpha_count(layers[name]) for name in PARTS}
@@ -632,11 +717,47 @@ def main() -> None:
         raise SystemExit(f"rest/source pixel mismatch: {exact_difference} pixels")
     if any(count == 0 for count in counts.values()):
         raise SystemExit(f"empty layer detected: {counts}")
+    allowed_mouth_roi = union(mouth_region, mouth_neutral_roi)
+    allowed_blink_roi = union(
+        eyes_region, eyes_closed_roi, allowed_mouth_roi
+    )
+    allowed_blink_roi = allowed_blink_roi.point(
+        lambda value: 255 if value else 0
+    )
+    blink_outside_roi = Image.composite(
+        source, blink, allowed_blink_roi
+    )
+    blink_outside_changed = changed_pixel_count(source, blink_outside_roi)
+    if blink_outside_changed:
+        raise SystemExit(
+            "blink changed pixels outside eyes/mouth ROI: "
+            f"{blink_outside_changed}"
+        )
+    def changed_within(mask: Image.Image) -> int:
+        isolated = Image.composite(blink, source, mask)
+        return changed_pixel_count(source, isolated)
+
+    eyebrow_changed = changed_within(brow_regions)
+    if eyebrow_changed:
+        raise SystemExit(
+            f"immutable eyebrow pixels changed: {eyebrow_changed}"
+        )
 
     metrics = {
         "sourceSha256": source_sha,
         "canvas": {"width": SIZE[0], "height": SIZE[1], "mode": "RGBA"},
         "referenceVsRestChangedPixels": exact_difference,
+        "blinkAcceptance": {
+            "expressionImageGenSourceSha256": EYES_EDIT_SHA256,
+            "outsideEyesAndMouthRoiChangedPixels": blink_outside_changed,
+            "immutableEyebrowChangedPixels": eyebrow_changed,
+            "eyesRoiAlphaBounds": alpha_bbox(layers["eyesClosed"]),
+            "mouthRoiAlphaBounds": alpha_bbox(layers["mouthNeutral"]),
+            "expressionRoiColorAdjustmentRgb": expression_color_adjustment,
+            "nonRoiImageGenPixelsAccepted": 0,
+            "backgroundInspections": ["dark", "light", "checker"],
+            "faceCropInspectionScale": "1:1",
+        },
         "parts": {
             name: {"nonzeroAlphaPixels": counts[name], "alphaBounds": alpha_bbox(layers[name])}
             for name in PARTS
@@ -669,7 +790,7 @@ def main() -> None:
         },
         "poses": {
             "rest": "exact source pixels",
-            "blink": "eyes closed + neutral mouth",
+            "blink": "eyes closed + tightly feathered ImageGen neutral mouth ROI",
             "celebrate": {
                 "armLeftDegrees": 12,
                 "armRightDegrees": -12,
