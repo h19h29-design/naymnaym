@@ -7,7 +7,7 @@
 - 앱 이름: 급식레벨업
 - 패키지명: `com.h19h29.naymnaymlevelup`
 - 버전: `1.1`
-- versionCode: `8`
+- versionCode: `9`
 - 카테고리: 교육
 - 가격: 무료
 - 광고 포함: 아니요
