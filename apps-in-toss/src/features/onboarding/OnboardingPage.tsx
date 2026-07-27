@@ -71,6 +71,7 @@ export function OnboardingPage() {
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const searchControllerRef = useRef<AbortController | null>(null);
+  const autoSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const savedProfileRef = useRef(false);
@@ -94,6 +95,9 @@ export function OnboardingPage() {
 
   useEffect(() => () => {
     searchControllerRef.current?.abort();
+    if (autoSearchTimeoutRef.current !== null) {
+      clearTimeout(autoSearchTimeoutRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -105,6 +109,10 @@ export function OnboardingPage() {
   const setSchool = (type: 'middle' | 'high') => {
     if (isProfileLocked) return;
     searchControllerRef.current?.abort();
+    if (autoSearchTimeoutRef.current !== null) {
+      clearTimeout(autoSearchTimeoutRef.current);
+      autoSearchTimeoutRef.current = null;
+    }
     requestIdRef.current += 1;
     setSchoolType(type);
     setSchools([]);
@@ -115,6 +123,10 @@ export function OnboardingPage() {
 
   const runSchoolSearch = async () => {
     if (isProfileLocked) return;
+    if (autoSearchTimeoutRef.current !== null) {
+      clearTimeout(autoSearchTimeoutRef.current);
+      autoSearchTimeoutRef.current = null;
+    }
 
     const normalized = (searchInputRef.current?.value ?? keyword)
       .normalize('NFC')
@@ -161,6 +173,38 @@ export function OnboardingPage() {
       }
     }
   };
+
+  useEffect(() => {
+    if (autoSearchTimeoutRef.current !== null) {
+      clearTimeout(autoSearchTimeoutRef.current);
+      autoSearchTimeoutRef.current = null;
+    }
+
+    const normalized = keyword.normalize('NFC').trim();
+    const selectedSchoolIsCurrent = selectedSchool !== null
+      && selectedSchool.schoolType === schoolType
+      && selectedSchool.name === normalized;
+    if (
+      isProfileLocked
+      || schoolType === null
+      || !SCHOOL_KEYWORD.test(normalized)
+      || selectedSchoolIsCurrent
+    ) {
+      return undefined;
+    }
+
+    autoSearchTimeoutRef.current = setTimeout(() => {
+      autoSearchTimeoutRef.current = null;
+      void runSchoolSearch();
+    }, 600);
+
+    return () => {
+      if (autoSearchTimeoutRef.current !== null) {
+        clearTimeout(autoSearchTimeoutRef.current);
+        autoSearchTimeoutRef.current = null;
+      }
+    };
+  }, [isProfileLocked, keyword, schoolType, selectedSchool]);
 
   const toggleAllergy = (code: number, checked: boolean) => {
     if (isProfileLocked) return;
@@ -296,6 +340,9 @@ export function OnboardingPage() {
           className="school-search-control"
         >
           <label htmlFor="school-search-input">학교 검색</label>
+          <p className="school-search-control__hint">
+            자동 검색 적용 · 학교 이름을 두 글자 이상 입력해 주세요.
+          </p>
           <input
             ref={searchInputRef}
             id="school-search-input"
@@ -305,19 +352,34 @@ export function OnboardingPage() {
             maxLength={40}
             disabled={isProfileLocked}
             autoComplete="off"
-            enterKeyHint="done"
+            enterKeyHint="search"
             onInput={(event) => {
               if (!isProfileLocked) setKeyword(event.currentTarget.value);
             }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              void runSchoolSearch();
+            }}
           />
-          <button
-            type="button"
-            aria-label="학교 검색하기"
-            disabled={isProfileLocked || isSearching}
-            onClick={() => void runSchoolSearch()}
-          >
-            {isSearching ? '학교를 찾는 중이에요' : '학교 찾기'}
-          </button>
+          {selectedSchool === null ? (
+            <button
+              type="button"
+              className="school-search-floating-action"
+              style={{
+                position: 'fixed',
+                bottom: 180,
+                zIndex: 20,
+                background: '#2f8a61',
+                color: '#fff',
+              }}
+              aria-label="학교 검색하기"
+              disabled={isProfileLocked || isSearching}
+              onClick={() => void runSchoolSearch()}
+            >
+              {isSearching ? '학교를 찾는 중이에요' : '학교 찾기'}
+            </button>
+          ) : null}
         </div>
         {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
         {searchError !== null ? <p role="alert">{searchError}</p> : null}

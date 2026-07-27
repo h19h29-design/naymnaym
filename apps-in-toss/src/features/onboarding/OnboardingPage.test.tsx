@@ -8,6 +8,7 @@ import { AppStateProvider, useAppState } from '../../state/AppStateProvider';
 import { neisClient } from '../../services/neisClient';
 import type { AppRepository } from '../../services/repository';
 import { makeProfile, school } from '../../test/fixtures';
+import '../../styles/global.css';
 
 const saveProfile = vi.fn(async () => undefined);
 
@@ -194,6 +195,51 @@ describe('OnboardingPage', () => {
     ));
     expect(await screen.findByRole('button', { name: /가람중학교/ }))
       .toBeInTheDocument();
+  });
+
+  it('automatically searches after a valid school name is entered', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    const user = renderOnboarding({ searchSchools });
+
+    await user.click(screen.getByRole('radio', { name: '중학교' }));
+    await user.type(screen.getByRole('searchbox', { name: '학교 검색' }), '가람');
+
+    expect(await screen.findByRole('button', { name: /가람중학교/ }, {
+      timeout: 2_000,
+    })).toBeInTheDocument();
+    expect(searchSchools).toHaveBeenCalledWith(
+      '가람',
+      'middle',
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('searches immediately when the WebView keyboard sends Enter', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    const user = renderOnboarding({ searchSchools });
+
+    await user.click(screen.getByRole('radio', { name: '중학교' }));
+    const schoolSearch = screen.getByRole('searchbox', { name: '학교 검색' });
+    await user.type(schoolSearch, '가람{Enter}');
+
+    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+      '가람',
+      'middle',
+      expect.any(AbortSignal),
+    ));
+  });
+
+  it('keeps a visible school search action above the WebView bottom chrome', async () => {
+    renderOnboarding();
+
+    const searchButton = screen.getByRole('button', { name: '학교 검색하기' });
+    const style = window.getComputedStyle(searchButton);
+
+    expect(style.position).toBe('fixed');
+    expect(style.bottom).toBe('180px');
+    expect(Number(style.zIndex)).toBeGreaterThanOrEqual(20);
+    expect(style.backgroundColor).toBe('rgb(47, 138, 97)');
+    expect(style.color).toBe('rgb(255, 255, 255)');
   });
 
   it('prefills edit mode and preserves the profile creation date when saved', async () => {
