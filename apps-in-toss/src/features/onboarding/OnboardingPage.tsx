@@ -70,6 +70,8 @@ export function OnboardingPage() {
   const [isAwaitingReload, setIsAwaitingReload] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const searchControllerRef = useRef<AbortController | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const savedProfileRef = useRef(false);
   const editInitializedRef = useRef(false);
@@ -90,49 +92,9 @@ export function OnboardingPage() {
     setAllergyCodes(existingProfile.allergyCodes);
   }, [editing, existingProfile]);
 
-  useEffect(() => {
-    if (isProfileLocked) return undefined;
-    const normalized = keyword.trim();
-    const requestId = ++requestIdRef.current;
-    if (schoolType === null || !SCHOOL_KEYWORD.test(normalized)) {
-      setSchools([]);
-      setSearchError(null);
-      setIsSearching(false);
-      setHasSearched(false);
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      setIsSearching(true);
-      setSearchError(null);
-      setHasSearched(false);
-      void neisClient.searchSchools(normalized, schoolType, controller.signal)
-        .then((results) => {
-          if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-          setSchools(results.slice(0, 20));
-          setHasSearched(true);
-        })
-        .catch((caught: unknown) => {
-          if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-          if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
-            setSchools([]);
-            setSearchError('학교를 검색하지 못했어요. 다시 시도해 주세요.');
-            setHasSearched(true);
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted && requestId === requestIdRef.current) {
-            setIsSearching(false);
-          }
-        });
-    }, 300);
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [isProfileLocked, keyword, schoolType]);
+  useEffect(() => () => {
+    searchControllerRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (selectedSchool !== null && selectedSchool.schoolType !== schoolType) {
@@ -142,7 +104,62 @@ export function OnboardingPage() {
 
   const setSchool = (type: 'middle' | 'high') => {
     if (isProfileLocked) return;
+    searchControllerRef.current?.abort();
+    requestIdRef.current += 1;
     setSchoolType(type);
+    setSchools([]);
+    setSearchError(null);
+    setIsSearching(false);
+    setHasSearched(false);
+  };
+
+  const runSchoolSearch = async () => {
+    if (isProfileLocked) return;
+
+    const normalized = (searchInputRef.current?.value ?? keyword)
+      .normalize('NFC')
+      .trim();
+    setKeyword(normalized);
+    setSelectedSchool(null);
+    setSchools([]);
+    setHasSearched(false);
+
+    if (schoolType === null) {
+      setSearchError('중학교 또는 고등학교를 먼저 선택해 주세요.');
+      return;
+    }
+    if (!SCHOOL_KEYWORD.test(normalized)) {
+      setSearchError('학교 이름을 두 글자 이상 입력해 주세요.');
+      return;
+    }
+
+    searchControllerRef.current?.abort();
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const requestId = ++requestIdRef.current;
+    setIsSearching(true);
+    setSearchError(null);
+
+    try {
+      const results = await neisClient.searchSchools(
+        normalized,
+        schoolType,
+        controller.signal,
+      );
+      if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+      setSchools(results.slice(0, 20));
+      setHasSearched(true);
+    } catch (caught: unknown) {
+      if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+      if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
+        setSearchError('학교를 검색하지 못했어요. 다시 시도해 주세요.');
+        setHasSearched(true);
+      }
+    } finally {
+      if (!controller.signal.aborted && requestId === requestIdRef.current) {
+        setIsSearching(false);
+      }
+    }
   };
 
   const toggleAllergy = (code: number, checked: boolean) => {
@@ -275,41 +292,61 @@ export function OnboardingPage() {
           </div>
         </fieldset>
 
-      <TextField
-        variant="box"
-        label="학교 검색"
-        labelOption="sustain"
-        placeholder="학교 검색"
-        value={keyword}
-        maxLength={40}
-        disabled={isProfileLocked}
-        onChange={(event) => {
-          if (!isProfileLocked) setKeyword(event.currentTarget.value);
-        }}
-      />
-      {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
-      {searchError !== null ? <p role="alert">{searchError}</p> : null}
-      {hasSearched && !isSearching && searchError === null && schools.length === 0
-        ? <p role="status">{copy.noResults}</p>
-        : null}
-      <ul aria-label="학교 검색 결과">
-        {schools.map((item) => (
-          <li key={`${item.officeCode}:${item.schoolCode}`}>
-            <Button
-              color="light"
+        <form
+          className="school-search-control"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void runSchoolSearch();
+          }}
+        >
+          <label htmlFor="school-search-input">학교 검색</label>
+          <div className="school-search-row">
+            <input
+              ref={searchInputRef}
+              id="school-search-input"
+              type="search"
+              placeholder="학교 이름을 입력해 주세요"
+              value={keyword}
+              maxLength={40}
               disabled={isProfileLocked}
-              onClick={() => {
-                if (!isProfileLocked) setSelectedSchool(item);
+              autoComplete="off"
+              enterKeyHint="search"
+              onInput={(event) => {
+                if (!isProfileLocked) setKeyword(event.currentTarget.value);
               }}
-              aria-pressed={selectedSchool?.officeCode === item.officeCode
-                && selectedSchool.schoolCode === item.schoolCode}
+            />
+            <button
+              type="submit"
+              aria-label="학교 검색하기"
+              disabled={isProfileLocked || isSearching}
             >
-              {item.name} · {item.region}
-            </Button>
-          </li>
-        ))}
-      </ul>
-      {selectedSchool !== null ? <p role="status">선택한 학교: {selectedSchool.name}</p> : null}
+              {isSearching ? '검색 중' : '검색'}
+            </button>
+          </div>
+        </form>
+        {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
+        {searchError !== null ? <p role="alert">{searchError}</p> : null}
+        {hasSearched && !isSearching && searchError === null && schools.length === 0
+          ? <p role="status">{copy.noResults}</p>
+          : null}
+        <ul aria-label="학교 검색 결과">
+          {schools.map((item) => (
+            <li key={`${item.officeCode}:${item.schoolCode}`}>
+              <Button
+                color="light"
+                disabled={isProfileLocked}
+                onClick={() => {
+                  if (!isProfileLocked) setSelectedSchool(item);
+                }}
+                aria-pressed={selectedSchool?.officeCode === item.officeCode
+                  && selectedSchool.schoolCode === item.schoolCode}
+              >
+                {item.name} · {item.region}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        {selectedSchool !== null ? <p role="status">선택한 학교: {selectedSchool.name}</p> : null}
 
       <fieldset>
         <legend>알레르기</legend>

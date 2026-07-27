@@ -835,6 +835,57 @@ h2 {
   background: var(--forest-500);
 }
 
+.school-search-control {
+  display: grid;
+  gap: 8px;
+}
+
+.school-search-control > label {
+  color: var(--muted-700);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.school-search-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.school-search-row input {
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid #d9e6dc;
+  border-radius: 14px;
+  outline: none;
+  background: #f8faf8;
+  color: var(--forest-900);
+  font: inherit;
+  font-size: 16px;
+}
+
+.school-search-row input:focus {
+  border-color: var(--forest-500);
+  box-shadow: 0 0 0 3px rgba(96, 164, 91, 0.16);
+}
+
+.school-search-row button {
+  min-width: 76px;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--forest-600);
+  color: #fff;
+  font: inherit;
+  font-weight: 900;
+}
+
+.school-search-row button:disabled {
+  opacity: 0.5;
+}
+
 .onboarding-form ul {
   display: grid;
   gap: 8px;

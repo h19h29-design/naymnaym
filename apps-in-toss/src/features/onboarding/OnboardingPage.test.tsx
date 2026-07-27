@@ -79,6 +79,7 @@ async function selectMiddleSchool(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('별명'), '냠냠이');
   await user.click(screen.getByRole('radio', { name: '중학교' }));
   await user.type(screen.getByLabelText('학교 검색'), '가람');
+  await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
   await user.click(await screen.findByRole('button', { name: /가람중학교/ }));
 }
 
@@ -129,7 +130,7 @@ describe('OnboardingPage', () => {
     expect(screen.getByText('학교를 선택해 주세요.')).toBeInTheDocument();
   });
 
-  it('searches after a 300ms debounce and saves the selected result', async () => {
+  it('searches on explicit submit and saves the selected result', async () => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
     const user = renderOnboarding({ searchSchools });
 
@@ -137,6 +138,7 @@ describe('OnboardingPage', () => {
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), '가람');
     expect(searchSchools).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',
       'middle',
@@ -161,12 +163,33 @@ describe('OnboardingPage', () => {
     expect(middleSchool.tagName).toBe('BUTTON');
     await user.click(middleSchool);
     await user.type(screen.getByLabelText('학교 검색'), '가람');
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
 
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',
       'middle',
       expect.any(AbortSignal),
     ));
+  });
+
+  it('submits the current native input value from an explicit search button', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    const user = renderOnboarding({ searchSchools });
+
+    await user.click(screen.getByRole('radio', { name: '중학교' }));
+    const schoolSearch = screen.getByRole('searchbox', { name: '학교 검색' });
+    expect(schoolSearch.tagName).toBe('INPUT');
+    await user.type(schoolSearch, '가람');
+
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+
+    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+      '가람',
+      'middle',
+      expect.any(AbortSignal),
+    ));
+    expect(await screen.findByRole('button', { name: /가람중학교/ }))
+      .toBeInTheDocument();
   });
 
   it('prefills edit mode and preserves the profile creation date when saved', async () => {
@@ -222,10 +245,15 @@ describe('OnboardingPage', () => {
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), ' ');
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
     expect(searchSchools).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '학교 이름을 두 글자 이상 입력해 주세요.',
+    );
 
     await user.clear(screen.getByLabelText('학교 검색'));
     await user.type(screen.getByLabelText('학교 검색'), '가람');
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
     expect(await screen.findByText('검색 결과가 없어요. 학교 이름을 다시 확인해 주세요.'))
       .toBeInTheDocument();
   });
@@ -241,6 +269,7 @@ describe('OnboardingPage', () => {
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), '가람');
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',
       'middle',
@@ -249,6 +278,7 @@ describe('OnboardingPage', () => {
     await user.clear(screen.getByLabelText('학교 검색'));
     await user.type(screen.getByLabelText('학교 검색'), '나래');
     await user.click(screen.getByRole('radio', { name: '고등학교' }));
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '나래',
       'high',
