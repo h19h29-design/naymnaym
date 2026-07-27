@@ -11,13 +11,14 @@
 - `dist/assets/site.css`
 - `dist/assets/*.png`
 
-## App Store Connect URL
+## 스토어 등록 URL
 
-GitHub Pages `gh-pages` 브랜치 루트에 `dist/` 내용을 배포한 뒤 아래 URL을 입력한다.
+운영 도메인에는 아래 URL을 사용한다.
 
-- 개인정보 처리방침 URL: `https://h19h29-design.github.io/naymnaym/privacy.html`
-- 데이터 안전 안내 URL: `https://h19h29-design.github.io/naymnaym/data-safety.html`
-- 지원 URL: `https://h19h29-design.github.io/naymnaym/support.html`
+- 홈페이지: `https://nyam.h19h19.com/`
+- 개인정보 처리방침 URL: `https://nyam.h19h19.com/privacy.html`
+- 데이터 안전 안내 URL: `https://nyam.h19h19.com/data-safety.html`
+- 지원 URL: `https://nyam.h19h19.com/support.html`
 
 ## 검증
 

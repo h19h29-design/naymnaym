@@ -22,6 +22,10 @@ android {
     namespace "com.h19h29.naymnaymlevelup"
     compileSdk 36
 
+    aaptOptions {
+        cruncherEnabled = false
+    }
+
     buildFeatures {
         compose true
         buildConfig true
@@ -47,7 +51,7 @@ android {
         applicationId "com.h19h29.naymnaymlevelup"
         minSdk 23
         targetSdk 36
-        versionCode 9
+        versionCode 10
         versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
