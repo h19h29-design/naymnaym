@@ -126,7 +126,7 @@ fun RebuildIntroScreen(
                     .aspectRatio(RebuildIntroMotionSpec.SourceAspectRatio)
                     .testTag("rebuild_intro_logo_viewport")
                     .semantics {
-                        contentDescription = "냠냠레벨업"
+                        contentDescription = "급식레벨업"
                     },
             )
         }

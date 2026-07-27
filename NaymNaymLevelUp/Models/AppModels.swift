@@ -983,7 +983,7 @@ enum AppInviteLink {
 
     static var childInviteRequestShareMessage: String {
         """
-        냠냠레벨업 보호자 연결을 시작해 주세요.
+        급식레벨업 보호자 연결을 시작해 주세요.
         아이 기기에서 아래 링크를 열면 보호자 초대 화면으로 이동해요.
         \(childInviteRequestURL.absoluteString)
 
@@ -1232,7 +1232,7 @@ struct ChildLink: Codable, Hashable, Identifiable {
 
     var parentInviteShareMessage: String {
         """
-        냠냠레벨업 보호자 연결 링크
+        급식레벨업 보호자 연결 링크
         \(AppInviteLink.parentConnectionURLString(inviteCode: inviteCode))
 
         링크가 열리지 않으면 아래 코드를 부모 모드 > 아이 연결하기에 붙여넣어 주세요.

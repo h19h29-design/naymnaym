@@ -1,4 +1,4 @@
-# 냠냠레벨업 Android 테스트 앱
+# 급식레벨업 Android 테스트 앱
 
 이 폴더는 iOS 앱과 같은 NEIS/보호자 초대 흐름을 Android에서 테스트하기 위한 네이티브 Android 앱입니다.
 

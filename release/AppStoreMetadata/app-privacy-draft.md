@@ -1,4 +1,4 @@
-# 냠냠레벨업 App Privacy 답변 초안
+# 급식레벨업 App Privacy 답변 초안
 
 이 문서는 App Store Connect의 App Privacy 입력을 위한 보수적 초안입니다. 최종 제출 전 앱 소유자가 실제 배포 빌드, Supabase 부모 연결 서버 설정, 개인정보 처리방침 URL과 함께 확인해야 합니다.
 

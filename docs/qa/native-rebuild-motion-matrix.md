@@ -4,7 +4,7 @@
 
 - Source logo: `357×86`, 8-bit RGBA.
 - SHA-256:
-  `0132e9075a8a3953cc87ae43154be317fb846630ea5e1f7dfbced8fb0860120b`.
+  `da503579fe0edba817c019a314c948566ef4f33ba3fd8c9826379701f1e8b624`.
 - Split: `0.40`, inside the fully transparent source gap `x=139...145`.
 - Left word: starts `0.04s`, rises for `0.76s`.
 - Right word: starts `0.34s`, rises for `0.76s`.

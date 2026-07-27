@@ -126,8 +126,8 @@ class NativeRebuildContractTests(unittest.TestCase):
 
     def test_intro_logo_assets_match_exact_rgba_pixel_and_hash_contract(self):
         expected_hash = (
-            "0132e9075a8a3953cc87ae43154be317f"
-            "b846630ea5e1f7dfbced8fb0860120b"
+            "da503579fe0edba817c019a314c94856"
+            "6ef4f33ba3fd8c9826379701f1e8b624"
         )
         assets = [
             ROOT / (

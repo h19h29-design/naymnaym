@@ -72,7 +72,7 @@ class RebuildIntroScreenTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("냠냠레벨업")
+        composeRule.onNodeWithContentDescription("급식레벨업")
             .assertIsDisplayed()
         composeRule.onNodeWithTag("rebuild_intro_logo_viewport")
             .assertIsDisplayed()
@@ -1243,7 +1243,7 @@ class RebuildIntroScreenTest {
         assertEquals(86, bitmap.height)
         assertTrue(bitmap.hasAlpha())
         assertEquals(
-            "0132e9075a8a3953cc87ae43154be317fb846630ea5e1f7dfbced8fb0860120b",
+            "da503579fe0edba817c019a314c948566ef4f33ba3fd8c9826379701f1e8b624",
             MessageDigest.getInstance("SHA-256")
                 .digest(bytes)
                 .joinToString("") {
@@ -1348,7 +1348,7 @@ class RebuildIntroScreenTest {
             RebuildApp(database)
         }
 
-        composeRule.onNodeWithContentDescription("냠냠레벨업")
+        composeRule.onNodeWithContentDescription("급식레벨업")
             .assertIsDisplayed()
         assertTrue(
             composeRule.onAllNodesWithText("누가 사용하나요?")
@@ -1388,7 +1388,7 @@ class RebuildIntroScreenTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("냠냠레벨업")
+        composeRule.onNodeWithContentDescription("급식레벨업")
             .assertIsDisplayed()
         composeRule.onNodeWithTag("rebuild_intro_logo_whole")
             .assertIsDisplayed()

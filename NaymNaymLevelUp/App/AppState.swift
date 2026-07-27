@@ -1060,7 +1060,7 @@ final class AppState: ObservableObject {
         do {
             let granted = try await ParentPushNotificationBridge.requestAuthorizationAndRegister()
             guard granted else {
-                parentNotificationMessage = "알림 권한이 꺼져 있어요. 설정 앱에서 냠냠레벨업 알림을 허용해 주세요."
+                parentNotificationMessage = "알림 권한이 꺼져 있어요. 설정 앱에서 급식레벨업 알림을 허용해 주세요."
                 parentNotificationError = parentNotificationMessage
                 return
             }

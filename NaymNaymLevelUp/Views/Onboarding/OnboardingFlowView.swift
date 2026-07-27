@@ -108,7 +108,7 @@ struct OnboardingFlowView: View {
 
     private var title: String {
         switch step {
-        case .intro: return "냠냠레벨업"
+        case .intro: return "급식레벨업"
         case .mode: return "사용자 모드"
         case .profile: return "별명 입력"
         case .school: return "학교 검색"

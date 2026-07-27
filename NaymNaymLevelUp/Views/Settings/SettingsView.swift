@@ -672,7 +672,7 @@ private struct PrivacyPolicyGuideView: View {
                             Text("시행일: 2026-06-20")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColors.graySecondary)
-                            privacy("냠냠레벨업은 회원가입을 요구하지 않습니다.")
+                            privacy("급식레벨업은 회원가입을 요구하지 않습니다.")
                             privacy("이름, 이메일, 전화번호, 위치정보, 연락처, 광고 식별자를 수집하지 않습니다.")
                             privacy("광고와 인앱결제가 없습니다.")
                             privacy("별명, 학교 선택, 먹은 정도 기록, 알레르기 선택값은 기본적으로 사용자의 기기 내부에 저장됩니다.")
@@ -820,7 +820,7 @@ private enum AppExternalLinks {
 private struct AppInfoView: View {
     var body: some View {
         List {
-            Section("냠냠레벨업") {
+            Section("급식레벨업") {
                 Text("무료 급식 영양교육 iPhone 앱")
                 Text("광고 없음")
                 Text("인앱결제 없음")

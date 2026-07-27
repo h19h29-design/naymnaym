@@ -543,7 +543,7 @@ private struct AnimatedIntroLogo: View {
         }
         .frame(width: logoWidth, height: height)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("냠냠레벨업")
+        .accessibilityLabel("급식레벨업")
         .task(id: reduceMotion) {
             await playOnce()
         }

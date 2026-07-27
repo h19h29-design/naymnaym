@@ -527,7 +527,7 @@ enum ShareCardRenderer {
         if let logo = UIImage(named: "logo_naym_levelup") {
             logo.draw(in: CGRect(x: rect.midX - 210, y: rect.minY, width: 420, height: 100))
         } else {
-            draw("냠냠레벨업", in: rect, font: .systemFont(ofSize: 46, weight: .heavy), color: UIColor(red: 0.25, green: 0.62, blue: 0.28, alpha: 1), alignment: .center)
+            draw("급식레벨업", in: rect, font: .systemFont(ofSize: 46, weight: .heavy), color: UIColor(red: 0.25, green: 0.62, blue: 0.28, alpha: 1), alignment: .center)
         }
     }
 

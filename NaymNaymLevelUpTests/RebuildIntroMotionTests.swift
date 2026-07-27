@@ -177,7 +177,7 @@ final class RebuildIntroMotionTests: XCTestCase {
         XCTAssertEqual(source.pngHeaderContract, .rgba(width: 357, height: 86))
         XCTAssertEqual(
             SHA256.hash(data: source).hexString,
-            "0132e9075a8a3953cc87ae43154be317fb846630ea5e1f7dfbced8fb0860120b"
+            "da503579fe0edba817c019a314c948566ef4f33ba3fd8c9826379701f1e8b624"
         )
     }
 

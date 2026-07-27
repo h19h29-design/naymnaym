@@ -1,4 +1,4 @@
-# 냠냠레벨업 Lottie Animations
+# 급식레벨업 Lottie Animations
 
 이 폴더는 앱 번들에 포함되는 Lottie JSON 전용 폴더입니다. 런타임에 외부 URL에서 애니메이션을 내려받지 않습니다.
 

@@ -210,7 +210,7 @@ check_uploaded_ipa() {
   require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
   require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "1.0"
   require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "$expected_build"
-  require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
+  require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "급식레벨업"
 
   embedded_profile="$app_dir/embedded.mobileprovision"
   require_file "$embedded_profile"
@@ -330,7 +330,7 @@ plutil -lint \
   "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" >/dev/null
 pass "plist files lint"
 
-require_plist_value "NaymNaymLevelUp/App/Info.plist" "CFBundleDisplayName" "냠냠레벨업"
+require_plist_value "NaymNaymLevelUp/App/Info.plist" "CFBundleDisplayName" "급식레벨업"
 require_plist_value "NaymNaymLevelUp/App/Info.plist" "CFBundleIconName" "AppIcon"
 require_plist_value "NaymNaymLevelUp/App/Info.plist" "ITSAppUsesNonExemptEncryption" "false"
 require_plist_value "NaymNaymLevelUp/App/Info.plist" "LSApplicationCategoryType" "public.app-category.education"

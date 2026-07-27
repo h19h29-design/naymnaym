@@ -293,7 +293,7 @@ public class MainActivity extends Activity {
 
     private View createAnimatedIntroLogo() {
         FrameLayout container = new FrameLayout(this);
-        container.setContentDescription("냠냠레벨업");
+        container.setContentDescription("급식레벨업");
         container.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
         ImageView nyamLayer = introLogoImageView();
@@ -1412,7 +1412,7 @@ public class MainActivity extends Activity {
     }
 
     private void showLoading(String message) {
-        resetContent("냠냠레벨업");
+        resetContent("급식레벨업");
         setStatus(message);
         ProgressBar progress = new ProgressBar(this);
         content.addView(progress, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)));
@@ -1789,7 +1789,7 @@ public class MainActivity extends Activity {
     }
 
     private String parentInviteShareMessage() {
-        return "냠냠레벨업 보호자 연결 링크\n"
+        return "급식레벨업 보호자 연결 링크\n"
             + parentInviteUrl()
             + "\n\n링크가 열리지 않으면 아래 코드를 부모 모드 > 아이 연결하기에 붙여넣어 주세요.\n"
             + "코드: " + (childLink == null ? "" : childLink.inviteCode)
@@ -1799,7 +1799,7 @@ public class MainActivity extends Activity {
     }
 
     private String parentInviteRequestMessage() {
-        return "냠냠레벨업 보호자 연결을 시작해 주세요.\n"
+        return "급식레벨업 보호자 연결을 시작해 주세요.\n"
             + "아이 기기에서 아래 링크를 열면 보호자 초대 화면으로 이동해요.\n"
             + WEB_INVITE_BASE + "/parent-invite"
             + "\n\n링크가 열리지 않으면 아래 주소를 브라우저에 붙여넣어 주세요.\n"

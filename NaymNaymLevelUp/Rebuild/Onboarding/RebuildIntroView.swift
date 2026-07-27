@@ -32,7 +32,7 @@ struct RebuildIntroView: View {
             )
             .padding(.horizontal, RebuildDesignTokens.spacing[3])
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("냠냠레벨업")
+            .accessibilityLabel("급식레벨업")
 
             if completionController.completionFailed {
                 Button("저장 다시 시도") {
