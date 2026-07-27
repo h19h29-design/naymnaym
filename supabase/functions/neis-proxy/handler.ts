@@ -16,6 +16,7 @@ const SCHOOL_KEYWORD = /^[가-힣A-Za-z0-9\s().-]{2,40}$/;
 export interface HandlerDeps {
   allowedOrigins: Set<string>;
   neisApiKey: string;
+  clientToken: string;
   fetch: typeof fetch;
   log?: (message: string) => void;
   createTimeoutSignal?: (milliseconds: number) => AbortSignal;
@@ -41,6 +42,21 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   const actual = Object.keys(value).sort();
   return actual.length === expected.length &&
     actual.every((key, index) => key === expected[index]);
+}
+
+function unwrapRequest(
+  value: unknown,
+  clientToken: string,
+): unknown | undefined {
+  if (
+    !isObject(value) ||
+    !hasOnlyKeys(value, ["clientToken", "request"]) ||
+    typeof value.clientToken !== "string" ||
+    value.clientToken !== clientToken
+  ) {
+    return undefined;
+  }
+  return value.request;
 }
 
 async function readLimitedBytes(
@@ -272,7 +288,11 @@ export function createHandler(deps: HandlerDeps) {
     let status = 500;
 
     try {
-      if (!deps.neisApiKey || deps.allowedOrigins.size === 0) {
+      if (
+        !deps.neisApiKey ||
+        !deps.clientToken ||
+        deps.allowedOrigins.size === 0
+      ) {
         status = 503;
         return error(
           "",
@@ -358,7 +378,18 @@ export function createHandler(deps: HandlerDeps) {
         );
       }
 
-      const parsed = validateRequest(decoded);
+      const unwrapped = unwrapRequest(decoded, deps.clientToken);
+      if (unwrapped === undefined) {
+        status = 403;
+        return error(
+          origin,
+          status,
+          "FORBIDDEN_ORIGIN",
+          "허용되지 않은 요청이에요.",
+        );
+      }
+
+      const parsed = validateRequest(unwrapped);
       if (parsed === null) {
         status = 400;
         return error(

@@ -3,6 +3,7 @@ import { createHandler } from "./handler.ts";
 
 const ALLOWED_ORIGIN = "https://sandbox.example";
 const API_KEY = "server-secret";
+const CLIENT_TOKEN = "public-client-token";
 
 function request(
   body: unknown,
@@ -10,6 +11,7 @@ function request(
     method?: string;
     origin?: string;
     headers?: HeadersInit;
+    rawEnvelope?: boolean;
   } = {},
 ): Request {
   return new Request("https://edge.test", {
@@ -20,7 +22,11 @@ function request(
     },
     body: options.method && options.method !== "POST"
       ? undefined
-      : JSON.stringify(body),
+      : JSON.stringify(
+        options.rawEnvelope
+          ? body
+          : { clientToken: CLIENT_TOKEN, request: body },
+      ),
   });
 }
 
@@ -42,6 +48,7 @@ function deps(
   return {
     allowedOrigins: new Set([ALLOWED_ORIGIN]),
     neisApiKey: API_KEY,
+    clientToken: CLIENT_TOKEN,
     fetch: fetchImpl,
     log,
   };
@@ -66,6 +73,33 @@ Deno.test("rejects an unlisted browser origin without CORS permission", async ()
     code: "FORBIDDEN_ORIGIN",
     message: "허용되지 않은 요청이에요.",
   });
+});
+
+Deno.test("rejects a missing or incorrect client token before upstream fetch", async () => {
+  let calls = 0;
+  const handler = createHandler(deps(async () => {
+    calls++;
+    return new Response();
+  }));
+  const proxiedRequest = {
+    action: "searchSchools",
+    payload: { keyword: "가람" },
+  };
+
+  for (
+    const envelope of [
+      { request: proxiedRequest },
+      { clientToken: "incorrect-token", request: proxiedRequest },
+      { clientToken: CLIENT_TOKEN, request: proxiedRequest, extra: true },
+    ]
+  ) {
+    const response = await handler(
+      request(envelope, { rawEnvelope: true }),
+    );
+    assertEquals(response.status, 403);
+    assertEquals((await body(response)).code, "FORBIDDEN_ORIGIN");
+  }
+  assertEquals(calls, 0);
 });
 
 Deno.test("permits preflight only for an exact allowed origin", async () => {
@@ -329,6 +363,7 @@ Deno.test("returns NOT_CONFIGURED when the key or origin allowlist is empty", as
   for (
     const missing of [
       { ...configured, neisApiKey: "" },
+      { ...configured, clientToken: "" },
       { ...configured, allowedOrigins: new Set<string>() },
     ]
   ) {

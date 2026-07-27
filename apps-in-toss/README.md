@@ -17,8 +17,10 @@ VITE_SUPABASE_ANON_KEY
 
 - `AIT_APP_NAME`, `AIT_ICON_URL`: 앱인토스 콘솔에서 관리하는 앱 이름과 아이콘 URL을 복사해 사용합니다.
 - `VITE_NEIS_PROXY_URL`: 배포된 `neis-proxy` Edge Function URL입니다.
-- `VITE_SUPABASE_ANON_KEY`: 현재 클라이언트는 같은 값을 `apikey`와 `Authorization: Bearer`로 전송하고, `neis-proxy`는 기본 `verify_jwt`를 켠 채 배포합니다. 따라서 Dashboard API Keys의 **기존 JWT 형태 `anon` 키**를 사용해야 합니다. 새 `sb_publishable_` 키는 JWT가 아니므로 현재 Bearer 설계에서 허용되지 않습니다. [Supabase Authorization headers](https://supabase.com/docs/guides/functions/auth-headers)
-- `NEIS_API_KEY`, `NEIS_ALLOWED_ORIGINS`: 클라이언트 `.env`가 아니라 Supabase Edge Function Secrets에만 둡니다. `service_role` 및 `sb_secret_`를 포함한 secret key와 NEIS 키는 어떤 경우에도 미니앱, 번들, 스크린샷, 문서에 넣지 않습니다. `verify_jwt`를 끄거나 `--no-verify-jwt`로 배포하지 않습니다.
+- `VITE_SUPABASE_ANON_KEY`: 브라우저에 공개해도 되는 기존 `anon` 키만 사용합니다. 클라이언트는 iOS WebView의 CORS 사전요청을 피하도록 이 값을 JSON 본문의 `clientToken`으로 보냅니다. `service_role` 및 `sb_secret_`는 금지입니다.
+- `NEIS_API_KEY`, `NEIS_ALLOWED_ORIGINS`, `NEIS_CLIENT_TOKEN`: Supabase Edge Function Secrets에 둡니다. `NEIS_CLIENT_TOKEN`은 현재 클라이언트의 `VITE_SUPABASE_ANON_KEY`와 같은 공개 값으로 맞추되 문서나 로그에는 값을 기록하지 않습니다. `service_role` 및 `sb_secret_`를 포함한 secret key와 NEIS 키는 어떤 경우에도 미니앱, 번들, 스크린샷, 문서에 넣지 않습니다.
+
+`neis-proxy`는 `verify_jwt=false`로 배포하되, 함수 본문에서 정확한 토스 Origin, 공개 클라이언트 토큰, 허용 작업·필드, 요청 크기를 모두 검증한 뒤에만 NEIS를 호출합니다. 공개 `anon` 키는 사용자 인증 수단이 아니며, 사용자별 데이터 접근에는 사용하지 않습니다. [Supabase Edge Function secrets](https://supabase.com/docs/guides/functions/secrets), [Supabase function authorization](https://supabase.com/docs/guides/functions/auth)
 
 ## 명령
 

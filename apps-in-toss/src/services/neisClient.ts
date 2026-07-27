@@ -80,11 +80,12 @@ export class NeisClient {
       response = await this.fetchImpl(this.options.endpoint, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
-          apikey: this.options.anonKey,
-          authorization: `Bearer ${this.options.anonKey}`,
+          'content-type': 'text/plain;charset=UTF-8',
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+          clientToken: this.options.anonKey,
+          request,
+        }),
         signal,
       });
     } catch (caught) {

@@ -5,9 +5,11 @@ const allowedOrigins = resolveAllowedOrigins(
   Deno.env.get("NEIS_ALLOWED_ORIGINS"),
 );
 const neisApiKey = Deno.env.get("NEIS_API_KEY") ?? "";
+const clientToken = Deno.env.get("NEIS_CLIENT_TOKEN") ?? "";
 
 Deno.serve(createHandler({
   allowedOrigins,
   neisApiKey,
+  clientToken,
   fetch,
 }));

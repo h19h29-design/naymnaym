@@ -15,7 +15,7 @@ function makeClientReturning<T>(
 }
 
 describe('NeisClient', () => {
-  it('sends only the allowed action and anon authorization headers', async () => {
+  it('uses a CORS-safelisted request so iOS WebView does not require preflight', async () => {
     const fetchSpy = vi.fn<typeof fetch>(async () =>
       new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 }));
     const client = new NeisClient({
@@ -27,13 +27,15 @@ describe('NeisClient', () => {
     await client.searchSchools('가람', 'middle');
 
     const [, init] = fetchSpy.mock.calls[0];
-    expect(init?.headers).toMatchObject({
-      apikey: 'public-anon-key',
-      authorization: 'Bearer public-anon-key',
+    expect(init?.headers).toEqual({
+      'content-type': 'text/plain;charset=UTF-8',
     });
     expect(JSON.parse(String(init?.body))).toEqual({
-      action: 'searchSchools',
-      payload: { keyword: '가람', schoolType: 'middle' },
+      clientToken: 'public-anon-key',
+      request: {
+        action: 'searchSchools',
+        payload: { keyword: '가람', schoolType: 'middle' },
+      },
     });
   });
 
@@ -50,11 +52,14 @@ describe('NeisClient', () => {
 
     const [, init] = fetchSpy.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
-      action: 'fetchMeals',
-      payload: {
-        officeCode: school.officeCode,
-        schoolCode: school.schoolCode,
-        date: '20260724',
+      clientToken: 'public-anon-key',
+      request: {
+        action: 'fetchMeals',
+        payload: {
+          officeCode: school.officeCode,
+          schoolCode: school.schoolCode,
+          date: '20260724',
+        },
       },
     });
   });

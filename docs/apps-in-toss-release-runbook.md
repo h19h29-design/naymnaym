@@ -8,14 +8,14 @@
 - Edge·NEIS 처리: 학교 검색어 또는 선택 학교 코드와 날짜가 급식 조회 목적의 `neis-proxy`와 NEIS API로 전달됩니다. Origin, IP 주소, User-Agent, 헤더 등 통상적인 요청 메타데이터와 Supabase 호출·로그 메타데이터도 제공자 운영 과정에서 처리될 수 있습니다. 함수 애플리케이션 로그는 요청 ID, 작업 종류, 상태, 처리 시간만 남기며 요청 본문과 키는 남기지 않습니다.
 - Supabase 경계: 미니앱 코드는 **Supabase DB, Auth 사용자, Storage, Realtime에 사용자 기록을 작성하지 않습니다.** Edge Function과 비밀 설정은 사용합니다. 이 문장은 제공자 플랫폼의 일반적 호출/보안/로그 처리를 부정하는 뜻이 아닙니다.
 - 보관·처리 위치: 실제 Supabase 프로젝트 지역, 호출·로그 보관 설정, Supabase/NEIS의 보관 기간 및 처리 위치는 아직 출시 구성으로 확정하지 않았습니다. Task 11 제출 전 프로젝트 설정과 제공자 정책을 확인하고, 정책 페이지·검수 자료에 반영합니다. 보장되지 않은 정확한 보관 기간이나 위치를 쓰지 않습니다.
-- 클라이언트 키: 현재 클라이언트는 같은 키를 `apikey`와 `Authorization: Bearer`에 전송하고 `verify_jwt` 기본값을 유지합니다. 그러므로 `VITE_SUPABASE_ANON_KEY`에는 **기존 JWT 형태의 `anon` 키**만 사용합니다. `sb_publishable_`는 JWT가 아니어서 이 Bearer 설계와 기본 JWT 검증에서 허용되지 않습니다. `service_role`와 `sb_secret_`는 금지입니다. [Supabase Authorization headers](https://supabase.com/docs/guides/functions/auth-headers), [API-key compatibility](https://supabase.com/docs/guides/getting-started/api-keys)
-- 금지: 실제 키·콘솔 값, 유료 토스 기능, 자동 결제, 자동 요금제 업그레이드, `--no-verify-jwt` 배포. 키·값·전체 origin 문자열이 보이는 화면을 검수 캡처나 이슈에 올리지 않습니다.
+- 클라이언트 키: `VITE_SUPABASE_ANON_KEY`에는 브라우저 공개용 기존 `anon` 키만 사용합니다. iOS WebView에서 CORS 사전요청을 만들지 않도록 커스텀 인증 헤더 대신 JSON 본문의 `clientToken`으로 보내고, 함수가 `NEIS_CLIENT_TOKEN`과 직접 비교합니다. 이 공개 값은 사용자 인증이나 비밀키가 아닙니다. `service_role`와 `sb_secret_`는 금지입니다. [Supabase Edge Function secrets](https://supabase.com/docs/guides/functions/secrets), [Supabase function authorization](https://supabase.com/docs/guides/functions/auth)
+- 금지: 실제 키·콘솔 값, 유료 토스 기능, 자동 결제, 자동 요금제 업그레이드. 키·값·전체 origin 문자열이 보이는 화면을 검수 캡처나 이슈에 올리지 않습니다.
 
 ## 한 번만 준비할 설정
 
-1. 로컬 전용 `apps-in-toss/.env`에 `AIT_APP_NAME`, `AIT_ICON_URL`, `VITE_NEIS_PROXY_URL`, `VITE_SUPABASE_ANON_KEY`의 실제 값을 넣습니다. `VITE_SUPABASE_ANON_KEY`는 기존 JWT 형태의 `anon` 키여야 하며 `sb_publishable_`가 아닙니다. 값은 각 콘솔의 해당 필드에서 복사하고, `.env`를 커밋하지 않습니다.
+1. 로컬 전용 `apps-in-toss/.env`에 `AIT_APP_NAME`, `AIT_ICON_URL`, `VITE_NEIS_PROXY_URL`, `VITE_SUPABASE_ANON_KEY`의 실제 값을 넣습니다. `VITE_SUPABASE_ANON_KEY`는 브라우저 공개용 기존 `anon` 키를 사용합니다. 값은 각 콘솔의 해당 필드에서 복사하고, `.env`를 커밋하지 않습니다.
 2. `VITE_NEIS_PROXY_URL`은 Supabase Dashboard **Edge Functions → neis-proxy**에서 확인한 함수 URL입니다. URL 형식과 함수 배포 절차는 [Supabase Edge Function 배포 문서](https://supabase.com/docs/guides/functions/deploy)를 따릅니다.
-3. Supabase Dashboard **Edge Functions → Secrets**에 `NEIS_API_KEY`와 `NEIS_ALLOWED_ORIGINS`만 등록합니다. `NEIS_API_KEY`에는 NEIS 제공자 콘솔에서 발급·승인된 키를 직접 복사합니다. 클라이언트 `.env`, Git, 로그, QR 캡처에 넣지 않습니다. Secrets 변경은 재배포 없이 함수에서 사용할 수 있습니다. [Supabase secrets guide](https://supabase.com/docs/guides/functions/secrets)
+3. Supabase Dashboard **Edge Functions → Secrets**에 `NEIS_API_KEY`, `NEIS_ALLOWED_ORIGINS`, `NEIS_CLIENT_TOKEN`을 등록합니다. `NEIS_API_KEY`에는 NEIS 제공자 콘솔에서 발급·승인된 키를 직접 복사하고, `NEIS_CLIENT_TOKEN`은 로컬 `VITE_SUPABASE_ANON_KEY`와 같은 공개 값으로 맞춥니다. 어떤 값도 Git, 로그, QR 캡처에 넣지 않습니다. Secrets 변경은 재배포 없이 함수에서 사용할 수 있습니다. [Supabase secrets guide](https://supabase.com/docs/guides/functions/secrets)
 4. `NEIS_ALLOWED_ORIGINS`에는 아래처럼 프로토콜·호스트만 쉼표로 연결하여 **정확히** 넣습니다. 끝 `/`, 와일드카드, 부분 도메인, 공백으로 된 별도 항목을 넣지 않습니다. `<appName>`은 `AIT_APP_NAME`의 실제 앱 이름으로 치환합니다.
 
    ```text
@@ -28,7 +28,7 @@
 
    토스는 QR 테스트와 실제 서비스 환경의 CORS/네트워크 동작이 다를 수 있다고 안내하며, 위 두 origin을 각각 허용하도록 명시합니다. [앱인토스 미니앱 출시 안내](https://developers-apps-in-toss.toss.im/development/deploy.html)
 
-5. 함수 코드는 `supabase/functions/neis-proxy/`만 기본 `verify_jwt`를 유지해 배포합니다. `--no-verify-jwt`를 쓰지 않습니다. 이 함수는 요청을 `searchSchools`와 `fetchMeals`로 제한하고 미니앱 사용자 레코드를 쓰지 않습니다. 배포 전에는 부모 동기화 함수, migrations, DB 테이블, Auth 사용자, Storage bucket, Realtime 채널을 이 미니앱 구성에 추가하지 않았는지 다시 확인합니다.
+5. 함수 코드는 `supabase/functions/neis-proxy/`만 `verify_jwt=false`로 배포합니다. 배포 전후에 함수가 정확한 토스 Origin, `clientToken`, 4 KiB 본문 제한, `searchSchools`·`fetchMeals` 작업과 고정 필드만 허용하는지 테스트합니다. 토큰 누락·불일치, 허용되지 않은 Origin은 NEIS 호출 전에 403으로 거절되어야 합니다. 이 함수는 미니앱 사용자 레코드를 쓰지 않습니다. 배포 전에는 부모 동기화 함수, migrations, DB 테이블, Auth 사용자, Storage bucket, Realtime 채널을 이 미니앱 구성에 추가하지 않았는지 다시 확인합니다.
 
 ## 키 회전과 중단
 
