@@ -110,8 +110,9 @@ describe('TodayPage', () => {
     const user = renderToday({ mealResult: { kind: 'cache', meal } });
     renderPage();
 
-    expect(await screen.findByText('저장된 급식 정보예요')).toBeInTheDocument();
+    expect(await screen.findByText('저장된 급식')).toBeInTheDocument();
     expect(screen.queryByText(/체험/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '오늘 급식 기록하기' }));
     await user.click(screen.getByRole('button', { name: '한입도전' }));
   });
 
@@ -127,6 +128,7 @@ describe('TodayPage', () => {
     const user = renderToday({ mealResult: { kind: 'demo', meal }, route: '/today?demo=1' });
     renderPage();
 
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     await user.click(await screen.findByRole('button', { name: '한입도전' }));
 
     expect(saveRecords).not.toHaveBeenCalled();
@@ -144,6 +146,8 @@ describe('TodayPage', () => {
     });
     renderPage();
 
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     expect(await screen.findByRole('button', { name: '알레르기 때문에 피했어요' }))
       .toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '한입도전' })).not.toBeInTheDocument();
@@ -155,6 +159,7 @@ describe('TodayPage', () => {
     renderPage();
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     await user.click(await screen.findByRole('button', { name: '못먹겠어요' }));
     expect(screen.getByRole('dialog', { name: '어떤 점이 어려웠나요?' }))
       .toBeInTheDocument();
@@ -164,6 +169,7 @@ describe('TodayPage', () => {
     const user = renderToday();
     renderPage();
 
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     await user.click(await screen.findByRole('button', { name: '못먹겠어요' }));
     await user.click(screen.getByRole('button', { name: '냄새' }));
     await user.click(screen.getByRole('button', { name: '오늘은 어려웠어요' }));
@@ -180,6 +186,7 @@ describe('TodayPage', () => {
     const user = renderToday();
     renderPage();
 
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     await user.click(await screen.findByRole('button', { name: '한입도전' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('기록을 저장하지 못했어요. 다시 시도해 주세요.');
     await user.click(screen.getByRole('button', { name: '다시 시도' }));
@@ -196,6 +203,7 @@ describe('TodayPage', () => {
     }));
     const user = renderToday();
     renderPage();
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     const button = await screen.findByRole('button', { name: '한입도전' });
 
     await user.dblClick(button);

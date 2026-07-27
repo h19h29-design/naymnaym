@@ -79,6 +79,15 @@ describe('direct routes', () => {
       .toBeInTheDocument();
   });
 
+  it('opens the iPhone-style growth and collection screens for a configured user', async () => {
+    const growth = renderTestApp({ initialEntry: '/growth', profile: makeProfile() });
+    expect(await screen.findByRole('heading', { name: '나의 성장' })).toBeInTheDocument();
+    growth.unmount();
+
+    renderTestApp({ initialEntry: '/collection', profile: makeProfile() });
+    expect(await screen.findByRole('heading', { name: '성장 도감' })).toBeInTheDocument();
+  });
+
   it('allows the explicitly requested demo route without a profile', async () => {
     renderTestApp({ initialEntry: '/today?demo=1', profile: null });
 

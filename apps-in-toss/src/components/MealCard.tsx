@@ -1,4 +1,3 @@
-import { Button } from '@toss/tds-mobile';
 import type { MealItem } from '@nyam/neis-contract';
 import { ALLERGIES, allergyRisk } from '../domain/allergy';
 import type { DifficultyReason, EatingStatus } from '../domain/types';
@@ -31,15 +30,54 @@ export function MealCard({
 
   return (
     <article aria-label={item.name} className="meal-card">
-      <h2>{item.name}</h2>
-      {item.nutrients.length > 0 && <p>영양: {item.nutrients.join(', ')}</p>}
-      {riskNames.length > 0 && <p role="note">주의 알레르기: {riskNames.join(', ')}</p>}
-      <div>
+      <div className="meal-card__heading">
+        <h2>{item.name}</h2>
+        {item.nutrients.length > 0 && <p>영양: {item.nutrients.join(', ')}</p>}
+      </div>
+      {riskNames.length > 0 && (
+        <p className="meal-card__risk" role="note">
+          알레르기 안전을 먼저 확인해 주세요 · {riskNames.join(', ')}
+        </p>
+      )}
+      <p className="meal-card__question">어떻게 만났나요?</p>
+      <div className="meal-card__actions">
         {risks.length > 0
-          ? <Button color="danger" disabled={disabled} onClick={() => record('allergyAvoided')}>알레르기 때문에 피했어요</Button>
-          : <Button disabled={disabled} onClick={() => record('oneBite')}>한입도전</Button>}
-        <Button disabled={disabled} onClick={() => record('finished')}>잘먹어요</Button>
-        <Button disabled={disabled} onClick={() => setDifficultyOpen(true)}>못먹겠어요</Button>
+          ? (
+            <button
+              className="meal-action meal-action--danger"
+              type="button"
+              disabled={disabled}
+              onClick={() => record('allergyAvoided')}
+            >
+              알레르기 때문에 피했어요
+            </button>
+          )
+          : (
+            <button
+              className="meal-action"
+              type="button"
+              disabled={disabled}
+              onClick={() => record('oneBite')}
+            >
+              한입도전
+            </button>
+          )}
+        <button
+          className="meal-action"
+          type="button"
+          disabled={disabled}
+          onClick={() => record('finished')}
+        >
+          잘먹어요
+        </button>
+        <button
+          className="meal-action"
+          type="button"
+          disabled={disabled}
+          onClick={() => setDifficultyOpen(true)}
+        >
+          못먹겠어요
+        </button>
       </div>
       <MealFeedbackModal
         open={difficultyOpen}

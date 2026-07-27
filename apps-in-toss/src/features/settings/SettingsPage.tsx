@@ -2,6 +2,7 @@ import { openURL } from '@apps-in-toss/web-framework';
 import { Button, List, ListRow, Modal } from '@toss/tds-mobile';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ForestNavigation } from '../../components/ForestNavigation';
 import { useAppState } from '../../state/AppStateProvider';
 
 export const POLICY_URLS = {
@@ -54,8 +55,11 @@ export function SettingsPage() {
   };
 
   return (
-    <main className="app-shell">
-      <h1>설정</h1>
+    <main className="app-shell settings-shell">
+      <header className="settings-heading">
+        <p className="forest-eyebrow">내 정보와 안전 설정</p>
+        <h1>설정</h1>
+      </header>
       <List>
         <ListRow
           contents={<Button color="light" display="block" disabled={isBusy} onClick={() => navigate('/onboarding?mode=edit&next=%2Fsettings')}>프로필과 알레르기 수정</Button>}
@@ -72,6 +76,7 @@ export function SettingsPage() {
         />
       </List>
       {error !== null ? <p role="alert">{error}</p> : null}
+      <ForestNavigation />
       <Modal open={deleteOpen} onOpenChange={(open) => {
         if (!isBusy) setDeleteOpen(open);
       }}>

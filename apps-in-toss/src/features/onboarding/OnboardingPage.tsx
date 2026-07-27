@@ -7,7 +7,12 @@ import { neisClient } from '../../services/neisClient';
 import { useAppState } from '../../state/AppStateProvider';
 
 const SCHOOL_KEYWORD = /^[가-힣A-Za-z0-9\s().-]{2,40}$/;
-const POST_ONBOARDING_PATHS = new Set(['/today', '/settings']);
+const POST_ONBOARDING_PATHS = new Set([
+  '/today',
+  '/growth',
+  '/collection',
+  '/settings',
+]);
 
 const copy = {
   title: '급식레벨업 시작하기',
@@ -223,22 +228,29 @@ export function OnboardingPage() {
   };
 
   return (
-    <main className="app-shell">
-      <h1>{copy.title}</h1>
-      <Text typography="t6" color="grey600">{copy.privacy}</Text>
+    <main className="app-shell onboarding-shell">
+      <header className="onboarding-hero">
+        <img src="/growth/level-1.png" alt="" aria-hidden="true" />
+        <div>
+          <p className="forest-eyebrow">새로운 식습관 모험</p>
+          <h1>{copy.title}</h1>
+          <Text typography="t6" color="grey600">{copy.privacy}</Text>
+        </div>
+      </header>
 
-      <TextField
-        variant="box"
-        label="별명"
-        labelOption="sustain"
-        placeholder="별명"
-        value={nickname}
-        maxLength={12}
-        disabled={isProfileLocked}
-        onChange={(event) => {
-          if (!isProfileLocked) setNickname(event.currentTarget.value);
-        }}
-      />
+      <section className="onboarding-form">
+        <TextField
+          variant="box"
+          label="별명"
+          labelOption="sustain"
+          placeholder="별명"
+          value={nickname}
+          maxLength={12}
+          disabled={isProfileLocked}
+          onChange={(event) => {
+            if (!isProfileLocked) setNickname(event.currentTarget.value);
+          }}
+        />
 
       <fieldset>
         <legend>학교급</legend>
@@ -342,6 +354,7 @@ export function OnboardingPage() {
       >
         {copy.demo}
       </Button>
+      </section>
       <Modal open={demoConfirmOpen} onOpenChange={setDemoConfirmOpen}>
         <Modal.Overlay onClick={() => setDemoConfirmOpen(false)} />
         <Modal.Content aria-label="체험 모드 안내">

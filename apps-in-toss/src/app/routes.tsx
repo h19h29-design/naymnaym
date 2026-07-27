@@ -5,6 +5,8 @@ import type { AppState } from '../state/reducer';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { TodayPage } from '../features/today/TodayPage';
+import { CollectionPage } from '../features/growth/CollectionPage';
+import { GrowthPage } from '../features/growth/GrowthPage';
 
 const onboarding = <OnboardingPage />;
 
@@ -62,6 +64,36 @@ function SettingsGate() {
   );
 }
 
+function GrowthGate() {
+  const [searchParams] = useSearchParams();
+  const isExplicitDemo = searchParams.get('demo') === '1';
+
+  return (
+    <ReadyGate>
+      {({ profile }) => (
+        profile || isExplicitDemo
+          ? <GrowthPage />
+          : <Navigate to="/onboarding?next=%2Fgrowth" replace />
+      )}
+    </ReadyGate>
+  );
+}
+
+function CollectionGate() {
+  const [searchParams] = useSearchParams();
+  const isExplicitDemo = searchParams.get('demo') === '1';
+
+  return (
+    <ReadyGate>
+      {({ profile }) => (
+        profile || isExplicitDemo
+          ? <CollectionPage />
+          : <Navigate to="/onboarding?next=%2Fcollection" replace />
+      )}
+    </ReadyGate>
+  );
+}
+
 function FallbackGate() {
   return (
     <ReadyGate>
@@ -77,6 +109,8 @@ export function routeObjects(): RouteObject[] {
     { path: '/', element: <RootGate /> },
     { path: '/onboarding', element: <OnboardingGate /> },
     { path: '/today', element: <TodayGate /> },
+    { path: '/growth', element: <GrowthGate /> },
+    { path: '/collection', element: <CollectionGate /> },
     { path: '/settings', element: <SettingsGate /> },
     { path: '*', element: <FallbackGate /> },
   ];

@@ -45,6 +45,7 @@ describe('TodayPage with AppStateProvider', () => {
       </AppProviders>,
     );
     const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: '오늘 급식 기록하기' }));
     await user.click(await screen.findByRole('button', { name: '한입도전' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('기록을 저장하지 못했어요. 다시 시도해 주세요.');

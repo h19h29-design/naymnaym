@@ -6,8 +6,40 @@ export interface KeyValueStorage {
   removeItem(key: string): Promise<void>;
 }
 
+function localDevelopmentStorage(): KeyValueStorage | null {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return null;
+  return {
+    getItem: async (key) => window.localStorage.getItem(key),
+    setItem: async (key, value) => window.localStorage.setItem(key, value),
+    removeItem: async (key) => window.localStorage.removeItem(key),
+  };
+}
+
+const fallback = localDevelopmentStorage();
+
 export const tossStorage: KeyValueStorage = {
-  getItem: (key) => Storage.getItem(key),
-  setItem: (key, value) => Storage.setItem(key, value),
-  removeItem: (key) => Storage.removeItem(key),
+  getItem: async (key) => {
+    try {
+      return await Storage.getItem(key);
+    } catch (error) {
+      if (fallback !== null) return fallback.getItem(key);
+      throw error;
+    }
+  },
+  setItem: async (key, value) => {
+    try {
+      await Storage.setItem(key, value);
+    } catch (error) {
+      if (fallback !== null) return fallback.setItem(key, value);
+      throw error;
+    }
+  },
+  removeItem: async (key) => {
+    try {
+      await Storage.removeItem(key);
+    } catch (error) {
+      if (fallback !== null) return fallback.removeItem(key);
+      throw error;
+    }
+  },
 };

@@ -18,7 +18,7 @@ const RETRY_XP: Record<EatingStatus, number> = {
   allergyAvoided: 0,
 };
 
-const LEVELS = [
+export const GROWTH_LEVELS = [
   [0, '냠냠 새싹'],
   [80, '한 입 탐험가'],
   [180, '냠냠 용사'],
@@ -55,10 +55,10 @@ export function levelFor(totalXp: number): {
   title: string;
 } {
   let index = 0;
-  LEVELS.forEach(([threshold], candidate) => {
+  GROWTH_LEVELS.forEach(([threshold], candidate) => {
     if (totalXp >= threshold) index = candidate;
   });
-  const [threshold, title] = LEVELS[index];
+  const [threshold, title] = GROWTH_LEVELS[index];
   return { number: index + 1, threshold, title };
 }
 
