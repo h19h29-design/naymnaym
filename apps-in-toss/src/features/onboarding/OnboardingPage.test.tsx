@@ -172,16 +172,20 @@ describe('OnboardingPage', () => {
     ));
   });
 
-  it('submits the current native input value from an explicit search button', async () => {
+  it('shows a direct full-width search action below the native school input', async () => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
     const user = renderOnboarding({ searchSchools });
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     const schoolSearch = screen.getByRole('searchbox', { name: '학교 검색' });
+    const searchButton = screen.getByRole('button', { name: '학교 검색하기' });
     expect(schoolSearch.tagName).toBe('INPUT');
+    expect(schoolSearch.closest('form')).toBeNull();
+    expect(searchButton).toHaveAttribute('type', 'button');
+    expect(searchButton).toHaveTextContent('학교 찾기');
     await user.type(schoolSearch, '가람');
 
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.click(searchButton);
 
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',

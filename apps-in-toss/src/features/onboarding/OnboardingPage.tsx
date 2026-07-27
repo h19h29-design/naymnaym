@@ -292,38 +292,33 @@ export function OnboardingPage() {
           </div>
         </fieldset>
 
-        <form
+        <div
           className="school-search-control"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void runSchoolSearch();
-          }}
         >
           <label htmlFor="school-search-input">학교 검색</label>
-          <div className="school-search-row">
-            <input
-              ref={searchInputRef}
-              id="school-search-input"
-              type="search"
-              placeholder="학교 이름을 입력해 주세요"
-              value={keyword}
-              maxLength={40}
-              disabled={isProfileLocked}
-              autoComplete="off"
-              enterKeyHint="search"
-              onInput={(event) => {
-                if (!isProfileLocked) setKeyword(event.currentTarget.value);
-              }}
-            />
-            <button
-              type="submit"
-              aria-label="학교 검색하기"
-              disabled={isProfileLocked || isSearching}
-            >
-              {isSearching ? '검색 중' : '검색'}
-            </button>
-          </div>
-        </form>
+          <input
+            ref={searchInputRef}
+            id="school-search-input"
+            type="search"
+            placeholder="학교 이름을 입력해 주세요"
+            value={keyword}
+            maxLength={40}
+            disabled={isProfileLocked}
+            autoComplete="off"
+            enterKeyHint="done"
+            onInput={(event) => {
+              if (!isProfileLocked) setKeyword(event.currentTarget.value);
+            }}
+          />
+          <button
+            type="button"
+            aria-label="학교 검색하기"
+            disabled={isProfileLocked || isSearching}
+            onClick={() => void runSchoolSearch()}
+          >
+            {isSearching ? '학교를 찾는 중이에요' : '학교 찾기'}
+          </button>
+        </div>
         {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
         {searchError !== null ? <p role="alert">{searchError}</p> : null}
         {hasSearched && !isSearching && searchError === null && schools.length === 0

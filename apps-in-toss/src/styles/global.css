@@ -846,13 +846,8 @@ h2 {
   font-weight: 800;
 }
 
-.school-search-row {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.school-search-row input {
+.school-search-control input {
+  width: 100%;
   min-width: 0;
   min-height: 52px;
   padding: 0 16px;
@@ -865,14 +860,14 @@ h2 {
   font-size: 16px;
 }
 
-.school-search-row input:focus {
+.school-search-control input:focus {
   border-color: var(--forest-500);
   box-shadow: 0 0 0 3px rgba(96, 164, 91, 0.16);
 }
 
-.school-search-row button {
-  min-width: 76px;
-  min-height: 52px;
+.school-search-control button {
+  width: 100%;
+  min-height: 54px;
   padding: 0 16px;
   border: 0;
   border-radius: 14px;
@@ -882,7 +877,7 @@ h2 {
   font-weight: 900;
 }
 
-.school-search-row button:disabled {
+.school-search-control button:disabled {
   opacity: 0.5;
 }
 
