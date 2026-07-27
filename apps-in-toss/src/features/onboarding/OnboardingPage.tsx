@@ -252,25 +252,28 @@ export function OnboardingPage() {
           }}
         />
 
-      <fieldset>
-        <legend>학교급</legend>
-        {(['middle', 'high'] as const).map((value) => (
-          <div key={value}>
-            <Checkbox.Circle
-              id={`school-type-${value}`}
-              inputType="radio"
-              name="schoolType"
-              aria-label={value === 'middle' ? '중학교' : '고등학교'}
-              checked={schoolType === value}
-              disabled={isProfileLocked}
-              onCheckedChange={() => setSchool(value)}
-            />
-            <label htmlFor={`school-type-${value}`}>
-              {value === 'middle' ? '중학교' : '고등학교'}
-            </label>
+        <fieldset className="school-type-fieldset">
+          <legend>학교급</legend>
+          <div className="school-type-options" role="radiogroup" aria-label="학교급 선택">
+            {(['middle', 'high'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-label={value === 'middle' ? '중학교' : '고등학교'}
+                aria-checked={schoolType === value}
+                disabled={isProfileLocked}
+                className={schoolType === value
+                  ? 'school-type-option is-selected'
+                  : 'school-type-option'}
+                onClick={() => setSchool(value)}
+              >
+                <span aria-hidden="true" />
+                {value === 'middle' ? '중학교' : '고등학교'}
+              </button>
+            ))}
           </div>
-        ))}
-      </fieldset>
+        </fieldset>
 
       <TextField
         variant="box"

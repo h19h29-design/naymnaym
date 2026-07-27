@@ -153,6 +153,22 @@ describe('OnboardingPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/today');
   });
 
+  it('starts a search from a WebView-safe pressable school type control', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    const user = renderOnboarding({ searchSchools });
+    const middleSchool = screen.getByRole('radio', { name: '중학교' });
+
+    expect(middleSchool.tagName).toBe('BUTTON');
+    await user.click(middleSchool);
+    await user.type(screen.getByLabelText('학교 검색'), '가람');
+
+    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+      '가람',
+      'middle',
+      expect.any(AbortSignal),
+    ));
+  });
+
   it('prefills edit mode and preserves the profile creation date when saved', async () => {
     const profile = makeProfile({
       nickname: '기존 별명',
@@ -284,7 +300,7 @@ describe('OnboardingPage', () => {
   it('toggles representative school and allergy choices when their visible labels are clicked', async () => {
     const user = renderOnboarding();
 
-    await user.click(screen.getByText('중학교', { selector: 'label' }));
+    await user.click(screen.getByRole('radio', { name: '중학교' }));
     expect(screen.getByRole('radio', { name: '중학교' })).toHaveAttribute('aria-checked', 'true');
 
     await user.click(screen.getByText('난류', { selector: 'label' }));
@@ -308,7 +324,9 @@ describe('OnboardingPage', () => {
     expect(saveProfile).toHaveBeenCalledTimes(1);
     expect(start).toBeDisabled();
     pendingSave.resolve(undefined);
-    expect(await screen.findByTestId('location')).toHaveTextContent('/today');
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent('/today');
+    });
   });
 
   it('shows a save error and permits a retry', async () => {
@@ -351,8 +369,8 @@ describe('OnboardingPage', () => {
     const demo = screen.getByRole('button', { name: '학교 없이 체험해 보기' });
 
     expect(nickname).toBeDisabled();
-    expect(middleSchool).toHaveAttribute('aria-disabled', 'true');
-    expect(highSchool).toHaveAttribute('aria-disabled', 'true');
+    expect(middleSchool).toBeDisabled();
+    expect(highSchool).toBeDisabled();
     expect(schoolSearch).toBeDisabled();
     expect(schoolResult).toBeDisabled();
     expect(allergy).toHaveAttribute('aria-disabled', 'true');
