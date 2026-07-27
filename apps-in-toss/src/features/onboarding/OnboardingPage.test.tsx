@@ -214,6 +214,30 @@ describe('OnboardingPage', () => {
     );
   });
 
+  it('finds every supported school type without a school type selection', async () => {
+    const highSchool = {
+      ...school,
+      name: '가람고등학교',
+      schoolCode: '7015678',
+      schoolType: 'high' as const,
+    };
+    const searchSchools: typeof neisClient.searchSchools = vi.fn(
+      async (_keyword, type) => (type === 'high' ? [highSchool] : []),
+    );
+    const user = renderOnboarding({ searchSchools });
+
+    await user.type(screen.getByRole('searchbox', { name: '학교 검색' }), '가람');
+    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+
+    const result = await screen.findByRole('button', { name: /가람고등학교/ }, {
+      timeout: 2_000,
+    });
+    await user.click(result);
+
+    expect(screen.getByRole('radio', { name: '고등학교' }))
+      .toHaveAttribute('aria-checked', 'true');
+  });
+
   it('searches immediately when the WebView keyboard sends Enter', async () => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
     const user = renderOnboarding({ searchSchools });

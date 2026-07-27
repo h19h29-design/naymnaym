@@ -136,10 +136,6 @@ export function OnboardingPage() {
     setSchools([]);
     setHasSearched(false);
 
-    if (schoolType === null) {
-      setSearchError('중학교 또는 고등학교를 먼저 선택해 주세요.');
-      return;
-    }
     if (!SCHOOL_KEYWORD.test(normalized)) {
       setSearchError('학교 이름을 두 글자 이상 입력해 주세요.');
       return;
@@ -153,13 +149,21 @@ export function OnboardingPage() {
     setSearchError(null);
 
     try {
-      const results = await neisClient.searchSchools(
-        normalized,
-        schoolType,
-        controller.signal,
-      );
+      const requestedSchoolTypes: Array<'middle' | 'high'> = schoolType === null
+        ? ['middle', 'high']
+        : [schoolType];
+      const resultGroups = await Promise.all(requestedSchoolTypes.map((type) => (
+        neisClient.searchSchools(normalized, type, controller.signal)
+      )));
       if (controller.signal.aborted || requestId !== requestIdRef.current) return;
-      setSchools(results.slice(0, 20));
+      const uniqueResults = Array.from(
+        new Map(
+          resultGroups
+            .flat()
+            .map((item) => [`${item.officeCode}:${item.schoolCode}`, item]),
+        ).values(),
+      );
+      setSchools(uniqueResults.slice(0, 20));
       setHasSearched(true);
     } catch (caught: unknown) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return;
@@ -186,7 +190,6 @@ export function OnboardingPage() {
       && selectedSchool.name === normalized;
     if (
       isProfileLocked
-      || schoolType === null
       || !SCHOOL_KEYWORD.test(normalized)
       || selectedSchoolIsCurrent
     ) {
@@ -341,7 +344,7 @@ export function OnboardingPage() {
         >
           <label htmlFor="school-search-input">학교 검색</label>
           <p className="school-search-control__hint">
-            자동 검색 적용 · 학교 이름을 두 글자 이상 입력해 주세요.
+            학교급을 고르지 않아도 중·고등학교를 모두 검색해요.
           </p>
           <input
             ref={searchInputRef}
@@ -393,7 +396,10 @@ export function OnboardingPage() {
                 color="light"
                 disabled={isProfileLocked}
                 onClick={() => {
-                  if (!isProfileLocked) setSelectedSchool(item);
+                  if (!isProfileLocked) {
+                    setSchoolType(item.schoolType);
+                    setSelectedSchool(item);
+                  }
                 }}
                 aria-pressed={selectedSchool?.officeCode === item.officeCode
                   && selectedSchool.schoolCode === item.schoolCode}
