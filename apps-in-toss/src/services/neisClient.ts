@@ -49,7 +49,7 @@ export class NeisClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly options: NeisClientOptions) {
-    this.fetchImpl = options.fetch ?? fetch;
+    this.fetchImpl = (options.fetch ?? globalThis.fetch).bind(globalThis);
   }
 
   searchSchools(

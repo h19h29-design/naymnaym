@@ -15,6 +15,27 @@ function makeClientReturning<T>(
 }
 
 describe('NeisClient', () => {
+  it('uses the global receiver required by host-bound iOS WebKit fetch', async () => {
+    let receivedThis: unknown;
+    const hostBoundFetch = async function (
+      this: unknown,
+      _input: RequestInfo | URL,
+      _init?: RequestInit,
+    ): Promise<Response> {
+      receivedThis = this;
+      if (this !== globalThis) throw new TypeError('Illegal invocation');
+      return new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 });
+    };
+    const client = new NeisClient({
+      endpoint: 'https://edge.example/neis-proxy',
+      anonKey: 'public-anon-key',
+      fetch: hostBoundFetch,
+    });
+
+    await expect(client.searchSchools('가람', 'middle')).resolves.toEqual([]);
+    expect(receivedThis).toBe(globalThis);
+  });
+
   it('uses a CORS-safelisted request so iOS WebView does not require preflight', async () => {
     const fetchSpy = vi.fn<typeof fetch>(async () =>
       new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 }));
