@@ -365,24 +365,6 @@ export function OnboardingPage() {
               void runSchoolSearch();
             }}
           />
-          {selectedSchool === null ? (
-            <button
-              type="button"
-              className="school-search-floating-action"
-              style={{
-                position: 'fixed',
-                bottom: 180,
-                zIndex: 20,
-                background: '#2f8a61',
-                color: '#fff',
-              }}
-              aria-label="학교 검색하기"
-              disabled={isProfileLocked || isSearching}
-              onClick={() => void runSchoolSearch()}
-            >
-              {isSearching ? '학교를 찾는 중이에요' : '학교 찾기'}
-            </button>
-          ) : null}
         </div>
         {isSearching ? <p role="status">학교를 검색하는 중이에요.</p> : null}
         {searchError !== null ? <p role="alert">{searchError}</p> : null}
@@ -398,6 +380,7 @@ export function OnboardingPage() {
                 onClick={() => {
                   if (!isProfileLocked) {
                     setSchoolType(item.schoolType);
+                    setKeyword(item.name);
                     setSelectedSchool(item);
                   }
                 }}

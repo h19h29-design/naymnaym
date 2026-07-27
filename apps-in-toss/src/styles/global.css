@@ -872,29 +872,6 @@ h2 {
   box-shadow: 0 0 0 3px rgba(96, 164, 91, 0.16);
 }
 
-.school-search-floating-action {
-  left: 50%;
-  width: min(calc(100vw - 40px), 476px);
-  min-height: 54px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 14px;
-  background: var(--forest-500);
-  color: #fff;
-  font: inherit;
-  font-weight: 900;
-  box-shadow: 0 14px 30px rgba(18, 65, 44, 0.3);
-  transform: translateX(-50%);
-}
-
-.school-search-floating-action:active:not(:disabled) {
-  transform: translateX(-50%) translateY(1px) scale(0.985);
-}
-
-.school-search-floating-action:disabled {
-  opacity: 0.5;
-}
-
 .onboarding-form ul {
   display: grid;
   gap: 8px;

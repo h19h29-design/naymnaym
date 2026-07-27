@@ -79,8 +79,7 @@ function renderOnboarding({
 async function selectMiddleSchool(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('별명'), '냠냠이');
   await user.click(screen.getByRole('radio', { name: '중학교' }));
-  await user.type(screen.getByLabelText('학교 검색'), '가람');
-  await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+  await user.type(screen.getByLabelText('학교 검색'), '가람{Enter}');
   await user.click(await screen.findByRole('button', { name: /가람중학교/ }));
 }
 
@@ -131,7 +130,7 @@ describe('OnboardingPage', () => {
     expect(screen.getByText('학교를 선택해 주세요.')).toBeInTheDocument();
   });
 
-  it('searches on explicit submit and saves the selected result', async () => {
+  it('searches on keyboard submit and saves the selected result', async () => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
     const user = renderOnboarding({ searchSchools });
 
@@ -139,7 +138,7 @@ describe('OnboardingPage', () => {
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     await user.type(screen.getByLabelText('학교 검색'), '가람');
     expect(searchSchools).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.keyboard('{Enter}');
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',
       'middle',
@@ -163,8 +162,7 @@ describe('OnboardingPage', () => {
 
     expect(middleSchool.tagName).toBe('BUTTON');
     await user.click(middleSchool);
-    await user.type(screen.getByLabelText('학교 검색'), '가람');
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.type(screen.getByLabelText('학교 검색'), '가람{Enter}');
 
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',
@@ -173,28 +171,24 @@ describe('OnboardingPage', () => {
     ));
   });
 
-  it('shows a direct full-width search action below the native school input', async () => {
+  it('keeps the native school input outside a form and auto-searches', async () => {
     const searchSchools = vi.fn().mockResolvedValue([school]);
     const user = renderOnboarding({ searchSchools });
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
     const schoolSearch = screen.getByRole('searchbox', { name: '학교 검색' });
-    const searchButton = screen.getByRole('button', { name: '학교 검색하기' });
     expect(schoolSearch.tagName).toBe('INPUT');
     expect(schoolSearch.closest('form')).toBeNull();
-    expect(searchButton).toHaveAttribute('type', 'button');
-    expect(searchButton).toHaveTextContent('학교 찾기');
     await user.type(schoolSearch, '가람');
 
-    await user.click(searchButton);
-
-    await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
+    expect(await screen.findByRole('button', { name: /가람중학교/ }, {
+      timeout: 2_000,
+    })).toBeInTheDocument();
+    expect(searchSchools).toHaveBeenCalledWith(
       '가람',
       'middle',
       expect.any(AbortSignal),
-    ));
-    expect(await screen.findByRole('button', { name: /가람중학교/ }))
-      .toBeInTheDocument();
+    );
   });
 
   it('automatically searches after a valid school name is entered', async () => {
@@ -214,6 +208,30 @@ describe('OnboardingPage', () => {
     );
   });
 
+  it('keeps a partial-name search result selected without starting another search', async () => {
+    const searchSchools = vi.fn().mockResolvedValue([school]);
+    const user = renderOnboarding({ searchSchools });
+
+    await user.type(screen.getByRole('searchbox', { name: '학교 검색' }), '가람');
+    const result = await screen.findByRole('button', { name: /가람중학교/ }, {
+      timeout: 2_000,
+    });
+    expect(searchSchools).toHaveBeenCalledTimes(2);
+
+    await user.click(result);
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+
+    expect(screen.getByText('선택한 학교: 가람중학교')).toBeInTheDocument();
+    expect(searchSchools).toHaveBeenCalledTimes(2);
+  });
+
+  it('searches automatically without rendering a separate floating search action', () => {
+    renderOnboarding();
+
+    expect(screen.getByRole('searchbox', { name: '학교 검색' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '학교 검색하기' })).not.toBeInTheDocument();
+  });
+
   it('finds every supported school type without a school type selection', async () => {
     const highSchool = {
       ...school,
@@ -227,7 +245,6 @@ describe('OnboardingPage', () => {
     const user = renderOnboarding({ searchSchools });
 
     await user.type(screen.getByRole('searchbox', { name: '학교 검색' }), '가람');
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
 
     const result = await screen.findByRole('button', { name: /가람고등학교/ }, {
       timeout: 2_000,
@@ -251,19 +268,6 @@ describe('OnboardingPage', () => {
       'middle',
       expect.any(AbortSignal),
     ));
-  });
-
-  it('keeps a visible school search action above the WebView bottom chrome', async () => {
-    renderOnboarding();
-
-    const searchButton = screen.getByRole('button', { name: '학교 검색하기' });
-    const style = window.getComputedStyle(searchButton);
-
-    expect(style.position).toBe('fixed');
-    expect(style.bottom).toBe('180px');
-    expect(Number(style.zIndex)).toBeGreaterThanOrEqual(20);
-    expect(style.backgroundColor).toBe('rgb(47, 138, 97)');
-    expect(style.color).toBe('rgb(255, 255, 255)');
   });
 
   it('prefills edit mode and preserves the profile creation date when saved', async () => {
@@ -318,16 +322,14 @@ describe('OnboardingPage', () => {
     const user = renderOnboarding({ searchSchools });
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
-    await user.type(screen.getByLabelText('학교 검색'), ' ');
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.type(screen.getByLabelText('학교 검색'), ' {Enter}');
     expect(searchSchools).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(
       '학교 이름을 두 글자 이상 입력해 주세요.',
     );
 
     await user.clear(screen.getByLabelText('학교 검색'));
-    await user.type(screen.getByLabelText('학교 검색'), '가람');
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.type(screen.getByLabelText('학교 검색'), '가람{Enter}');
     expect(await screen.findByText('검색 결과가 없어요. 학교 이름을 다시 확인해 주세요.'))
       .toBeInTheDocument();
   });
@@ -342,8 +344,7 @@ describe('OnboardingPage', () => {
     const user = renderOnboarding({ searchSchools });
 
     await user.click(screen.getByRole('radio', { name: '중학교' }));
-    await user.type(screen.getByLabelText('학교 검색'), '가람');
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.type(screen.getByLabelText('학교 검색'), '가람{Enter}');
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '가람',
       'middle',
@@ -352,7 +353,7 @@ describe('OnboardingPage', () => {
     await user.clear(screen.getByLabelText('학교 검색'));
     await user.type(screen.getByLabelText('학교 검색'), '나래');
     await user.click(screen.getByRole('radio', { name: '고등학교' }));
-    await user.click(screen.getByRole('button', { name: '학교 검색하기' }));
+    await user.type(screen.getByLabelText('학교 검색'), '{Enter}');
     await waitFor(() => expect(searchSchools).toHaveBeenCalledWith(
       '나래',
       'high',
@@ -488,7 +489,7 @@ describe('OnboardingPage', () => {
     expect(nickname).toHaveValue('냠냠이');
     expect(middleSchool).toHaveAttribute('aria-checked', 'true');
     expect(highSchool).toHaveAttribute('aria-checked', 'false');
-    expect(schoolSearch).toHaveValue('가람');
+    expect(schoolSearch).toHaveValue('가람중학교');
     expect(allergy).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('선택한 학교: 가람중학교')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: '체험 모드 안내' })).not.toBeInTheDocument();
