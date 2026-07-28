@@ -3,6 +3,7 @@ import SwiftUI
 
 enum RebuildChildTab: String, CaseIterable, Identifiable {
     case today
+    case meals
     case growth
     case collection
 
@@ -11,6 +12,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today: return "오늘"
+        case .meals: return "급식표"
         case .growth: return "성장"
         case .collection: return "도감"
         }
@@ -19,6 +21,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .today: return "leaf.fill"
+        case .meals: return "calendar"
         case .growth: return "chart.line.uptrend.xyaxis"
         case .collection: return "books.vertical.fill"
         }
@@ -28,6 +31,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
 struct ChildNavigationView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var todayViewModel: TodayForestViewModel
+    @StateObject private var mealScheduleViewModel: MealScheduleViewModel
     @State private var selection: RebuildChildTab = .today
     private let growthPolicy: GrowthPolicy
     private let growthProvider: any GrowthSnapshotProviding
@@ -54,6 +58,12 @@ struct ChildNavigationView: View {
                 container: container
             )
         )
+        _mealScheduleViewModel = StateObject(
+            wrappedValue: Self.makeMealScheduleViewModel(
+                profile: profile,
+                container: container
+            )
+        )
     }
 
     var body: some View {
@@ -71,6 +81,15 @@ struct ChildNavigationView: View {
                     )
                 }
                 .tag(RebuildChildTab.today)
+
+            MealScheduleView(viewModel: mealScheduleViewModel)
+                .tabItem {
+                    Label(
+                        RebuildChildTab.meals.title,
+                        systemImage: RebuildChildTab.meals.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.meals)
 
             GrowthView(
                 provider: growthProvider,
@@ -135,6 +154,30 @@ struct ChildNavigationView: View {
             ),
             school: profile.school.map(Self.rebuildSchool),
             allergyCodes: profile.allergyCodes
+        )
+    }
+
+    @MainActor
+    private static func makeMealScheduleViewModel(
+        profile: RebuildUserProfile,
+        container: NSPersistentContainer?
+    ) -> MealScheduleViewModel {
+        let school = profile.school.map(Self.rebuildSchool)
+        guard let container else {
+            return MealScheduleViewModel(
+                repository: UnavailableMealScheduleRepository(),
+                school: school
+            )
+        }
+        let repository = RebuildMealRepository(
+            store: CoreDataRebuildMealDayStore(
+                context: container.newBackgroundContext()
+            ),
+            client: RebuildMealClient()
+        )
+        return MealScheduleViewModel(
+            repository: LiveMealScheduleRepository(repository: repository),
+            school: school
         )
     }
 

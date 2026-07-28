@@ -144,7 +144,7 @@ class ChildNavigationTest {
             composeRule.onNodeWithText("닫기").performClick()
             composeRule.onNodeWithText("급식 기록").assertDoesNotExist()
 
-            listOf("growth", "collection").forEach { route ->
+            listOf("meals", "growth", "collection").forEach { route ->
                 composeRule.onNodeWithTag("child_route_$route").performClick()
                 composeRule.waitForIdle()
                 composeRule.onRoot().performTouchInput {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Forest
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -46,6 +47,7 @@ enum class ChildRoute(
     val icon: ImageVector,
 ) {
     Today("today", "오늘", Icons.Filled.Forest),
+    Meals("meals", "급식표", Icons.Filled.CalendarMonth),
     Growth("growth", "성장", Icons.AutoMirrored.Filled.TrendingUp),
     Collection("collection", "도감", Icons.AutoMirrored.Filled.MenuBook),
 }
@@ -66,27 +68,43 @@ fun ChildNavigation(
             RoomGrowthProgressSource(database.progressDao()),
         )
     }
-    val viewModel = remember(profile, database, context, repositoryScope) {
-        val repository = MealRepository(
+    val mealRepository = remember(database, repositoryScope) {
+        MealRepository(
             store = RoomMealDayStore(database.mealDayDao()),
             client = NeisMealClient(),
             scope = repositoryScope,
         )
+    }
+    val school = remember(profile.school) {
+        profile.school?.let {
+            School(
+                name = it.name,
+                officeCode = it.officeCode,
+                schoolCode = it.schoolCode,
+            )
+        }
+    }
+    val viewModel = remember(
+        profile,
+        database,
+        context,
+        mealRepository,
+    ) {
         TodayForestViewModel(
-            repository = LiveTodayMealRepository(repository),
+            repository = LiveTodayMealRepository(mealRepository),
             recorder = LiveTodayMealRecorder(
                 RecordMealUseCase(database, context.assets),
             ),
             photoMetadataStore = RoomTodayPhotoMetadataStore(database),
             progressProvider = RoomTodayProgressProvider(database),
-            school = profile.school?.let {
-                School(
-                    name = it.name,
-                    officeCode = it.officeCode,
-                    schoolCode = it.schoolCode,
-                )
-            },
+            school = school,
             allergyCodes = profile.allergyCodes,
+        )
+    }
+    val mealScheduleViewModel = remember(mealRepository, school) {
+        MealScheduleViewModel(
+            repository = mealRepository,
+            school = school,
         )
     }
     var route by remember { mutableStateOf(ChildRoute.Today) }
@@ -128,6 +146,12 @@ fun ChildNavigation(
             )
             when (route) {
                 ChildRoute.Today -> Unit
+                ChildRoute.Meals -> MealScheduleScreen(
+                    viewModel = mealScheduleViewModel,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(1f),
+                )
                 ChildRoute.Growth -> GrowthScreen(
                     repository = growthRepository,
                     policy = growthPolicy,
