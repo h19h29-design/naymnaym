@@ -7,6 +7,10 @@ import { AppsInTossBundle } from '@apps-in-toss/ait-format';
 import { inflateSync, unzlibSync } from 'fflate';
 
 export const RELEASE_LIMIT_BYTES = 100 * 1024 * 1024;
+export const PRODUCTION_CONSOLE_IDENTITY = Object.freeze({
+  appName: 'nyam-levelup',
+  displayName: '급식레벨업',
+});
 const APP_ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DEFAULT_WEB_DIST = join(APP_ROOT, 'dist');
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -121,6 +125,16 @@ function assertSafeMetadata(value, seen = new Set()) {
       assertSafeContent(Buffer.from(key));
       assertSafeMetadata(item, seen);
     }
+  }
+}
+
+function assertConsoleIdentity(reader, expectedIdentity) {
+  if (!expectedIdentity) return;
+  if (reader.appName !== expectedIdentity.appName) {
+    throw releaseError('Release bundle appName does not match Toss console registration');
+  }
+  if (reader.metadata?.extra?.brand?.displayName !== expectedIdentity.displayName) {
+    throw releaseError('Release bundle displayName does not match Toss console app information');
   }
 }
 
@@ -408,7 +422,7 @@ function assertIndexMatchesZip(index, actual) {
   }
 }
 
-export async function verifyRelease(artifactPath) {
+export async function verifyRelease(artifactPath, expectedIdentity) {
   const path = artifactPath ?? await resolveDefaultAit();
   await assertRealAit(path);
   const bytes = await readFile(path);
@@ -419,6 +433,7 @@ export async function verifyRelease(artifactPath) {
   } catch {
     throw releaseError('Final AIT artifact cannot be read');
   }
+  assertConsoleIdentity(reader, expectedIdentity);
   let entries;
   try {
     entries = parseZipEntries(Buffer.from(reader.readZipBlob()));
@@ -454,7 +469,7 @@ async function main() {
       const result = await verifyWebRelease(process.argv[3]);
       console.log(`Web preflight passed: ${result.totalBytes} bytes across ${result.fileCount} files`);
     } else {
-      const result = await verifyRelease(process.argv[2]);
+      const result = await verifyRelease(process.argv[2], PRODUCTION_CONSOLE_IDENTITY);
       console.log(`Final AIT release checks passed: ${result.totalBytes} bytes across ${result.entryCount} entries`);
     }
   } catch (error) {

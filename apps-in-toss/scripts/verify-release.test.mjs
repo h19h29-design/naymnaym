@@ -8,7 +8,11 @@ import { deflateSync } from 'node:zlib';
 import { AITWriter, AppsInTossBundle } from '@apps-in-toss/ait-format';
 import { AITBundle } from '@apps-in-toss/ait-format-proto';
 import { unzipSync, zipSync } from 'fflate';
-import { verifyRelease, verifyWebRelease } from './verify-release.mjs';
+import {
+  PRODUCTION_CONSOLE_IDENTITY,
+  verifyRelease,
+  verifyWebRelease,
+} from './verify-release.mjs';
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -67,7 +71,7 @@ function validEntries() {
 
 async function writeAit(path, entries, options = {}) {
   const writer = new AITWriter({
-    appName: 'nyam-release-fixture',
+    appName: options.appName ?? 'nyam-release-fixture',
     deploymentId: '019f9310-1c0b-78d1-adb0-11d90fed1676',
   });
   if (options.metadata) writer.setMetadata(options.metadata);
@@ -190,6 +194,68 @@ test('accepts a complete final AIT artifact made with the official writer', asyn
     assert.equal(result.levelImageCount, 7);
     assert.equal(result.entryCount, 9);
     assert.ok(result.totalBytes > 0);
+  });
+});
+
+test('accepts a final AIT artifact matching the Toss console identity', async () => {
+  await withTemporaryDirectory(async (root) => {
+    const artifact = join(root, 'nyam.ait');
+    await writeAit(artifact, validEntries(), {
+      appName: PRODUCTION_CONSOLE_IDENTITY.appName,
+      metadata: {
+        extra: {
+          brand: {
+            displayName: PRODUCTION_CONSOLE_IDENTITY.displayName,
+          },
+        },
+      },
+    });
+
+    await assert.doesNotReject(
+      verifyRelease(artifact, PRODUCTION_CONSOLE_IDENTITY),
+    );
+  });
+});
+
+test('rejects a final AIT artifact whose display name differs from Toss app information', async () => {
+  await withTemporaryDirectory(async (root) => {
+    const artifact = join(root, 'nyam.ait');
+    await writeAit(artifact, validEntries(), {
+      appName: PRODUCTION_CONSOLE_IDENTITY.appName,
+      metadata: {
+        extra: {
+          brand: {
+            displayName: '냠냠레벨업',
+          },
+        },
+      },
+    });
+
+    await assert.rejects(
+      () => verifyRelease(artifact, PRODUCTION_CONSOLE_IDENTITY),
+      /displayName does not match Toss console app information/,
+    );
+  });
+});
+
+test('rejects a final AIT artifact whose appName differs from Toss registration', async () => {
+  await withTemporaryDirectory(async (root) => {
+    const artifact = join(root, 'nyam.ait');
+    await writeAit(artifact, validEntries(), {
+      appName: 'wrong-app-name',
+      metadata: {
+        extra: {
+          brand: {
+            displayName: PRODUCTION_CONSOLE_IDENTITY.displayName,
+          },
+        },
+      },
+    });
+
+    await assert.rejects(
+      () => verifyRelease(artifact, PRODUCTION_CONSOLE_IDENTITY),
+      /appName does not match Toss console registration/,
+    );
   });
 });
 
