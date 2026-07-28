@@ -11,6 +11,16 @@ const items = [
     ),
   },
   {
+    to: '/meals',
+    label: '급식표',
+    icon: (
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="5" y="7" width="22" height="20" rx="3" />
+        <path d="M10 4v6M22 4v6M5 13h22M11 18h3M18 18h3M11 23h3M18 23h3" />
+      </svg>
+    ),
+  },
+  {
     to: '/growth',
     label: '성장',
     icon: (

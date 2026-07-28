@@ -451,7 +451,7 @@ h2 {
   bottom: max(14px, env(safe-area-inset-bottom));
   left: max(16px, calc((100vw - 488px) / 2));
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -493,6 +493,331 @@ h2 {
 .forest-navigation__item.is-active {
   background: rgba(241, 220, 113, 0.62);
   color: #155d36;
+}
+
+.meal-schedule-title {
+  padding-bottom: 24px;
+}
+
+.meal-schedule-title h1 {
+  font-size: clamp(38px, 11vw, 48px);
+}
+
+.meal-schedule-title > p:not(.forest-eyebrow) {
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.meal-schedule-controls {
+  display: grid;
+  gap: 14px;
+}
+
+.meal-schedule-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 5px;
+  border-radius: 17px;
+  background: var(--cream-100);
+}
+
+.meal-schedule-modes button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--muted-600);
+  font-weight: 800;
+}
+
+.meal-schedule-modes button.is-selected {
+  background: var(--forest-700);
+  box-shadow: 0 8px 18px rgba(31, 94, 67, 0.2);
+  color: #fff;
+}
+
+.meal-schedule-period {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 8px;
+  align-items: center;
+}
+
+.meal-schedule-period button,
+.meal-schedule-today {
+  min-height: 42px;
+  border: 1px solid #d8e4d8;
+  border-radius: 13px;
+  background: #fff;
+  color: var(--forest-700);
+  font-weight: 800;
+}
+
+.meal-schedule-period button {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.meal-schedule-period strong {
+  min-width: 0;
+  font-size: 16px;
+  text-align: center;
+}
+
+.meal-schedule-today {
+  justify-self: center;
+  min-height: 38px;
+  padding: 0 18px;
+  background: rgba(203, 234, 120, 0.25);
+}
+
+.meal-schedule-loading > strong {
+  display: block;
+  margin-bottom: 18px;
+  font-size: 18px;
+}
+
+.meal-schedule-daily > header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.meal-schedule-daily h2 {
+  margin-bottom: 0;
+  font-size: 22px;
+}
+
+.meal-schedule-daily > header > span {
+  flex: 0 0 auto;
+  padding-top: 4px;
+  color: var(--muted-600);
+  font-size: 13px;
+}
+
+.meal-schedule-daily__rows {
+  overflow: hidden;
+  border: 1px solid #e3e9df;
+  border-radius: 18px;
+}
+
+.meal-schedule-daily__rows > div {
+  display: grid;
+  grid-template-columns: 36px 68px minmax(0, 1fr);
+  align-items: center;
+  min-height: 58px;
+  border-bottom: 1px solid #edf0e9;
+}
+
+.meal-schedule-daily__rows > div:last-child {
+  border-bottom: 0;
+}
+
+.meal-schedule-daily__rows > div > span {
+  font-size: 20px;
+  text-align: center;
+}
+
+.meal-schedule-daily__rows strong {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background: rgba(203, 234, 120, 0.14);
+  color: var(--forest-700);
+  font-size: 14px;
+}
+
+.meal-schedule-daily__rows p {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.meal-schedule-empty {
+  margin: 14px 0 0;
+  color: var(--muted-600);
+  text-align: center;
+}
+
+.meal-schedule-table-card {
+  padding: 12px;
+}
+
+.meal-schedule-table-scroll {
+  overflow-x: auto;
+  border: 1px solid #e3e9df;
+  border-radius: 17px;
+  overscroll-behavior-x: contain;
+}
+
+.meal-schedule-table-card table {
+  width: 100%;
+  min-width: 690px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.meal-schedule-table-card th,
+.meal-schedule-table-card td {
+  padding: 10px 7px;
+  border-right: 1px solid #edf0e9;
+  border-bottom: 1px solid #edf0e9;
+  text-align: center;
+  vertical-align: top;
+}
+
+.meal-schedule-table-card tr:last-child th,
+.meal-schedule-table-card tr:last-child td {
+  border-bottom: 0;
+}
+
+.meal-schedule-table-card th:last-child,
+.meal-schedule-table-card td:last-child {
+  border-right: 0;
+}
+
+.meal-schedule-table-card thead th {
+  background: #f6f8f1;
+  color: var(--forest-700);
+  font-size: 13px;
+}
+
+.meal-schedule-table-card thead th:first-child,
+.meal-schedule-table-card tbody th {
+  width: 88px;
+}
+
+.meal-schedule-table-card thead span,
+.meal-schedule-table-card thead strong {
+  display: block;
+}
+
+.meal-schedule-table-card thead strong {
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.meal-schedule-table-card tbody th {
+  background: rgba(203, 234, 120, 0.12);
+  color: var(--forest-700);
+  font-size: 16px;
+}
+
+.meal-schedule-table-card tbody th span {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.meal-schedule-table-card td {
+  color: var(--ink-900);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.meal-schedule-monthly {
+  padding: 12px;
+}
+
+.meal-schedule-monthly__weekdays,
+.meal-schedule-monthly__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.meal-schedule-monthly__weekdays strong {
+  padding: 10px 4px;
+  color: var(--forest-700);
+  font-size: 13px;
+  text-align: center;
+}
+
+.meal-schedule-monthly__grid {
+  overflow: hidden;
+  border: 1px solid #e3e9df;
+  border-radius: 15px;
+}
+
+.meal-schedule-monthly article {
+  min-width: 0;
+  min-height: 118px;
+  padding: 8px 6px;
+  border-right: 1px solid #edf0e9;
+  border-bottom: 1px solid #edf0e9;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.meal-schedule-monthly article:nth-child(5n) {
+  border-right: 0;
+}
+
+.meal-schedule-monthly article.is-empty {
+  background: rgba(245, 238, 220, 0.38);
+}
+
+.meal-schedule-monthly article > strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--forest-700);
+  font-size: 13px;
+}
+
+.meal-schedule-monthly article > span {
+  color: var(--muted-600);
+}
+
+.meal-schedule-monthly ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-schedule-monthly li {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.meal-schedule-nutrition {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.meal-schedule-nutrition > div {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(203, 234, 120, 0.14);
+  text-align: center;
+}
+
+.meal-schedule-nutrition span,
+.meal-schedule-nutrition strong {
+  display: block;
+}
+
+.meal-schedule-nutrition span {
+  margin-bottom: 5px;
+  color: var(--muted-600);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.meal-schedule-nutrition strong {
+  color: var(--forest-700);
+  font-size: 17px;
 }
 
 .recording-overlay {

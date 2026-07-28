@@ -88,6 +88,20 @@ describe('direct routes', () => {
     expect(await screen.findByRole('heading', { name: '성장 도감' })).toBeInTheDocument();
   });
 
+  it('opens a meal schedule with daily, weekly, and monthly views', async () => {
+    const user = userEvent.setup();
+    renderTestApp({ initialEntry: '/meals?demo=1', profile: makeProfile() });
+
+    expect(await screen.findByRole('heading', { name: '급식표' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('일간 급식표')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '주간' }));
+    expect(await screen.findByLabelText('주간 급식표')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '월간' }));
+    expect(await screen.findByLabelText('월간 급식표')).toBeInTheDocument();
+  });
+
   it('allows the explicitly requested demo route without a profile', async () => {
     renderTestApp({ initialEntry: '/today?demo=1', profile: null });
 

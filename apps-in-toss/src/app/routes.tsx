@@ -7,6 +7,7 @@ import { SettingsPage } from '../features/settings/SettingsPage';
 import { TodayPage } from '../features/today/TodayPage';
 import { CollectionPage } from '../features/growth/CollectionPage';
 import { GrowthPage } from '../features/growth/GrowthPage';
+import { MealSchedulePage } from '../features/meals/MealSchedulePage';
 
 const onboarding = <OnboardingPage />;
 
@@ -79,6 +80,21 @@ function GrowthGate() {
   );
 }
 
+function MealsGate() {
+  const [searchParams] = useSearchParams();
+  const isExplicitDemo = searchParams.get('demo') === '1';
+
+  return (
+    <ReadyGate>
+      {({ profile }) => (
+        profile || isExplicitDemo
+          ? <MealSchedulePage />
+          : <Navigate to="/onboarding?next=%2Fmeals" replace />
+      )}
+    </ReadyGate>
+  );
+}
+
 function CollectionGate() {
   const [searchParams] = useSearchParams();
   const isExplicitDemo = searchParams.get('demo') === '1';
@@ -109,6 +125,7 @@ export function routeObjects(): RouteObject[] {
     { path: '/', element: <RootGate /> },
     { path: '/onboarding', element: <OnboardingGate /> },
     { path: '/today', element: <TodayGate /> },
+    { path: '/meals', element: <MealsGate /> },
     { path: '/growth', element: <GrowthGate /> },
     { path: '/collection', element: <CollectionGate /> },
     { path: '/settings', element: <SettingsGate /> },
