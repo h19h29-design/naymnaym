@@ -26,14 +26,18 @@ fun AllergySelectionScreen(viewModel: OnboardingViewModel) {
     var selected by remember { mutableStateOf(emptySet<Int>()) }
     Column(verticalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[3].dp)) {
         QuestionTitle("확인이 필요한 알레르기가 있나요?")
+        Text("급식표에 표시되는 번호와 식품명을 함께 확인해 주세요.")
         LazyColumn(modifier = Modifier.weight(1f)) {
-            items((1..19).toList()) { code ->
+            items(
+                items = AllergyCatalog.options,
+                key = AllergyOption::code,
+            ) { option ->
                 TextButton(
                     onClick = {
-                        selected = if (code in selected) {
-                            selected - code
+                        selected = if (option.code in selected) {
+                            selected - option.code
                         } else {
-                            selected + code
+                            selected + option.code
                         }
                     },
                     modifier = Modifier
@@ -41,9 +45,9 @@ fun AllergySelectionScreen(viewModel: OnboardingViewModel) {
                         .heightIn(min = RebuildTokens.minimumActionSize.dp)
                         .semantics { role = Role.Checkbox },
                 ) {
-                    Text("$code 번 알레르기", modifier = Modifier.weight(1f))
+                    Text(option.label, modifier = Modifier.weight(1f))
                     Checkbox(
-                        checked = code in selected,
+                        checked = option.code in selected,
                         onCheckedChange = null,
                     )
                 }

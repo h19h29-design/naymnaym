@@ -35,6 +35,27 @@ class OnboardingFlowTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun allergyOptionsShowCodeAndFoodName() {
+        val viewModel = OnboardingViewModel(
+            profileStore = object : OnboardingProfileStore {
+                override suspend fun save(profile: RebuildUserProfile) = Unit
+                override suspend fun removeIfCurrent(id: String) = Unit
+            },
+            schoolSearchClient = SchoolSearchClient { emptyList() },
+        )
+
+        composeRule.setContent {
+            RebuildTheme {
+                AllergySelectionScreen(viewModel)
+            }
+        }
+
+        composeRule.onNodeWithText("1. 난류")
+            .assertIsDisplayed()
+            .assertHasClickAction()
+    }
+
+    @Test
     fun allergyListKeepsNextActionVisibleAtLargeText() {
         val viewModel = OnboardingViewModel(
             profileStore = object : OnboardingProfileStore {

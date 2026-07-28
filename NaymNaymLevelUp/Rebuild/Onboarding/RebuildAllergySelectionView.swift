@@ -4,13 +4,18 @@ struct RebuildAllergySelectionView: View {
     @ObservedObject var viewModel: RebuildOnboardingViewModel
     @State private var selectedCodes: Set<Int> = []
 
-    private let codes = Array(1...19)
+    private let codes = AllergyMap.allCodes
 
     var body: some View {
         VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
-            Text("확인이 필요한 알레르기가 있나요?")
-                .font(RebuildDesignTokens.titleFont)
-                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[1]) {
+                Text("확인이 필요한 알레르기가 있나요?")
+                    .font(RebuildDesignTokens.titleFont)
+                    .accessibilityAddTraits(.isHeader)
+                Text("급식표에 표시되는 번호와 식품명을 함께 확인해 주세요.")
+                    .font(RebuildDesignTokens.bodyFont)
+                    .foregroundStyle(RebuildDesignTokens.ink900.opacity(0.72))
+            }
             ScrollView {
                 LazyVStack(spacing: RebuildDesignTokens.spacing[1]) {
                     ForEach(codes, id: \.self) { code in
@@ -22,8 +27,9 @@ struct RebuildAllergySelectionView: View {
                             }
                         } label: {
                             HStack {
-                                Text("\(code)번 알레르기")
+                                Text(AllergyMap.label(for: code))
                                     .font(RebuildDesignTokens.bodyFont)
+                                    .multilineTextAlignment(.leading)
                                 Spacer()
                                 Image(
                                     systemName: selectedCodes.contains(code)
@@ -33,7 +39,7 @@ struct RebuildAllergySelectionView: View {
                             }
                             .frame(minHeight: RebuildDesignTokens.minimumActionSize)
                         }
-                        .accessibilityLabel("\(code)번 알레르기")
+                        .accessibilityLabel(AllergyMap.label(for: code))
                         .accessibilityValue(
                             selectedCodes.contains(code) ? "선택됨" : "선택 안 됨"
                         )

@@ -32,7 +32,6 @@ enum AllergyMap {
     }
 
     static func label(for code: Int) -> String {
-        "\(code) \(name(for: code))"
+        "\(code). \(name(for: code))"
     }
 }
-

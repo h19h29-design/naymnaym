@@ -79,7 +79,7 @@ fun OnboardingFlow(
                     "알레르기: ${
                         viewModel.draft.allergyCodes
                             .takeIf { it.isNotEmpty() }
-                            ?.joinToString()
+                            ?.let(AllergyCatalog::summary)
                             ?: "선택 안 함"
                     }",
                 )

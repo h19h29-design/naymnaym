@@ -108,7 +108,9 @@ struct RebuildOnboardingFlowView: View {
     private var allergySummary: String {
         viewModel.draft.allergyCodes.isEmpty
             ? "선택 안 함"
-            : viewModel.draft.allergyCodes.map(String.init).joined(separator: ", ")
+            : viewModel.draft.allergyCodes
+                .map(AllergyMap.label(for:))
+                .joined(separator: ", ")
     }
 
     private func question<Content: View>(
