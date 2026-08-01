@@ -110,6 +110,15 @@ struct GrowthSnapshot: Equatable, Sendable {
     static let empty = GrowthSnapshot(totalXP: 0, recentEvents: [])
 }
 
+struct CollectionSnapshot: Equatable, Sendable {
+    let totalXP: Int
+    let records: [CollectionRecord]
+}
+
+protocol CollectionSnapshotProviding {
+    func loadCollection() async throws -> CollectionSnapshot
+}
+
 protocol GrowthSnapshotProviding {
     func load(limit: Int) async throws -> GrowthSnapshot
 }
@@ -131,6 +140,27 @@ actor CoreDataGrowthSnapshotProvider: GrowthSnapshotProviding {
         return GrowthSnapshot(
             totalXP: Int(total),
             recentEvents: try repository.recentPositiveEvents(limit: limit)
+        )
+    }
+}
+
+actor CoreDataCollectionSnapshotProvider: CollectionSnapshotProviding {
+    private let repository: RebuildProgressRepository
+
+    init(container: NSPersistentContainer) {
+        repository = RebuildProgressRepository(
+            context: container.newBackgroundContext()
+        )
+    }
+
+    func loadCollection() throws -> CollectionSnapshot {
+        let total = try repository.totalXP()
+        guard total <= Int64(Int.max) else {
+            throw RebuildRepositoryError.totalXPOverflow
+        }
+        return CollectionSnapshot(
+            totalXP: Int(total),
+            records: try repository.activeCollectionRecords()
         )
     }
 }

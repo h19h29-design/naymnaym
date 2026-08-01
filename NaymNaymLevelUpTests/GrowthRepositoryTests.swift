@@ -170,4 +170,92 @@ final class GrowthRepositoryTests: XCTestCase {
             "이전 성장 기록 정리"
         )
     }
+
+    func testCollectionSnapshotReturnsOnlyActiveMealRecordsInStableOrder() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let progress = RebuildProgressRepository(context: container.viewContext)
+        XCTAssertTrue(
+            try progress.appendIfAbsent(
+                RebuildProgressEvent(
+                    id: "meal:2026-07-31|현미밥|finished",
+                    amount: 18,
+                    occurredAt: Date(timeIntervalSince1970: 100)
+                )
+            )
+        )
+        try insertMealRecord(
+            id: "2026-07-31|현미밥|finished",
+            date: "2026-07-31",
+            menu: "현미밥",
+            status: "finished",
+            in: container
+        )
+        try insertMealRecord(
+            id: "2026-07-30|시금치나물|oneBite",
+            date: "2026-07-30",
+            menu: "시금치나물",
+            status: "oneBite",
+            in: container
+        )
+        try insertMealRecord(
+            id: "2026-07-29|우유|allergyAvoided",
+            date: "2026-07-29",
+            menu: "우유",
+            status: "allergyAvoided",
+            deletedAt: Date(timeIntervalSince1970: 1),
+            in: container
+        )
+
+        let snapshot = try await CoreDataCollectionSnapshotProvider(
+            container: container
+        ).loadCollection()
+
+        XCTAssertEqual(snapshot.totalXP, 18)
+        XCTAssertEqual(
+            snapshot.records,
+            [
+                CollectionRecord(
+                    date: "2026-07-30",
+                    normalizedMenuName: "시금치나물",
+                    status: "oneBite"
+                ),
+                CollectionRecord(
+                    date: "2026-07-31",
+                    normalizedMenuName: "현미밥",
+                    status: "finished"
+                ),
+            ]
+        )
+    }
+
+    private func insertMealRecord(
+        id: String,
+        date: String,
+        menu: String,
+        status: String,
+        deletedAt: Date? = nil,
+        in container: NSPersistentContainer
+    ) throws {
+        try container.viewContext.performAndWait {
+            let entity = try XCTUnwrap(
+                container.managedObjectModel.entitiesByName[RebuildEntityName.mealRecord]
+            )
+            let record = RebuildMealRecordManagedObject(
+                entity: entity,
+                insertInto: container.viewContext
+            )
+            record.id = id
+            record.date = date
+            record.menuName = menu
+            record.normalizedMenuName = menu.lowercased()
+            record.status = status
+            record.difficultyReasonsJSON = "[]"
+            record.allergyCodesJSON = "[]"
+            record.photoIDsJSON = "[]"
+            record.parentShareEnabled = false
+            record.updatedAt = Date(timeIntervalSince1970: 10)
+            record.deletedAt = deletedAt
+            try container.viewContext.save()
+        }
+    }
 }

@@ -1,6 +1,7 @@
 package com.h19h29.naymnaymlevelup.rebuild.growth
 
 import com.h19h29.naymnaymlevelup.rebuild.data.ProgressEventEntity
+import com.h19h29.naymnaymlevelup.rebuild.data.MealRecordEntity
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -129,6 +130,29 @@ class GrowthRepositoryTest {
         )
     }
 
+    @Test
+    fun collectionSnapshotUsesOnlyTheActiveRecordsExposedByItsSource() = runTest {
+        val snapshot = CollectionRepository(
+            object : CollectionSnapshotSource {
+                override suspend fun totalXp(): Long = 18
+
+                override suspend fun activeRecords(): List<MealRecordEntity> = listOf(
+                    meal("2026-07-30|시금치나물|oneBite", "2026-07-30", "시금치나물", "oneBite"),
+                    meal("2026-07-31|현미밥|finished", "2026-07-31", "현미밥", "finished"),
+                )
+            },
+        ).loadCollection()
+
+        assertEquals(18, snapshot.totalXp)
+        assertEquals(
+            listOf(
+                CollectionRecord("2026-07-30", "시금치나물", "oneBite"),
+                CollectionRecord("2026-07-31", "현미밥", "finished"),
+            ),
+            snapshot.records,
+        )
+    }
+
     private fun event(
         id: String,
         amount: Int,
@@ -140,6 +164,20 @@ class GrowthRepositoryTest {
         occurredAtEpochMillis = occurredAt,
         sourceRecordId = sourceRecordId,
     )
+
+    private fun meal(id: String, date: String, name: String, status: String) =
+        MealRecordEntity(
+            id = id,
+            date = date,
+            menuName = name,
+            normalizedMenuName = name,
+            status = status,
+            difficultyReasonsJson = "[]",
+            allergyCodesJson = "[]",
+            photoIdsJson = "[]",
+            updatedAtEpochMillis = 1,
+            deletedAtEpochMillis = null,
+        )
 }
 
 private class FakeGrowthProgressSource(

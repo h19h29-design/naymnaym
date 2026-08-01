@@ -213,6 +213,27 @@ final class RebuildProgressRepository {
         }
     }
 
+    func activeCollectionRecords() throws -> [CollectionRecord] {
+        try context.performAndWait {
+            let request = NSFetchRequest<RebuildMealRecordManagedObject>(
+                entityName: RebuildEntityName.mealRecord
+            )
+            request.predicate = NSPredicate(format: "deletedAt == nil")
+            request.sortDescriptors = [
+                NSSortDescriptor(key: "date", ascending: true),
+                NSSortDescriptor(key: "normalizedMenuName", ascending: true),
+                NSSortDescriptor(key: "id", ascending: true),
+            ]
+            return try context.fetch(request).map {
+                CollectionRecord(
+                    date: $0.date,
+                    normalizedMenuName: $0.normalizedMenuName,
+                    status: $0.status
+                )
+            }
+        }
+    }
+
     func load(id: String) throws -> RebuildProgressEvent? {
         try context.performAndWait {
             let request = NSFetchRequest<RebuildProgressEventManagedObject>(

@@ -1,6 +1,8 @@
 package com.h19h29.naymnaymlevelup.rebuild.growth
 
 import android.content.res.AssetManager
+import com.h19h29.naymnaymlevelup.rebuild.data.MealRecordDao
+import com.h19h29.naymnaymlevelup.rebuild.data.MealRecordEntity
 import com.h19h29.naymnaymlevelup.rebuild.data.ProgressDao
 import com.h19h29.naymnaymlevelup.rebuild.data.ProgressEventEntity
 import com.h19h29.naymnaymlevelup.rebuild.meal.ContractLoadException
@@ -105,6 +107,55 @@ data class GrowthSnapshot(
 ) {
     companion object {
         val empty = GrowthSnapshot(totalXp = 0, recentEvents = emptyList())
+    }
+}
+
+data class CollectionSnapshot(
+    val totalXp: Int,
+    val records: List<CollectionRecord>,
+)
+
+interface CollectionSnapshotSource {
+    suspend fun totalXp(): Long
+    suspend fun activeRecords(): List<MealRecordEntity>
+}
+
+class RoomCollectionSnapshotSource(
+    private val progressDao: ProgressDao,
+    private val mealRecordDao: MealRecordDao,
+) : CollectionSnapshotSource {
+    override suspend fun totalXp(): Long = progressDao.totalXp()
+
+    override suspend fun activeRecords(): List<MealRecordEntity> =
+        mealRecordDao.activeCollectionRecords()
+}
+
+class CollectionRepository(
+    private val source: CollectionSnapshotSource,
+) {
+    suspend fun loadCollection(): CollectionSnapshot {
+        val records = source.activeRecords()
+            .asSequence()
+            .filter { it.deletedAtEpochMillis == null }
+            .sortedWith(
+                compareBy<MealRecordEntity> { it.date }
+                    .thenBy { it.normalizedMenuName }
+                    .thenBy { it.id },
+            )
+            .map {
+                CollectionRecord(
+                    date = it.date,
+                    normalizedMenuName = it.normalizedMenuName,
+                    status = it.status,
+                )
+            }
+            .toList()
+        return CollectionSnapshot(
+            totalXp = source.totalXp()
+                .coerceIn(0, Int.MAX_VALUE.toLong())
+                .toInt(),
+            records = records,
+        )
     }
 }
 
