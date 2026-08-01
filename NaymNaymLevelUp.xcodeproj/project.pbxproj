@@ -100,6 +100,8 @@
 		C20000000000000000000090 /* ForestSceneMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000094 /* ForestSceneMotion.swift */; };
 		C20000000000000000000091 /* ForestSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000095 /* ForestSceneView.swift */; };
 		C20000000000000000000092 /* ForestScene in Resources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000096 /* ForestScene */; };
+		C20000000000000000000094 /* CollectionProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000098 /* CollectionProgressTests.swift */; };
+		C20000000000000000000095 /* CollectionProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000099 /* CollectionProgress.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -210,6 +212,8 @@
 		C10000000000000000000094 /* ForestSceneMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/ForestSceneMotion.swift; sourceTree = "<group>"; };
 		C10000000000000000000095 /* ForestSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/ForestSceneView.swift; sourceTree = "<group>"; };
 		C10000000000000000000096 /* ForestScene */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/ForestScene; sourceTree = "<group>"; };
+		C10000000000000000000098 /* CollectionProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionProgressTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000099 /* CollectionProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Growth/CollectionProgress.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -308,6 +312,7 @@
 				C10000000000000000000087 /* GrowthDomain.swift */,
 				C10000000000000000000088 /* GrowthView.swift */,
 				C10000000000000000000089 /* CollectionView.swift */,
+				C10000000000000000000099 /* CollectionProgress.swift */,
 				C10000000000000000000091 /* RebuildIntroMotionSpec.swift */,
 				C10000000000000000000092 /* RebuildIntroView.swift */,
 				C10000000000000000000094 /* ForestSceneMotion.swift */,
@@ -345,6 +350,7 @@
 				C10000000000000000000086 /* GrowthRepositoryTests.swift */,
 				C10000000000000000000090 /* RebuildIntroMotionTests.swift */,
 				C10000000000000000000093 /* ForestSceneMotionTests.swift */,
+				C10000000000000000000098 /* CollectionProgressTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -540,6 +546,7 @@
 				C20000000000000000000083 /* GrowthDomain.swift in Sources */,
 				C20000000000000000000084 /* GrowthView.swift in Sources */,
 				C20000000000000000000085 /* CollectionView.swift in Sources */,
+				C20000000000000000000095 /* CollectionProgress.swift in Sources */,
 				C20000000000000000000087 /* RebuildIntroMotionSpec.swift in Sources */,
 				C20000000000000000000088 /* RebuildIntroView.swift in Sources */,
 				C20000000000000000000090 /* ForestSceneMotion.swift in Sources */,
@@ -570,6 +577,7 @@
 				C20000000000000000000082 /* GrowthRepositoryTests.swift in Sources */,
 				C20000000000000000000086 /* RebuildIntroMotionTests.swift in Sources */,
 				C20000000000000000000089 /* ForestSceneMotionTests.swift in Sources */,
+				C20000000000000000000094 /* CollectionProgressTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -720,7 +728,7 @@
 				APS_ENVIRONMENT = development;
 				CODE_SIGN_ENTITLEMENTS = NaymNaymLevelUp/NaymNaymLevelUp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEVELOPMENT_TEAM = 47SNWAZN3G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -730,7 +738,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.h19h29.naymnaymlevelup";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -751,7 +759,7 @@
 				APS_ENVIRONMENT = production;
 				CODE_SIGN_ENTITLEMENTS = NaymNaymLevelUp/NaymNaymLevelUp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEVELOPMENT_TEAM = 47SNWAZN3G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -761,7 +769,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.h19h29.naymnaymlevelup";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

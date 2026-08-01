@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "positiveStatuses": ["oneBite", "half", "finished"],
+  "foodGroups": [
+    { "id": "vegetable", "keywords": ["나물", "브로콜리", "시금치", "콩나물", "배추", "양배추", "상추", "오이", "호박", "가지", "버섯", "샐러드", "김치", "무침", "깻잎", "미역", "파프리카", "토마토", "감자", "고구마", "연근", "숙주"] },
+    { "id": "protein", "keywords": ["고기", "돼지", "소고기", "닭", "불고기", "돈까스", "생선", "고등어", "갈치", "참치", "두부", "계란", "달걀", "햄", "소시지", "새우", "오징어", "조개", "콩", "장조림", "완자", "미트볼", "스테이크", "탕수육", "떡갈비"] },
+    { "id": "dairy", "keywords": ["우유", "치즈", "요거트", "요구르트", "유제품", "아이스크림"] },
+    { "id": "fruit", "keywords": ["사과", "배", "바나나", "귤", "오렌지", "포도", "딸기", "수박", "복숭아", "키위", "과일", "멜론", "감", "자두", "블루베리"] }
+  ],
+  "badges": [
+    { "id": "nutrition_vegetable_1", "category": "nutrition", "metric": "food_group_vegetable", "threshold": 1, "title": "초록 한입" },
+    { "id": "nutrition_vegetable_5", "category": "nutrition", "metric": "food_group_vegetable", "threshold": 5, "title": "채소 친구" },
+    { "id": "nutrition_vegetable_15", "category": "nutrition", "metric": "food_group_vegetable", "threshold": 15, "title": "초록 숲 탐험가" },
+    { "id": "nutrition_protein_1", "category": "nutrition", "metric": "food_group_protein", "threshold": 1, "title": "튼튼 단백질" },
+    { "id": "nutrition_protein_5", "category": "nutrition", "metric": "food_group_protein", "threshold": 5, "title": "단백질 파트너" },
+    { "id": "nutrition_dairy_1", "category": "nutrition", "metric": "food_group_dairy", "threshold": 1, "title": "하얀 우유 별" },
+    { "id": "nutrition_dairy_5", "category": "nutrition", "metric": "food_group_dairy", "threshold": 5, "title": "유제품 수호대" },
+    { "id": "nutrition_fruit_1", "category": "nutrition", "metric": "food_group_fruit", "threshold": 1, "title": "상큼 탐험" },
+    { "id": "nutrition_fruit_5", "category": "nutrition", "metric": "food_group_fruit", "threshold": 5, "title": "과일 바구니" },
+    { "id": "nutrition_groups_3", "category": "nutrition", "metric": "distinct_food_groups", "threshold": 3, "title": "세 가지 무지개" },
+    { "id": "nutrition_groups_4", "category": "nutrition", "metric": "distinct_food_groups", "threshold": 4, "title": "네 가지 무지개" },
+    { "id": "nutrition_positive_25", "category": "nutrition", "metric": "positive_records", "threshold": 25, "title": "영양 탐험가" },
+
+    { "id": "challenge_first_positive", "category": "challenge", "metric": "positive_records", "threshold": 1, "title": "첫 기록" },
+    { "id": "challenge_one_bite_1", "category": "challenge", "metric": "one_bite_records", "threshold": 1, "title": "한 입 용기" },
+    { "id": "challenge_one_bite_5", "category": "challenge", "metric": "one_bite_records", "threshold": 5, "title": "한 입 친구" },
+    { "id": "challenge_one_bite_20", "category": "challenge", "metric": "one_bite_records", "threshold": 20, "title": "한 입 마스터" },
+    { "id": "challenge_finished_1", "category": "challenge", "metric": "finished_records", "threshold": 1, "title": "완식 첫걸음" },
+    { "id": "challenge_finished_5", "category": "challenge", "metric": "finished_records", "threshold": 5, "title": "완식 루틴" },
+    { "id": "challenge_finished_20", "category": "challenge", "metric": "finished_records", "threshold": 20, "title": "완식 챔피언" },
+    { "id": "challenge_new_menu_3", "category": "challenge", "metric": "distinct_menus", "threshold": 3, "title": "새 메뉴 탐험" },
+    { "id": "challenge_new_menu_10", "category": "challenge", "metric": "distinct_menus", "threshold": 10, "title": "메뉴 여행자" },
+    { "id": "challenge_new_menu_30", "category": "challenge", "metric": "distinct_menus", "threshold": 30, "title": "메뉴 지도 완성" },
+    { "id": "challenge_three_menu_days_3", "category": "challenge", "metric": "three_menu_days", "threshold": 3, "title": "식판 탐험가" },
+    { "id": "challenge_three_menu_days_10", "category": "challenge", "metric": "three_menu_days", "threshold": 10, "title": "식판 완주자" },
+
+    { "id": "streak_record_days_1", "category": "streak", "metric": "active_days", "threshold": 1, "title": "첫 발자국" },
+    { "id": "streak_record_days_3", "category": "streak", "metric": "active_days", "threshold": 3, "title": "기록 습관" },
+    { "id": "streak_record_days_7", "category": "streak", "metric": "active_days", "threshold": 7, "title": "일주일 친구" },
+    { "id": "streak_record_days_14", "category": "streak", "metric": "active_days", "threshold": 14, "title": "보름의 약속" },
+    { "id": "streak_record_days_30", "category": "streak", "metric": "active_days", "threshold": 30, "title": "한 달 성장" },
+    { "id": "streak_record_days_60", "category": "streak", "metric": "active_days", "threshold": 60, "title": "두 달 대단해" },
+    { "id": "streak_weekday_2", "category": "streak", "metric": "weekday_streak", "threshold": 2, "title": "이틀 연속" },
+    { "id": "streak_weekday_3", "category": "streak", "metric": "weekday_streak", "threshold": 3, "title": "사흘 연속" },
+    { "id": "streak_weekday_5", "category": "streak", "metric": "weekday_streak", "threshold": 5, "title": "주간 완주" },
+    { "id": "streak_weekday_10", "category": "streak", "metric": "weekday_streak", "threshold": 10, "title": "열흘 루틴" },
+    { "id": "streak_weekday_20", "category": "streak", "metric": "weekday_streak", "threshold": 20, "title": "한 달 학교 루틴" },
+    { "id": "streak_weekday_40", "category": "streak", "metric": "weekday_streak", "threshold": 40, "title": "꾸준함 전설" }
+  ]
+}
+
