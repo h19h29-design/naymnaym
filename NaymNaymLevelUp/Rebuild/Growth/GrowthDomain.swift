@@ -171,6 +171,12 @@ struct UnavailableGrowthSnapshotProvider: GrowthSnapshotProviding {
     }
 }
 
+struct UnavailableCollectionSnapshotProvider: CollectionSnapshotProviding {
+    func loadCollection() async throws -> CollectionSnapshot {
+        throw RebuildOnboardingError.persistenceUnavailable
+    }
+}
+
 struct GrowthEventPresentation: Equatable {
     let title: String
     let xpText: String

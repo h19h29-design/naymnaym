@@ -136,7 +136,7 @@ fun GrowthScreenContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     MascotRig(
-                        level = level,
+            level = level.coerceAtMost(7),
                         state = MotionState.Idle,
                         reduceMotion = false,
                         modifier = Modifier.size(188.dp),
@@ -216,7 +216,7 @@ fun GrowthScreenContent(
                         horizontalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[3].dp),
                     ) {
                         MascotRestArt(
-                            level = nextLevel,
+                            level = nextLevel.coerceAtMost(7),
                             silhouetteColor = WarmLockedMascot,
                             modifier = Modifier.size(92.dp),
                         )

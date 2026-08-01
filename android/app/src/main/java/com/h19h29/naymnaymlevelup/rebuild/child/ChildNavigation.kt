@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Forest
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -30,10 +31,12 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.zIndex
 import com.h19h29.naymnaymlevelup.rebuild.data.RebuildDatabase
 import com.h19h29.naymnaymlevelup.rebuild.growth.CollectionScreen
+import com.h19h29.naymnaymlevelup.rebuild.growth.CollectionRepository
 import com.h19h29.naymnaymlevelup.rebuild.growth.GrowthPolicyLoader
 import com.h19h29.naymnaymlevelup.rebuild.growth.GrowthRepository
 import com.h19h29.naymnaymlevelup.rebuild.growth.GrowthScreen
 import com.h19h29.naymnaymlevelup.rebuild.growth.RoomGrowthProgressSource
+import com.h19h29.naymnaymlevelup.rebuild.growth.RoomCollectionSnapshotSource
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealRepository
 import com.h19h29.naymnaymlevelup.rebuild.meal.NeisMealClient
 import com.h19h29.naymnaymlevelup.rebuild.meal.RecordMealUseCase
@@ -50,6 +53,7 @@ enum class ChildRoute(
     Meals("meals", "급식표", Icons.Filled.CalendarMonth),
     Growth("growth", "성장", Icons.AutoMirrored.Filled.TrendingUp),
     Collection("collection", "도감", Icons.AutoMirrored.Filled.MenuBook),
+    Settings("settings", "설정", Icons.Filled.Settings),
 }
 
 @Composable
@@ -66,6 +70,14 @@ fun ChildNavigation(
     val growthRepository = remember(database) {
         GrowthRepository(
             RoomGrowthProgressSource(database.progressDao()),
+        )
+    }
+    val collectionRepository = remember(database) {
+        CollectionRepository(
+            RoomCollectionSnapshotSource(
+                progressDao = database.progressDao(),
+                mealRecordDao = database.mealRecordDao(),
+            ),
         )
     }
     val mealRepository = remember(database, repositoryScope) {
@@ -160,8 +172,14 @@ fun ChildNavigation(
                         .zIndex(1f),
                 )
                 ChildRoute.Collection -> CollectionScreen(
-                    repository = growthRepository,
+                    repository = collectionRepository,
                     policy = growthPolicy,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(1f),
+                )
+                ChildRoute.Settings -> RebuildSettingsScreen(
+                    profile = profile,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f),

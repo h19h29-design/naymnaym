@@ -383,7 +383,7 @@ fun MealScheduleScreen(
                 mode = mode,
                 onModeSelected = {
                     mode = it
-                    selectedDate = anchorDate
+                    selectedDate = preferredSelectedDate(anchorDate, it)
                 },
             )
         }
@@ -397,7 +397,7 @@ fun MealScheduleScreen(
                         -1,
                     )
                     anchorDate = shifted
-                    selectedDate = shifted
+                    selectedDate = preferredSelectedDate(shifted, mode)
                 },
                 onNext = {
                     val shifted = MealScheduleCalendar.shifted(
@@ -406,7 +406,7 @@ fun MealScheduleScreen(
                         1,
                     )
                     anchorDate = shifted
-                    selectedDate = shifted
+                    selectedDate = preferredSelectedDate(shifted, mode)
                 },
             )
         }
@@ -442,6 +442,7 @@ fun MealScheduleScreen(
                     dates = visibleDates,
                     selectedDate = selectedDate,
                     meal = viewModel::meal,
+                    onSelected = { selectedDate = it },
                 )
                 MealScheduleMode.Monthly -> MonthlyMealSchedule(
                     dates = visibleDates,
@@ -744,6 +745,7 @@ private fun WeeklyMealSchedule(
     dates: List<LocalDate>,
     selectedDate: LocalDate,
     meal: (LocalDate) -> MealDay?,
+    onSelected: (LocalDate) -> Unit,
 ) {
     MealScheduleCard(
         modifier = Modifier.testTag("meal_schedule_weekly"),
@@ -782,6 +784,7 @@ private fun WeeklyMealSchedule(
                                     Color.White
                                 },
                             )
+                            .clickable { onSelected(date) }
                             .mealScheduleCellBorder(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
@@ -845,6 +848,7 @@ private fun WeeklyMealSchedule(
                                         Color.White
                                     },
                                 )
+                                .clickable { onSelected(date) }
                                 .mealScheduleCellBorder()
                                 .padding(horizontal = 2.dp),
                             contentAlignment = Alignment.Center,
@@ -872,7 +876,7 @@ private fun WeeklyMealSchedule(
                 }
             }
         }
-        NutritionSummary(dates.mapNotNull(meal))
+        SelectedMealInformation(selectedDate = selectedDate, meal = meal(selectedDate))
     }
 }
 
@@ -1001,7 +1005,45 @@ private fun MonthlyMealSchedule(
                 }
             }
         }
-        NutritionSummary(dates.mapNotNull(meal))
+        SelectedMealInformation(selectedDate = selectedDate, meal = meal(selectedDate))
+    }
+}
+
+@Composable
+private fun SelectedMealInformation(
+    selectedDate: LocalDate,
+    meal: MealDay?,
+) {
+    Column(
+        modifier = Modifier.testTag("meal_schedule_selected_information_${selectedDate}"),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "선택한 날짜의 영양 정보",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(RebuildTokens.Forest500),
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = selectedDate.format(fullDateFormatter),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(RebuildTokens.Muted600),
+            )
+        }
+        if (meal == null) {
+            Text(
+                text = "해당 날짜의 영양 정보가 없어요.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(RebuildTokens.Muted600),
+                modifier = Modifier.heightIn(min = RebuildTokens.minimumActionSize.dp),
+            )
+        } else {
+            NutritionSummary(listOf(meal))
+            AllergySummary(meal)
+        }
     }
 }
 
@@ -1221,6 +1263,19 @@ private fun periodTitle(
             dates.last().format(monthDayFormatter)
     }
     MealScheduleMode.Monthly -> date.format(monthFormatter)
+}
+
+private fun preferredSelectedDate(
+    anchor: LocalDate,
+    mode: MealScheduleMode,
+): LocalDate = when (mode) {
+    MealScheduleMode.Daily -> anchor
+    MealScheduleMode.Weekly -> MealScheduleCalendar.weekDates(anchor)
+        .firstOrNull { it == anchor }
+        ?: MealScheduleCalendar.weekDates(anchor).first()
+    MealScheduleMode.Monthly -> MealScheduleCalendar.monthWeekdays(anchor)
+        .firstOrNull { it == anchor }
+        ?: MealScheduleCalendar.monthWeekdays(anchor).first()
 }
 
 private val fullDateFormatter = DateTimeFormatter.ofPattern(

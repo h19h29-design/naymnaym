@@ -15,13 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -141,10 +140,7 @@ fun TodayForestScreen(
                 }
             }
 
-            item {
-                ProgressSummary(state)
-                Spacer(Modifier.height(RebuildTokens.spacing[3].dp))
-            }
+            item { Spacer(Modifier.height(RebuildTokens.spacing[3].dp)) }
         }
     }
 
@@ -165,6 +161,7 @@ private fun CharacterStage(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("today_character_hub")
             .semantics {
                 contentDescription = "현재 캐릭터, ${characterMessage(state)}"
             },
@@ -180,7 +177,7 @@ private fun CharacterStage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             MascotRig(
-                level = level,
+                level = level.coerceAtMost(7),
                 state = state.motion.toMascotMotionState(),
                 reduceMotion = false,
                 playbackRevision = state.motionRevision,
@@ -195,10 +192,21 @@ private fun CharacterStage(
             )
             Text(
                 text = characterMessage(state),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color(RebuildTokens.Forest700),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(RebuildTokens.Ink900),
                 textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "총 ${state.totalXP} XP",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(RebuildTokens.Muted600),
+            )
+            LinearProgressIndicator(
+                progress = { growthPolicy.progress(state.totalXP) },
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(RebuildTokens.Forest500),
+                trackColor = Color(RebuildTokens.Cream100),
             )
         }
     }
@@ -295,38 +303,6 @@ private fun MealSummary(
                     color = Color(RebuildTokens.Muted600),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ProgressSummary(state: TodayForestUiState) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                Color(RebuildTokens.Cream50),
-                RoundedCornerShape(RebuildTokens.radii[0].dp),
-            )
-            .padding(RebuildTokens.spacing[3].dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[3].dp),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.AutoAwesome,
-            contentDescription = null,
-            tint = Color(RebuildTokens.Forest700),
-        )
-        Column {
-            Text(
-                text = "지금까지 ${state.totalXP} XP",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = state.message ?: "급식을 기록하며 캐릭터를 키워요.",
-                color = Color(RebuildTokens.Muted600),
-            )
         }
     }
 }

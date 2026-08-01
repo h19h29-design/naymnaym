@@ -67,7 +67,7 @@ struct GrowthView: View {
     private func currentCharacter(level: Int) -> some View {
         VStack(spacing: RebuildDesignTokens.spacing[2]) {
             MascotRigView(
-                level: level,
+                level: min(level, 7),
                 state: .idle,
                 reduceMotion: reduceMotion
             )
@@ -147,8 +147,8 @@ struct GrowthView: View {
         if let nextThreshold {
             let nextLevel = level + 1
             HStack(spacing: RebuildDesignTokens.spacing[3]) {
-                MascotRestArtView(
-                    level: nextLevel,
+            MascotRestArtView(
+                    level: min(nextLevel, 7),
                     silhouetteColor: GrowthLockedPalette.silhouetteColor
                 )
                 .frame(width: 92, height: 92)

@@ -6,6 +6,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
     case meals
     case growth
     case collection
+    case settings
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
         case .meals: return "급식표"
         case .growth: return "성장"
         case .collection: return "도감"
+        case .settings: return "설정"
         }
     }
 
@@ -24,6 +26,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
         case .meals: return "calendar"
         case .growth: return "chart.line.uptrend.xyaxis"
         case .collection: return "books.vertical.fill"
+        case .settings: return "gearshape.fill"
         }
     }
 }
@@ -35,6 +38,7 @@ struct ChildNavigationView: View {
     @State private var selection: RebuildChildTab = .today
     private let growthPolicy: GrowthPolicy
     private let growthProvider: any GrowthSnapshotProviding
+    private let collectionProvider: any CollectionSnapshotProviding
 
     init(
         profile: RebuildUserProfile,
@@ -49,8 +53,12 @@ struct ChildNavigationView: View {
             growthProvider = CoreDataGrowthSnapshotProvider(
                 container: container
             )
+            collectionProvider = CoreDataCollectionSnapshotProvider(
+                container: container
+            )
         } else {
             growthProvider = UnavailableGrowthSnapshotProvider()
+            collectionProvider = UnavailableCollectionSnapshotProvider()
         }
         _todayViewModel = StateObject(
             wrappedValue: Self.makeTodayViewModel(
@@ -105,7 +113,7 @@ struct ChildNavigationView: View {
                 .tag(RebuildChildTab.growth)
 
             CollectionView(
-                provider: growthProvider,
+                provider: collectionProvider,
                 policy: growthPolicy,
                 isActive: selection == .collection
             )
@@ -116,6 +124,15 @@ struct ChildNavigationView: View {
                     )
                 }
                 .tag(RebuildChildTab.collection)
+
+            SettingsView()
+                .tabItem {
+                    Label(
+                        RebuildChildTab.settings.title,
+                        systemImage: RebuildChildTab.settings.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.settings)
         }
         .tint(RebuildDesignTokens.forest700)
         .accessibilityIdentifier("child_navigation")

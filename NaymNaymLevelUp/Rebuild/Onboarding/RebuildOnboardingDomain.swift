@@ -560,6 +560,11 @@ final class RebuildOnboardingAppStore {
 
     private init() throws {
         let container = try RebuildPersistentStore.makePersistent()
+        // Preserve legacy school, meal, and growth data before deciding whether
+        // the user needs the rebuild onboarding flow.
+        _ = try? RebuildMigrationCoordinator(
+            container: container
+        ).runIfNeeded()
         self.container = container
         let coordinator = RebuildOnboardingProfileTransactionCoordinator(
             container: container,

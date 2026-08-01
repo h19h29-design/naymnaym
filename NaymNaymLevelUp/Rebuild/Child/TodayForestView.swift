@@ -24,7 +24,6 @@ struct TodayForestView: View {
                         characterStage
                         mealSummary
                         primaryAction
-                        progressSummary
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, RebuildDesignTokens.spacing[4])
@@ -67,10 +66,10 @@ struct TodayForestView: View {
     }
 
     private var characterStage: some View {
-        VStack(spacing: RebuildDesignTokens.spacing[2]) {
+        HStack(alignment: .center, spacing: RebuildDesignTokens.spacing[3]) {
             GeometryReader { proxy in
                 MascotRigView(
-                    level: currentLevel,
+                    level: min(currentLevel, 7),
                     state: viewModel.motion,
                     reduceMotion: reduceMotion,
                     playbackRevision: viewModel.motionRevision
@@ -82,15 +81,25 @@ struct TodayForestView: View {
                 )
                 .clipped()
             }
-            .frame(height: 196)
+            .frame(width: 132, height: 152)
 
-            Text(characterMessage)
-                .font(RebuildDesignTokens.headlineFont)
-                .foregroundStyle(RebuildDesignTokens.forest700)
-                .multilineTextAlignment(.center)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[1]) {
+                Text("레벨 \(currentLevel) · \(growthPolicy.title(for: currentLevel))")
+                    .font(RebuildDesignTokens.headlineFont)
+                    .foregroundStyle(RebuildDesignTokens.forest700)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(characterMessage)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(RebuildDesignTokens.ink900)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("총 \(viewModel.totalXP) XP")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+                ProgressView(value: growthPolicy.progress(totalXP: viewModel.totalXP))
+                    .tint(RebuildDesignTokens.forest500)
+                    .accessibilityLabel("다음 레벨까지 성장 진행도")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity)
@@ -101,6 +110,7 @@ struct TodayForestView: View {
                 style: .continuous
             )
         )
+        .accessibilityIdentifier("today_character_hub")
     }
 
     private var mealSummary: some View {
@@ -209,37 +219,6 @@ struct TodayForestView: View {
         .accessibilityLabel(viewModel.primaryActionTitle)
         .accessibilityHint("메뉴별로 먹은 상태를 기록합니다")
         .accessibilityIdentifier("today_primary_action")
-    }
-
-    private var progressSummary: some View {
-        HStack(alignment: .center, spacing: RebuildDesignTokens.spacing[3]) {
-            Image(systemName: "sparkles")
-                .font(.title2)
-                .foregroundStyle(RebuildDesignTokens.forest500)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[0]) {
-                Text("현재 성장")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-                Text(
-                    "레벨 \(currentLevel) · \(growthPolicy.title(for: currentLevel)) · 총 \(viewModel.totalXP) XP"
-                )
-                    .font(RebuildDesignTokens.headlineFont)
-                    .foregroundStyle(RebuildDesignTokens.ink900)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(RebuildDesignTokens.spacing[3])
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RebuildDesignTokens.cream50)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: RebuildDesignTokens.radii[1],
-                style: .continuous
-            )
-        )
-        .accessibilityElement(children: .combine)
     }
 
     private var currentLevel: Int {

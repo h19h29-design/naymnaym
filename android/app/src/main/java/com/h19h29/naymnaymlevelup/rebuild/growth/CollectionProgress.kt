@@ -70,7 +70,7 @@ data class CollectionProgress(
                 activeDates = activeDates,
             )
             val earnedIds = policy.badges
-                .filter { badge -> metrics.getValueOrDefault(badge.metric, 0) >= badge.threshold }
+                .filter { badge -> metrics.getOrDefault(badge.metric, 0) >= badge.threshold }
                 .mapTo(linkedSetOf()) { it.id }
             return CollectionProgress(
                 totalXp = totalXp.coerceAtLeast(0),
@@ -78,7 +78,7 @@ data class CollectionProgress(
                 earnedBadgeIds = earnedIds,
                 positiveRecordCount = positiveRecords.size,
                 activeDayCount = activeDates.size,
-                longestWeekdayStreak = metrics.getValueOrDefault("weekday_streak", 0),
+                longestWeekdayStreak = metrics.getOrDefault("weekday_streak", 0),
             )
         }
 

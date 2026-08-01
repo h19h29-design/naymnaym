@@ -450,7 +450,10 @@ struct MealScheduleView: View {
                 }
                 .background(RebuildDesignTokens.cream50)
                 .onChange(of: mode) { _ in
-                    selectedDate = anchorDate
+                    selectedDate = preferredSelectedDate(
+                        anchor: anchorDate,
+                        mode: mode
+                    )
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo("meal_schedule_top", anchor: .top)
                     }
@@ -582,7 +585,7 @@ struct MealScheduleView: View {
                 direction: direction
             )
             anchorDate = shifted
-            selectedDate = shifted
+            selectedDate = preferredSelectedDate(anchor: shifted, mode: mode)
         } label: {
             Image(systemName: systemImage)
                 .font(.headline.bold())
@@ -698,24 +701,32 @@ struct MealScheduleView: View {
                             date,
                             selectedDate
                         )
-                        VStack(spacing: 2) {
-                            Text(weekdayFormatter.string(from: date))
-                                .font(.caption.bold())
-                            Text(shortDateFormatter.string(from: date))
-                                .font(.caption2.weight(.semibold))
+                        Button {
+                            selectedDate = date
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text(weekdayFormatter.string(from: date))
+                                    .font(.caption.bold())
+                                Text(shortDateFormatter.string(from: date))
+                                    .font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(
+                                selected
+                                    ? Color.white
+                                    : RebuildDesignTokens.forest700
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .background(
+                                selected
+                                    ? RebuildDesignTokens.forest700
+                                    : Color.white
+                            )
+                            .mealScheduleCellBorder()
                         }
-                        .foregroundStyle(
-                            selected
-                                ? Color.white
-                                : RebuildDesignTokens.forest700
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(
+                            "meal_schedule_week_day_\(MealScheduleCalendar.key(for: date))"
                         )
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                        .background(
-                            selected
-                                ? RebuildDesignTokens.forest700
-                                : Color.white
-                        )
-                        .mealScheduleCellBorder()
                     }
                 }
 
@@ -739,28 +750,36 @@ struct MealScheduleView: View {
                             let slots = MealScheduleMenuSlots(
                                 items: viewModel.meal(for: date)?.menuItems ?? []
                             )
-                            Text(slots.value(for: row))
-                                .font(.caption2.weight(selected ? .bold : .medium))
-                                .foregroundStyle(
-                                    selected
-                                        ? RebuildDesignTokens.forest700
-                                        : RebuildDesignTokens.ink900
-                                )
-                                .multilineTextAlignment(.center)
-                                .lineLimit(3)
-                                .minimumScaleFactor(0.76)
-                                .frame(
-                                    maxWidth: .infinity,
-                                    minHeight: 58,
-                                    alignment: .center
-                                )
-                                .padding(.horizontal, 2)
-                                .background(
-                                    selected
-                                        ? RebuildDesignTokens.leaf300.opacity(0.2)
-                                        : Color.white
-                                )
-                                .mealScheduleCellBorder()
+                            Button {
+                                selectedDate = date
+                            } label: {
+                                Text(slots.value(for: row))
+                                    .font(.caption2.weight(selected ? .bold : .medium))
+                                    .foregroundStyle(
+                                        selected
+                                            ? RebuildDesignTokens.forest700
+                                            : RebuildDesignTokens.ink900
+                                    )
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(3)
+                                    .minimumScaleFactor(0.76)
+                                    .frame(
+                                        maxWidth: .infinity,
+                                        minHeight: 58,
+                                        alignment: .center
+                                    )
+                                    .padding(.horizontal, 2)
+                                    .background(
+                                        selected
+                                            ? RebuildDesignTokens.leaf300.opacity(0.2)
+                                            : Color.white
+                                    )
+                                    .mealScheduleCellBorder()
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier(
+                                "meal_schedule_week_menu_\(MealScheduleCalendar.key(for: date))_\(row.rawValue)"
+                            )
                         }
                     }
                 }
@@ -772,9 +791,7 @@ struct MealScheduleView: View {
                 )
             )
 
-            nutritionSummary(
-                meals: dates.compactMap(viewModel.meal(for:))
-            )
+            selectedMealInformation
         }
         .mealScheduleCard()
         .accessibilityIdentifier("meal_schedule_weekly")
@@ -875,9 +892,7 @@ struct MealScheduleView: View {
                 )
             )
 
-            nutritionSummary(
-                meals: dates.compactMap(viewModel.meal(for:))
-            )
+            selectedMealInformation
         }
         .mealScheduleCard()
         .accessibilityIdentifier("meal_schedule_monthly")
@@ -925,6 +940,38 @@ struct MealScheduleView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var selectedMealInformation: some View {
+        let selectedMeal = viewModel.meal(for: selectedDate)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("선택한 날짜의 영양 정보")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(RebuildDesignTokens.forest500)
+                Spacer()
+                Text(fullDateFormatter.string(from: selectedDate))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+            }
+            if let selectedMeal {
+                nutritionSummary(meals: [selectedMeal])
+                allergySummary(meal: selectedMeal)
+            } else {
+                Text("해당 날짜의 영양 정보가 없어요.")
+                    .font(RebuildDesignTokens.bodyFont)
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: RebuildDesignTokens.minimumActionSize,
+                        alignment: .leading
+                    )
+            }
+        }
+        .accessibilityIdentifier(
+            "meal_schedule_selected_information_\(MealScheduleCalendar.key(for: selectedDate))"
+        )
     }
 
     @ViewBuilder
@@ -1038,6 +1085,26 @@ struct MealScheduleView: View {
         let menu = meal?.menuItems.map(\.name).joined(separator: ", ")
             ?? "급식 정보 없음"
         return "\(fullDateFormatter.string(from: date)), \(menu)"
+    }
+
+    private func preferredSelectedDate(
+        anchor: Date,
+        mode: MealScheduleMode
+    ) -> Date {
+        switch mode {
+        case .daily:
+            return anchor
+        case .weekly:
+            let dates = MealScheduleCalendar.weekDates(containing: anchor)
+            return dates.first(where: { MealScheduleCalendar.sameDay($0, anchor) })
+                ?? dates.first
+                ?? anchor
+        case .monthly:
+            let dates = MealScheduleCalendar.monthWeekdays(containing: anchor)
+            return dates.first(where: { MealScheduleCalendar.sameDay($0, anchor) })
+                ?? dates.first
+                ?? anchor
+        }
     }
 
     private var fullDateFormatter: DateFormatter {
