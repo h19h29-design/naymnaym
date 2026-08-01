@@ -24,13 +24,13 @@ struct GrowthPolicy: Equatable, Sendable {
             }
             let document = try JSONDecoder().decode(Document.self, from: data)
             guard document.version == 1,
-                  document.thresholds.count == 7,
+                  (2...14).contains(document.thresholds.count),
                   document.thresholds.first == 0,
                   zip(
                     document.thresholds,
                     document.thresholds.dropFirst()
                   ).allSatisfy(<),
-                  document.titles.count == 7,
+                  document.titles.count == document.thresholds.count,
                   Set(document.titles).count == document.titles.count,
                   document.titles.allSatisfy({
                     !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

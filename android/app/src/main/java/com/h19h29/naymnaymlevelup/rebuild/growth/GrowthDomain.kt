@@ -63,12 +63,12 @@ class GrowthPolicy private constructor(
                     "titles",
                 ) &&
                     version == 1 &&
-                    thresholds.size == 7 &&
+                    thresholds.size in 2..14 &&
                     thresholds.firstOrNull() == 0 &&
                     thresholds.zipWithNext().all { (left, right) ->
                         left < right
                     } &&
-                    titles.size == 7 &&
+                    titles.size == thresholds.size &&
                     titles.toSet().size == titles.size
                 if (!valid) throw ContractLoadException(CONTRACT_NAME)
                 GrowthPolicy(thresholds = thresholds, titles = titles)

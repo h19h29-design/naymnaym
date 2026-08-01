@@ -25,7 +25,21 @@ class GrowthPolicyTest {
             720 to 6,
             999 to 6,
             1_000 to 7,
-            Int.MAX_VALUE to 7,
+            1_399 to 7,
+            1_400 to 8,
+            1_849 to 8,
+            1_850 to 9,
+            2_349 to 9,
+            2_350 to 10,
+            2_899 to 10,
+            2_900 to 11,
+            3_499 to 11,
+            3_500 to 12,
+            4_149 to 12,
+            4_150 to 13,
+            4_849 to 13,
+            4_850 to 14,
+            Int.MAX_VALUE to 14,
         )
 
         cases.forEach { (totalXp, expectedLevel) ->
@@ -40,7 +54,10 @@ class GrowthPolicyTest {
     @Test
     fun bundledDocumentKeepsTheExactThresholdsAndTitles() {
         assertEquals(
-            listOf(0, 80, 180, 320, 500, 720, 1_000),
+            listOf(
+                0, 80, 180, 320, 500, 720, 1_000,
+                1_400, 1_850, 2_350, 2_900, 3_500, 4_150, 4_850,
+            ),
             policy.thresholds,
         )
         assertEquals(
@@ -52,6 +69,13 @@ class GrowthPolicyTest {
                 "급식 히어로",
                 "영양 마스터",
                 "레전드 냠냠러",
+                "숲길 수호자",
+                "제철 탐험대장",
+                "균형 식판 장인",
+                "초록별 수호대장",
+                "영양 수호대장",
+                "황금 도토리 대장",
+                "급식 전설",
             ),
             policy.titles,
         )
@@ -81,7 +105,7 @@ class GrowthPolicyTest {
         val CANONICAL_POLICY = """
             {
               "version": 1,
-              "thresholds": [0, 80, 180, 320, 500, 720, 1000],
+              "thresholds": [0, 80, 180, 320, 500, 720, 1000, 1400, 1850, 2350, 2900, 3500, 4150, 4850],
               "titles": [
                 "냠냠 새싹",
                 "한 입 탐험가",
@@ -89,7 +113,14 @@ class GrowthPolicyTest {
                 "편식 몬스터 사냥꾼",
                 "급식 히어로",
                 "영양 마스터",
-                "레전드 냠냠러"
+                "레전드 냠냠러",
+                "숲길 수호자",
+                "제철 탐험대장",
+                "균형 식판 장인",
+                "초록별 수호대장",
+                "영양 수호대장",
+                "황금 도토리 대장",
+                "급식 전설"
               ]
             }
         """.trimIndent().encodeToByteArray()
