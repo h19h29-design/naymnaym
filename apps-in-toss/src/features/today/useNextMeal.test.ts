@@ -5,6 +5,17 @@ import { meal, makeProfile } from '../../test/fixtures';
 import { NeisClientError } from '../../services/neisClient';
 import { loadNextMeal, nextMealCandidateDates, useNextMeal } from './useNextMeal';
 
+function missingActivationMustNotTypecheck() {
+  // @ts-expect-error The next-meal lookup must have an explicit activation gate.
+  useNextMeal({
+    profile: makeProfile(),
+    client: {} as never,
+    repository: {} as never,
+  });
+}
+
+void missingActivationMustNotTypecheck;
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -29,15 +40,17 @@ describe('next meal loading', () => {
 
     expect(result).toEqual({ kind: 'live', meal: { ...meal, date: '20260811' } });
     expect(fetchMeal).toHaveBeenCalledTimes(2);
+    expect(fetchMeal).toHaveBeenNthCalledWith(1, makeProfile().school, '20260810', undefined);
+    expect(fetchMeal).toHaveBeenNthCalledWith(2, makeProfile().school, '20260811', undefined);
   });
 
-  it('loads by default and makes no request only while inactive', async () => {
+  it('makes no request until it is explicitly activated', async () => {
     const fetchMeal = vi.fn().mockResolvedValue({ ...meal, date: '20260810' });
     const repository = { cacheMeal: vi.fn().mockResolvedValue(undefined) };
     const profile = makeProfile();
     const client = { fetchMeal } as never;
 
-    function Probe({ active }: { active?: boolean }) {
+    function Probe({ active }: { active: boolean }) {
       const { result } = useNextMeal({
         active,
         profile,
@@ -51,7 +64,7 @@ describe('next meal loading', () => {
     expect(screen.getByText('idle')).toBeInTheDocument();
     expect(fetchMeal).not.toHaveBeenCalled();
 
-    view.rerender(createElement(Probe));
+    view.rerender(createElement(Probe, { active: true }));
     await waitFor(() => expect(screen.getByText('live')).toBeInTheDocument());
     expect(fetchMeal).toHaveBeenCalledTimes(1);
   });
@@ -116,6 +129,28 @@ describe('next meal loading', () => {
     });
 
     expect(result).toEqual({ kind: 'live', meal: liveMeal });
+  });
+
+  it('returns a valid live meal before its cache write settles', async () => {
+    let releaseCache!: () => void;
+    const liveMeal = { ...meal, date: '20260810' };
+    const cacheMeal = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+      releaseCache = resolve;
+    }));
+    const result = await Promise.race([
+      loadNextMeal({
+        profile: makeProfile(),
+        client: { fetchMeal: vi.fn().mockResolvedValue(liveMeal) } as never,
+        repository: { cacheMeal } as never,
+        now: new Date('2026-08-08T15:00:00.000Z'),
+      }),
+      new Promise<Awaited<ReturnType<typeof loadNextMeal>>>((resolve) => {
+        window.setTimeout(() => resolve({ kind: 'error', code: 'CACHE_WRITE_TIMEOUT' }), 20);
+      }),
+    ]);
+
+    expect(result).toEqual({ kind: 'live', meal: liveMeal });
+    releaseCache();
   });
 
   it('aborts its owned request when deactivated', async () => {

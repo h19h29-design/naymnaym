@@ -62,7 +62,9 @@ export async function loadNextMeal(input: {
         throw new NeisClientError('UPSTREAM_ERROR', '급식 정보를 불러오지 못했어요.', 502);
       }
       try {
-        await input.repository.cacheMeal(input.profile.school, meal, input.mutationEpoch);
+        void input.repository.cacheMeal(input.profile.school, meal, input.mutationEpoch).catch(() => {
+          // A device cache is only an offline convenience; a successful live result wins.
+        });
       } catch {
         // A device cache is only an offline convenience; a successful live result wins.
       }
@@ -91,9 +93,9 @@ export async function loadNextMeal(input: {
 }
 
 export function useNextMeal(input: Omit<Parameters<typeof loadNextMeal>[0], 'now' | 'signal' | 'mutationEpoch'> & {
-  active?: boolean;
+  active: boolean;
 }) {
-  const active = input.active ?? true;
+  const { active } = input;
   const [result, setResult] = useState<NextMealResult>(() => active ? { kind: 'loading' } : { kind: 'idle' });
   const [attempt, setAttempt] = useState(0);
   const profileKey = input.profile === null
