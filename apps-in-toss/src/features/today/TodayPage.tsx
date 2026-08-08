@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button } from '@toss/tds-mobile';
 import type { MealItem } from '@nyam/neis-contract';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppErrorState } from '../../components/AppErrorState';
 import { ForestNavigation } from '../../components/ForestNavigation';
 import { ForestScene } from '../../components/ForestScene';
@@ -20,6 +20,8 @@ import type {
 import { neisClient } from '../../services/neisClient';
 import { useAppState } from '../../state/AppStateProvider';
 import { seoulDate, useTodayMeal } from './useTodayMeal';
+import { useNextMeal } from './useNextMeal';
+import { NoMealState } from './NoMealState';
 
 const DEFAULT_PROGRESS: Progress = {
   totalXp: 0,
@@ -45,6 +47,7 @@ function formattedKoreanDate(value: string): string {
 
 export function TodayPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const sessionMode: SessionMode = searchParams.get('demo') === '1'
     ? { kind: 'demo' }
     : { kind: 'live' };
@@ -66,6 +69,15 @@ export function TodayPage() {
   const progress = sessionMode.kind === 'demo' ? demoProgress : persistentProgress;
   const { result, retry } = useTodayMeal({
     mode: sessionMode,
+    profile,
+    client: neisClient,
+    repository,
+  });
+  const nextMeal = useNextMeal({
+    active: sessionMode.kind === 'live'
+      && profile !== null
+      && result !== 'loading'
+      && result.kind === 'noMeal',
     profile,
     client: neisClient,
     repository,
@@ -198,10 +210,31 @@ export function TodayPage() {
   const disabled = isSaving || hasPendingSave;
   const level = levelFor(progress.totalXp);
   const dateText = formattedKoreanDate(meal?.date ?? seoulDate());
+
+  if (result !== 'loading' && result.kind === 'noMeal') {
+    return (
+      <ForestScene className="today-page" showSettings={sessionMode.kind === 'live'}>
+        <header className="forest-title-card">
+          <h1>오늘 급식</h1>
+          <p>{dateText}</p>
+        </header>
+        <NoMealState
+          level={level}
+          totalXp={progress.totalXp}
+          allergyCodes={profile?.allergyCodes ?? []}
+          nextMeal={nextMeal.result}
+          onRetryToday={retry}
+          onRetryNext={nextMeal.retry}
+          onOpenWeekly={() => navigate('/meals?mode=weekly')}
+          onEditSchool={() => navigate('/onboarding?mode=edit&next=%2Ftoday')}
+        />
+        <ForestNavigation />
+      </ForestScene>
+    );
+  }
+
   const characterMessage = result === 'loading'
     ? '오늘 급식을 준비하고 있어요.'
-    : result.kind === 'noMeal'
-    ? '오늘은 쉬어 가는 날이에요.'
     : result.kind === 'error'
     ? '잠시 후 다시 만나 볼까요?'
     : result.kind === 'cache'
@@ -242,8 +275,6 @@ export function TodayPage() {
           </div>
         ) : result.kind === 'error' ? (
           <AppErrorState code={result.code} retry={retry} />
-        ) : result.kind === 'noMeal' ? (
-          <p className="meal-summary__message">오늘은 등록된 급식이 없어요.</p>
         ) : (
           <ul className="meal-summary__list">
             {result.meal.menuItems.map((item) => {

@@ -10,6 +10,7 @@ import { TodayPage } from './TodayPage';
 import { AppProviders } from '../../app/AppProviders';
 
 const useTodayMeal = vi.fn();
+const useNextMeal = vi.fn();
 const reload = vi.fn(async () => true);
 const saveRecords = vi.fn(async () => undefined);
 const saveProgress = vi.fn(async () => undefined);
@@ -23,6 +24,10 @@ let nativeInsertAdjacentElement: typeof HTMLElement.prototype.insertAdjacentElem
 vi.mock('./useTodayMeal', async () => ({
   ...await vi.importActual('./useTodayMeal'),
   useTodayMeal: (...args: unknown[]) => useTodayMeal(...args),
+}));
+
+vi.mock('./useNextMeal', () => ({
+  useNextMeal: (...args: unknown[]) => useNextMeal(...args),
 }));
 
 vi.mock('../../state/AppStateProvider', () => ({
@@ -64,6 +69,7 @@ function renderToday({
 } = {}) {
   appState = readyState(allergies);
   useTodayMeal.mockReturnValue({ result: mealResult, retry: vi.fn() });
+  useNextMeal.mockReturnValue({ result: { kind: 'idle' }, retry: vi.fn() });
   initialRoute = route;
   return userEvent.setup();
 }
@@ -97,6 +103,7 @@ describe('TodayPage', () => {
   beforeEach(() => {
     appState = readyState();
     useTodayMeal.mockReset();
+    useNextMeal.mockReset();
     reload.mockClear();
     saveRecords.mockClear();
     saveProgress.mockClear();
@@ -122,6 +129,16 @@ describe('TodayPage', () => {
 
     expect(await screen.findByText('급식 정보를 불러오지 못했어요')).toBeInTheDocument();
     expect(screen.queryByText('체험 급식')).not.toBeInTheDocument();
+  });
+
+  it('replaces the disabled record action with the grown character recovery state', async () => {
+    renderToday({ mealResult: { kind: 'noMeal' } });
+    useNextMeal.mockReturnValue({ result: { kind: 'notFound' }, retry: vi.fn() });
+    renderPage();
+
+    expect(await screen.findByRole('img', { name: /레벨 1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '주간 급식표 보기' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '오늘은 기록할 급식이 없어요' })).not.toBeInTheDocument();
   });
 
   it('never persists a demo meal record or XP', async () => {
