@@ -165,9 +165,13 @@ function averageCalories(meals: MealDay[]): number | null {
 export function MealSchedulePage() {
   const [searchParams] = useSearchParams();
   const demo = searchParams.get('demo') === '1';
+  const requestedMode = searchParams.get('mode');
+  const initialMode: ScheduleMode = requestedMode === 'weekly' || requestedMode === 'monthly' || requestedMode === 'daily'
+    ? requestedMode
+    : 'daily';
   const { state, repository } = useAppState();
   const profile = state.status === 'ready' ? state.profile : null;
-  const [mode, setMode] = useState<ScheduleMode>('daily');
+  const [mode, setMode] = useState<ScheduleMode>(initialMode);
   const [anchor, setAnchor] = useState(() => parseDateKey(seoulDate()));
   const visibleDates = useMemo(() => datesFor(mode, anchor), [mode, anchor]);
   const visibleKey = visibleDates.map(dateKey).join(',');

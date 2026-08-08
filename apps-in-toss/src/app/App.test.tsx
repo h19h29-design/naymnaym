@@ -102,6 +102,21 @@ describe('direct routes', () => {
     expect(await screen.findByLabelText('월간 급식표')).toBeInTheDocument();
   });
 
+  it('opens the weekly schedule directly from a no-meal recovery link', async () => {
+    renderTestApp({ initialEntry: '/meals?demo=1&mode=weekly', profile: makeProfile() });
+
+    expect(await screen.findByLabelText('주간 급식표')).toBeInTheDocument();
+    expect(screen.queryByLabelText('일간 급식표')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the daily schedule for an unsupported requested view', async () => {
+    renderTestApp({ initialEntry: '/meals?demo=1&mode=unsupported', profile: makeProfile() });
+
+    expect(await screen.findByLabelText('일간 급식표')).toBeInTheDocument();
+    expect(screen.queryByLabelText('주간 급식표')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('월간 급식표')).not.toBeInTheDocument();
+  });
+
   it('allows the explicitly requested demo route without a profile', async () => {
     renderTestApp({ initialEntry: '/today?demo=1', profile: null });
 
