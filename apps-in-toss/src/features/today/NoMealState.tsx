@@ -91,7 +91,9 @@ function NextMealPreview({ result, allergyCodes, onRetry }: {
     case 'error':
       content = (
         <div role="alert">
-          <p>다음 급식을 불러오지 못했어요</p>
+          <p>{result.code === 'RATE_LIMITED'
+            ? '요청이 많아 잠시 이용하기 어려워요. 조금 뒤 다시 시도해 주세요.'
+            : '다음 급식을 불러오지 못했어요'}</p>
           <button type="button" onClick={onRetry}>다음 급식 다시 시도</button>
         </div>
       );

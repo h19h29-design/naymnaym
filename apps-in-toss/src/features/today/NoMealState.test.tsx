@@ -115,6 +115,26 @@ describe('NoMealState', () => {
     expect(screen.queryByRole('button', { name: '오늘 급식 기록하기' })).not.toBeInTheDocument();
   });
 
+  it('asks the user to wait before retrying a rate-limited next-meal request', () => {
+    render(
+      <NoMealState
+        level={levelFor(0)}
+        totalXp={0}
+        allergyCodes={[]}
+        nextMeal={{ kind: 'error', code: 'RATE_LIMITED' }}
+        onRetryToday={vi.fn()}
+        onRetryNext={vi.fn()}
+        onOpenWeekly={vi.fn()}
+        onEditSchool={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '요청이 많아 잠시 이용하기 어려워요. 조금 뒤 다시 시도해 주세요.',
+    );
+    expect(screen.getByRole('button', { name: '다음 급식 다시 시도' })).toBeInTheDocument();
+  });
+
   it.each([
     { kind: 'idle' as const },
     { kind: 'loading' as const },
