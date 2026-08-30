@@ -297,20 +297,29 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         XCTAssertEqual(result, RecordMealResult(xpGranted: 5, totalXP: 50, motion: .mealSuccess))
     }
 
-    func testLegacyHalfAndMismatchedCanonicalIdentityAreRejectedWithoutWrites() throws {
+    func testHalfStatusIsAcceptedAndAwardsConfiguredXP() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let useCase = try RecordMealUseCase(container: container)
 
-        XCTAssertThrowsError(
-            try useCase.execute(
-                command(
-                    recordID: "2026-07-25|시금치나물|half",
-                    status: .half
-                )
+        let result = try useCase.execute(
+            command(
+                recordID: "2026-07-25|시금치나물|half",
+                status: .half
             )
-        ) { error in
-            XCTAssertEqual(error as? RecordMealError, .inactiveStatus("half"))
-        }
+        )
+
+        XCTAssertEqual(
+            result,
+            RecordMealResult(xpGranted: 12, totalXP: 12, motion: .mealSuccess)
+        )
+        XCTAssertEqual(try count(RebuildEntityName.mealRecord, in: container), 1)
+        XCTAssertEqual(try count(RebuildEntityName.progressEvent, in: container), 1)
+    }
+
+    func testMismatchedCanonicalIdentitiesAreRejectedWithoutWrites() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let useCase = try RecordMealUseCase(container: container)
+
         XCTAssertThrowsError(
             try useCase.execute(command(recordID: "not-canonical"))
         ) { error in
