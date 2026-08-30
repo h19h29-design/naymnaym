@@ -278,18 +278,42 @@ struct MealWholeMealTotals: Equatable, Sendable {
     }
 
     var nutritionSummary: String {
-        [
-            "탄수화물 \(Self.wholeNumber(nutrition.carbs)) g",
-            "단백질 \(Self.wholeNumber(nutrition.protein)) g",
-            "지방 \(Self.wholeNumber(nutrition.fat)) g",
-            "칼슘 \(Self.wholeNumber(nutrition.calcium)) mg",
-            "철분 \(Self.wholeNumber(nutrition.iron)) mg",
-            "비타민 \(Self.wholeNumber(nutrition.vitamin)) mg",
-        ].joined(separator: " · ")
+        let items = [
+            summaryItem(.carbs, label: "탄수화물", value: nutrition.carbs),
+            summaryItem(.protein, label: "단백질", value: nutrition.protein),
+            summaryItem(.fat, label: "지방", value: nutrition.fat),
+            summaryItem(.calcium, label: "칼슘", value: nutrition.calcium),
+            summaryItem(.iron, label: "철분", value: nutrition.iron),
+            summaryItem(.vitamin, label: "비타민", value: nutrition.vitamin),
+        ].compactMap { $0 }
+        return items.isEmpty ? "영양 정보 없음" : items.joined(separator: " · ")
     }
 
-    private static func wholeNumber(_ value: Double) -> String {
-        String(Int(value.rounded()))
+    private func summaryItem(
+        _ field: RebuildNutritionInfo.SourceField,
+        label: String,
+        value: Double
+    ) -> String? {
+        guard nutrition.sourceFields.contains(field) else { return nil }
+        // NEIS does not provide a reliable unit for vitamin in this parser;
+        // keep it unit-neutral instead of inventing an mg suffix.
+        let unit = field == .vitamin
+            ? nil
+            : nutrition.sourceUnits[field]?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        let suffix = unit.map { " \($0)" } ?? ""
+        return "\(label) \(String(value))\(suffix)"
+    }
+}
+
+struct MealRecordingAccessibilityDescriptor: Equatable, Sendable {
+    let menu: MealAccessibilityDescriptor
+    let wholeMealLabel: String
+    let callToActionLabel: String
+
+    var readingOrder: [String] {
+        menu.readingOrder + [callToActionLabel, wholeMealLabel]
     }
 }
 

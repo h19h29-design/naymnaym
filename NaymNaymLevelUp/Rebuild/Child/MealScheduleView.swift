@@ -904,10 +904,10 @@ struct MealScheduleView: View {
                             if let representativeIconKey = summary.representativeIconKey {
                                 HStack(spacing: 2) {
                                     MealVisualIcon(iconKey: representativeIconKey)
-                                        .font(.system(size: 8, weight: .semibold))
+                                        .font(.caption2.weight(.semibold))
                                     if let additionalMenuLabel = summary.additionalMenuLabel {
                                         Text(additionalMenuLabel)
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(.caption2.weight(.bold))
                                     }
                                 }
                                 .foregroundStyle(
@@ -917,7 +917,7 @@ struct MealScheduleView: View {
                                 )
                             } else {
                                 Text("정보 없음")
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.caption2.weight(.medium))
                                     .foregroundStyle(
                                         RebuildDesignTokens.muted600
                                     )
@@ -971,12 +971,12 @@ struct MealScheduleView: View {
                 ForEach(summary.tiles) { tile in
                     VStack(spacing: 4) {
                         Text(tile.title)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(RebuildDesignTokens.muted600)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                         Text(tile.value)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.footnote.weight(.bold))
                             .foregroundStyle(
                                 tile.title == "열량"
                                     ? Color.orange
@@ -1299,60 +1299,49 @@ private struct MealScheduleHeaderBackground: View {
     }
 }
 
-private struct MealScheduleNutritionTile: Identifiable {
+struct MealScheduleNutritionTile: Identifiable {
     let title: String
     let value: String
 
     var id: String { title }
 }
 
-private struct MealScheduleNutritionSummary {
+struct MealScheduleNutritionSummary {
     let tiles: [MealScheduleNutritionTile]
 
     init(meals: [RebuildMealDay]) {
-        let count = Double(max(meals.count, 1))
+        var values: [MealScheduleNutritionTile] = []
         let calories = meals.compactMap(Self.calorieValue)
-        let calorieAverage = calories.isEmpty
-            ? nil
-            : calories.reduce(0, +) / Double(calories.count)
-        tiles = [
-            MealScheduleNutritionTile(
-                title: "열량",
-                value: calorieAverage.map { "\(Int($0.rounded())) kcal" } ?? "—"
-            ),
-            MealScheduleNutritionTile(
-                title: "단백질",
-                value: meals.isEmpty
-                    ? "—"
-                    : Self.grams(
-                        meals.map(\.nutrition.protein).reduce(0, +) / count
-                    )
-            ),
-            MealScheduleNutritionTile(
-                title: "탄수화물",
-                value: meals.isEmpty
-                    ? "—"
-                    : Self.grams(
-                        meals.map(\.nutrition.carbs).reduce(0, +) / count
-                    )
-            ),
-            MealScheduleNutritionTile(
-                title: "지방",
-                value: meals.isEmpty
-                    ? "—"
-                    : Self.grams(
-                        meals.map(\.nutrition.fat).reduce(0, +) / count
-                    )
-            ),
-            MealScheduleNutritionTile(
-                title: "칼슘",
-                value: meals.isEmpty
-                    ? "—"
-                    : Self.milligrams(
-                        meals.map(\.nutrition.calcium).reduce(0, +) / count
-                    )
-            ),
+        if !calories.isEmpty {
+            let average = calories.reduce(0, +) / Double(calories.count)
+            values.append(
+                MealScheduleNutritionTile(
+                    title: "열량",
+                    value: "\(String(average)) kcal"
+                )
+            )
+        }
+
+        let definitions: [
+            (RebuildNutritionInfo.SourceField, String)
+        ] = [
+            (.protein, "단백질"),
+            (.carbs, "탄수화물"),
+            (.fat, "지방"),
+            (.calcium, "칼슘"),
         ]
+        for (field, title) in definitions {
+            guard let average = Self.averageNutrition(field: field, meals: meals) else {
+                continue
+            }
+            values.append(
+                MealScheduleNutritionTile(
+                    title: title,
+                    value: Self.formatted(average.value, unit: average.unit)
+                )
+            )
+        }
+        tiles = values
     }
 
     private static func calorieValue(_ meal: RebuildMealDay) -> Double? {
@@ -1362,12 +1351,43 @@ private struct MealScheduleNutritionSummary {
         return value.flatMap { Double($0) }
     }
 
-    private static func grams(_ value: Double) -> String {
-        "\(Int(value.rounded())) g"
+    private static func averageNutrition(
+        field: RebuildNutritionInfo.SourceField,
+        meals: [RebuildMealDay]
+    ) -> (value: Double, unit: String?)? {
+        let sourceMeals = meals.filter {
+            $0.nutrition.sourceFields.contains(field)
+        }
+        guard !sourceMeals.isEmpty else { return nil }
+        let values = sourceMeals.map { value(for: field, in: $0.nutrition) }
+        let average = values.reduce(0, +) / Double(values.count)
+        let units = Set(
+            sourceMeals.compactMap {
+                $0.nutrition.sourceUnits[field]?.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+            }
+        )
+        return (average, units.count == 1 ? units.first : nil)
     }
 
-    private static func milligrams(_ value: Double) -> String {
-        "\(Int(value.rounded())) mg"
+    private static func value(
+        for field: RebuildNutritionInfo.SourceField,
+        in nutrition: RebuildNutritionInfo
+    ) -> Double {
+        switch field {
+        case .carbs: return nutrition.carbs
+        case .protein: return nutrition.protein
+        case .fat: return nutrition.fat
+        case .calcium: return nutrition.calcium
+        case .iron: return nutrition.iron
+        case .vitamin: return nutrition.vitamin
+        }
+    }
+
+    private static func formatted(_ value: Double, unit: String?) -> String {
+        let suffix = unit.map { " \($0)" } ?? ""
+        return "\(String(value))\(suffix)"
     }
 }
 

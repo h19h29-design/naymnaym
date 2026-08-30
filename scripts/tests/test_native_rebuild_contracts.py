@@ -1,6 +1,7 @@
 import hashlib
 import json
 import pathlib
+import runpy
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "contracts/native-rebuild/v1"
+estimate_nutrients = runpy.run_path(
+    str(ROOT / "scripts/validate-native-rebuild-contracts.py")
+)["estimate_nutrients"]
 
 EXPECTED_IDENTITY_RULES = {
     "dateFormat": "yyyy-MM-dd",
@@ -285,6 +289,16 @@ class NativeRebuildContractTests(unittest.TestCase):
         })
         self.assertEqual(rules["omissionCopy"], "영양소를 조금 놓칠 수 있어요.")
         self.assertIn("의학 진단이나 치료를 대신하지 않는", rules["educationNotice"])
+
+    def test_nutrition_keywords_do_not_treat_sauce_or_soba_as_beef(self):
+        rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())
+
+        self.assertEqual(estimate_nutrients("소스", rules["rules"]), [])
+        self.assertEqual(estimate_nutrients("소바", rules["rules"]), [])
+        self.assertEqual(
+            estimate_nutrients("소고기불고기", rules["rules"]),
+            ["protein", "iron"],
+        )
 
     def test_validator_accepts_optional_nutrition_presentation_fields(self):
         nutrition_rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())

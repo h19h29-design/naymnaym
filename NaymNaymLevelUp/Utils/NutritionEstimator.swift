@@ -12,7 +12,7 @@ enum NutritionEstimator {
         if containsAny(lowered, ["나물", "시금치", "콩나물", "채소", "샐러드", "오이", "상추", "깻잎", "브로콜리"]) {
             nutrients.append(contentsOf: ["식이섬유", "비타민"])
         }
-        if containsAny(lowered, ["닭", "돼지", "소", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"]) {
+        if containsAny(lowered, ["닭", "돼지", "소고기", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"]) {
             nutrients.append(contentsOf: ["단백질", "철분"])
         }
         if containsAny(lowered, ["우유", "멸치", "치즈", "요구르트", "요거트"]) {

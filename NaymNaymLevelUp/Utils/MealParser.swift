@@ -56,6 +56,43 @@ enum MealParser {
         )
     }
 
+    static func parseRebuildNutrition(text: String) -> RebuildNutritionInfo {
+        let definitions: [(RebuildNutritionInfo.SourceField, [String])] = [
+            (.carbs, ["탄수화물", "carbohydrate"]),
+            (.protein, ["단백질", "protein"]),
+            (.fat, ["지방", "fat"]),
+            (.calcium, ["칼슘", "calcium"]),
+            (.iron, ["철", "iron"]),
+            (.vitamin, ["비타민", "vitamin"]),
+        ]
+        var values: [RebuildNutritionInfo.SourceField: Double] = [:]
+        var units: [RebuildNutritionInfo.SourceField: String] = [:]
+
+        for (field, keywords) in definitions {
+            for keyword in keywords {
+                guard let parsed = firstParsedValue(after: keyword, in: text) else {
+                    continue
+                }
+                values[field] = parsed.value
+                if let unit = parsed.unit {
+                    units[field] = unit
+                }
+                break
+            }
+        }
+
+        return RebuildNutritionInfo(
+            carbs: values[.carbs] ?? 0,
+            protein: values[.protein] ?? 0,
+            fat: values[.fat] ?? 0,
+            calcium: values[.calcium] ?? 0,
+            iron: values[.iron] ?? 0,
+            vitamin: values[.vitamin] ?? 0,
+            sourceFields: Set(values.keys),
+            sourceUnits: units
+        )
+    }
+
     static func cleanedMealName(_ raw: String) -> String {
         var value = raw
         value = value.replacingOccurrences(of: #"\([0-9\.\,\s]+\)"#, with: "", options: .regularExpression)
@@ -65,6 +102,13 @@ enum MealParser {
     }
 
     private static func firstNumber(after keyword: String, in text: String) -> Double? {
+        firstParsedValue(after: keyword, in: text)?.value
+    }
+
+    private static func firstParsedValue(
+        after keyword: String,
+        in text: String
+    ) -> (value: Double, unit: String?)? {
         guard let keywordRange = text.range(of: keyword, options: [.caseInsensitive]) else { return nil }
         let suffix = String(text[keywordRange.upperBound...])
         let pattern = #"([0-9]+(?:\.[0-9]+)?)"#
@@ -75,7 +119,19 @@ enum MealParser {
         else {
             return nil
         }
-        return Double(suffix[numberRange])
+        let prefix = String(suffix[..<numberRange.lowerBound])
+        let unit: String?
+        if let unitRegex = try? NSRegularExpression(pattern: #"\(\s*([A-Za-z가-힣]+)\s*\)"#),
+           let unitMatch = unitRegex.firstMatch(
+               in: prefix,
+               range: NSRange(prefix.startIndex..<prefix.endIndex, in: prefix)
+           ),
+           let unitRange = Range(unitMatch.range(at: 1), in: prefix) {
+            unit = String(prefix[unitRange])
+        } else {
+            unit = nil
+        }
+        guard let value = Double(suffix[numberRange]) else { return nil }
+        return (value, unit)
     }
 }
-

@@ -44,7 +44,9 @@ struct RebuildMealClient: RebuildMealClientProtocol {
             guard !parsedItems.isEmpty else {
                 throw RebuildMealClientError.malformedResponse
             }
-            let parsedNutrition = MealParser.parseNutrition(text: row.NTR_INFO ?? "")
+            let parsedNutrition = MealParser.parseRebuildNutrition(
+                text: row.NTR_INFO ?? ""
+            )
             return RebuildMealDay(
                 date: date,
                 menuItems: parsedItems.map {
@@ -57,14 +59,7 @@ struct RebuildMealClient: RebuildMealClientProtocol {
                     )
                 },
                 calorie: row.CAL_INFO ?? "정보 없음",
-                nutrition: RebuildNutritionInfo(
-                    carbs: parsedNutrition.carbs,
-                    protein: parsedNutrition.protein,
-                    fat: parsedNutrition.fat,
-                    calcium: parsedNutrition.calcium,
-                    iron: parsedNutrition.iron,
-                    vitamin: parsedNutrition.vitamin
-                )
+                nutrition: parsedNutrition
             )
         }
 

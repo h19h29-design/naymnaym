@@ -88,6 +88,11 @@ struct MealRecordingSheet: View {
                 .foregroundStyle(RebuildDesignTokens.muted600)
                 .fixedSize(horizontal: false, vertical: true)
 
+                ForEach(Array((viewModel.meal?.menuItems ?? []).enumerated()), id: \.offset) {
+                    index, item in
+                    menuCard(item, index: index)
+                }
+
                 if let meal = viewModel.meal {
                     let totals = MealWholeMealTotals(meal: meal)
                     VStack(alignment: .leading, spacing: 4) {
@@ -112,11 +117,6 @@ struct MealRecordingSheet: View {
                         )
                     )
                     .accessibilityElement(children: .combine)
-                }
-
-                ForEach(Array((viewModel.meal?.menuItems ?? []).enumerated()), id: \.offset) {
-                    index, item in
-                    menuCard(item, index: index)
                 }
             }
             .padding(RebuildDesignTokens.spacing[4])

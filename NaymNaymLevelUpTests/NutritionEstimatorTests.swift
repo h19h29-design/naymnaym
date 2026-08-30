@@ -9,6 +9,22 @@ final class NutritionEstimatorTests: XCTestCase {
         XCTAssertTrue(nutrients.contains("비타민"))
     }
 
+    func testSauceAndSobaDoNotInferProteinOrIron() {
+        for name in ["소스", "소바"] {
+            let nutrients = NutritionEstimator.estimateNutrients(forName: name)
+
+            XCTAssertFalse(nutrients.contains("단백질"), name)
+            XCTAssertFalse(nutrients.contains("철분"), name)
+        }
+    }
+
+    func testBeefStillInfersProteinAndIron() {
+        let nutrients = NutritionEstimator.estimateNutrients(forName: "소고기불고기")
+
+        XCTAssertTrue(nutrients.contains("단백질"))
+        XCTAssertTrue(nutrients.contains("철분"))
+    }
+
     func testStudentExplanationUsesEducationalLanguage() {
         let item = MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["식이섬유"], tags: ["장 건강"], sourceRawText: "시금치나물")
         let explanation = NutritionEstimator.makeStudentExplanation(for: item)

@@ -83,7 +83,7 @@ EXPECTED_NUTRITION_RULES = [
         "nutrients": ["fiber", "vitamin"],
     },
     {
-        "keywords": ["닭", "돼지", "소", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"],
+        "keywords": ["닭", "돼지", "소고기", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"],
         "nutrients": ["protein", "iron"],
     },
     {"keywords": ["우유", "멸치", "치즈", "요구르트", "요거트"], "nutrients": ["calcium"]},

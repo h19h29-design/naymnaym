@@ -36,6 +36,123 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(visual.iconKey, "food.vegetable")
     }
 
+    func testSauceAndSobaDoNotInheritBroadBeefKeyword() throws {
+        let engine = try NutritionRuleEngine(ruleData: contractData())
+
+        XCTAssertEqual(
+            engine.insight(menuName: "소스").nutrients.map(\.id),
+            []
+        )
+        XCTAssertEqual(
+            engine.insight(menuName: "소바").nutrients.map(\.id),
+            []
+        )
+    }
+
+    func testSpecificBeefKeywordStillMatchesProteinAndIron() throws {
+        let engine = try NutritionRuleEngine(ruleData: contractData())
+
+        XCTAssertEqual(
+            engine.insight(menuName: "소고기불고기").nutrients.map(\.id),
+            ["protein", "iron"]
+        )
+    }
+
+    func testRebuildNutritionParsingTracksOnlyPresentSourceFieldsAndUnits() {
+        let nutrition = MealParser.parseRebuildNutrition(
+            text: "탄수화물(g) : 84.25<br/>단백질(g) : 21.5<br/>비타민 : 42"
+        )
+
+        XCTAssertEqual(
+            nutrition.sourceFields,
+            [.carbs, .protein, .vitamin]
+        )
+        XCTAssertEqual(
+            nutrition.sourceUnits,
+            [.carbs: "g", .protein: "g"]
+        )
+        XCTAssertEqual(nutrition.carbs, 84.25, accuracy: 0.001)
+        XCTAssertEqual(nutrition.vitamin, 42, accuracy: 0.001)
+    }
+
+    func testWholeMealTotalsOmitMissingZerosPreserveDecimalsAndKeepVitaminUnitNeutral() {
+        let nutrition = RebuildNutritionInfo(
+            carbs: 84.25,
+            protein: 21.5,
+            fat: 0,
+            calcium: 180.75,
+            iron: 3.4,
+            vitamin: 42.0,
+            sourceFields: [.carbs, .protein, .calcium, .iron, .vitamin],
+            sourceUnits: [
+                .carbs: "g",
+                .protein: "g",
+                .calcium: "mg",
+                .iron: "mg",
+            ]
+        )
+        let meal = RebuildMealDay(
+            date: "2026-08-26",
+            menuItems: [],
+            calorie: "770.5 Kcal",
+            nutrition: nutrition
+        )
+
+        let summary = MealWholeMealTotals(meal: meal).nutritionSummary
+
+        XCTAssertEqual(
+            summary,
+            "탄수화물 84.25 g · 단백질 21.5 g · 칼슘 180.75 mg · 철분 3.4 mg · 비타민 42.0"
+        )
+        XCTAssertFalse(summary.contains("지방"))
+        XCTAssertFalse(summary.contains("지방 0"))
+        XCTAssertFalse(summary.contains("비타민 42.0 mg"))
+    }
+
+    func testEmptyWholeMealNutritionDoesNotRenderInventedZeroValues() {
+        let meal = RebuildMealDay(
+            date: "2026-08-26",
+            menuItems: [],
+            calorie: "정보 없음",
+            nutrition: .empty
+        )
+
+        XCTAssertEqual(
+            MealWholeMealTotals(meal: meal).nutritionSummary,
+            "영양 정보 없음"
+        )
+    }
+
+    func testScheduleWholeMealSummaryOmitsUnavailableFieldsAndPreservesDecimals() {
+        let first = RebuildMealDay(
+            date: "2026-08-26",
+            menuItems: [],
+            calorie: "770.5 Kcal",
+            nutrition: RebuildNutritionInfo(
+                carbs: 0,
+                protein: 12.5,
+                fat: 0,
+                calcium: 0,
+                iron: 0,
+                vitamin: 0,
+                sourceFields: [.protein],
+                sourceUnits: [.protein: "g"]
+            )
+        )
+        let second = RebuildMealDay(
+            date: "2026-08-27",
+            menuItems: [],
+            calorie: "정보 없음",
+            nutrition: .empty
+        )
+
+        let summary = MealScheduleNutritionSummary(meals: [first, second])
+
+        XCTAssertEqual(summary.tiles.map(\.title), ["열량", "단백질"])
+        XCTAssertEqual(summary.tiles[0].value, "770.5 kcal")
+        XCTAssertEqual(summary.tiles[1].value, "12.5 g")
+    }
+
     func testNutritionInsightExposesOptionalPresentationMetadata() throws {
         let insight = try NutritionRuleEngine(ruleData: contractData())
             .insight(menuName: "시금치나물")
@@ -252,7 +369,15 @@ final class MealPresentationTests: XCTestCase {
             fat: 16,
             calcium: 180,
             iron: 4,
-            vitamin: 10
+            vitamin: 10,
+            sourceFields: Set(RebuildNutritionInfo.SourceField.allCases),
+            sourceUnits: [
+                .carbs: "g",
+                .protein: "g",
+                .fat: "g",
+                .calcium: "mg",
+                .iron: "mg",
+            ]
         )
         let meal = RebuildMealDay(
             date: "2026-08-26",
@@ -269,6 +394,36 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(totals.nutrition, meal.nutrition)
         XCTAssertTrue(totals.nutritionSummary.contains("탄수화물"))
         XCTAssertTrue(totals.nutritionSummary.contains("단백질"))
+    }
+
+    func testRecordingAccessibilityPlacesMenuAndAllergyBeforeActionAndTotals() throws {
+        let item = RebuildMealItem(
+            name: "시금치나물",
+            allergyCodes: [1],
+            nutrients: [],
+            tags: [],
+            sourceRawText: "시금치나물"
+        )
+        let visual = MealVisualResolver.resolve(
+            item: item,
+            engine: try NutritionRuleEngine(ruleData: contractData())
+        )
+        let descriptor = MealRecordingAccessibilityDescriptor(
+            menu: MealAccessibilityDescriptor(item: item, visual: visual),
+            wholeMealLabel: "전체 급식 기준 · NEIS 제공",
+            callToActionLabel: "먹은 정도 기록"
+        )
+
+        let order = descriptor.readingOrder
+        let menuIndex = try XCTUnwrap(order.firstIndex(of: "시금치나물"))
+        let allergyIndex = try XCTUnwrap(order.firstIndex(of: "알레르기: 1. 난류"))
+        let actionIndex = try XCTUnwrap(order.firstIndex(of: "먹은 정도 기록"))
+        let totalsIndex = try XCTUnwrap(order.firstIndex(of: "전체 급식 기준 · NEIS 제공"))
+
+        XCTAssertLessThan(menuIndex, actionIndex)
+        XCTAssertLessThan(menuIndex, totalsIndex)
+        XCTAssertLessThan(allergyIndex, actionIndex)
+        XCTAssertLessThan(allergyIndex, totalsIndex)
     }
 
     func testRepresentativeChipsAndAccessibilityDescriptorKeepSafeOrder() throws {
