@@ -141,12 +141,12 @@ struct TodayForestView: View {
                     ForEach(Array(meal.menuItems.enumerated()), id: \.offset) {
                         _, item in
                         let visual = MealVisualResolver.resolve(item: item)
+                        let accessibility = MealAccessibilityDescriptor(
+                            item: item,
+                            visual: visual
+                        )
                         HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
-                            Image(
-                                systemName: MealVisualIconManifest.systemSymbol(
-                                    for: visual.iconKey
-                                ) ?? "fork.knife"
-                            )
+                            MealVisualIcon(iconKey: visual.iconKey)
                             .font(.headline)
                             .foregroundStyle(
                                 viewModel.isAllergyRisk(item)
@@ -154,24 +154,21 @@ struct TodayForestView: View {
                                     : RebuildDesignTokens.forest700
                             )
                             .frame(width: 26, height: 26)
-                            .accessibilityLabel(visual.categoryLabel)
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.name)
                                     .font(RebuildDesignTokens.bodyFont.weight(.semibold))
                                     .foregroundStyle(RebuildDesignTokens.ink900)
                                     .fixedSize(horizontal: false, vertical: true)
-                                    .accessibilityLabel(
-                                        viewModel.isAllergyRisk(item)
-                                            ? "\(item.name), 알레르기 주의 메뉴"
-                                            : item.name
-                                    )
                                 HStack(spacing: 6) {
                                     Text(visual.categoryLabel)
                                     Text(visual.confidenceLabel)
                                 }
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(RebuildDesignTokens.forest700)
+                                MealNutrientChips(
+                                    nutrientIDs: visual.representativeNutrientIDs
+                                )
                                 Text(visual.representativeCopy)
                                     .font(.caption)
                                     .foregroundStyle(RebuildDesignTokens.muted600)
@@ -187,6 +184,8 @@ struct TodayForestView: View {
                                 }
                             }
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(accessibility.spokenLabel)
                     }
                 }
                 Text(totals.sourceLabel)
@@ -195,6 +194,10 @@ struct TodayForestView: View {
                 Text(totals.calorie)
                     .font(.footnote)
                     .foregroundStyle(RebuildDesignTokens.muted600)
+                Text(totals.nutritionSummary)
+                    .font(.caption2)
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if viewModel.isLoading {
                 ProgressView("급식을 확인하고 있어요.")
                     .frame(minHeight: RebuildDesignTokens.minimumActionSize)

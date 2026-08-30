@@ -88,6 +88,32 @@ struct MealRecordingSheet: View {
                 .foregroundStyle(RebuildDesignTokens.muted600)
                 .fixedSize(horizontal: false, vertical: true)
 
+                if let meal = viewModel.meal {
+                    let totals = MealWholeMealTotals(meal: meal)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(totals.sourceLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(RebuildDesignTokens.forest700)
+                        Text(totals.calorie)
+                            .font(.footnote)
+                            .foregroundStyle(RebuildDesignTokens.muted600)
+                        Text(totals.nutritionSummary)
+                            .font(.caption2)
+                            .foregroundStyle(RebuildDesignTokens.muted600)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(RebuildDesignTokens.spacing[3])
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RebuildDesignTokens.cream50.opacity(0.72))
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: RebuildDesignTokens.radii[0],
+                            style: .continuous
+                        )
+                    )
+                    .accessibilityElement(children: .combine)
+                }
+
                 ForEach(Array((viewModel.meal?.menuItems ?? []).enumerated()), id: \.offset) {
                     index, item in
                     menuCard(item, index: index)
@@ -103,53 +129,63 @@ struct MealRecordingSheet: View {
     ) -> some View {
         let isRisk = viewModel.isAllergyRisk(item)
         let visual = MealVisualResolver.resolve(item: item)
+        let accessibility = MealAccessibilityDescriptor(
+            item: item,
+            visual: visual,
+            currentState: savedMenuNames.contains(item.name)
+                ? "기록 완료"
+                : "기록하지 않음"
+        )
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
-            HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
-                Image(
-                    systemName: MealVisualIconManifest.systemSymbol(
-                        for: visual.iconKey
-                    ) ?? "fork.knife"
-                )
-                .font(.headline)
-                .foregroundStyle(
-                    isRisk
-                        ? RebuildDesignTokens.danger700
-                        : RebuildDesignTokens.forest700
-                )
-                .frame(width: 28, height: 28)
-                .accessibilityLabel(visual.categoryLabel)
+            VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
+                HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
+                    MealVisualIcon(iconKey: visual.iconKey)
+                        .font(.headline)
+                        .foregroundStyle(
+                            isRisk
+                                ? RebuildDesignTokens.danger700
+                                : RebuildDesignTokens.forest700
+                        )
+                        .frame(width: 28, height: 28)
 
-                Text(item.name)
-                    .font(RebuildDesignTokens.titleFont.bold())
-                    .foregroundStyle(RebuildDesignTokens.ink900)
+                    Text(item.name)
+                        .font(RebuildDesignTokens.titleFont.bold())
+                        .foregroundStyle(RebuildDesignTokens.ink900)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: 0)
+                    if savedMenuNames.contains(item.name) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(RebuildDesignTokens.forest500)
+                            .accessibilityHidden(true)
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    Text(visual.categoryLabel)
+                    Text(visual.confidenceLabel)
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(RebuildDesignTokens.forest700)
+
+                MealNutrientChips(
+                    nutrientIDs: visual.representativeNutrientIDs
+                )
+
+                Text(visual.representativeCopy)
+                    .font(.caption)
+                    .foregroundStyle(RebuildDesignTokens.muted600)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
-                if savedMenuNames.contains(item.name) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(RebuildDesignTokens.forest500)
-                        .accessibilityLabel("기록 완료")
+
+                if !item.allergyLabels.isEmpty {
+                    Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.orange.opacity(0.9))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            HStack(spacing: 6) {
-                Text(visual.categoryLabel)
-                Text(visual.confidenceLabel)
-            }
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(RebuildDesignTokens.forest700)
-
-            Text(visual.representativeCopy)
-                .font(.caption)
-                .foregroundStyle(RebuildDesignTokens.muted600)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if !item.allergyLabels.isEmpty {
-                Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.orange.opacity(0.9))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibility.spokenLabel)
 
             if isRisk {
                 allergySafetyActions(for: item)
@@ -272,45 +308,53 @@ struct MealRecordingSheet: View {
         for item: RebuildMealItem
     ) -> some View {
         let visual = MealVisualResolver.resolve(item: item)
+        let accessibility = MealAccessibilityDescriptor(
+            item: item,
+            visual: visual,
+            currentState: "기록 이유 선택 중"
+        )
         return ScrollView {
             VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
-                HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
-                    Image(
-                        systemName: MealVisualIconManifest.systemSymbol(
-                            for: visual.iconKey
-                        ) ?? "fork.knife"
-                    )
-                    .font(.headline)
-                    .foregroundStyle(RebuildDesignTokens.forest700)
-                    .frame(width: 28, height: 28)
-                    .accessibilityLabel(visual.categoryLabel)
+                VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
+                    HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
+                        MealVisualIcon(iconKey: visual.iconKey)
+                            .font(.headline)
+                            .foregroundStyle(RebuildDesignTokens.forest700)
+                            .frame(width: 28, height: 28)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name)
-                            .font(RebuildDesignTokens.titleFont.bold())
-                            .foregroundStyle(RebuildDesignTokens.ink900)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityAddTraits(.isHeader)
-                        HStack(spacing: 6) {
-                            Text(visual.categoryLabel)
-                            Text(visual.confidenceLabel)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.name)
+                                .font(RebuildDesignTokens.titleFont.bold())
+                                .foregroundStyle(RebuildDesignTokens.ink900)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityAddTraits(.isHeader)
+                            HStack(spacing: 6) {
+                                Text(visual.categoryLabel)
+                                Text(visual.confidenceLabel)
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(RebuildDesignTokens.forest700)
                         }
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(RebuildDesignTokens.forest700)
+                    }
+
+                    MealNutrientChips(
+                        nutrientIDs: visual.representativeNutrientIDs
+                    )
+
+                    Text(visual.representativeCopy)
+                        .font(.caption)
+                        .foregroundStyle(RebuildDesignTokens.muted600)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !item.allergyLabels.isEmpty {
+                        Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.orange.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-
-                Text(visual.representativeCopy)
-                    .font(.caption)
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !item.allergyLabels.isEmpty {
-                    Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.orange.opacity(0.9))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibility.spokenLabel)
 
                 Text("어떤 점이 어려웠나요?")
                     .font(RebuildDesignTokens.headlineFont)

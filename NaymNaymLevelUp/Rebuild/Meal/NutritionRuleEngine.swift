@@ -44,6 +44,7 @@ struct NutritionInsight: Equatable, Sendable {
 }
 
 struct NutritionRulePresentationMatch: Equatable, Sendable {
+    let matchKind: NutritionMatchConfidence
     let confidence: NutritionMatchConfidence
     let foodCategory: MealFoodCategory?
     let iconKey: String?
@@ -88,9 +89,9 @@ struct NutritionRuleEngine {
         let nutrientIDs = rules.nutrientOrder.filter(seen.contains)
         let presentationMatches = presentationMatches(menuName: menuName)
         let presentationMatch = presentationMatches.first {
-            $0.confidence == .exact
+            $0.matchKind == .exact
         } ?? presentationMatches.first {
-            $0.confidence == .keyword
+            $0.matchKind == .keyword
         }
 
         return NutritionInsight(
@@ -124,8 +125,15 @@ struct NutritionRuleEngine {
                 comparableName.contains($0.lowercased())
             }
             guard exact || keyword else { return nil }
+            let matchKind: NutritionMatchConfidence = exact ? .exact : .keyword
             return NutritionRulePresentationMatch(
-                confidence: exact ? .exact : .keyword,
+                matchKind: matchKind,
+                confidence: Self.resolvedConfidence(
+                    matchKind: matchKind,
+                    declared: rule.confidence.flatMap(
+                        NutritionMatchConfidence.init(rawValue:)
+                    )
+                ),
                 foodCategory: rule.foodCategory.flatMap(MealFoodCategory.init(rawValue:)),
                 iconKey: rule.iconKey,
                 representativeNutrientIDs: rule.representativeNutrientIDs,
@@ -159,6 +167,23 @@ struct NutritionRuleEngine {
 
     private func compact(_ value: String) -> String {
         value.filter { $0.isLetter || $0.isNumber }
+    }
+
+    private static func resolvedConfidence(
+        matchKind: NutritionMatchConfidence,
+        declared: NutritionMatchConfidence?
+    ) -> NutritionMatchConfidence {
+        switch matchKind {
+        case .exact:
+            // Exact text evidence remains stronger than a broader declared
+            // rule hint, while keyword matches can opt into a safer/lower or
+            // explicitly verified confidence from the contract.
+            return .exact
+        case .keyword:
+            return declared ?? .keyword
+        case .fallback:
+            return .fallback
+        }
     }
 
     private static func hasStrictIntegerVersion(_ data: Data) -> Bool {

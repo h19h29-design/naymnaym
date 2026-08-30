@@ -876,6 +876,13 @@ struct MealScheduleView: View {
 
                 ForEach(dates, id: \.self) { date in
                     let meal = viewModel.meal(for: date)
+                    let visuals = meal?.menuItems.map {
+                        MealVisualResolver.resolve(item: $0)
+                    } ?? []
+                    let summary = MealMonthCellSummary(
+                        dateLabel: dayFormatter.string(from: date),
+                        visuals: visuals
+                    )
                     let selected = MealScheduleCalendar.sameDay(
                         date,
                         selectedDate
@@ -884,7 +891,7 @@ struct MealScheduleView: View {
                         select(date: date)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(dayFormatter.string(from: date))
+                            Text(summary.dateLabel)
                                 .font(.caption2.bold())
                                 .foregroundStyle(
                                     selected
@@ -894,32 +901,21 @@ struct MealScheduleView: View {
                                             : RebuildDesignTokens.muted600.opacity(0.45)
                                 )
 
-                            ForEach(
-                                Array((meal?.menuItems ?? []).prefix(3).enumerated()),
-                                id: \.offset
-                            ) { _, item in
-                                let visual = MealVisualResolver.resolve(item: item)
+                            if let representativeIconKey = summary.representativeIconKey {
                                 HStack(spacing: 2) {
-                                    Image(
-                                        systemName: MealVisualIconManifest.systemSymbol(
-                                            for: visual.iconKey
-                                        ) ?? "fork.knife"
-                                    )
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .accessibilityHidden(true)
-                                    Text(item.name)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
+                                    MealVisualIcon(iconKey: representativeIconKey)
+                                        .font(.system(size: 8, weight: .semibold))
+                                    if let additionalMenuLabel = summary.additionalMenuLabel {
+                                        Text(additionalMenuLabel)
+                                            .font(.system(size: 10, weight: .bold))
+                                    }
                                 }
                                 .foregroundStyle(
                                     selected
                                         ? RebuildDesignTokens.forest700
                                         : RebuildDesignTokens.ink900
                                 )
-                            }
-
-                            if meal == nil {
+                            } else {
                                 Text("정보 없음")
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(
@@ -1055,16 +1051,15 @@ struct MealScheduleView: View {
 
                 ForEach(Array(meal.menuItems.enumerated()), id: \.offset) { _, item in
                     let visual = MealVisualResolver.resolve(item: item)
+                    let accessibility = MealAccessibilityDescriptor(
+                        item: item,
+                        visual: visual
+                    )
                     HStack(alignment: .top, spacing: 8) {
-                        Image(
-                            systemName: MealVisualIconManifest.systemSymbol(
-                                for: visual.iconKey
-                            ) ?? "fork.knife"
-                        )
+                        MealVisualIcon(iconKey: visual.iconKey)
                         .font(.subheadline)
                         .foregroundStyle(RebuildDesignTokens.forest700)
                         .frame(width: 24, height: 24)
-                        .accessibilityLabel(visual.categoryLabel)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.name)
@@ -1077,6 +1072,9 @@ struct MealScheduleView: View {
                             }
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(RebuildDesignTokens.forest700)
+                            MealNutrientChips(
+                                nutrientIDs: visual.representativeNutrientIDs
+                            )
                             Text(visual.representativeCopy)
                                 .font(.caption2)
                                 .foregroundStyle(RebuildDesignTokens.muted600)
@@ -1092,6 +1090,8 @@ struct MealScheduleView: View {
                             }
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(accessibility.spokenLabel)
                     .padding(8)
                     .background(RebuildDesignTokens.cream50.opacity(0.72))
                     .clipShape(
@@ -1214,9 +1214,14 @@ struct MealScheduleView: View {
         date: Date,
         meal: RebuildMealDay?
     ) -> String {
-        let menu = meal?.menuItems.map(\.name).joined(separator: ", ")
-            ?? "급식 정보 없음"
-        return "\(fullDateFormatter.string(from: date)), \(menu)"
+        guard let meal, let firstItem = meal.menuItems.first else {
+            return "\(fullDateFormatter.string(from: date)), 급식 정보 없음"
+        }
+        let additionalCount = max(meal.menuItems.count - 1, 0)
+        let suffix = additionalCount > 0
+            ? ", 외 \(additionalCount)개 메뉴"
+            : ""
+        return "\(fullDateFormatter.string(from: date)), \(firstItem.name)\(suffix)"
     }
 
     private func select(date: Date) {

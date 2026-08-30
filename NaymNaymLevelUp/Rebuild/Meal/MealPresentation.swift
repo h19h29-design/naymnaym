@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 enum NutritionMatchConfidence: String, Codable, Sendable {
     case exact
@@ -59,7 +60,7 @@ enum MealFoodCategory: String, Codable, CaseIterable, Sendable {
         case .kimchi:
             return "김치"
         case .other:
-            return "여러 재료"
+            return "메뉴"
         }
     }
 }
@@ -76,6 +77,14 @@ struct MealVisual: Equatable, Sendable {
 
     var confidenceLabel: String {
         confidence.childLabel
+    }
+
+    var representativeNutrientLabels: [String] {
+        Array(
+            representativeNutrientIDs
+                .compactMap(MealPresentationCopy.nutrientName(for:))
+                .prefix(3)
+        )
     }
 
     var representativeCopy: String {
@@ -144,13 +153,82 @@ enum MealVisualIconManifest {
     }
 
     static func renderTarget(for iconKey: String) -> MealIconRenderTarget {
-        .system(systemSymbol(for: iconKey) ?? "fork.knife")
+        renderTarget(for: iconKey, availableAssetKeys: [])
+    }
+
+    static func renderTarget(
+        for iconKey: String,
+        availableAssetKeys: Set<String>
+    ) -> MealIconRenderTarget {
+        guard semanticKeys.contains(iconKey) else {
+            return .system("fork.knife")
+        }
+        if availableAssetKeys.contains(iconKey) {
+            return .asset(iconKey)
+        }
+        return .system(systemSymbol(for: iconKey) ?? "fork.knife")
     }
 }
 
 enum MealIconRenderTarget: Equatable, Sendable {
     case asset(String)
     case system(String)
+}
+
+struct MealVisualIcon: View {
+    let iconKey: String
+
+    @ViewBuilder
+    var body: some View {
+        switch MealVisualIconManifest.renderTarget(for: iconKey) {
+        case let .asset(name):
+            Image(name)
+                .resizable()
+                .scaledToFit()
+                .accessibilityHidden(true)
+        case let .system(symbol):
+            Image(systemName: symbol)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+struct MealNutrientChips: View {
+    let nutrientLabels: [String]
+
+    init(nutrientIDs: [String]) {
+        nutrientLabels = Array(
+            nutrientIDs
+                .compactMap(MealPresentationCopy.nutrientName(for:))
+                .prefix(3)
+        )
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if nutrientLabels.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 6) {
+                ForEach(nutrientLabels, id: \.self) { label in
+                    Text(label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(RebuildDesignTokens.forest700)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(RebuildDesignTokens.leaf300.opacity(0.28))
+                        .clipShape(Capsule())
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                nutrientLabels
+                    .map { "대표 영양소: \($0)" }
+                    .joined(separator: ", ")
+            )
+        }
+    }
 }
 
 enum MealPresentationCopy {
@@ -163,7 +241,7 @@ enum MealPresentationCopy {
     ) -> String {
         let names = nutrientIDs.compactMap(nutrientName(for:))
         guard !names.isEmpty else {
-            return "여러 재료의 영양을 만나는 메뉴예요."
+            return "메뉴 이름을 중심으로 확인해 주세요."
         }
         return "\(category.childLabel)에서 \(names.joined(separator: "와 "))을 만날 수 있어요."
     }
@@ -198,14 +276,104 @@ struct MealWholeMealTotals: Equatable, Sendable {
         nutrition = meal.nutrition
         sourceLabel = "전체 급식 기준 · NEIS 제공"
     }
+
+    var nutritionSummary: String {
+        [
+            "탄수화물 \(Self.wholeNumber(nutrition.carbs)) g",
+            "단백질 \(Self.wholeNumber(nutrition.protein)) g",
+            "지방 \(Self.wholeNumber(nutrition.fat)) g",
+            "칼슘 \(Self.wholeNumber(nutrition.calcium)) mg",
+            "철분 \(Self.wholeNumber(nutrition.iron)) mg",
+            "비타민 \(Self.wholeNumber(nutrition.vitamin)) mg",
+        ].joined(separator: " · ")
+    }
+
+    private static func wholeNumber(_ value: Double) -> String {
+        String(Int(value.rounded()))
+    }
 }
 
-enum MealVisualResolver {
-    static func resolve(item: RebuildMealItem) -> MealVisual {
-        guard let engine = try? NutritionRuleEngine() else {
-            return fallback()
+struct MealAccessibilityDescriptor: Equatable, Sendable {
+    let menuName: String
+    let allergyWarning: String?
+    let categoryLabel: String
+    let representativeNutrientLabels: [String]
+    let currentState: String?
+
+    init(
+        item: RebuildMealItem,
+        visual: MealVisual,
+        currentState: String? = nil
+    ) {
+        menuName = item.name
+        allergyWarning = item.allergyLabels.isEmpty
+            ? nil
+            : "알레르기: \(item.allergyLabels.joined(separator: " · "))"
+        categoryLabel = visual.categoryLabel
+        representativeNutrientLabels = visual.representativeNutrientLabels
+        self.currentState = currentState
+    }
+
+    var readingOrder: [String] {
+        var values = [menuName]
+        if let allergyWarning {
+            values.append(allergyWarning)
         }
-        return resolve(item: item, engine: engine)
+        values.append(categoryLabel)
+        values.append(
+            contentsOf: representativeNutrientLabels.map {
+                "대표 영양소: \($0)"
+            }
+        )
+        if let currentState {
+            values.append(currentState)
+        }
+        return values
+    }
+
+    var spokenLabel: String {
+        readingOrder.joined(separator: ", ")
+    }
+}
+
+struct MealMonthCellSummary: Equatable, Sendable {
+    let dateLabel: String
+    let representativeIconKey: String?
+    let additionalMenuCount: Int
+
+    init(dateLabel: String, visuals: [MealVisual]) {
+        self.dateLabel = dateLabel
+        representativeIconKey = visuals.first?.iconKey
+        additionalMenuCount = max(visuals.count - 1, 0)
+    }
+
+    var additionalMenuLabel: String? {
+        additionalMenuCount > 0 ? "+\(additionalMenuCount)" : nil
+    }
+
+    var compactLabels: [String] {
+        [dateLabel] + (additionalMenuLabel.map { [$0] } ?? [])
+    }
+}
+
+struct MealVisualResolver {
+    let engine: NutritionRuleEngine
+
+    init(engine: NutritionRuleEngine) {
+        self.engine = engine
+    }
+
+    static let bundled: MealVisualResolver? = {
+        guard let engine = try? NutritionRuleEngine() else { return nil }
+        return MealVisualResolver(engine: engine)
+    }()
+
+    func resolve(item: RebuildMealItem) -> MealVisual {
+        Self.resolve(item: item, engine: engine)
+    }
+
+    static func resolve(item: RebuildMealItem) -> MealVisual {
+        bundled?.resolve(item: item) ?? fallback()
     }
 
     static func resolve(
@@ -217,8 +385,8 @@ enum MealVisualResolver {
         let structuredNutrients = engine.orderedKnownNutrientIDs(
             from: item.nutrients
         )
-        let selectedMatch = matches.first(where: { $0.confidence == .exact })
-            ?? matches.first(where: { $0.confidence == .keyword })
+        let selectedMatch = matches.first(where: { $0.matchKind == .exact })
+            ?? matches.first(where: { $0.matchKind == .keyword })
 
         if let selectedMatch {
             let category = category(
@@ -273,7 +441,8 @@ enum MealVisualResolver {
         category: MealFoodCategory
     ) -> String {
         guard let candidate,
-              MealVisualIconManifest.systemSymbol(for: candidate) != nil
+              MealVisualIconManifest.systemSymbol(for: candidate) != nil,
+              MealVisualIconManifest.category(for: candidate) == category
         else {
             return MealVisualIconManifest.iconKey(for: category)
         }
@@ -284,6 +453,9 @@ enum MealVisualResolver {
         for menuName: String,
         metadata: MealFoodCategory?
     ) -> MealFoodCategory {
+        if let metadata {
+            return metadata
+        }
         let normalized = menuName
             .lowercased()
             .replacingOccurrences(of: " ", with: "")
@@ -311,6 +483,6 @@ enum MealVisualResolver {
         }) {
             return match.0
         }
-        return metadata ?? .other
+        return .other
     }
 }

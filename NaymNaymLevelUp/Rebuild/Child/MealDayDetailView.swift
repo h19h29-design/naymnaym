@@ -256,17 +256,16 @@ struct MealDayDetailView: View {
         return VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(meal.menuItems.enumerated()), id: \.offset) { _, item in
                 let visual = MealVisualResolver.resolve(item: item)
+                let accessibility = MealAccessibilityDescriptor(
+                    item: item,
+                    visual: visual
+                )
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(
-                            systemName: MealVisualIconManifest.systemSymbol(
-                                for: visual.iconKey
-                            ) ?? "fork.knife"
-                        )
+                        MealVisualIcon(iconKey: visual.iconKey)
                         .font(.headline)
                         .foregroundStyle(RebuildDesignTokens.forest700)
                         .frame(width: 26, height: 26)
-                        .accessibilityLabel(visual.categoryLabel)
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.name)
@@ -279,6 +278,9 @@ struct MealDayDetailView: View {
                             }
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(RebuildDesignTokens.forest700)
+                            MealNutrientChips(
+                                nutrientIDs: visual.representativeNutrientIDs
+                            )
                         }
                     }
 
@@ -294,6 +296,8 @@ struct MealDayDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibility.spokenLabel)
                 .padding(12)
                 .background(RebuildDesignTokens.cream50.opacity(0.72))
                 .clipShape(
@@ -310,6 +314,10 @@ struct MealDayDetailView: View {
             Text(totals.calorie)
                 .font(.footnote)
                 .foregroundStyle(RebuildDesignTokens.muted600)
+            Text(totals.nutritionSummary)
+                .font(.caption2)
+                .foregroundStyle(RebuildDesignTokens.muted600)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
