@@ -54,7 +54,7 @@ struct MealRecordingSheet: View {
                 }
             } message: { item in
                 Text(
-                    "\(item.name)은 선택한 알레르기와 관련될 수 있어요. "
+                    "‘\(item.name)’ 메뉴가 선택한 알레르기와 관련될 수 있어요. "
                         + "학교 알레르기 안내와 보호자의 판단을 우선해 주세요."
                 )
             }
@@ -221,15 +221,15 @@ struct MealRecordingSheet: View {
         let isRisk = viewModel.isAllergyRisk(item)
         let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
-            if isRisk {
-                allergySafetyActions(for: item)
-            }
-
             Text(actionDescriptor.prompt)
                 .font(RebuildDesignTokens.headlineFont)
                 .foregroundStyle(RebuildDesignTokens.ink900)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("meal_action_prompt_\(index)")
+
+            if isRisk {
+                allergySafetyActions(for: item)
+            }
 
             LazyVGrid(
                 columns: dynamicTypeSize.isAccessibilitySize

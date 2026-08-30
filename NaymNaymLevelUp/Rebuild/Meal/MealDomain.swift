@@ -160,18 +160,8 @@ struct RebuildNutritionInfo: Codable, Equatable, Sendable {
         let values: [SourceField: String]
 
         init(from decoder: Decoder) throws {
-            if let keyed = try? decoder.container(keyedBy: DynamicCodingKey.self) {
-                var decoded: [SourceField: String] = [:]
-                for key in keyed.allKeys {
-                    guard let field = SourceField(rawValue: key.stringValue),
-                          let unit = try? keyed.decode(String.self, forKey: key),
-                          !unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    else {
-                        continue
-                    }
-                    decoded[field] = unit
-                }
-                values = decoded
+            if (try? decoder.container(keyedBy: DynamicCodingKey.self)) != nil {
+                values = [:]
                 return
             }
 

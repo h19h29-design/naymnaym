@@ -334,7 +334,7 @@ struct MealRecordingActionDescriptor: Equatable, Sendable {
     let menuName: String
 
     var prompt: String {
-        "\(menuName)은 어떻게 만났나요?"
+        "‘\(menuName)’ 어떻게 만났나요?"
     }
 
     func controlLabel(for title: String) -> String {
@@ -346,8 +346,8 @@ struct MealRecordingActionDescriptor: Equatable, Sendable {
         enabled: Bool
     ) -> String {
         enabled
-            ? "\(menuName)을 \(status.childTitle) 상태로 기록합니다"
-            : "\(menuName)은 알레르기 주의 메뉴라 안전하게 피하기만 기록할 수 있습니다"
+            ? "‘\(menuName)’ 메뉴를 \(status.childTitle) 상태로 기록합니다"
+            : "‘\(menuName)’ 메뉴는 알레르기 주의라 안전하게 피하기만 기록할 수 있습니다"
     }
 
     var allergyAvoidanceLabel: String {
@@ -355,7 +355,7 @@ struct MealRecordingActionDescriptor: Equatable, Sendable {
     }
 
     var allergyAvoidanceHint: String {
-        "\(menuName)의 알레르기 회피로 안전하게 기록합니다"
+        "‘\(menuName)’ 메뉴의 알레르기 회피로 안전하게 기록합니다"
     }
 
     var guardianConfirmationLabel: String {
@@ -363,7 +363,20 @@ struct MealRecordingActionDescriptor: Equatable, Sendable {
     }
 
     var guardianConfirmationHint: String {
-        "\(menuName)의 알레르기 보호자 확인 안내를 엽니다"
+        "‘\(menuName)’ 메뉴의 알레르기 보호자 확인 안내를 엽니다"
+    }
+
+    func controlOrder(
+        statusTitles: [String],
+        includesAllergySafety: Bool
+    ) -> [String] {
+        var labels = [prompt]
+        if includesAllergySafety {
+            labels.append(allergyAvoidanceLabel)
+            labels.append(guardianConfirmationLabel)
+        }
+        labels.append(contentsOf: statusTitles.map { controlLabel(for: $0) })
+        return labels
     }
 }
 

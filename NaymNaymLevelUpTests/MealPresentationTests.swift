@@ -147,7 +147,7 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(nutrition.sourceUnits, [.protein: "g"])
     }
 
-    func testLegacyNutritionSourceUnitObjectAcceptsKnownStringEntries() throws {
+    func testObjectNutritionSourceUnitMapConservativelyDowngradesToEmpty() throws {
         let data = try XCTUnwrap(
             """
             {
@@ -172,7 +172,34 @@ final class MealPresentationTests: XCTestCase {
             from: data
         )
 
-        XCTAssertEqual(nutrition.sourceUnits, [.protein: "g"])
+        XCTAssertEqual(nutrition.sourceUnits, [:])
+    }
+
+    func testDuplicateNutritionSourceUnitObjectDowngradesToEmptyMap() throws {
+        let data = try XCTUnwrap(
+            """
+            {
+              "carbs": 0,
+              "protein": 21.5,
+              "fat": 0,
+              "calcium": 0,
+              "iron": 0,
+              "vitamin": 0,
+              "sourceFields": ["protein"],
+              "sourceUnits": {
+                "protein": "g",
+                "protein": "mg"
+              }
+            }
+            """.data(using: .utf8)
+        )
+
+        let nutrition = try JSONDecoder().decode(
+            RebuildNutritionInfo.self,
+            from: data
+        )
+
+        XCTAssertEqual(nutrition.sourceUnits, [:])
     }
 
     func testMalformedOrUnknownNutritionSourceUnitArrayDowngradesToEmptyMap() throws {
@@ -681,7 +708,7 @@ final class MealPresentationTests: XCTestCase {
     func testRecordingActionDescriptorNamesMenuPromptAndControls() {
         let descriptor = MealRecordingActionDescriptor(menuName: "시금치나물")
 
-        XCTAssertEqual(descriptor.prompt, "시금치나물은 어떻게 만났나요?")
+        XCTAssertEqual(descriptor.prompt, "‘시금치나물’ 어떻게 만났나요?")
         XCTAssertEqual(
             descriptor.controlLabel(for: "다 먹었어요"),
             "시금치나물, 다 먹었어요"
@@ -694,6 +721,43 @@ final class MealPresentationTests: XCTestCase {
             descriptor.statusHint(for: .finished, enabled: false)
                 .contains("시금치나물")
         )
+    }
+
+    func testRecordingActionDescriptorPutsPromptBeforeSafetyAndStatusControls() {
+        let descriptor = MealRecordingActionDescriptor(menuName: "시금치나물")
+
+        XCTAssertEqual(
+            descriptor.controlOrder(
+                statusTitles: ["다 먹었어요", "한입도전"],
+                includesAllergySafety: true
+            ),
+            [
+                "‘시금치나물’ 어떻게 만났나요?",
+                "시금치나물, 안전하게 피했어요",
+                "시금치나물, 보호자와 확인하기",
+                "시금치나물, 다 먹었어요",
+                "시금치나물, 한입도전",
+            ]
+        )
+    }
+
+    func testRecordingActionDescriptorUsesParticleNeutralWording() {
+        for menuName in ["시금치나물", "우유", "카레"] {
+            let descriptor = MealRecordingActionDescriptor(menuName: menuName)
+
+            XCTAssertEqual(
+                descriptor.prompt,
+                "‘\(menuName)’ 어떻게 만났나요?"
+            )
+            XCTAssertTrue(
+                descriptor.statusHint(for: .finished, enabled: true)
+                    .contains("‘\(menuName)’ 메뉴를")
+            )
+            XCTAssertTrue(
+                descriptor.statusHint(for: .finished, enabled: false)
+                    .contains("‘\(menuName)’ 메뉴는")
+            )
+        }
     }
 
     func testRepresentativeChipsAndAccessibilityDescriptorKeepSafeOrder() throws {
