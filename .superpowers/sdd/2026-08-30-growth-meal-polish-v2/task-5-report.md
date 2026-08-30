@@ -96,3 +96,24 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 
 - The known non-failing `_LottieStub.o` x86_64 architecture warning remains unrelated to Task 5.
 - No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.
+
+## Review fix round 3
+
+### Scope
+
+- An identical-revision `EEXIST` retry now validates the immutable winner and synchronizes the containing directory before reporting success. Sync failure remains `writeFailed` and preserves the winner and temporary-file cleanup semantics.
+- Allergy safety parsing now recognizes generalized Korean risk conditions (`있는데`, `있으면`, `있다면`, `있어도`, `있더라도`, and related forms), isolates the following action text, masks explicit avoidance/negated actions, and rejects any positive eat, taste, or retry cue left behind. Positive cues take precedence in mixed sentences.
+- Medical validation now rejects direct grammar-shaped deficiency assertions such as `모자라요`, `부족해요`, and `결핍이에요`, while explicit diagnostic negation and the canonical educational disclaimer remain accepted.
+
+### TDD and verification
+
+- RED — focused tests failed in the new EEXIST resynchronization and safety-copy cases before implementation, including both success/failure sync branches and reviewer-provided allergy/deficiency examples.
+- GREEN — focused sidecar + persistent schema suite: 31/31 passed (`task5-review-fix-round3-focused.xcresult`).
+- GREEN — full iOS suite: 435/435 passed (`task5-review-fix-round3-full.xcresult`).
+- Native rebuild Python contracts: 32/32 passed.
+- `git diff --check`: passed. Core Data v1 model/migration and project membership remain unchanged from `a90610d`.
+
+### Warnings
+
+- The known non-failing `_LottieStub.o` architecture warning remains outside Task 5.
+- No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.

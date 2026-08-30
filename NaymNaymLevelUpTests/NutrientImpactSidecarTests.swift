@@ -245,8 +245,13 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "철분 12\u{200B}mg을 섭취했어요.",
             "철분 １２\u{200B}㎎을 섭취했어요.",
             "알레르기가 있는데 한 입 시도해요.",
+            "알레르기가 있는데 한 입 먹어요.",
             "알레르기가 있으면 조금 먹어 보세요.",
+            "알레르기가 있다면 조금 먹어 보세요.",
             "알레르기가 있는데 먹지 않다가 한 입 시도해요.",
+            "철분이 모자라요.",
+            "철분이 부족해요.",
+            "철분 결핍이에요.",
             "철분이 모자라서 몸이 나빠져요.",
             "철분 결핍이라고 진단해요.",
             "이 증상은 치료가 필요해요.",
@@ -259,6 +264,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "영양소 부족을 진단하지 않아요.",
             "알레르기가 있는데 먹지 않아요.",
             "알레르기가 있으면 피해요.",
+            "알레르기가 있으면 먹어 보지 않아요.",
         ]
         for (index, copy) in allowedCopy.enumerated() {
             XCTAssertNoThrow(
@@ -298,6 +304,39 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertEqual(try restartedStore.load(matching: revision), snapshot)
         XCTAssertNoThrow(try restartedStore.install(snapshot))
         XCTAssertEqual(try Data(contentsOf: file), publishedBytes)
+    }
+
+    func testExistingRevisionRetryResynchronizesPublishedDirectory() throws {
+        let snapshot = fixtureSnapshot(recordID: "directory-resync")
+        let firstStore = FileNutrientImpactSidecar(
+            directoryURL: temporaryDirectory,
+            directorySync: { _ in -1 }
+        )
+        XCTAssertThrowsError(try firstStore.install(snapshot))
+        let file = try XCTUnwrap(singleJSONFile())
+        let publishedBytes = try Data(contentsOf: file)
+
+        let successfulSyncs = SidecarLockedCounter()
+        let retryStore = FileNutrientImpactSidecar(
+            directoryURL: temporaryDirectory,
+            directorySync: { _ in successfulSyncs.increment(); return 0 }
+        )
+        XCTAssertNoThrow(try retryStore.install(snapshot))
+        XCTAssertEqual(successfulSyncs.value, 1)
+        XCTAssertEqual(try Data(contentsOf: file), publishedBytes)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
+
+        let failedSyncs = SidecarLockedCounter()
+        let failingRetryStore = FileNutrientImpactSidecar(
+            directoryURL: temporaryDirectory,
+            directorySync: { _ in failedSyncs.increment(); return -1 }
+        )
+        XCTAssertThrowsError(try failingRetryStore.install(snapshot)) { error in
+            XCTAssertEqual(error as? NutrientImpactSidecarError, .writeFailed)
+        }
+        XCTAssertEqual(failedSyncs.value, 1)
+        XCTAssertEqual(try Data(contentsOf: file), publishedBytes)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
     }
 
     func testUTF8ByteLimitsRejectCombiningPayloadAndOversizedFileReturnsNil() throws {
@@ -603,5 +642,22 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let snapshotObject = try XCTUnwrap(envelope["snapshot"] as? [String: Any])
         let data = try JSONSerialization.data(withJSONObject: snapshotObject, options: [.sortedKeys])
         return try JSONDecoder().decode(NutrientImpactSnapshot.self, from: data)
+    }
+}
+
+private final class SidecarLockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
     }
 }

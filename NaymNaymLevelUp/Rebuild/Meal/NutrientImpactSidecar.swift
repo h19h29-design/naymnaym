@@ -136,6 +136,12 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
                 name: destinationName,
                 matching: snapshot
             )
+            guard directorySync(directoryDescriptor) == 0 else {
+                // The immutable winner may originate from a prior publication
+                // whose directory sync failed. A successful retry must make
+                // that directory entry durable before it can report success.
+                throw NutrientImpactSidecarError.writeFailed
+            }
             return
         }
         didPublish = true
@@ -620,7 +626,8 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
         let medicalClaimPatterns = [
-            #"(?:결핍|부족|모자라)(?:입니다|이에요|예요|해요|합니다|하다|해서|하니|하면|라서|이라고)"#,
+            #"(?:결핍|부족)(?:입니다|이에요|예요|해요|합니다|하다|해서|하니|하면|이라고)"#,
+            #"모자라(?:요|습니다|서|니|면)"#,
             #"(?:결핍|부족|모자라).*(?:몸|건강|악화|나빠|해로|질병|위험|꼭먹|섭취해야)"#,
             #"(?:진단|치료|처방)(?:이|가|을|를|은|는|해|하|받|필요|해야|됩니다|돼요)"#,
             #"(?:질병|빈혈|고혈압|당뇨)(?:이|가|을|를|입니다|이에요|위험|진단|치료|생겨|걸려)"#,
@@ -642,46 +649,36 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         if directAllergyReversalPhrases.contains(where: compact.contains) {
             return true
         }
-        let allergyConditionMarkers = [
-            "알레르기가있어도",
-            "알레르기가있더라도",
-            "알레르기있더라도",
-            "알레르기여도",
-            "알레르기라도",
-            "알레르기지만",
-            "알레르기인데도",
-            "알레르기가있는데",
-            "알레르기가있으면",
-            "알레르기있으면",
+        let allergyConditionPattern =
+            #"알레르기(?:가)?(?:있(?:는데|으면|다면|어도|더라도)|여도|라도|지만|인데도)"#
+        guard let conditionRange = compact.range(
+            of: allergyConditionPattern,
+            options: .regularExpression
+        ) else { return false }
+
+        var actionText = String(compact[conditionRange.upperBound...])
+        let avoidanceActionPatterns = [
+            #"(?:한입|조금|다시)?(?:먹어보|먹|시도|맛보)지않(?:아요|습니다|기로|도록|기)?"#,
+            #"(?:먹지|시도하지|맛보지)말(?:아요|세요|기)?"#,
+            #"안먹(?:어요|습니다|기로|도록|기)?"#,
+            #"(?:피하|피해|제외|중단)(?:요|세요|해요|합니다|하기|하도록)?"#,
         ]
-        let avoidanceMarkers = [
-            "먹지않",
-            "안먹",
-            "피해",
-            "피하",
-            "제외",
-            "중단",
-            "시도하지않",
-        ]
-        let retryOrEatMarkers = [
-            "한입시도",
-            "조금먹어보",
-            "먹어보",
-            "다시먹",
-            "다시시도",
-            "다시살펴",
-            "재도전",
-            "시도해",
-            "시도하세요",
-        ]
-        let hasAllergyCondition = allergyConditionMarkers.contains(where: compact.contains)
-        if hasAllergyCondition, retryOrEatMarkers.contains(where: compact.contains) {
-            return true
+        for pattern in avoidanceActionPatterns {
+            actionText = actionText.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: .regularExpression
+            )
         }
-        if hasAllergyCondition, avoidanceMarkers.contains(where: compact.contains) {
-            return false
+        let positiveActionPatterns = [
+            #"한입(?:먹|시도|맛보)"#,
+            #"조금(?:먹어보|먹|시도|맛보)"#,
+            #"(?:먹어보|다시먹|다시시도|시도|맛보|재도전)"#,
+            #"먹(?:어요|으세요|어주세요|기)"#,
+        ]
+        return positiveActionPatterns.contains { pattern in
+            actionText.range(of: pattern, options: .regularExpression) != nil
         }
-        return false
     }
 
     private static func normalizedSafetyText(_ value: String) -> String {
