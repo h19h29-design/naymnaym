@@ -209,6 +209,14 @@ struct RebuildMealDay: Codable, Equatable, Sendable {
     let nutrition: RebuildNutritionInfo
 }
 
+struct RebuildMealRecordRevision: Equatable, Sendable {
+    let recordID: String
+    let date: String
+    let normalizedMenuName: String
+    let status: RebuildEatingStatus
+    let updatedAt: Date
+}
+
 struct MealDayRoute: Hashable, Identifiable, Sendable {
     let dateKey: String
 

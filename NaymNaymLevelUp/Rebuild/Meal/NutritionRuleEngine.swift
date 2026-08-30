@@ -53,6 +53,8 @@ struct NutritionRulePresentationMatch: Equatable, Sendable {
 }
 
 struct NutritionRuleEngine {
+    static let supportedRuleVersion = 1
+
     private let rules: NutritionRulesDocument
 
     init(bundle: Bundle = .main) throws {
@@ -163,6 +165,10 @@ struct NutritionRuleEngine {
             aliases[value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
         }).intersection(known)
         return rules.nutrientOrder.filter(selected.contains)
+    }
+
+    var ruleVersion: Int {
+        rules.version
     }
 
     private func compact(_ value: String) -> String {
