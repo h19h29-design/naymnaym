@@ -218,12 +218,12 @@ struct RebuildMealRecordRevision: Equatable, Sendable {
 
 `recordID + date + normalizedMenuName + status + recordUpdatedAt`로 안전한 결정적 fingerprint/file name을 만들고, 임시 파일 → 원자 rename → 즉시 read-back 검증 순서를 사용한다. Core Data record/event 저장이 실패하면 새 파일은 orphan으로 남아도 읽히지 않으며 기존 matching snapshot은 덮어쓰지 않는다. 상태 변경은 이전 파일을 수정하지 않고 새 revision 파일을 만든다. reader는 현재 활성 Core Data 행의 date/menu/status/updatedAt 및 recordID가 모두 일치할 때만 당시 snapshot으로 인정한다. 일치 파일이 없거나 손상·schema/rule/fingerprint가 다르면 snapshot을 무시하고 “현재 기준 안내”로 명시한다. orphan을 이번 범위에서 적극 삭제하지 않는다.
 
-sidecar에는 교육용 문장과 식별자만 저장하며 메뉴·학교·프로필·부모 연결을 복제하지 않는다. 개별 메뉴의 g/mg/kcal, 의학적 결핍·건강 악화 단정, 알레르기 회피를 번복시키는 권유 문구는 저장 검증에서 거부한다. 기존 `parentShareEnabled`가 true인 record만 기존 공유 정책의 대상이며 새 권한·Supabase schema는 만들지 않는다.
+sidecar에는 `NutrientImpactCopyCatalog`가 생성한 canonical 교육 문구와 같은 급식의 메뉴 라벨·식별자만 저장하며 메뉴·학교·프로필·부모 연결을 복제하지 않는다. `headline`, `explanation`, `disclaimer`는 상태와 정규화·정렬·중복 제거된 known nutrient ID를 입력으로 한 canonical 결과와 정확히 일치해야 한다. `NutrientImpactSnapshotFactory`가 이 문구를 생성하므로 호출자는 안전 문장을 수동 조립하지 않는다. 자연어 정규식/NLU 추측으로 허용·거부하지 않고 canonical exact match로 fail-closed한다. 대체 메뉴는 최대 2개의 UTF-8 bounded label이며 제어문자·경로·중복·문장형 종결 부호만 구조적으로 검증한다. 개별 메뉴의 g/mg/kcal, 의학적 결핍·건강 악화 단정, 알레르기 회피를 번복시키는 권유 문구는 canonical catalog에 존재하지 않는다. 기존 `parentShareEnabled`가 true인 record만 기존 공유 정책의 대상이며 새 권한·Supabase schema는 만들지 않는다.
 
 저장 순서는 다음과 같다.
 
 1. UI가 확정한 안전한 command와 frozen snapshot으로 정확한 record revision fingerprint를 만든다.
-2. sidecar를 설치하고 read-back/금지 문구 검증을 끝낸다.
+2. factory가 만든 canonical copy를 sidecar에 설치하고 exact-copy/read-back 검증을 끝낸다.
 3. 기존 `RecordMealUseCase` Core Data record/event transaction을 실행한다.
 4. 기록 성공 후 같은 fingerprint를 가진 sidecar를 다시 읽어 당시 안내를 표시한다.
 

@@ -192,35 +192,77 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
 
         assertInstallRejected(store, fixtureSnapshot(recordID: "../escape"))
-        assertInstallRejected(store, fixtureSnapshot(normalizedMenuName: "menu/../escape"))
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "path-menu-1", normalizedMenuName: "menu/../escape")
+        )
         assertInstallRejected(store, fixtureSnapshot(recordID: #"menu\..\escape"#))
-        assertInstallRejected(store, fixtureSnapshot(recordID: "opaque\u{0000}id"))
-        assertInstallRejected(store, fixtureSnapshot(headline: "단백질 12g을 먹었어요."))
-        assertInstallRejected(store, fixtureSnapshot(explanation: "철분 4 mg을 섭취했어요."))
-        assertInstallRejected(store, fixtureSnapshot(explanation: "철분 12㎎을 섭취했어요."))
-        assertInstallRejected(store, fixtureSnapshot(explanation: "철분 １２ｍｇ을 섭취했어요."))
-        assertInstallRejected(store, fixtureSnapshot(alternatives: ["이 메뉴는 230kcal예요."]))
-        assertInstallRejected(store, fixtureSnapshot(headline: "철분이 부족하니 꼭 먹어야 해요."))
-        assertInstallRejected(store, fixtureSnapshot(headline: "영양소가 모자라면 몸이 나빠져요."))
-        assertInstallRejected(store, fixtureSnapshot(headline: "의사 진단이 필요해요."))
-        assertInstallRejected(store, fixtureSnapshot(explanation: "이 문장에는 API token이 들어 있어요."))
-        assertInstallRejected(store, fixtureSnapshot(disclaimer: "알레르기가 있어도 먹어도 괜찮아요."))
-        assertInstallRejected(store, fixtureSnapshot(disclaimer: "알레르기가 있더라도 다시 먹어봐요."))
-        assertInstallRejected(store, fixtureSnapshot(disclaimer: "알레르기지만 조금은 먹어보세요."))
+        assertInstallRejected(store, fixtureSnapshot(recordID: "opaque-null-\u{0000}id"))
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-1", headline: "단백질 12g을 먹었어요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-2", explanation: "철분 4 mg을 섭취했어요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-3", explanation: "철분 12㎎을 섭취했어요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-4", explanation: "철분 １２ｍｇ을 섭취했어요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-5", alternatives: ["이 메뉴는 230kcal예요."])
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-6", headline: "철분이 부족하니 꼭 먹어야 해요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-7", headline: "영양소가 모자라면 몸이 나빠져요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-8", headline: "의사 진단이 필요해요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-9", explanation: "이 문장에는 API token이 들어 있어요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-10", disclaimer: "알레르기가 있어도 먹어도 괜찮아요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-11", disclaimer: "알레르기가 있더라도 다시 먹어봐요.")
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(recordID: "forbidden-copy-12", disclaimer: "알레르기지만 조금은 먹어보세요.")
+        )
     }
 
-    func testOpaqueIdentifiersAndOrdinaryKoreanEducationAreAllowed() throws {
+    func testCanonicalCopyWorksWithOpaqueIdentifiers() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
-        let snapshot = fixtureSnapshot(
-            recordID: #"opaque/path\record:01.v1"#,
-            normalizedMenuName: "현미밥·콩나물",
-            headline: "한 입으로 곡물의 맛과 식감을 알아봤어요.",
-            explanation: "여러 재료를 천천히 살펴보며 나에게 맞는 식사를 배워요.",
-            alternatives: ["다음에는 익숙한 반찬과 함께 살펴봐요."],
-            disclaimer: "영양 정보는 의학 진단이 아닌 교육용 참고 정보예요."
+        let snapshot = try XCTUnwrap(
+            NutrientImpactSnapshotFactory.make(
+                recordID: #"opaque/path\record:01.v1"#,
+                date: "2026-08-30",
+                normalizedMenuName: "현미밥·콩나물",
+                status: .oneBite,
+                recordUpdatedAt: Date(timeIntervalSince1970: 10),
+                nutrientIDs: ["carbohydrate"],
+                alternativeMenuLabels: ["두부"]
+            )
         )
 
-        XCTAssertNoThrow(try store.install(snapshot))
+        try store.install(snapshot)
         XCTAssertEqual(
             try store.load(matching: RebuildMealRecordRevision(
                 recordID: snapshot.recordID,
@@ -232,14 +274,26 @@ final class NutrientImpactSidecarTests: XCTestCase {
             snapshot
         )
 
-        let contractDisclaimer = fixtureSnapshot(
+        let changedDisclaimer = NutrientImpactSnapshot(
+            schemaVersion: snapshot.schemaVersion,
+            ruleVersion: snapshot.ruleVersion,
             recordID: "contract-disclaimer",
-            disclaimer: "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
+            date: snapshot.date,
+            normalizedMenuName: snapshot.normalizedMenuName,
+            status: snapshot.status,
+            recordUpdatedAt: Date(timeIntervalSince1970: 11),
+            nutrients: snapshot.nutrients,
+            headline: snapshot.headline,
+            explanation: snapshot.explanation,
+            alternatives: snapshot.alternatives,
+            disclaimer: "영양 정보는 교육용 참고 정보예요."
         )
-        XCTAssertNoThrow(try store.install(contractDisclaimer))
+        XCTAssertThrowsError(try store.install(changedDisclaimer)) { error in
+            XCTAssertEqual(error as? NutrientImpactSidecarError, .invalidSnapshot)
+        }
     }
 
-    func testSafetyCopyPolicyHandlesInvisibleAllergyAndMedicalVariants() throws {
+    func testNonCanonicalSafetyCopyIsRejected() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let rejectedCopy = [
             "철분 12\u{200B}mg을 섭취했어요.",
@@ -267,38 +321,16 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "이 증상은 치료가 필요해요.",
         ]
         for (index, copy) in rejectedCopy.enumerated() {
-            XCTAssertThrowsError(
-                try store.install(fixtureSnapshot(headline: copy)),
-                "Rejected copy case \(index): \(copy)"
+            let snapshot = fixtureSnapshot(
+                recordID: "noncanonical-copy-\(index)",
+                headline: copy
             )
+            XCTAssertThrowsError(try store.install(snapshot)) { error in
+                XCTAssertEqual(error as? NutrientImpactSidecarError, .invalidSnapshot)
+            }
         }
-
-        let allowedCopy = [
-            "영양소 부족을 진단하지 않아요.",
-            "알레르기가 있는데 먹지 않아요.",
-            "알레르기가 있으면 피해요.",
-            "알레르기가 있으면 먹어 보지 않아요.",
-            "알레르기가 있으면 먹어 보면 안 돼요.",
-            "알레르기가 있으면 먹으면 안 됩니다.",
-            "알레르기가 있는 경우 보호자와 확인해요.",
-            "알레르기가 있어서 먹지 않아요.",
-            "알레르기 때문에 다른 반찬을 선택해요.",
-            "알레르기가 있으면 피하고 다른 반찬을 먹어요.",
-            "해당 음식은 피하고 다른 반찬을 먹어요.",
-            "철분이 부족하다고 판단하지 않아요.",
-            "철분이 부족하지 않아요.",
-        ]
-        for (index, copy) in allowedCopy.enumerated() {
-            XCTAssertNoThrow(
-                try store.install(fixtureSnapshot(recordID: "safe-copy-\(index)", headline: copy))
-            )
-        }
-        XCTAssertNoThrow(
-            try store.install(fixtureSnapshot(
-                recordID: "safe-canonical-disclaimer",
-                disclaimer: "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
-            ))
-        )
+        XCTAssertTrue(try jsonFiles().isEmpty)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
     }
 
     func testDirectorySyncFailureKeepsPublishedRevisionImmutable() throws {
@@ -369,24 +401,38 @@ final class NutrientImpactSidecarTests: XCTestCase {
         )
         XCTAssertLessThan(combiningPayload.count, 1_000)
         XCTAssertGreaterThan(combiningPayload.utf8.count, 4_096)
-        assertInstallRejected(store, fixtureSnapshot(headline: combiningPayload))
-        assertInstallRejected(store, fixtureSnapshot(recordID: String(repeating: "😀", count: 257)))
         assertInstallRejected(
             store,
-            fixtureSnapshot(nutrients: (0..<33).map { "nutrient-\($0)" })
+            fixtureSnapshot(recordID: "utf8-combining", headline: combiningPayload)
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(alternatives: (0..<9).map { "교육 문장 \($0)번을 살펴봐요." })
+            fixtureSnapshot(recordID: String(repeating: "😀", count: 257))
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(alternatives: Array(repeating: String(repeating: "가", count: 1_000), count: 8))
+            fixtureSnapshot(
+                recordID: "utf8-too-many-nutrients",
+                nutrients: (0..<33).map { "nutrient-\($0)" }
+            )
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(
+                recordID: "utf8-too-many-alternatives",
+                alternatives: (0..<9).map { "교육 문장 \($0)번을 살펴봐요." }
+            )
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(
+                recordID: "utf8-long-alternatives",
+                alternatives: Array(repeating: String(repeating: "가", count: 1_000), count: 8)
+            )
         )
 
         let allowedMultibyte = fixtureSnapshot(
-            recordID: "multibyte-record",
-            headline: String(repeating: "가", count: 1_000)
+            recordID: String(repeating: "가", count: 300)
         )
         XCTAssertNoThrow(try store.install(allowedMultibyte))
 
@@ -447,7 +493,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let conflicting = fixtureSnapshot(
             status: .oneBite,
             updatedAt: Date(timeIntervalSince1970: 10),
-            headline: "다른 교육 문장으로 바뀌었어요."
+            alternatives: ["사과"]
         )
         XCTAssertThrowsError(try store.install(conflicting))
         XCTAssertEqual(try Data(contentsOf: before), beforeBytes)
@@ -456,7 +502,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
     func testConcurrentConflictingInstallsPublishExactlyOneImmutableWinner() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let candidates = (0..<8).map { index in
-            fixtureSnapshot(headline: "교육 문장 \(index)번을 살펴봐요.")
+            fixtureSnapshot(alternatives: ["메뉴\(index)"])
         }
 
         let errors = concurrentInstall(candidates, into: store)
@@ -547,6 +593,117 @@ final class NutrientImpactSidecarTests: XCTestCase {
         )
     }
 
+    func testCanonicalCatalogCoversEveryStatusAndNormalizesKnownNutrients() throws {
+        let statuses = RebuildEatingStatus.allCases
+        let sourceNutrients = ["carbohydrate", "protein", "carbohydrate"]
+        let expectedNutrients = ["protein", "carbohydrate"]
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+
+        for (index, status) in statuses.enumerated() {
+            let snapshot = try XCTUnwrap(
+                NutrientImpactSnapshotFactory.make(
+                    recordID: "canonical-status-\(index)",
+                    date: "2026-08-30",
+                    normalizedMenuName: "현미밥",
+                    status: status,
+                    recordUpdatedAt: Date(timeIntervalSince1970: TimeInterval(index + 10)),
+                    nutrientIDs: sourceNutrients,
+                    alternativeMenuLabels: ["두부", "사과"]
+                )
+            )
+
+            XCTAssertEqual(snapshot.nutrients, expectedNutrients)
+            XCTAssertEqual(
+                snapshot.disclaimer,
+                "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
+            )
+            XCTAssertNoThrow(try store.install(snapshot))
+        }
+
+        XCTAssertEqual(try jsonFiles().count, statuses.count)
+    }
+
+    func testSidecarRejectsMutatedAndPreviouslyAmbiguousSafetyCopy() throws {
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let canonical = try XCTUnwrap(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "canonical-copy-base",
+                date: "2026-08-30",
+                normalizedMenuName: "현미밥",
+                status: .oneBite,
+                recordUpdatedAt: Date(timeIntervalSince1970: 10),
+                nutrientIDs: ["iron"],
+                alternativeMenuLabels: ["두부"]
+            )
+        )
+
+        let mutatedCopies = [
+            "\(canonical.headline)!",
+            "철분이 부족하다는 판단을 하지 않아요",
+            "철분 부족을 진단하지 않으면 안 됩니다",
+            "알레르기가 있으면 한 입 먹어요",
+            "알레르기 반응이 있으면 한 입 먹어요",
+            "알레르기가 있으면 피하지 않아요",
+            "철분이 결핍된 상태예요",
+            "영양소 부족을 진단하지 않아요. 철분 결핍 상태예요.",
+            "안전하게 피한 선택이 가장 중요해요. 보호자와 학교 안내를 먼저 확인해요."
+        ]
+
+        for (index, copy) in mutatedCopies.enumerated() {
+            let snapshot = snapshotByReplacing(
+                canonical,
+                recordID: "mutated-copy-\(index)",
+                headline: copy
+            )
+            XCTAssertThrowsError(try store.install(snapshot)) { error in
+                XCTAssertEqual(error as? NutrientImpactSidecarError, .invalidSnapshot)
+            }
+        }
+
+        for (index, copy) in [
+            "알레르기가 있으면 맛을 보지 않아요",
+            "오늘은 천천히 살펴본 것으로 충분해요",
+            "영양소 정보를 알아보는 교육용 문장이에요"
+        ].enumerated() {
+            let snapshot = snapshotByReplacing(
+                canonical,
+                recordID: "safe-but-noncanonical-\(index)",
+                explanation: copy
+            )
+            XCTAssertThrowsError(try store.install(snapshot)) { error in
+                XCTAssertEqual(error as? NutrientImpactSidecarError, .invalidSnapshot)
+            }
+        }
+
+        XCTAssertTrue(try jsonFiles().isEmpty)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
+    }
+
+    func testFactoryTreatsAlternativesAsMenuLabelsNotCopy() throws {
+        let valid = NutrientImpactSnapshotFactory.make(
+            recordID: "menu-labels",
+            date: "2026-08-30",
+            normalizedMenuName: "현미밥",
+            status: .finished,
+            recordUpdatedAt: Date(timeIntervalSince1970: 10),
+            nutrientIDs: ["carbohydrate"],
+            alternativeMenuLabels: ["김치·두부", "고구마 (찐 것)"]
+        )
+        XCTAssertNotNil(valid)
+
+        XCTAssertNil(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "sentence-alternative",
+                date: "2026-08-30",
+                normalizedMenuName: "현미밥",
+                status: .finished,
+                recordUpdatedAt: Date(timeIntervalSince1970: 11),
+                nutrientIDs: ["carbohydrate"],
+                alternativeMenuLabels: ["다음에는 익숙한 반찬과 함께 살펴봐요."]
+            )
+        )
+    }
+
     private func fixtureSnapshot(
         schemaVersion: Int = 1,
         ruleVersion: Int = 1,
@@ -556,12 +713,16 @@ final class NutrientImpactSidecarTests: XCTestCase {
         status: RebuildEatingStatus = .oneBite,
         updatedAt: Date = Date(timeIntervalSince1970: 10),
         nutrients: [String] = ["carbohydrate"],
-        headline: String = "한 입으로 곡물의 에너지를 경험했어요.",
-        explanation: String = "곡물 메뉴를 천천히 살펴보며 식사를 알아가요.",
-        alternatives: [String] = ["다음에는 익숙한 반찬과 함께 살펴봐요."],
-        disclaimer: String = "영양 정보는 교육용 참고 정보예요."
+        headline: String? = nil,
+        explanation: String? = nil,
+        alternatives: [String]? = nil,
+        disclaimer: String? = nil
     ) -> NutrientImpactSnapshot {
-        NutrientImpactSnapshot(
+        let canonicalCopy = NutrientImpactCopyCatalog.makeCopy(
+            status: status,
+            nutrientIDs: nutrients
+        )
+        return NutrientImpactSnapshot(
             schemaVersion: schemaVersion,
             ruleVersion: ruleVersion,
             recordID: recordID,
@@ -570,10 +731,33 @@ final class NutrientImpactSidecarTests: XCTestCase {
             status: status,
             recordUpdatedAt: updatedAt,
             nutrients: nutrients,
-            headline: headline,
-            explanation: explanation,
-            alternatives: alternatives,
-            disclaimer: disclaimer
+            headline: headline ?? canonicalCopy?.headline ?? "invalid headline",
+            explanation: explanation ?? canonicalCopy?.explanation ?? "invalid explanation",
+            alternatives: alternatives ?? ["두부"],
+            disclaimer: disclaimer ?? canonicalCopy?.disclaimer ?? NutrientImpactCopyCatalog.educationNotice
+        )
+    }
+
+    private func snapshotByReplacing(
+        _ snapshot: NutrientImpactSnapshot,
+        recordID: String,
+        headline: String? = nil,
+        explanation: String? = nil,
+        disclaimer: String? = nil
+    ) -> NutrientImpactSnapshot {
+        NutrientImpactSnapshot(
+            schemaVersion: snapshot.schemaVersion,
+            ruleVersion: snapshot.ruleVersion,
+            recordID: recordID,
+            date: snapshot.date,
+            normalizedMenuName: snapshot.normalizedMenuName,
+            status: snapshot.status,
+            recordUpdatedAt: snapshot.recordUpdatedAt,
+            nutrients: snapshot.nutrients,
+            headline: headline ?? snapshot.headline,
+            explanation: explanation ?? snapshot.explanation,
+            alternatives: snapshot.alternatives,
+            disclaimer: disclaimer ?? snapshot.disclaimer
         )
     }
 
@@ -599,7 +783,28 @@ final class NutrientImpactSidecarTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        XCTAssertThrowsError(try store.install(snapshot), file: file, line: line)
+        let filesBefore = (try? jsonFiles().map(\.lastPathComponent)) ?? []
+        let temporaryArtifactsBefore = (try? temporaryArtifacts().map(\.lastPathComponent)) ?? []
+        XCTAssertThrowsError(try store.install(snapshot), file: file, line: line) { error in
+            XCTAssertEqual(
+                error as? NutrientImpactSidecarError,
+                .invalidSnapshot,
+                file: file,
+                line: line
+            )
+        }
+        XCTAssertEqual(
+            (try? jsonFiles().map(\.lastPathComponent)) ?? [],
+            filesBefore,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            (try? temporaryArtifacts().map(\.lastPathComponent)) ?? [],
+            temporaryArtifactsBefore,
+            file: file,
+            line: line
+        )
     }
 
     private func jsonFiles(in directory: URL? = nil) throws -> [URL] {

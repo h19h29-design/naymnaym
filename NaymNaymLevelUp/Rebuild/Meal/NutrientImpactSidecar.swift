@@ -21,6 +21,191 @@ struct NutrientImpactSnapshot: Codable, Hashable, Sendable {
     let disclaimer: String
 }
 
+struct NutrientImpactCopy: Equatable, Sendable {
+    let headline: String
+    let explanation: String
+    let disclaimer: String
+}
+
+/// The sidecar is a persistence boundary, so copy is an allow-list rather
+/// than a best-effort natural-language policy. Callers use this catalog to
+/// build every snapshot; the sidecar accepts only the exact resulting copy.
+enum NutrientImpactCopyCatalog {
+    static let educationNotice =
+        "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
+
+    static let nutrientOrder = [
+        "fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate",
+    ]
+
+    private static let nutrientNames: [String: String] = [
+        "fiber": "식이섬유",
+        "vitamin": "비타민",
+        "protein": "단백질",
+        "iron": "철분",
+        "calcium": "칼슘",
+        "carbohydrate": "탄수화물",
+    ]
+
+    static func normalizedNutrientIDs(_ values: [String]) -> [String]? {
+        guard values.allSatisfy({ nutrientNames[$0] != nil }) else {
+            return nil
+        }
+        let selected = Set(values)
+        return nutrientOrder.filter(selected.contains)
+    }
+
+    static func makeCopy(
+        status: RebuildEatingStatus,
+        nutrientIDs: [String]
+    ) -> NutrientImpactCopy? {
+        guard let normalized = normalizedNutrientIDs(nutrientIDs) else {
+            return nil
+        }
+        let phrase = nutrientPhrase(for: normalized)
+        let headline: String
+        let explanation: String
+
+        switch status {
+        case .finished:
+            headline = "오늘 \(phrase) 정보를 살펴봤어요."
+            explanation = "오늘의 급식에서 \(phrase) 정보를 확인하고 즐겁게 마무리했어요."
+        case .half:
+            headline = "\(phrase) 정보를 차근차근 경험했어요."
+            explanation = "먹은 만큼의 경험을 기록하며 \(phrase) 정보를 알아가요."
+        case .oneBite:
+            headline = "오늘 한 입으로 \(phrase) 정보를 경험했어요."
+            explanation = "작은 한 걸음으로 \(phrase) 정보를 알아가는 중이에요."
+        case .smelledOnly:
+            headline = "냄새를 살펴본 것도 멋진 탐색이에요."
+            explanation = "오늘은 냄새와 느낌으로 \(phrase) 정보를 천천히 알아봤어요."
+        case .difficultToday:
+            headline = "오늘은 천천히 살펴본 것으로 충분해요."
+            explanation = "다음에 다시 만날 때를 위해 \(phrase) 정보를 기억해 두어요."
+        case .allergyAvoided:
+            headline = "안전하게 피한 선택이 가장 중요해요."
+            explanation = "보호자와 학교 안내를 먼저 확인하며 \(phrase) 정보를 안전하게 알아봐요."
+        }
+
+        return NutrientImpactCopy(
+            headline: headline,
+            explanation: explanation,
+            disclaimer: educationNotice
+        )
+    }
+
+    static func isCanonical(
+        status: RebuildEatingStatus,
+        nutrientIDs: [String],
+        headline: String,
+        explanation: String,
+        disclaimer: String
+    ) -> Bool {
+        guard let copy = makeCopy(status: status, nutrientIDs: nutrientIDs) else {
+            return false
+        }
+        guard nutrientIDs == normalizedNutrientIDs(nutrientIDs) else {
+            return false
+        }
+        return exact(copy.headline, headline)
+            && exact(copy.explanation, explanation)
+            && exact(copy.disclaimer, disclaimer)
+    }
+
+    static func validateMenuLabels(_ values: [String]) -> Bool {
+        guard values.count <= 2,
+              values.allSatisfy(validMenuLabel),
+              Set(values.map { $0.precomposedStringWithCanonicalMapping }).count == values.count
+        else {
+            return false
+        }
+        return true
+    }
+
+    private static func nutrientPhrase(for nutrientIDs: [String]) -> String {
+        let names = nutrientIDs.compactMap { nutrientNames[$0] }
+        guard !names.isEmpty else { return "대표 영양소" }
+        guard names.count > 1 else { return names[0] }
+        return names.joined(separator: " · ")
+    }
+
+    private static func exact(_ expected: String, _ actual: String) -> Bool {
+        expected.utf8.elementsEqual(actual.utf8)
+    }
+
+    private static func validMenuLabel(_ value: String) -> Bool {
+        let endsWithSentencePunctuation = value.unicodeScalars.last.map {
+            ".!?。！？".unicodeScalars.contains($0)
+        } ?? false
+        guard !value.isEmpty,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              value.utf8.count <= 1_024,
+              !containsControlCharacter(value),
+              !containsPathTraversal(value),
+              !endsWithSentencePunctuation
+        else {
+            return false
+        }
+        return true
+    }
+
+    private static func containsControlCharacter(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            scalar.value < 0x20
+                || (0x7F...0x9F).contains(scalar.value)
+                || scalar.value == 0x2028
+                || scalar.value == 0x2029
+        }
+    }
+
+    private static func containsPathTraversal(_ value: String) -> Bool {
+        value.split(
+            omittingEmptySubsequences: false,
+            whereSeparator: { $0 == "/" || $0 == "\\" }
+        ).contains { $0 == "." || $0 == ".." }
+    }
+}
+
+enum NutrientImpactSnapshotFactory {
+    static func make(
+        schemaVersion: Int = NutrientImpactSnapshot.supportedSchemaVersion,
+        ruleVersion: Int = NutrientImpactSnapshot.supportedRuleVersion,
+        recordID: String,
+        date: String,
+        normalizedMenuName: String,
+        status: RebuildEatingStatus,
+        recordUpdatedAt: Date,
+        nutrientIDs: [String],
+        alternativeMenuLabels: [String]
+    ) -> NutrientImpactSnapshot? {
+        guard schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion,
+              ruleVersion == NutrientImpactSnapshot.supportedRuleVersion,
+              let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(nutrientIDs),
+              let copy = NutrientImpactCopyCatalog.makeCopy(
+                  status: status,
+                  nutrientIDs: nutrients
+              ),
+              NutrientImpactCopyCatalog.validateMenuLabels(alternativeMenuLabels)
+        else {
+            return nil
+        }
+        return NutrientImpactSnapshot(
+            schemaVersion: schemaVersion,
+            ruleVersion: ruleVersion,
+            recordID: recordID,
+            date: date,
+            normalizedMenuName: normalizedMenuName,
+            status: status,
+            recordUpdatedAt: recordUpdatedAt,
+            nutrients: nutrients,
+            headline: copy.headline,
+            explanation: copy.explanation,
+            alternatives: alternativeMenuLabels,
+            disclaimer: copy.disclaimer
+        )
+    }
+}
+
 protocol NutrientImpactSidecar: Sendable {
     func install(_ snapshot: NutrientImpactSnapshot) throws
     func load(matching record: RebuildMealRecordRevision) throws -> NutrientImpactSnapshot?
@@ -59,7 +244,6 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     private static let maximumSidecarBytes = 64 * 1_024
     private static let maximumIdentifierBytes = 1_024
     private static let maximumNutrientIdentifierBytes = 256
-    private static let maximumCopyBytes = 4_096
     private static let maximumAggregateStringBytes = 20 * 1_024
     private static let filePrefix = "nutrient-impact-v1-"
     private static let fileExtension = "json"
@@ -469,11 +653,14 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             throw NutrientImpactSidecarError.invalidSnapshot
         }
         guard validateIdentifierList(snapshot.nutrients),
-              validateCopy(snapshot.headline),
-              validateCopy(snapshot.explanation),
-              snapshot.alternatives.count <= 8,
-              snapshot.alternatives.allSatisfy(validateCopy),
-              validateCopy(snapshot.disclaimer),
+              NutrientImpactCopyCatalog.isCanonical(
+                  status: snapshot.status,
+                  nutrientIDs: snapshot.nutrients,
+                  headline: snapshot.headline,
+                  explanation: snapshot.explanation,
+                  disclaimer: snapshot.disclaimer
+              ),
+              NutrientImpactCopyCatalog.validateMenuLabels(snapshot.alternatives),
               hasBoundedAggregateStrings(snapshot) else {
             throw NutrientImpactSidecarError.invalidSnapshot
         }
@@ -513,10 +700,10 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     private static func validateIdentifierList(_ values: [String]) -> Bool {
         guard values.count <= 32,
               values.allSatisfy({ validIdentifier($0, maximumBytes: maximumNutrientIdentifierBytes) }),
-              Set(values).count == values.count else {
+              values == NutrientImpactCopyCatalog.normalizedNutrientIDs(values) else {
             return false
         }
-        return values.allSatisfy { !containsForbiddenCopy($0) }
+        return true
     }
 
     private static func hasBoundedAggregateStrings(_ snapshot: NutrientImpactSnapshot) -> Bool {
@@ -546,17 +733,6 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         return true
     }
 
-    private static func validateCopy(_ value: String) -> Bool {
-        guard !value.isEmpty,
-              value.count <= 1_000,
-              value.utf8.count <= maximumCopyBytes,
-              !containsControlCharacter(value),
-              !containsForbiddenCopy(value) else {
-            return false
-        }
-        return true
-    }
-
     private static func containsControlCharacter(_ value: String) -> Bool {
         value.unicodeScalars.contains { scalar in
             scalar.value < 0x20
@@ -571,144 +747,6 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             omittingEmptySubsequences: false,
             whereSeparator: { $0 == "/" || $0 == "\\" }
         ).contains { $0 == "." || $0 == ".." }
-    }
-
-    private static func containsForbiddenCopy(_ value: String) -> Bool {
-        let lowercased = normalizedSafetyText(value)
-        let secretPatterns = [
-            #"(?:^|[^a-z0-9])api[ _-]?key(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])api[ _-]?token(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])access[ _-]?token(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])refresh[ _-]?token(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])bearer(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])private[ _-]?key(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])client[ _-]?secret(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])password(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])passwd(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])secret(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])sk-[a-z0-9_-]{8,}(?:$|[^a-z0-9])"#,
-            #"-----begin [a-z ]*private key-----"#,
-            "비밀번호",
-            "인증 토큰",
-            "액세스 토큰",
-            "개인키",
-            "시크릿",
-        ]
-        guard !secretPatterns.contains(where: { pattern in
-            lowercased.range(of: pattern, options: .regularExpression) != nil
-        }) else {
-            return true
-        }
-
-        let quantityPattern = #"\d+(?:[.,]\d+)?\s*(?:kcal|mg|g|그램|밀리그램|킬로칼로리)"#
-        if lowercased.range(of: quantityPattern, options: .regularExpression) != nil {
-            return true
-        }
-
-        // Remove only complete, explicitly negated educational clauses.
-        // Any medical-risk root left afterward is unsafe.
-        let normalizedForMedical = lowercased.filter { !$0.isWhitespace }
-        let safeDisclaimerMarkers = [
-            "진단이나치료를대신하지않습니다",
-            "진단이나치료를대신하지않는",
-            "진단이아닙니다",
-            "진단이아닌",
-            "진단이아닐",
-        ]
-        let medicalClaimText = safeDisclaimerMarkers.reduce(normalizedForMedical) {
-            $0.replacingOccurrences(of: $1, with: "")
-        }
-        let safeMedicalNegations = [
-            // Keep a complete medical clause together while accepting the
-            // common Korean case/quotative particles between the topic and
-            // the diagnostic verb. Any risk root left outside a complete
-            // negated clause remains fail-closed below.
-            #"(?:결핍|부족|모자(?:라|랍|란|랄|람|랐))(?:이|가|을|를|은|는|도|이라고|이라|하다고|하다는|한)?(?:진단|판단)하지않(?:아요|습니다|는|기로|을)?"#,
-            #"(?:결핍|부족|모자(?:라|랍|란|랄|람|랐))(?:이|가|을|를|은|는|도)?(?:아니|없)(?:에요|예요|어요|습니다|다)"#,
-            #"(?:결핍|부족|모자(?:라|랍|란|랄|람|랐))(?:하)?지않(?:아요|습니다|는|기로|을)?"#,
-            #"(?:진단|치료|처방)(?:이|가|을|를|은|는|도)?하지않(?:아요|습니다|는|기로|을)?"#,
-        ]
-        let claimCandidate = safeMedicalNegations.reduce(medicalClaimText) { text, pattern in
-            text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
-        }
-        let medicalRiskPatterns = [
-            #"(?:결핍|부족)(?:하|해|합|한|함|입니다|이에요|예요|해요|합니다|이라고|상태)"#,
-            #"모자(?:라|랍|란|랄|람|랐)"#,
-            #"(?:진단|치료|처방)"#,
-            #"(?:질병|빈혈|고혈압|당뇨)"#,
-            #"(?:의학적|의료적)"#,
-            #"(?:몸이나빠|건강이나빠|해로|악화)"#,
-        ]
-        guard !medicalRiskPatterns.contains(where: { pattern in
-            claimCandidate.range(of: pattern, options: .regularExpression) != nil
-        }) else { return true }
-
-        let compact = lowercased.filter { !$0.isWhitespace }
-        let directAllergyReversalPhrases = [
-            "알레르기를무시",
-            "알레르기무시",
-            "먹어도괜찮",
-            "괜찮으니먹",
-            "피하지말고",
-            "피할필요없",
-        ]
-        if directAllergyReversalPhrases.contains(where: compact.contains) {
-            return true
-        }
-        let allergyConditionPattern =
-            #"(?:알레르기(?:가)?(?:있(?:는데|으면|다면|어도|더라도|는경우|을때|을경우|어|어서|으니|으므로|으니까|기때문에)|인데|인데도|여도|라도|지만|때문에|라서)|알레르기(?:라면|인경우|일때|라서|때문에|라))"#
-        guard let conditionRange = compact.range(
-            of: allergyConditionPattern,
-            options: .regularExpression
-        ) else { return false }
-
-        var actionText = String(compact[conditionRange.upperBound...])
-        let safeAlternativeActionPatterns = [
-            #"(?:피하|피해|제외|중단)(?:고|며|서)?(?:다른|대체|대신)(?:반찬|메뉴|음식)(?:을|를|으로)?(?:먹|섭취|선택|고르|살펴|바꾸)(?:어|아|해|봐요|세요|기로|기|요|습니다)?"#,
-            #"(?:다른|대체|대신)(?:반찬|메뉴|음식)(?:을|를|으로)?(?:먹|섭취|선택|고르|살펴|바꾸)(?:어|아|해|봐요|세요|기로|기|요|습니다)?"#,
-        ]
-        let demonstrablySafeActionPatterns = [
-            #"(?:한입|소량|조금)?(?:먹어보|먹|섭취|시도|맛보|삼키)(?:지않|지말|지마)(?:아요|습니다|세요|요|기로|도록|기|고)?"#,
-            #"(?:한입|소량|조금)?(?:먹어보|먹|섭취|시도|맛보|삼키)(?:으)?면안(?:돼요|됩니다|돼|됨|된다)"#,
-            #"(?:먹지|섭취하지|시도하지|맛보지|삼키지)말(?:아요|세요|요|기|고)?"#,
-            #"안(?:먹|드시|드셔|드세)(?:어요|습니다|기로|도록|기|요|세요)?"#,
-            #"(?:피하|피해|피할|제외|중단)(?:지않|지말|지마|면안|고|며|서|요|세요|해요|합니다|하기|하도록|할게요)?"#,
-            #"(?:보호자|선생님)(?:와|과|에게|께|한테)?(?:먼저)?(?:확인|물어봐|물어|알려|상의)(?:요|해요|하세요|합니다|보기|봐요|볼게요|하기)?"#,
-        ]
-        var foundSafeAction = false
-        for pattern in safeAlternativeActionPatterns + demonstrablySafeActionPatterns {
-            let masked = actionText.replacingOccurrences(
-                of: pattern,
-                with: "",
-                options: .regularExpression
-            )
-            foundSafeAction = foundSafeAction || masked != actionText
-            actionText = masked
-        }
-        guard foundSafeAction else {
-            return true
-        }
-        let residualRiskPatterns = [
-            #"먹"#,
-            #"섭취"#,
-            #"시도"#,
-            #"맛.*보"#,
-            #"드시|드셔|드세"#,
-            #"삼키"#,
-            #"한입|소량|조금"#,
-        ]
-        return residualRiskPatterns.contains { pattern in
-            actionText.range(of: pattern, options: .regularExpression) != nil
-        }
-    }
-
-    private static func normalizedSafetyText(_ value: String) -> String {
-        var withoutFormatCharacters = String()
-        withoutFormatCharacters.reserveCapacity(value.utf8.count)
-        for scalar in value.unicodeScalars where scalar.properties.generalCategory != .format {
-            withoutFormatCharacters.unicodeScalars.append(scalar)
-        }
-        return withoutFormatCharacters.precomposedStringWithCompatibilityMapping.lowercased()
     }
 
     private static func validDate(_ value: String) -> Bool {

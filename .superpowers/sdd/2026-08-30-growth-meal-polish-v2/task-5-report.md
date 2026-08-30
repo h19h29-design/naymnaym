@@ -140,3 +140,26 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 - The earlier stale simulator runs entered `simctl diagnose` without starting `xctest`; after a scoped CoreSimulator restart, manual installation and both test suites succeeded on the fresh simulator. This was infrastructure evidence, not a test assertion failure.
 - The known non-failing `_LottieStub.o` x86_64 architecture warning remains outside Task 5.
 - No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.
+
+## Review fix round 5 — canonical copy catalog
+
+### Scope
+
+- Replaced the brittle Korean regex/NLU safety guesser with a fail-closed `NutrientImpactCopyCatalog`. The sidecar now accepts `headline`, `explanation`, and `disclaimer` only when they exactly equal the deterministic copy for the status and the normalized, known nutrient IDs.
+- Added `NutrientImpactSnapshotFactory` so Task 6 can create snapshots without assembling safety-sensitive strings manually. The existing `NutrientImpactSnapshot` fields and schema remain unchanged.
+- The catalog covers all six eating statuses. `smelledOnly`, `difficultToday`, and `allergyAvoided` copies describe exploration, pacing, or safety and contain no eating claim; the other statuses use bounded educational encouragement without medical diagnosis, quantitative claims, or pressure to eat. The disclaimer is the exact `educationNotice` from `nutrition-rules.json`.
+- Nutrient IDs are allow-listed, deduplicated, and sorted by the contract order. The sidecar additionally requires the stored array to already equal that canonical order, so order/duplicate mutations fail closed. Nutrient names use a neutral ` · ` separator.
+- Alternatives are validated as same-meal menu labels, not free-form guidance: at most two labels, UTF-8 length/control/path checks, NFC duplicate detection, and sentence-ending punctuation rejection. Spaces and ordinary Korean menu punctuation such as `고구마 (찐 것)` remain valid.
+- Removed the unused `containsForbiddenCopy` and `normalizedSafetyText` regex grammar entirely. Existing atomic temp-file publication, `EEXIST` no-overwrite, fsync, no-follow, digest, NFC fingerprint, byte limits, and concurrency behavior remain unchanged.
+
+### TDD and verification
+
+- RED — the new canonical catalog/factory tests initially failed to compile because `NutrientImpactSnapshotFactory` did not exist.
+- GREEN — focused sidecar + persistent schema suite: 34/34 passed, 0 failures, 0 skips (`build/verification/task5-focused-final/Task5Focused.xcresult`) on `Codex Task5 iPhone 17 Pro Fresh` (iPhone 17 Pro, iOS 26.5, `DCAC5291-31BF-4515-B31B-1667CD8EB1E3`). Sidecar: 21/21; persistent schema: 13/13.
+- GREEN — full iOS suite: 438/438 passed, 0 failures, 0 skips (`build/verification/task5-full-final/Task5Full.xcresult`) on the same fresh simulator. The existing `_LottieStub.o` x86_64 architecture warning remains non-failing and unrelated.
+- GREEN — native rebuild Python contracts: 32/32 passed (`python3 scripts/tests/test_native_rebuild_contracts.py`).
+- `git diff --check`: passed after the final test fixture adjustments.
+
+### Warnings
+
+- Task 6 has not yet been wired to the factory in this task; the API is available for that integration. No Core Data model/migration, UI/assets, release metadata, Android behavior, upload, submission, browser action, or secret handling was changed.
