@@ -50,29 +50,57 @@ class GrowthRepositoryTest {
     }
 
     @Test
-    fun canonicalMealCopyComesOnlyFromTheEventId() {
+    fun stableMealCopyComesOnlyFromTheEventId() {
         val presentation = GrowthEventPresentation.from(
             event(
-                id = "meal:2026-07-25|시금치 나물|oneBite",
+                id = "meal:2026-07-25|시금치 나물",
                 amount = 18,
                 occurredAt = 100,
                 sourceRecordId = "550e8400-e29b-41d4-a716-446655440000",
             ),
         )
 
-        assertEquals("시금치 나물 · 한 입 도전", presentation.title)
+        assertEquals("시금치 나물 · 급식 기록", presentation.title)
         assertEquals("+18 XP", presentation.xpText)
     }
 
     @Test
-    fun canonicalMealPresentationRejectsNoncanonicalIdentityAndSupportsHalf() {
+    fun legacyMealPresentationSupportsAllSixStatusLabels() {
         val cases = listOf(
-            "meal:2026-07-25|오이|half" to "오이 · 절반 먹었어요",
+            "meal:2026-07-25|오이|finished" to "오이 · 다 먹었어요",
+            "meal:2026-07-25|오이|half" to "오이 · 반 정도 먹었어요",
+            "meal:2026-07-25|오이|oneBite" to "오이 · 한 입 도전",
+            "meal:2026-07-25|오이|smelledOnly" to "오이 · 냄새만 맡았어요",
+            "meal:2026-07-25|오이|difficultToday" to "오이 · 오늘은 안 먹어요",
+            "meal:2026-07-25|오이|allergyAvoided" to
+                "오이 · 알레르기로 피했어요",
+        )
+
+        cases.forEach { (id, expectedTitle) ->
+            assertEquals(
+                id,
+                expectedTitle,
+                GrowthEventPresentation.from(
+                    event(
+                        id = id,
+                        amount = 12,
+                        occurredAt = 100,
+                    ),
+                ).title,
+            )
+        }
+    }
+
+    @Test
+    fun mealPresentationRejectsMalformedOrNoncanonicalIdentity() {
+        val cases = listOf(
             "meal:2026-02-30|오이|finished" to "성장 XP 획득",
             "meal:2026-07-25| 오이 |finished" to "성장 XP 획득",
             "meal:2026-07-25|SPINACH|finished" to "성장 XP 획득",
-            "meal:2026-07-25|spinach|finished" to
-                "spinach · 다 먹었어요",
+            "meal:2026-07-25|spinach|unknown" to "성장 XP 획득",
+            "meal:2026-07-25|spinach|finished|extra" to "성장 XP 획득",
+            "meal:2026-07-25" to "성장 XP 획득",
+            "meal:2026-07-25|" to "성장 XP 획득",
         )
 
         cases.forEach { (id, expectedTitle) ->

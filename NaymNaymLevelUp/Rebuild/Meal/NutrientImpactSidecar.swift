@@ -6,6 +6,12 @@ import Foundation
 struct NutrientImpactSnapshot: Codable, Hashable, Sendable {
     static let supportedSchemaVersion = 1
     static let supportedRuleVersion = NutritionRuleEngine.supportedRuleVersion
+    static let fallbackRuleVersion =
+        NutritionRuleEngine.unavailableFallbackRuleVersion
+    static let supportedRuleVersions: Set<Int> = [
+        supportedRuleVersion,
+        fallbackRuleVersion,
+    ]
 
     let schemaVersion: Int
     let ruleVersion: Int
@@ -189,7 +195,6 @@ enum SameMealAlternativeSelector {
         let childAllergies = Set(childAllergyCodes)
         let targetSet = Set(targets)
         var candidates: [(index: Int, item: RebuildMealItem, label: String, nutrients: [String], shared: [String])] = []
-        var seenLabels = Set<String>()
 
         for (index, item) in mealDay.menuItems.enumerated() where index != currentIndex {
             let itemIdentity = MealRecordIdentityNormalizer.normalizedMenuName(item.name)
@@ -206,7 +211,7 @@ enum SameMealAlternativeSelector {
             let nutrients = resolvedNutrientIDs(for: item)
             guard !nutrients.isEmpty else { continue }
             let shared = targets.filter { targetSet.contains($0) && nutrients.contains($0) }
-            guard !shared.isEmpty, seenLabels.insert(label).inserted else { continue }
+            guard !shared.isEmpty else { continue }
             candidates.append((index, item, label, nutrients, shared))
         }
 
@@ -222,7 +227,20 @@ enum SameMealAlternativeSelector {
             return lhs.index < rhs.index
         }
 
-        let selected = candidates.prefix(2).map { candidate in
+        var selectedCandidates: [(
+            index: Int,
+            item: RebuildMealItem,
+            label: String,
+            nutrients: [String],
+            shared: [String]
+        )] = []
+        var selectedLabels = Set<String>()
+        for candidate in candidates
+        where selectedLabels.insert(candidate.label).inserted {
+            selectedCandidates.append(candidate)
+            if selectedCandidates.count == 2 { break }
+        }
+        let selected = selectedCandidates.map { candidate in
             SameMealAlternative(
                 menuName: candidate.label,
                 nutrientIDs: candidate.nutrients,
@@ -290,7 +308,8 @@ enum NutrientImpactCopyCatalog {
         nutrientIDs: [String],
         hasAlternatives: Bool = false
     ) -> NutrientImpactCopy? {
-        guard let normalized = validatedCanonicalNutrientIDs(nutrientIDs) else {
+        guard !hasAlternatives || status == .difficultToday,
+              let normalized = validatedCanonicalNutrientIDs(nutrientIDs) else {
             return nil
         }
         let headline: String
@@ -314,15 +333,7 @@ enum NutrientImpactCopyCatalog {
             explanation = "\(commonNutritionSentence(for: normalized)) 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요."
         case .allergyAvoided:
             headline = "알레르기 안전을 먼저 챙긴 선택이에요!"
-            if hasAlternatives {
-                if let phrase = nutrientPhrase(for: normalized) {
-                    explanation = "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴에서도 \(phrase) 같은 대표 영양소를 살펴볼 수 있어요."
-                } else {
-                    explanation = "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴의 영양 정보도 함께 살펴볼 수 있어요."
-                }
-            } else {
-                explanation = "보호자와 학교 안내를 먼저 확인해요."
-            }
+            explanation = "보호자와 학교 안내를 먼저 확인해요."
         }
 
         return NutrientImpactCopy(
@@ -464,7 +475,7 @@ enum NutrientImpactSnapshotFactory {
         nutrientIDs: [String]
     ) -> NutrientImpactSnapshot? {
         guard schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion,
-              ruleVersion == NutrientImpactSnapshot.supportedRuleVersion else {
+              NutrientImpactSnapshot.supportedRuleVersions.contains(ruleVersion) else {
             return nil
         }
         guard let nutrients = NutrientImpactCopyCatalog.canonicalNutrientIDs(
@@ -495,7 +506,8 @@ enum NutrientImpactSnapshotFactory {
         alternativeSelection: SameMealAlternativeSelection
     ) -> NutrientImpactSnapshot? {
         guard schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion,
-              ruleVersion == NutrientImpactSnapshot.supportedRuleVersion else {
+              NutrientImpactSnapshot.supportedRuleVersions.contains(ruleVersion),
+              status == .difficultToday else {
             return nil
         }
         guard let nutrients = NutrientImpactCopyCatalog.canonicalNutrientIDs(
@@ -991,7 +1003,9 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         guard snapshot.schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion else {
             throw NutrientImpactSidecarError.unsupportedSchemaVersion
         }
-        guard snapshot.ruleVersion == NutrientImpactSnapshot.supportedRuleVersion else {
+        guard NutrientImpactSnapshot.supportedRuleVersions.contains(
+            snapshot.ruleVersion
+        ) else {
             throw NutrientImpactSidecarError.unsupportedRuleVersion
         }
         guard validateRevisionComponents(
@@ -1013,6 +1027,8 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
                   hasAlternatives: !snapshot.alternatives.isEmpty
               ),
               NutrientImpactCopyCatalog.validateMenuLabels(snapshot.alternatives),
+              snapshot.status == .difficultToday
+                || snapshot.alternatives.isEmpty,
               hasBoundedAggregateStrings(snapshot) else {
             throw NutrientImpactSidecarError.invalidSnapshot
         }

@@ -3,6 +3,36 @@ import XCTest
 
 @MainActor
 final class TodayForestViewModelTests: XCTestCase {
+    func testAllSixStatusesArePresented() {
+        XCTAssertEqual(
+            TodayForestViewModel.activeStatuses,
+            [
+                .finished,
+                .half,
+                .oneBite,
+                .smelledOnly,
+                .difficultToday,
+                .allergyAvoided,
+            ]
+        )
+        XCTAssertEqual(
+            TodayForestViewModel.activeStatuses.map(\.childTitle),
+            [
+                "다 먹었어요",
+                "반 정도 먹었어요",
+                "한 입 도전",
+                "냄새만 맡았어요",
+                "오늘은 안 먹어요",
+                "알레르기로 피했어요",
+            ]
+        )
+    }
+
+    func testDifficultTodayKeepsRawValueAndUsesUserFacingNoMealLabel() {
+        XCTAssertEqual(RebuildEatingStatus.difficultToday.rawValue, "difficultToday")
+        XCTAssertEqual(RebuildEatingStatus.difficultToday.childTitle, "오늘은 안 먹어요")
+    }
+
     func testCachedMealKeepsPrimaryActionAvailableOffline() async {
         let meal = RebuildMealDay.todayFixture()
         let repository = TodayMealRepositoryStub(
@@ -111,16 +141,81 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isPrimaryActionEnabled)
     }
 
-    func testAllergyRiskDisablesOneBiteAndPrioritizesSafetyActions() {
+    func testAllergyRiskAllowsOnlyAllergyAvoidedAndGuardianCheck() {
         let viewModel = makeViewModel(allergyCodes: [1, 5])
         let item = RebuildMealItem.todayFixture(allergyCodes: [5, 6])
 
         XCTAssertTrue(viewModel.isAllergyRisk(item))
-        XCTAssertFalse(viewModel.isStatusEnabled(.oneBite, for: item))
+        XCTAssertEqual(
+            TodayForestViewModel.activeStatuses.filter {
+                viewModel.isStatusEnabled($0, for: item)
+            },
+            [.allergyAvoided]
+        )
         XCTAssertEqual(
             viewModel.prioritizedSafetyActions(for: item),
             [.allergyAvoided, .guardianCheck]
         )
+    }
+
+    func testRiskRecordingLayoutUsesOneRecommendedStatusAndUniquePerMenuIDs() {
+        let first = RebuildMealItem.todayFixture(name: "우유")
+        let second = RebuildMealItem.todayFixture(name: "우유")
+
+        XCTAssertEqual(
+            MealRecordingActionLayout.gridStatuses(isAllergyRisk: true),
+            TodayForestViewModel.activeStatuses.filter { $0 != .allergyAvoided }
+        )
+        XCTAssertEqual(
+            MealRecordingActionLayout.recommendedStatuses(isAllergyRisk: true),
+            [.allergyAvoided]
+        )
+        XCTAssertEqual(
+            MealRecordingActionLayout.gridStatuses(isAllergyRisk: false),
+            TodayForestViewModel.activeStatuses
+        )
+
+        let identifiers = [first, second].enumerated().flatMap { index, item in
+            MealRecordingActionLayout.gridStatuses(isAllergyRisk: true).map {
+                MealRecordingAccessibilityID.status(
+                    menuIndex: index,
+                    item: item,
+                    status: $0
+                )
+            } + [
+                MealRecordingAccessibilityID.allergyAvoidance(
+                    menuIndex: index,
+                    item: item
+                ),
+                MealRecordingAccessibilityID.guardianCheck(
+                    menuIndex: index,
+                    item: item
+                ),
+            ]
+        }
+        XCTAssertEqual(Set(identifiers).count, identifiers.count)
+        XCTAssertTrue(identifiers.allSatisfy { $0.contains("우유") })
+    }
+
+    func testAllergyRiskIsRejectedBeforeRecorder() async throws {
+        let recorder = TodayMealRecorderSpy()
+        let item = RebuildMealItem.todayFixture(allergyCodes: [5])
+        let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(
+                states: [.cached(.todayFixture(menuItems: [item]), refreshedAt: nil)]
+            ),
+            recorder: recorder,
+            allergyCodes: [5]
+        )
+        await viewModel.load()
+
+        for status in RebuildEatingStatus.allCases where status != .allergyAvoided {
+            await XCTAssertThrowsErrorAsync(expected: .allergySafetyRequired) {
+                _ = try await viewModel.prepareRecord(item: item, status: status)
+            }
+        }
+
+        XCTAssertTrue(recorder.commands.isEmpty)
     }
 
     func testDifficultyReasonsAreUniqueInCanonicalDisplayOrder() {
@@ -144,7 +239,7 @@ final class TodayForestViewModelTests: XCTestCase {
         )
         await viewModel.load()
 
-        let result = try await viewModel.record(
+        let prepared = try await viewModel.prepareRecord(
             item: item,
             status: .difficultToday,
             difficultyReasons: [
@@ -152,13 +247,14 @@ final class TodayForestViewModelTests: XCTestCase {
             ],
             parentShareEnabled: false
         )
+        let result = try await viewModel.record(prepared: prepared)
 
         XCTAssertEqual(result.xpGranted, 3)
         XCTAssertEqual(recorder.commands.count, 1)
         let command = try XCTUnwrap(recorder.commands.first)
         XCTAssertEqual(
             command.recordID,
-            "2026-07-25|시금치 나물|difficultToday"
+            "2026-07-25|시금치 나물"
         )
         XCTAssertEqual(
             command.difficultyReasons,
@@ -168,35 +264,299 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertEqual(command.allergyCodes, [])
     }
 
+    func testNutritionReviewCancelWritesNothing() async throws {
+        let recorder = TodayMealRecorderSpy()
+        let item = RebuildMealItem.todayFixture()
+        let viewModel = makeViewModel(recorder: recorder)
+        await viewModel.load()
+
+        let prepared = try await viewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+        var reviewState = MealRecordingReviewState()
+        reviewState.present(
+            MealRecordingReviewDraft(
+                item: item,
+                preparedRecord: prepared
+            )
+        )
+
+        XCTAssertTrue(recorder.commands.isEmpty)
+        XCTAssertNotNil(reviewState.draft)
+        XCTAssertEqual(prepared.command.recordID, "2026-07-25|시금치 나물")
+        XCTAssertEqual(prepared.command.status, .finished)
+        XCTAssertEqual(prepared.command.allergyCodes, [])
+        XCTAssertEqual(prepared.nutritionSnapshot.nutrients, ["fiber", "vitamin"])
+        XCTAssertEqual(prepared.nutritionSnapshot, prepared.command.nutritionSnapshot)
+
+        reviewState.cancel()
+
+        XCTAssertNil(reviewState.draft)
+        XCTAssertTrue(recorder.commands.isEmpty)
+    }
+
+    func testNutritionReviewConfirmWritesPreparedCommandOnce() async throws {
+        let recorder = TodayMealRecorderSpy()
+        let item = RebuildMealItem.todayFixture()
+        let viewModel = makeViewModel(recorder: recorder)
+        await viewModel.load()
+        let prepared = try await viewModel.prepareRecord(
+            item: item,
+            status: .half
+        )
+
+        XCTAssertTrue(recorder.commands.isEmpty)
+
+        _ = try await viewModel.record(prepared: prepared)
+
+        XCTAssertEqual(recorder.commands, [prepared.command])
+        XCTAssertEqual(
+            viewModel.lastNutritionGuidance?.snapshot,
+            prepared.nutritionSnapshot
+        )
+        XCTAssertEqual(
+            viewModel.lastNutritionGuidance?.source,
+            .recordedRevision
+        )
+    }
+
+    func testPreparedSafeMealRefreshThatBecomesRiskRejectsConfirmWithoutWrite() async throws {
+        let recorder = TodayMealRecorderSpy()
+        let safeItem = RebuildMealItem.todayFixture(allergyCodes: [])
+        let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(
+                states: [.cached(.todayFixture(menuItems: [safeItem]), refreshedAt: nil)]
+            ),
+            recorder: recorder,
+            allergyCodes: [5]
+        )
+        await viewModel.load()
+        let prepared = try await viewModel.prepareRecord(
+            item: safeItem,
+            status: .finished
+        )
+        let refreshedRisk = RebuildMealItem.todayFixture(allergyCodes: [5])
+        viewModel.synchronizeMeal(
+            .todayFixture(menuItems: [refreshedRisk]),
+            for: MealDayRoute(dateKey: "2026-07-25")
+        )
+
+        await XCTAssertThrowsErrorAsync(expected: .allergySafetyRequired) {
+            _ = try await viewModel.record(prepared: prepared)
+        }
+
+        XCTAssertTrue(recorder.commands.isEmpty)
+    }
+
+    func testPreparedRecordRejectsChangedMissingOrAmbiguousCurrentItem() async throws {
+        let original = RebuildMealItem.todayFixture()
+        let currentMeals: [RebuildMealDay] = [
+            .todayFixture(menuItems: [
+                .todayFixture(nutrients: ["protein"]),
+            ]),
+            .todayFixture(menuItems: []),
+            .todayFixture(menuItems: [original, original]),
+        ]
+
+        for currentMeal in currentMeals {
+            let recorder = TodayMealRecorderSpy()
+            let viewModel = makeViewModel(
+                repository: TodayMealRepositoryStub(
+                    states: [.cached(.todayFixture(menuItems: [original]), refreshedAt: nil)]
+                ),
+                recorder: recorder
+            )
+            await viewModel.load()
+            let prepared = try await viewModel.prepareRecord(
+                item: original,
+                status: .half
+            )
+            viewModel.synchronizeMeal(
+                currentMeal,
+                for: MealDayRoute(dateKey: "2026-07-25")
+            )
+
+            await XCTAssertThrowsErrorAsync(expected: .stalePreparedRecord) {
+                _ = try await viewModel.record(prepared: prepared)
+            }
+            XCTAssertTrue(recorder.commands.isEmpty)
+        }
+    }
+
+    func testDifficultPreparedRecordRejectsChangedMissingOrUnsafeAlternative() async throws {
+        let current = RebuildMealItem.todayFixture()
+        let alternative = RebuildMealItem.todayFixture(
+            name: "브로콜리무침",
+            nutrients: ["fiber", "vitamin"]
+        )
+        let refreshedMeals: [RebuildMealDay] = [
+            .todayFixture(menuItems: [
+                current,
+                .todayFixture(
+                    name: "브로콜리무침",
+                    allergyCodes: [5],
+                    nutrients: ["fiber", "vitamin"]
+                ),
+            ]),
+            .todayFixture(menuItems: [current]),
+            .todayFixture(menuItems: [
+                current,
+                .todayFixture(
+                    name: "브로콜리무침",
+                    nutrients: ["protein"]
+                ),
+            ]),
+        ]
+
+        for refreshedMeal in refreshedMeals {
+            let recorder = TodayMealRecorderSpy()
+            let viewModel = makeViewModel(
+                repository: TodayMealRepositoryStub(
+                    states: [
+                        .cached(
+                            .todayFixture(menuItems: [current, alternative]),
+                            refreshedAt: nil
+                        ),
+                    ]
+                ),
+                recorder: recorder,
+                allergyCodes: [5]
+            )
+            await viewModel.load()
+            let prepared = try await viewModel.prepareRecord(
+                item: current,
+                status: .difficultToday
+            )
+            XCTAssertEqual(
+                prepared.nutritionSnapshot.alternatives,
+                ["브로콜리무침"]
+            )
+            viewModel.synchronizeMeal(
+                refreshedMeal,
+                for: MealDayRoute(dateKey: "2026-07-25")
+            )
+
+            await XCTAssertThrowsErrorAsync(expected: .stalePreparedRecord) {
+                _ = try await viewModel.record(prepared: prepared)
+            }
+            XCTAssertTrue(recorder.commands.isEmpty)
+        }
+    }
+
+    func testSameMealAlternativesAreOnlyPreparedForDifficultToday() async throws {
+        let current = RebuildMealItem.todayFixture()
+        let alternative = RebuildMealItem.todayFixture(
+            name: "브로콜리무침",
+            nutrients: ["fiber", "vitamin"]
+        )
+        let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(
+                states: [
+                    .cached(
+                        .todayFixture(menuItems: [current, alternative]),
+                        refreshedAt: nil
+                    ),
+                ]
+            )
+        )
+        await viewModel.load()
+
+        for status in RebuildEatingStatus.allCases {
+            let prepared = try await viewModel.prepareRecord(
+                item: current,
+                status: status
+            )
+            if status == .difficultToday {
+                XCTAssertEqual(
+                    prepared.nutritionSnapshot.alternatives,
+                    ["브로콜리무침"]
+                )
+            } else {
+                XCTAssertTrue(
+                    prepared.nutritionSnapshot.alternatives.isEmpty,
+                    status.rawValue
+                )
+            }
+        }
+    }
+
+    func testNonDifficultNutritionUsesCurrentVisualNutrients() {
+        for status in RebuildEatingStatus.allCases where status != .difficultToday {
+            XCTAssertEqual(
+                TodayForestViewModel.nutrientIDsForSnapshot(
+                    status: status,
+                    representativeNutrientIDs: ["protein"],
+                    alternativeTargetNutrientIDs: ["fiber", "vitamin"]
+                ),
+                ["protein"],
+                status.rawValue
+            )
+        }
+        XCTAssertEqual(
+            TodayForestViewModel.nutrientIDsForSnapshot(
+                status: .difficultToday,
+                representativeNutrientIDs: ["protein"],
+                alternativeTargetNutrientIDs: ["fiber", "vitamin"]
+            ),
+            ["fiber", "vitamin"]
+        )
+    }
+
     func testAllergyAvoidedRecordsOnlyIntersectingAllergyCodes() async throws {
         let recorder = TodayMealRecorderSpy()
         let item = RebuildMealItem.todayFixture(allergyCodes: [2, 5, 6])
         let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(
+                states: [.cached(.todayFixture(menuItems: [item]), refreshedAt: nil)]
+            ),
             recorder: recorder,
             allergyCodes: [1, 5]
         )
         await viewModel.load()
 
-        _ = try await viewModel.record(
+        let prepared = try await viewModel.prepareRecord(
             item: item,
             status: .allergyAvoided
         )
+        _ = try await viewModel.record(prepared: prepared)
 
         XCTAssertEqual(recorder.commands.first?.allergyCodes, [5])
+        XCTAssertEqual(recorder.commands.first?.childAllergyCodes, [1, 5])
+        XCTAssertEqual(recorder.commands.first?.itemAllergyCodes, [2, 5, 6])
     }
 
     func testSmellAndAllergyAvoidedCanRecordWithoutDifficultyReasons() async throws {
         let recorder = TodayMealRecorderSpy()
-        let safe = RebuildMealItem.todayFixture()
-        let risk = RebuildMealItem.todayFixture(allergyCodes: [5])
+        let safe = RebuildMealItem.todayFixture(name: "시금치 나물")
+        let risk = RebuildMealItem.todayFixture(
+            name: "우유",
+            allergyCodes: [5]
+        )
         let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(
+                states: [
+                    .cached(
+                        .todayFixture(menuItems: [safe, risk]),
+                        refreshedAt: nil
+                    ),
+                ]
+            ),
             recorder: recorder,
             allergyCodes: [5]
         )
         await viewModel.load()
 
-        _ = try await viewModel.record(item: safe, status: .smelledOnly)
-        _ = try await viewModel.record(item: risk, status: .allergyAvoided)
+        let safePrepared = try await viewModel.prepareRecord(
+            item: safe,
+            status: .smelledOnly
+        )
+        _ = try await viewModel.record(prepared: safePrepared)
+        let riskPrepared = try await viewModel.prepareRecord(
+            item: risk,
+            status: .allergyAvoided
+        )
+        _ = try await viewModel.record(prepared: riskPrepared)
 
         XCTAssertEqual(
             recorder.commands.map(\.difficultyReasons),
@@ -209,9 +569,17 @@ final class TodayForestViewModelTests: XCTestCase {
         await viewModel.load()
         let item = try XCTUnwrap(viewModel.meal?.menuItems.first)
 
-        _ = try await viewModel.record(item: item, status: .finished)
+        let first = try await viewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+        _ = try await viewModel.record(prepared: first)
         let firstRevision = viewModel.motionRevision
-        _ = try await viewModel.record(item: item, status: .finished)
+        let second = try await viewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+        _ = try await viewModel.record(prepared: second)
 
         XCTAssertEqual(viewModel.motion, .mealSuccess)
         XCTAssertEqual(viewModel.motionRevision, firstRevision + 1)
@@ -292,7 +660,13 @@ private final class TodayMealRecorderSpy: TodayMealRecorder, @unchecked Sendable
         return RecordMealResult(
             xpGranted: command.status == .difficultToday ? 3 : 8,
             totalXP: 23,
-            motion: command.status == .difficultToday ? .comfort : .mealSuccess
+            motion: command.status == .difficultToday ? .comfort : .mealSuccess,
+            nutritionGuidance: command.nutritionSnapshot.map {
+                NutrientImpactGuidance(
+                    snapshot: $0,
+                    source: .recordedRevision
+                )
+            }
         )
     }
 }
@@ -306,10 +680,12 @@ private struct TodayMealPhotoMetadataStoreStub: TodayMealPhotoMetadataStore {
 }
 
 private extension RebuildMealDay {
-    static func todayFixture() -> RebuildMealDay {
+    static func todayFixture(
+        menuItems: [RebuildMealItem] = [.todayFixture()]
+    ) -> RebuildMealDay {
         RebuildMealDay(
             date: "2026-07-25",
-            menuItems: [.todayFixture()],
+            menuItems: menuItems,
             calorie: "620 Kcal",
             nutrition: .empty
         )
@@ -318,14 +694,31 @@ private extension RebuildMealDay {
 
 private extension RebuildMealItem {
     static func todayFixture(
-        allergyCodes: [Int] = []
+        name: String = "시금치 나물",
+        allergyCodes: [Int] = [],
+        nutrients: [String] = ["fiber", "vitamin"]
     ) -> RebuildMealItem {
         RebuildMealItem(
-            name: "시금치 나물",
+            name: name,
             allergyCodes: allergyCodes,
-            nutrients: ["fiber", "vitamin"],
+            nutrients: nutrients,
             tags: [],
-            sourceRawText: "시금치 나물"
+            sourceRawText: name
         )
+    }
+}
+
+@MainActor
+private func XCTAssertThrowsErrorAsync(
+    expected: TodayForestError,
+    _ expression: () async throws -> Void,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        try await expression()
+        XCTFail("Expected error to be thrown", file: file, line: line)
+    } catch {
+        XCTAssertEqual(error as? TodayForestError, expected, file: file, line: line)
     }
 }

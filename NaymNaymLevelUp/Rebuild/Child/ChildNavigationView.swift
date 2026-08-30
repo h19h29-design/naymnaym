@@ -1,4 +1,5 @@
 import CoreData
+import Foundation
 import SwiftUI
 
 enum RebuildChildTab: String, CaseIterable, Identifiable {
@@ -144,7 +145,21 @@ struct ChildNavigationView: View {
         container: NSPersistentContainer?
     ) -> TodayForestViewModel {
         guard let container,
-              let recorder = try? RecordMealUseCase(container: container)
+              let applicationSupportURL = try? FileManager.default.url(
+                  for: .applicationSupportDirectory,
+                  in: .userDomainMask,
+                  appropriateFor: nil,
+                  create: true
+              ),
+              let recorder = try? RecordMealUseCase(
+                  container: container,
+                  nutrientImpactSidecar: FileNutrientImpactSidecar(
+                      directoryURL: applicationSupportURL.appendingPathComponent(
+                          "NutrientImpactSidecar",
+                          isDirectory: true
+                      )
+                  )
+              )
         else {
             return TodayForestViewModel(
                 repository: UnavailableTodayMealRepository(),

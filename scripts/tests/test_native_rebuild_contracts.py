@@ -10,19 +10,26 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "contracts/native-rebuild/v1"
-estimate_nutrients = runpy.run_path(
+validator_module = runpy.run_path(
     str(ROOT / "scripts/validate-native-rebuild-contracts.py")
-)["estimate_nutrients"]
+)
+estimate_nutrients = validator_module["estimate_nutrients"]
+record_identity = validator_module["record_identity"]
+legacy_record_identity = validator_module["legacy_record_identity"]
 
 EXPECTED_IDENTITY_RULES = {
     "dateFormat": "yyyy-MM-dd",
     "normalizedMenuName": "trimAndLowercase",
-    "recordIdentityComponents": ["date", "normalizedMenuName", "status"],
-    "recordIdentity": "{date}|{normalizedMenuName}|{status}",
+    "recordIdentityComponents": ["date", "normalizedMenuName"],
+    "recordIdentity": "{date}|{normalizedMenuName}",
     "progressEventIdentity": "meal:{recordIdentity}",
     "progressEventSourceRecordIdentity": "{recordIdentity}",
+    "legacyRecordIdentityComponents": ["date", "normalizedMenuName", "status"],
+    "legacyRecordIdentity": "{date}|{normalizedMenuName}|{status}",
+    "legacyProgressEventIdentity": "meal:{legacyRecordIdentity}",
+    "legacyProgressEventSourceRecordIdentity": "{legacyRecordIdentity}",
 }
-EXPECTED_RECORD_IDENTITIES = [
+EXPECTED_LEGACY_RECORD_IDENTITIES = [
     {
         "date": "2026-07-25",
         "menuName": " 시금치 나물 ",
@@ -453,10 +460,26 @@ class NativeRebuildContractTests(unittest.TestCase):
         ])
         self.assertEqual(contract["identityRules"], EXPECTED_IDENTITY_RULES)
 
+    def test_current_record_identity_is_stable_across_status_changes(self):
+        one_bite = record_identity("2026-07-25", "시금치 나물")
+        finished = record_identity("2026-07-25", "시금치 나물")
+
+        self.assertEqual(one_bite, "2026-07-25|시금치 나물")
+        self.assertEqual(finished, one_bite)
+
+    def test_legacy_record_identity_remains_status_read_compatible(self):
+        self.assertEqual(
+            legacy_record_identity("2026-07-25", "시금치 나물", "oneBite"),
+            "2026-07-25|시금치 나물|oneBite",
+        )
+
     def test_fixtures_have_exact_v1_identity_vectors(self):
         fixtures = json.loads((CONTRACTS / "domain-fixtures.json").read_text())
         self.assertEqual(fixtures["version"], 1)
-        self.assertEqual(fixtures["recordIdentities"], EXPECTED_RECORD_IDENTITIES)
+        self.assertEqual(
+            fixtures["recordIdentities"],
+            EXPECTED_LEGACY_RECORD_IDENTITIES,
+        )
 
     def test_validator_accepts_committed_contracts(self):
         result = subprocess.run(

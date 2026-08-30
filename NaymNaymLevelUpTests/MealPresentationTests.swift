@@ -471,6 +471,39 @@ final class MealPresentationTests: XCTestCase {
         )
     }
 
+    func testRuleLoadFailureUsesExplicitFallbackVersionSeparateFromValidUnknownMenu() throws {
+        let engine = try NutritionRuleEngine(ruleData: contractData())
+        let unknown = RebuildMealItem(
+            name: "처음 보는 메뉴",
+            allergyCodes: [],
+            nutrients: [],
+            tags: [],
+            sourceRawText: "처음 보는 메뉴"
+        )
+
+        let validRulesUnknownMenu = MealVisualResolver.resolve(
+            item: unknown,
+            engine: engine
+        )
+        let rulesUnavailable = MealVisualResolver.resolve(
+            item: unknown,
+            engine: nil as NutritionRuleEngine?
+        )
+
+        XCTAssertEqual(validRulesUnknownMenu.confidence, .fallback)
+        XCTAssertEqual(
+            validRulesUnknownMenu.ruleVersion,
+            NutritionRuleEngine.supportedRuleVersion
+        )
+        XCTAssertEqual(validRulesUnknownMenu.ruleSource, .loadedRules)
+        XCTAssertEqual(rulesUnavailable.confidence, .fallback)
+        XCTAssertEqual(
+            rulesUnavailable.ruleVersion,
+            NutrientImpactSnapshot.fallbackRuleVersion
+        )
+        XCTAssertEqual(rulesUnavailable.ruleSource, .fallbackRulesUnavailable)
+    }
+
     func testDecodedRuleConfidenceAffectsDeterministicKeywordOutput() throws {
         let fallbackEngine = try NutritionRuleEngine(
             ruleData: contractData(overridingFirstRuleConfidence: "fallback")
@@ -733,7 +766,7 @@ final class MealPresentationTests: XCTestCase {
             ),
             [
                 "‘시금치나물’ 어떻게 만났나요?",
-                "시금치나물, 안전하게 피했어요",
+                "시금치나물, 알레르기로 피했어요",
                 "시금치나물, 보호자와 확인하기",
                 "시금치나물, 다 먹었어요",
                 "시금치나물, 한입도전",

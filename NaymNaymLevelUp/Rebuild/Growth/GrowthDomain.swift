@@ -473,15 +473,20 @@ struct GrowthEventPresentation: Equatable {
             omittingEmptySubsequences: false
         ).map(String.init)
         let menu = parts[safe: 1] ?? ""
-        let normalizedMenu = menu
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard parts.count == 3,
+        let normalizedMenu = MealRecordIdentityNormalizer.normalizedMenuName(
+            menu
+        )
+        guard parts.count == 2 || parts.count == 3,
               isCanonicalDate(parts[0]),
               !normalizedMenu.isEmpty,
-              menu == normalizedMenu,
-              let status = statusLabels[parts[2]]
+              menu == normalizedMenu
         else {
+            return nil
+        }
+        guard parts.count == 3 else {
+            return "\(normalizedMenu) · 급식 기록"
+        }
+        guard let status = statusLabels[parts[2]] else {
             return nil
         }
         return "\(normalizedMenu) · \(status)"
@@ -489,11 +494,11 @@ struct GrowthEventPresentation: Equatable {
 
     private static let statusLabels = [
         "finished": "다 먹었어요",
-        "half": "절반 먹었어요",
+        "half": "반 정도 먹었어요",
         "oneBite": "한 입 도전",
-        "smelledOnly": "냄새 맡기",
-        "difficultToday": "오늘은 어려웠어요",
-        "allergyAvoided": "알레르기 안전 기록",
+        "smelledOnly": "냄새만 맡았어요",
+        "difficultToday": "오늘은 안 먹어요",
+        "allergyAvoided": "알레르기로 피했어요",
     ]
 
     private static func isCanonicalDate(_ value: String) -> Bool {

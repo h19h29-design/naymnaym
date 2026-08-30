@@ -8,9 +8,13 @@
   "identityRules": {
     "dateFormat": "yyyy-MM-dd",
     "normalizedMenuName": "trimAndLowercase",
-    "recordIdentityComponents": ["date", "normalizedMenuName", "status"],
-    "recordIdentity": "{date}|{normalizedMenuName}|{status}",
+    "recordIdentityComponents": ["date", "normalizedMenuName"],
+    "recordIdentity": "{date}|{normalizedMenuName}",
     "progressEventIdentity": "meal:{recordIdentity}",
-    "progressEventSourceRecordIdentity": "{recordIdentity}"
+    "progressEventSourceRecordIdentity": "{recordIdentity}",
+    "legacyRecordIdentityComponents": ["date", "normalizedMenuName", "status"],
+    "legacyRecordIdentity": "{date}|{normalizedMenuName}|{status}",
+    "legacyProgressEventIdentity": "meal:{legacyRecordIdentity}",
+    "legacyProgressEventSourceRecordIdentity": "{legacyRecordIdentity}"
   }
 }

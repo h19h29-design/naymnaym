@@ -298,7 +298,7 @@ private fun AllergySafetyPanel(
                 containerColor = Color(RebuildTokens.Danger700),
             ),
         ) {
-            Text("안전하게 피했어요")
+            Text(EatingStatus.AllergyAvoided.childTitle)
         }
         OutlinedButton(
             onClick = onGuardianCheck,
@@ -366,14 +366,14 @@ private fun DifficultyReasonStep(
     }
 }
 
-private val EatingStatus.childTitle: String
+internal val EatingStatus.childTitle: String
     get() = when (this) {
         EatingStatus.Finished -> "다 먹었어요"
-        EatingStatus.OneBite -> "한입도전"
-        EatingStatus.Half -> "절반 먹었어요"
-        EatingStatus.SmelledOnly -> "냄새만 맡아봤어요"
-        EatingStatus.DifficultToday -> "오늘은 어려워요"
-        EatingStatus.AllergyAvoided -> "안전하게 피했어요"
+        EatingStatus.Half -> "반 정도 먹었어요"
+        EatingStatus.OneBite -> "한 입 도전"
+        EatingStatus.SmelledOnly -> "냄새만 맡았어요"
+        EatingStatus.DifficultToday -> "오늘은 안 먹어요"
+        EatingStatus.AllergyAvoided -> "알레르기로 피했어요"
     }
 
 private val DifficultyReason.childTitle: String

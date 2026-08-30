@@ -188,6 +188,51 @@ final class NutrientImpactSidecarTests: XCTestCase {
         }
     }
 
+    func testFallbackRuleVersionRoundTripsAsCanonicalSnapshot() throws {
+        XCTAssertEqual(NutrientImpactSnapshot.fallbackRuleVersion, 0)
+        XCTAssertNotEqual(
+            NutrientImpactSnapshot.fallbackRuleVersion,
+            NutrientImpactSnapshot.supportedRuleVersion
+        )
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let updatedAt = Date(timeIntervalSince1970: 10)
+        let snapshot = try XCTUnwrap(
+            NutrientImpactSnapshotFactory.make(
+                ruleVersion: NutrientImpactSnapshot.fallbackRuleVersion,
+                recordID: "fallback-rule-version",
+                date: "2026-08-30",
+                normalizedMenuName: "처음 보는 메뉴",
+                status: .finished,
+                recordUpdatedAt: updatedAt,
+                nutrientIDs: []
+            )
+        )
+
+        try store.install(snapshot)
+
+        XCTAssertEqual(snapshot.ruleVersion, 0)
+        XCTAssertEqual(
+            try store.load(matching: fixtureRevision(
+                recordID: snapshot.recordID,
+                normalizedMenuName: snapshot.normalizedMenuName,
+                status: snapshot.status,
+                updatedAt: updatedAt
+            )),
+            snapshot
+        )
+        XCTAssertNil(
+            NutrientImpactSnapshotFactory.make(
+                ruleVersion: 99,
+                recordID: "unsupported-rule-version",
+                date: "2026-08-30",
+                normalizedMenuName: "처음 보는 메뉴",
+                status: .finished,
+                recordUpdatedAt: updatedAt,
+                nutrientIDs: []
+            )
+        )
+    }
+
     func testInstallRejectsPathAndCopyMutations() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
 
@@ -415,6 +460,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             store,
             fixtureSnapshot(
                 recordID: "utf8-too-many-alternatives",
+                status: .difficultToday,
                 alternatives: (0..<9).map { "교육 문장 \($0)번을 살펴봐요." }
             )
         )
@@ -422,6 +468,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             store,
             fixtureSnapshot(
                 recordID: "utf8-long-alternatives",
+                status: .difficultToday,
                 alternatives: Array(repeating: String(repeating: "가", count: 1_000), count: 8)
             )
         )
@@ -473,7 +520,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
 
     func testConcurrentIdenticalInstallDoesNotCreateOrOverwriteRevision() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
-        let snapshot = fixtureSnapshot(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10))
+        let snapshot = fixtureSnapshot(
+            status: .difficultToday,
+            updatedAt: Date(timeIntervalSince1970: 10),
+            alternatives: ["브로콜리무침"]
+        )
 
         let concurrentErrors = concurrentInstall(
             Array(repeating: snapshot, count: 8),
@@ -486,7 +537,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let beforeBytes = try Data(contentsOf: before)
 
         let conflicting = fixtureSnapshot(
-            status: .oneBite,
+            status: .difficultToday,
             updatedAt: Date(timeIntervalSince1970: 10),
             alternatives: ["사과"]
         )
@@ -497,7 +548,10 @@ final class NutrientImpactSidecarTests: XCTestCase {
     func testConcurrentConflictingInstallsPublishExactlyOneImmutableWinner() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let candidates = (0..<8).map { index in
-            fixtureSnapshot(alternatives: ["메뉴\(index)"])
+            fixtureSnapshot(
+                status: .difficultToday,
+                alternatives: ["메뉴\(index)"]
+            )
         }
 
         let errors = concurrentInstall(candidates, into: store)
@@ -507,7 +561,9 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertEqual(try jsonFiles().count, 1)
         XCTAssertTrue(try temporaryArtifacts().isEmpty)
         let winner = try XCTUnwrap(
-            try store.load(matching: fixtureRevision())
+            try store.load(
+                matching: fixtureRevision(status: .difficultToday)
+            )
         )
         XCTAssertTrue(candidates.contains(winner))
         let winnerBytes = try Data(contentsOf: try XCTUnwrap(singleJSONFile()))
@@ -759,7 +815,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             recordID: "empty-selection-canonical",
             date: mealDay.date,
             normalizedMenuName: "bbq chicken",
-            status: .allergyAvoided,
+            status: .difficultToday,
             recordUpdatedAt: Date(timeIntervalSince1970: 1),
             nutrientIDs: ["단백질"],
             alternativeSelection: selection
@@ -768,7 +824,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             recordID: "empty-selection-wrong-date",
             date: "2026-08-31",
             normalizedMenuName: "bbq chicken",
-            status: .allergyAvoided,
+            status: .difficultToday,
             recordUpdatedAt: Date(timeIntervalSince1970: 2),
             nutrientIDs: ["단백질"],
             alternativeSelection: selection
@@ -777,7 +833,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             recordID: "empty-selection-wrong-menu",
             date: mealDay.date,
             normalizedMenuName: "BBQ Chicken",
-            status: .allergyAvoided,
+            status: .difficultToday,
             recordUpdatedAt: Date(timeIntervalSince1970: 3),
             nutrientIDs: ["단백질"],
             alternativeSelection: selection
@@ -786,7 +842,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             recordID: "empty-selection-wrong-nutrients",
             date: mealDay.date,
             normalizedMenuName: "bbq chicken",
-            status: .allergyAvoided,
+            status: .difficultToday,
             recordUpdatedAt: Date(timeIntervalSince1970: 4),
             nutrientIDs: ["철분"],
             alternativeSelection: selection
@@ -874,14 +930,14 @@ final class NutrientImpactSidecarTests: XCTestCase {
             recordID: "mixed-case-bbq",
             date: mealDay.date,
             normalizedMenuName: "bbq 닭구이",
-            status: .oneBite,
+            status: .difficultToday,
             recordUpdatedAt: Date(timeIntervalSince1970: 5),
             nutrientIDs: ["단백질"],
             alternativeSelection: selection
         ))
     }
 
-    func testFactoryUsesTypedSameMealSelectionAndAllergyCopyDependsOnAlternatives() throws {
+    func testFactoryAllowsTypedSameMealAlternativesOnlyForDifficultToday() throws {
         let current = mealItem(name: "두부조림", nutrients: ["protein"])
         let mealDay = fixtureMealDay(items: [
             current,
@@ -897,7 +953,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 recordID: "typed-alternative-with-copy",
                 date: mealDay.date,
                 normalizedMenuName: current.normalizedPresentationName,
-                status: .allergyAvoided,
+                status: .difficultToday,
                 recordUpdatedAt: Date(timeIntervalSince1970: 10),
                 nutrientIDs: current.nutrients,
                 alternativeSelection: selection
@@ -908,16 +964,14 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 recordID: "typed-alternative-without-copy",
                 date: mealDay.date,
                 normalizedMenuName: current.normalizedPresentationName,
-                status: .allergyAvoided,
+                status: .difficultToday,
                 recordUpdatedAt: Date(timeIntervalSince1970: 11),
                 nutrientIDs: current.nutrients
             )
         )
 
         XCTAssertEqual(withAlternative.alternatives, ["달걀찜"])
-        XCTAssertTrue(withAlternative.explanation.contains("안전한 다른 메뉴에서도"))
         XCTAssertEqual(withoutAlternative.alternatives, [])
-        XCTAssertFalse(withoutAlternative.explanation.contains("안전한 다른 메뉴에서도"))
         XCTAssertEqual(
             NutrientImpactCopyCatalog.makeCopy(
                 status: .allergyAvoided,
@@ -927,12 +981,27 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "보호자와 학교 안내를 먼저 확인해요."
         )
 
+        for status in RebuildEatingStatus.allCases where status != .difficultToday {
+            XCTAssertNil(
+                NutrientImpactSnapshotFactory.make(
+                    recordID: "typed-alternative-rejected-\(status.rawValue)",
+                    date: mealDay.date,
+                    normalizedMenuName: current.normalizedPresentationName,
+                    status: status,
+                    recordUpdatedAt: Date(timeIntervalSince1970: 11),
+                    nutrientIDs: current.nutrients,
+                    alternativeSelection: selection
+                ),
+                status.rawValue
+            )
+        }
+
         XCTAssertNil(
             NutrientImpactSnapshotFactory.make(
                 recordID: "typed-alternative-wrong-date",
                 date: "2026-08-31",
                 normalizedMenuName: current.normalizedPresentationName,
-                status: .allergyAvoided,
+                status: .difficultToday,
                 recordUpdatedAt: Date(timeIntervalSince1970: 12),
                 nutrientIDs: current.nutrients,
                 alternativeSelection: selection
@@ -943,7 +1012,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 recordID: "typed-alternative-wrong-menu",
                 date: mealDay.date,
                 normalizedMenuName: "다른메뉴",
-                status: .allergyAvoided,
+                status: .difficultToday,
                 recordUpdatedAt: Date(timeIntervalSince1970: 13),
                 nutrientIDs: current.nutrients,
                 alternativeSelection: selection
@@ -954,7 +1023,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 recordID: "typed-alternative-wrong-nutrients",
                 date: mealDay.date,
                 normalizedMenuName: current.normalizedPresentationName,
-                status: .allergyAvoided,
+                status: .difficultToday,
                 recordUpdatedAt: Date(timeIntervalSince1970: 14),
                 nutrientIDs: ["iron"],
                 alternativeSelection: selection
@@ -984,7 +1053,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let snapshot = fixtureSnapshot(
             recordID: "opaque-alternative-labels",
-            status: .oneBite,
+            status: .difficultToday,
             alternatives: ["철분 12mg", "fake secret marker: API token"]
         )
 
@@ -1039,6 +1108,31 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertEqual(selection.menuLabels, ["두부", "김치"])
     }
 
+    func testSameMealSelectorPrioritizesBeforeCanonicalLabelDeduplication() throws {
+        let current = mealItem(
+            name: "현미밥",
+            nutrients: ["protein", "iron"]
+        )
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "두부", nutrients: ["iron"]),
+            mealItem(name: " 두부 ", nutrients: ["protein", "iron"]),
+            mealItem(name: "달걀", nutrients: ["protein"]),
+        ])
+
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        ))
+
+        XCTAssertEqual(selection.menuLabels, ["두부", "달걀"])
+        XCTAssertEqual(
+            selection.alternatives.first?.nutrientIDs,
+            ["protein", "iron"]
+        )
+    }
+
     func testSidecarRejectsOnlyNonCanonicalStructuralLabels() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let rejectedDirectLabels: [[String]] = [
@@ -1055,6 +1149,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 store,
                 fixtureSnapshot(
                     recordID: "menu-label-direct-rejected-\(index)",
+                    status: .difficultToday,
                     alternatives: labels
                 )
             )
@@ -1129,7 +1224,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             recordID: "menu-labels",
             date: mealDay.date,
             normalizedMenuName: current.normalizedPresentationName,
-            status: .finished,
+            status: .difficultToday,
             recordUpdatedAt: Date(timeIntervalSince1970: 10),
             nutrientIDs: current.nutrients,
             alternativeSelection: selection
@@ -1176,7 +1271,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
         alternatives: [String]? = nil,
         disclaimer: String? = nil
     ) -> NutrientImpactSnapshot {
-        let persistedAlternatives = alternatives ?? ["두부"]
+        let persistedAlternatives = alternatives ?? []
         let canonicalCopy = NutrientImpactCopyCatalog.makeCopy(
             status: status,
             nutrientIDs: nutrients,

@@ -445,7 +445,7 @@
 - Extend `RecordMealCommand` with an optional `nutritionSnapshot` defaulting to nil and inject `any NutrientImpactSidecar` into `RecordMealUseCase` with the existing no-op default. Before the Core Data save, resolve the current active record by `date + normalizedMenuName`, rebind the immutable snapshot to the actual record ID/status/`occurredAt`, install/read back the sidecar, then update the existing row. For a status change retain the row ID/photos/sourceRecordID, set the old duplicate rows’ `deletedAt`, and never issue another XP event for the same logical meal.
 - Keep legacy status-based rows/events readable for migration and award checks. New active identity is `date|normalizedMenuName`; the status is data, not identity. Existing 1.1 rows are never physically deleted.
 
-- [ ] Step 1: Update/add tests named `testAllSixStatusesArePresented`, `testAllergyRiskAllowsOnlyAllergyAvoidedAndGuardianCheck`, `testAllergySafetyIsRejectedBeforePersistence`, `testStatusTransitionLeavesOneActiveRecordAndOneAwardEvent`, `testStatusTransitionPreservesPhotosAndSourceRecordID`, `testNutritionReviewCancelWritesNothing`, `testSidecarInstallOccursBeforeCoreDataTransaction`, `testSidecarFailureDoesNotWriteRecordOrXP`, and `testCoreDataFailureLeavesNoMatchingActiveRevision`. Add a regression for the user-facing `오늘은 안 먹어요` label while retaining raw `difficultToday`.
+- [x] Step 1: Update/add tests named `testAllSixStatusesArePresented`, `testAllergyRiskAllowsOnlyAllergyAvoidedAndGuardianCheck`, `testAllergySafetyIsRejectedBeforePersistence`, `testStatusTransitionLeavesOneActiveRecordAndOneAwardEvent`, `testStatusTransitionPreservesPhotosAndSourceRecordID`, `testNutritionReviewCancelWritesNothing`, `testSidecarInstallOccursBeforeCoreDataTransaction`, `testSidecarFailureDoesNotWriteRecordOrXP`, and `testCoreDataFailureLeavesNoMatchingActiveRevision`. Add a regression for the user-facing `오늘은 안 먹어요` label while retaining raw `difficultToday`.
 
   ```swift
   func testStatusTransitionLeavesOneActiveRecordAndOneAwardEvent() throws {
@@ -456,20 +456,20 @@
   }
   ```
 
-- [ ] Step 2: Run RED against existing tests. Expected RED: `half` is not exposed in Today, allergy UI permits a status that use case rejects, and status-based IDs produce multiple active rows/events.
+- [x] Step 2: Run RED against existing tests. Expected RED: `half` is not exposed in Today, allergy UI permits a status that use case rejects, and status-based IDs produce multiple active rows/events.
 
   ```bash
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/RebuildRecordMealUseCaseTests -only-testing:NaymNaymLevelUpTests/TodayForestViewModelTests
   ```
 
-- [ ] Step 3: Implement `MealSafetyPolicy`, six-state labels, allergy-safe disabled states and separate guardian CTA. Update `RecordMealUseCase` validation and active-row lookup without changing Core Data schema. Install a frozen sidecar before save; if save fails, rollback Core Data and leave only an unreadable orphan. Preserve photos, parent-share flag, existing sourceRecordID, and one award event.
-- [ ] Step 4: Run GREEN and verify UI and persistence use the same allowed set, cancel before confirmation has no writes, status edits do not double XP, allergy avoidance has no penalty, and old rows remain queryable but inactive.
+- [x] Step 3: Implement `MealSafetyPolicy`, six-state labels, allergy-safe disabled states and separate guardian CTA. Update `RecordMealUseCase` validation and active-row lookup without changing Core Data schema. Install a frozen sidecar before save; if save fails, rollback Core Data and leave only an unreadable orphan. Preserve photos, parent-share flag, existing sourceRecordID, and one award event.
+- [x] Step 4: Run GREEN and verify UI and persistence use the same allowed set, cancel before confirmation has no writes, status edits do not double XP, allergy avoidance has no penalty, and old rows remain queryable but inactive.
 
   ```bash
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/RebuildRecordMealUseCaseTests -only-testing:NaymNaymLevelUpTests/TodayForestViewModelTests
   ```
 
-- [ ] Step 5: Commit the safety/record transaction change.
+- [x] Step 5: Commit the safety/record transaction change.
 
   ```bash
   git add NaymNaymLevelUp/Rebuild/Meal/RecordMealUseCase.swift NaymNaymLevelUp/Rebuild/Child/TodayForestViewModel.swift NaymNaymLevelUp/Rebuild/Child/MealRecordingSheet.swift NaymNaymLevelUp/Rebuild/Meal/NutrientImpactSidecar.swift NaymNaymLevelUp/Rebuild/Meal/MealPresentation.swift NaymNaymLevelUpTests/RebuildRecordMealUseCaseTests.swift NaymNaymLevelUpTests/TodayForestViewModelTests.swift
@@ -490,7 +490,7 @@
 
 **Interfaces:**
 - `MealDayDetailView` exposes stable identifiers `meal_day_detail_<dateKey>`, `meal_day_status`, `meal_day_menu_<normalizedName>`, `meal_day_nutrition`, and `meal_day_record_cta`.
-- `MealRecordingSheet` exposes `meal_recording_status_<rawValue>`, `meal_recording_nutrition_review`, `meal_recording_confirm`, and `meal_allergy_safe_choice`. Its flow is status → optional difficult reason → representative impact review → confirm/save → XP result.
+- `MealRecordingSheet` scopes every per-menu control identifier with `<menuIndex>_<normalizedMenuToken>`: `meal_recording_status_<menuIndex>_<normalizedMenuToken>_<rawValue>`, `meal_allergy_safe_choice_<menuIndex>_<normalizedMenuToken>`, and `meal_guardian_check_<menuIndex>_<normalizedMenuToken>`. It also exposes `meal_recording_nutrition_review` and `meal_recording_confirm`. Its flow is status → optional difficult reason → representative impact review → confirm/save → XP result.
 - Add semantic colors to existing `RebuildDesignTokens` only (`growth`, `mission`, `appetite`, `nutrition`, `schedule`, `safety`, `background`) and keep existing hex values/spacing/radii/minimum action size as the base contract.
 
 - [ ] Step 1: Add tests `testDetailAccessibilityOrderIsDateStateMenuAllergyNutritionCTA`, `testRecordingReviewAppearsBeforeAnyWrite`, `testLargeContentSizeKeepsStatusActionsReachable`, `testReduceMotionUsesStaticResult`, `testAllergyStateUsesTextIconAndShape`, and `testSemanticTokensKeepMinimumContrast`. Assert all identifiers and 48pt minimum frames in the view inspection/presentation model.

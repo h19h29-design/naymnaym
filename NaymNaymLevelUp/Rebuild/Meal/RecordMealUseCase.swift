@@ -39,35 +39,135 @@ struct RecordMealCommand: Equatable, Sendable {
     let status: RebuildEatingStatus
     let difficultyReasons: [RebuildDifficultyReason]
     let allergyCodes: [Int]
+    let childAllergyCodes: [Int]
+    let itemAllergyCodes: [Int]
     let photoIDs: [String]
     let parentShareEnabled: Bool
     let occurredAt: Date
+    let nutritionSnapshot: NutrientImpactSnapshot?
+
+    init(
+        recordID: String,
+        date: String,
+        menuName: String,
+        status: RebuildEatingStatus,
+        difficultyReasons: [RebuildDifficultyReason],
+        allergyCodes: [Int],
+        childAllergyCodes: [Int],
+        itemAllergyCodes: [Int],
+        photoIDs: [String],
+        parentShareEnabled: Bool,
+        occurredAt: Date,
+        nutritionSnapshot: NutrientImpactSnapshot? = nil
+    ) {
+        self.recordID = recordID
+        self.date = date
+        self.menuName = menuName
+        self.status = status
+        self.difficultyReasons = difficultyReasons
+        self.allergyCodes = allergyCodes
+        self.childAllergyCodes = childAllergyCodes
+        self.itemAllergyCodes = itemAllergyCodes
+        self.photoIDs = photoIDs
+        self.parentShareEnabled = parentShareEnabled
+        self.occurredAt = occurredAt
+        self.nutritionSnapshot = nutritionSnapshot
+    }
 }
 
 struct RecordMealResult: Equatable, Sendable {
     let xpGranted: Int
     let totalXP: Int
     let motion: RebuildMotionState
+    let nutritionGuidance: NutrientImpactGuidance?
+
+    init(
+        xpGranted: Int,
+        totalXP: Int,
+        motion: RebuildMotionState,
+        nutritionGuidance: NutrientImpactGuidance? = nil
+    ) {
+        self.xpGranted = xpGranted
+        self.totalXP = totalXP
+        self.motion = motion
+        self.nutritionGuidance = nutritionGuidance
+    }
+}
+
+enum NutrientImpactGuidanceSource: Equatable, Sendable {
+    case recordedRevision
+    case currentGuidance
+
+    var childLabel: String {
+        switch self {
+        case .recordedRevision:
+            return "기록 당시 안내"
+        case .currentGuidance:
+            return "현재 기준 안내"
+        }
+    }
+}
+
+struct NutrientImpactGuidance: Equatable, Sendable {
+    let snapshot: NutrientImpactSnapshot
+    let source: NutrientImpactGuidanceSource
 }
 
 enum RecordMealError: Error, Equatable {
     case invalidRecordIdentity
+    case recordIdentityCollision
     case inactiveStatus(String)
     case allergySafetyRequired
+    case allergyContextMismatch
+    case staleRevision
+    case conflictingRevision
     case xpOverflow
 }
 
+enum MealSafetyPolicy {
+    static func allowedStatuses(
+        childAllergyCodes: Set<Int>,
+        itemAllergyCodes: Set<Int>
+    ) -> Set<RebuildEatingStatus> {
+        childAllergyCodes.isDisjoint(with: itemAllergyCodes)
+            ? Set(RebuildEatingStatus.allCases)
+            : [.allergyAvoided]
+    }
+
+    static func validate(
+        childAllergyCodes: Set<Int>,
+        itemAllergyCodes: Set<Int>,
+        status: RebuildEatingStatus
+    ) throws {
+        guard allowedStatuses(
+            childAllergyCodes: childAllergyCodes,
+            itemAllergyCodes: itemAllergyCodes
+        ).contains(status) else {
+            throw RecordMealError.allergySafetyRequired
+        }
+    }
+}
+
 final class RecordMealUseCase: @unchecked Sendable {
+    private struct InstalledNutritionRevision {
+        let snapshot: NutrientImpactSnapshot
+        let revision: RebuildMealRecordRevision
+    }
+
     private let container: NSPersistentContainer
     private let ledgerSerializer: RebuildProgressLedgerSerializer
+    private let nutrientImpactSidecar: any NutrientImpactSidecar
     private let policy: XPPolicyDocument
 
     init(
         container: NSPersistentContainer,
-        bundle: Bundle = .main
+        bundle: Bundle = .main,
+        nutrientImpactSidecar: any NutrientImpactSidecar =
+            NoopNutrientImpactSidecar.shared
     ) throws {
         self.container = container
         ledgerSerializer = .shared
+        self.nutrientImpactSidecar = nutrientImpactSidecar
         policy = try Self.decodePolicy(
             try loadRebuildContractData(named: "xp-policy.json", bundle: bundle)
         )
@@ -76,10 +176,13 @@ final class RecordMealUseCase: @unchecked Sendable {
     init(
         container: NSPersistentContainer,
         policyData: Data,
-        ledgerSerializer: RebuildProgressLedgerSerializer = .shared
+        ledgerSerializer: RebuildProgressLedgerSerializer = .shared,
+        nutrientImpactSidecar: any NutrientImpactSidecar =
+            NoopNutrientImpactSidecar.shared
     ) throws {
         self.container = container
         self.ledgerSerializer = ledgerSerializer
+        self.nutrientImpactSidecar = nutrientImpactSidecar
         policy = try Self.decodePolicy(policyData)
     }
 
@@ -87,30 +190,63 @@ final class RecordMealUseCase: @unchecked Sendable {
         let normalizedMenuName = try validate(command)
         let encodedDifficultyReasons = try encode(command.difficultyReasons)
         let encodedAllergyCodes = try encode(command.allergyCodes)
-        let encodedPhotoIDs = try encode(command.photoIDs)
-        let eventID = "meal:\(command.recordID)"
 
         let context = container.newBackgroundContext()
         context.mergePolicy = NSErrorMergePolicy
         return try context.performAndWait {
             try ledgerSerializer.serialize {
                 do {
-                    let existingRecord = try fetchRecord(
-                        id: command.recordID,
+                    let logicalRecords = try fetchLogicalRecords(
+                        date: command.date,
+                        normalizedMenuName: normalizedMenuName,
                         in: context
                     )
-                    let existingEvent = try fetchEvent(id: eventID, in: context)
-                    let awardAlreadyRecorded =
-                        try hasAwardRecord(
-                            date: command.date,
-                            normalizedMenuName: normalizedMenuName,
-                            in: context
-                        )
-                        || hasAwardEvent(
-                            date: command.date,
-                            normalizedMenuName: normalizedMenuName,
-                            in: context
-                        )
+                    let activeRecords = logicalRecords
+                        .filter { $0.deletedAt == nil }
+                        .sorted(by: recordWinnerComesFirst)
+                    let reusableStableRecord = activeRecords.isEmpty
+                        ? logicalRecords.first(where: { $0.id == command.recordID })
+                        : nil
+                    let existingRecord = activeRecords.first
+                        ?? reusableStableRecord
+                    if let activeWinner = activeRecords.first,
+                       activeWinner.updatedAt > command.occurredAt {
+                        throw RecordMealError.staleRevision
+                    }
+                    if existingRecord == nil,
+                       try fetchRecord(id: command.recordID, in: context) != nil {
+                        throw RecordMealError.recordIdentityCollision
+                    }
+                    let actualRecordID = existingRecord?.id ?? command.recordID
+                    let photoSourceRecords = activeRecords.isEmpty
+                        ? existingRecord.map { [$0] } ?? []
+                        : activeRecords
+                    let existingPhotoIDs = try photoSourceRecords.flatMap {
+                        try decodePhotoIDs($0.photoIDsJSON)
+                    }
+                    let mergedPhotoIDs = orderedUnique(
+                        existingPhotoIDs + command.photoIDs
+                    )
+                    let encodedPhotoIDs = try encode(mergedPhotoIDs)
+                    let preservedParentShare = existingRecord?.parentShareEnabled
+                        ?? command.parentShareEnabled
+                    if let existingRecord,
+                       existingRecord.updatedAt == command.occurredAt,
+                       try !isExactReplay(
+                           existingRecord,
+                           command: command,
+                           normalizedMenuName: normalizedMenuName
+                       ) {
+                        throw RecordMealError.conflictingRevision
+                    }
+                    let logicalEvents = try fetchLogicalMealEvents(
+                        date: command.date,
+                        normalizedMenuName: normalizedMenuName,
+                        resolvedRecordIDs: Set(logicalRecords.map(\.id)),
+                        in: context
+                    )
+                    let awardAlreadyRecorded = !logicalRecords.isEmpty
+                        || !logicalEvents.isEmpty
                     let dailyBaseXP = try sumXP(
                         date: command.date,
                         eventPrefix: "meal:",
@@ -128,12 +264,22 @@ final class RecordMealUseCase: @unchecked Sendable {
                         dailyTotalXP: dailyTotalXP
                     )
 
-                    let record = try existingRecord ?? insert(
-                        RebuildMealRecordManagedObject.self,
-                        entityName: RebuildEntityName.mealRecord,
-                        in: context
+                    let installedNutrition = try installNutritionSnapshotIfPresent(
+                        command: command,
+                        normalizedMenuName: normalizedMenuName,
+                        actualRecordID: actualRecordID
                     )
-                    record.id = command.recordID
+
+                    let record = try existingRecord
+                        ?? insert(
+                            RebuildMealRecordManagedObject.self,
+                            entityName: RebuildEntityName.mealRecord,
+                            in: context
+                        )
+                    if existingRecord == nil {
+                        record.id = command.recordID
+                    }
+
                     record.date = command.date
                     record.menuName = command.menuName
                     record.normalizedMenuName = normalizedMenuName
@@ -141,28 +287,36 @@ final class RecordMealUseCase: @unchecked Sendable {
                     record.difficultyReasonsJSON = encodedDifficultyReasons
                     record.allergyCodesJSON = encodedAllergyCodes
                     record.photoIDsJSON = encodedPhotoIDs
-                    record.parentShareEnabled = command.parentShareEnabled
+                    record.parentShareEnabled = preservedParentShare
                     record.updatedAt = command.occurredAt
                     record.deletedAt = nil
 
-                    if existingEvent == nil {
+                    for duplicate in activeRecords where duplicate != record {
+                        duplicate.deletedAt = command.occurredAt
+                    }
+
+                    if logicalEvents.isEmpty {
                         let event = try insert(
                             RebuildProgressEventManagedObject.self,
                             entityName: RebuildEntityName.progressEvent,
                             in: context
                         )
-                        event.id = eventID
+                        event.id = "meal:\(record.id)"
                         event.amount = Int64(xpGranted)
                         event.occurredAt = command.occurredAt
-                        event.sourceRecordID = command.recordID
+                        event.sourceRecordID = record.id
                     }
 
                     let totalXP = try sumAllXP(in: context)
                     try context.save()
+                    let nutritionGuidance = nutritionGuidanceAfterSave(
+                        installedNutrition
+                    )
                     return RecordMealResult(
                         xpGranted: xpGranted,
                         totalXP: totalXP,
-                        motion: command.status == .difficultToday ? .comfort : .mealSuccess
+                        motion: command.status == .difficultToday ? .comfort : .mealSuccess,
+                        nutritionGuidance: nutritionGuidance
                     )
                 } catch {
                     context.rollback()
@@ -176,18 +330,27 @@ final class RecordMealUseCase: @unchecked Sendable {
         guard policy.activeStatuses.contains(command.status.rawValue) else {
             throw RecordMealError.inactiveStatus(command.status.rawValue)
         }
-        if !command.allergyCodes.isEmpty, command.status != .allergyAvoided {
-            throw RecordMealError.allergySafetyRequired
+        let childAllergies = Set(command.childAllergyCodes)
+        let itemAllergies = Set(command.itemAllergyCodes)
+        guard command.allergyCodes
+                == Array(childAllergies.intersection(itemAllergies)).sorted()
+        else {
+            throw RecordMealError.allergyContextMismatch
         }
+        try MealSafetyPolicy.validate(
+            childAllergyCodes: childAllergies,
+            itemAllergyCodes: itemAllergies,
+            status: command.status
+        )
 
-        let normalizedMenuName = command.menuName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        let normalizedMenuName = MealRecordIdentityNormalizer.normalizedMenuName(
+            command.menuName
+        )
         guard isCanonicalDate(command.date),
               !normalizedMenuName.isEmpty,
               !normalizedMenuName.contains("|"),
               command.recordID
-                == "\(command.date)|\(normalizedMenuName)|\(command.status.rawValue)" else {
+                == "\(command.date)|\(normalizedMenuName)" else {
             throw RecordMealError.invalidRecordIdentity
         }
         return normalizedMenuName
@@ -210,36 +373,12 @@ final class RecordMealUseCase: @unchecked Sendable {
         return min(requested, baseRoom, totalRoom)
     }
 
-    private func fetchRecord(
-        id: String,
-        in context: NSManagedObjectContext
-    ) throws -> RebuildMealRecordManagedObject? {
-        let request = NSFetchRequest<RebuildMealRecordManagedObject>(
-            entityName: RebuildEntityName.mealRecord
-        )
-        request.predicate = NSPredicate(format: "id == %@", id)
-        request.fetchLimit = 1
-        return try context.fetch(request).first
-    }
-
-    private func fetchEvent(
-        id: String,
-        in context: NSManagedObjectContext
-    ) throws -> RebuildProgressEventManagedObject? {
-        let request = NSFetchRequest<RebuildProgressEventManagedObject>(
-            entityName: RebuildEntityName.progressEvent
-        )
-        request.predicate = NSPredicate(format: "id == %@", id)
-        request.fetchLimit = 1
-        return try context.fetch(request).first
-    }
-
-    private func hasAwardRecord(
+    private func fetchLogicalRecords(
         date: String,
         normalizedMenuName: String,
         in context: NSManagedObjectContext
-    ) throws -> Bool {
-        let request = NSFetchRequest<NSFetchRequestResult>(
+    ) throws -> [RebuildMealRecordManagedObject] {
+        let request = NSFetchRequest<RebuildMealRecordManagedObject>(
             entityName: RebuildEntityName.mealRecord
         )
         request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
@@ -249,34 +388,206 @@ final class RecordMealUseCase: @unchecked Sendable {
                 normalizedMenuName
             ),
         ])
-        request.fetchLimit = 1
-        return try context.count(for: request) > 0
+        return try context.fetch(request)
     }
 
-    private func hasAwardEvent(
+    private func fetchRecord(
+        id: String,
+        in context: NSManagedObjectContext
+    ) throws -> RebuildMealRecordManagedObject? {
+        let request = NSFetchRequest<RebuildMealRecordManagedObject>(
+            entityName: RebuildEntityName.mealRecord
+        )
+        request.fetchLimit = 1
+        request.predicate = NSPredicate(format: "id == %@", id)
+        return try context.fetch(request).first
+    }
+
+    private func fetchLogicalMealEvents(
         date: String,
         normalizedMenuName: String,
+        resolvedRecordIDs: Set<String>,
         in context: NSManagedObjectContext
-    ) throws -> Bool {
-        let awardPrefix = "\(date)|\(normalizedMenuName)|"
-        let request = NSFetchRequest<NSFetchRequestResult>(
+    ) throws -> [RebuildProgressEventManagedObject] {
+        let request = NSFetchRequest<RebuildProgressEventManagedObject>(
             entityName: RebuildEntityName.progressEvent
         )
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            NSPredicate(format: "id BEGINSWITH %@", "meal:"),
-            NSCompoundPredicate(orPredicateWithSubpredicates: [
-                NSPredicate(
-                    format: "id BEGINSWITH %@",
-                    "meal:\(awardPrefix)"
-                ),
-                NSPredicate(
-                    format: "sourceRecordID BEGINSWITH %@",
-                    awardPrefix
-                ),
-            ]),
-        ])
-        request.fetchLimit = 1
-        return try context.count(for: request) > 0
+        request.predicate = NSPredicate(format: "id BEGINSWITH %@", "meal:")
+        return try context.fetch(request).filter { event in
+            let eventRecordID = String(event.id.dropFirst("meal:".count))
+            return resolvedRecordIDs.contains(eventRecordID)
+                || resolvedRecordIDs.contains(event.sourceRecordID ?? "")
+                || isLogicalRecordIdentity(
+                    eventRecordID,
+                    date: date,
+                    normalizedMenuName: normalizedMenuName
+                ) || isLogicalRecordIdentity(
+                    event.sourceRecordID,
+                    date: date,
+                    normalizedMenuName: normalizedMenuName
+                )
+        }
+    }
+
+    private func isLogicalRecordIdentity(
+        _ candidate: String?,
+        date: String,
+        normalizedMenuName: String
+    ) -> Bool {
+        guard let candidate else { return false }
+        let parts = candidate.split(
+            separator: "|",
+            omittingEmptySubsequences: false
+        ).map(String.init)
+        guard parts.count == 2 || parts.count == 3,
+              parts[0] == date,
+              parts[1] == normalizedMenuName else {
+            return false
+        }
+        return parts.count == 2
+            || RebuildEatingStatus(rawValue: parts[2]) != nil
+    }
+
+    private func recordWinnerComesFirst(
+        _ lhs: RebuildMealRecordManagedObject,
+        _ rhs: RebuildMealRecordManagedObject
+    ) -> Bool {
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+        return lhs.id < rhs.id
+    }
+
+    private func decodePhotoIDs(_ value: String) throws -> [String] {
+        try decode([String].self, from: value)
+    }
+
+    private func decode<Value: Decodable>(
+        _ type: Value.Type,
+        from value: String
+    ) throws -> Value {
+        do {
+            return try JSONDecoder().decode(type, from: Data(value.utf8))
+        } catch {
+            throw RebuildContractLoadError.invalid("meal-record.json")
+        }
+    }
+
+    private func isExactReplay(
+        _ record: RebuildMealRecordManagedObject,
+        command: RecordMealCommand,
+        normalizedMenuName: String
+    ) throws -> Bool {
+        let storedReasons = try decode(
+            [RebuildDifficultyReason].self,
+            from: record.difficultyReasonsJSON
+        )
+        let storedAllergies = try decode(
+            [Int].self,
+            from: record.allergyCodesJSON
+        )
+        let storedPhotos = try decodePhotoIDs(record.photoIDsJSON)
+        let replayPhotos = orderedUnique(storedPhotos + command.photoIDs)
+        return record.date == command.date
+            && record.menuName == command.menuName
+            && record.normalizedMenuName == normalizedMenuName
+            && record.status == command.status.rawValue
+            && storedReasons == command.difficultyReasons
+            && storedAllergies == command.allergyCodes
+            && storedPhotos == replayPhotos
+    }
+
+    private func orderedUnique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private func installNutritionSnapshotIfPresent(
+        command: RecordMealCommand,
+        normalizedMenuName: String,
+        actualRecordID: String
+    ) throws -> InstalledNutritionRevision? {
+        guard let incoming = command.nutritionSnapshot else { return nil }
+        guard incoming.schemaVersion
+                == NutrientImpactSnapshot.supportedSchemaVersion,
+              NutrientImpactSnapshot.supportedRuleVersions.contains(
+                  incoming.ruleVersion
+              ),
+              incoming.recordID == command.recordID,
+              incoming.date == command.date,
+              incoming.normalizedMenuName == normalizedMenuName,
+              incoming.status == command.status,
+              incoming.recordUpdatedAt == command.occurredAt,
+              NutrientImpactCopyCatalog.validatedCanonicalNutrientIDs(
+                  incoming.nutrients
+              ) == incoming.nutrients,
+              NutrientImpactCopyCatalog.isCanonical(
+                  status: incoming.status,
+                  nutrientIDs: incoming.nutrients,
+                  headline: incoming.headline,
+                  explanation: incoming.explanation,
+                  disclaimer: incoming.disclaimer,
+                  hasAlternatives: !incoming.alternatives.isEmpty
+              ),
+              NutrientImpactCopyCatalog.validateMenuLabels(
+                  incoming.alternatives
+              ),
+              incoming.status == .difficultToday
+                || incoming.alternatives.isEmpty else {
+            throw NutrientImpactSidecarError.invalidSnapshot
+        }
+
+        let rebound = NutrientImpactSnapshot(
+            schemaVersion: incoming.schemaVersion,
+            ruleVersion: incoming.ruleVersion,
+            recordID: actualRecordID,
+            date: command.date,
+            normalizedMenuName: normalizedMenuName,
+            status: command.status,
+            recordUpdatedAt: command.occurredAt,
+            nutrients: incoming.nutrients,
+            headline: incoming.headline,
+            explanation: incoming.explanation,
+            alternatives: incoming.alternatives,
+            disclaimer: incoming.disclaimer
+        )
+        let revision = RebuildMealRecordRevision(
+            recordID: actualRecordID,
+            date: command.date,
+            normalizedMenuName: normalizedMenuName,
+            status: command.status,
+            updatedAt: command.occurredAt
+        )
+        try nutrientImpactSidecar.install(rebound)
+        guard try nutrientImpactSidecar.load(matching: revision) == rebound else {
+            throw NutrientImpactSidecarError.readBackFailed
+        }
+        return InstalledNutritionRevision(
+            snapshot: rebound,
+            revision: revision
+        )
+    }
+
+    private func nutritionGuidanceAfterSave(
+        _ installed: InstalledNutritionRevision?
+    ) -> NutrientImpactGuidance? {
+        guard let installed else { return nil }
+        do {
+            if try nutrientImpactSidecar.load(matching: installed.revision)
+                == installed.snapshot {
+                return NutrientImpactGuidance(
+                    snapshot: installed.snapshot,
+                    source: .recordedRevision
+                )
+            }
+        } catch {
+            // The Core Data transaction is already durable. A damaged or
+            // unavailable sidecar changes only the guidance provenance.
+        }
+        return NutrientImpactGuidance(
+            snapshot: installed.snapshot,
+            source: .currentGuidance
+        )
     }
 
     private func sumXP(

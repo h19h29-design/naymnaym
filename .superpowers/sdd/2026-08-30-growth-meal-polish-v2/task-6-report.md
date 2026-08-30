@@ -1,0 +1,61 @@
+# Task 6 report — allergy safety and active meal revisions
+
+## Status
+
+- Implementation and local iOS/Android/contract verification are complete on base `bbe5b3c`.
+- The final independent re-review returned `SPEC PASS` and `QUALITY PASS`, including its own fresh Android clean/JAR/full run at 186/186. Task 6 plan steps 1–4 are complete; this report accompanies the step 5 safety/record transaction commit.
+- No push, deploy, upload, release action, physical record deletion, or Core Data schema migration was performed.
+
+## Implemented contract
+
+- One shared `MealSafetyPolicy` drives both Today UI availability and `RecordMealUseCase` persistence validation. `RecordMealCommand` requires raw child/item allergy contexts, persists their exact sorted intersection, and permits only `allergyAvoided` when that intersection is non-empty. Guardian confirmation remains a separate non-recording action.
+- New identity is `date|normalizedMenuName`; status is revision data. Exact logical-boundary matching retains legacy `date|menu|status` rows/events without `rice`/`riceball` prefix collisions. Events whose ID or source exactly equals a resolved custom/UUID logical-record ID are also retained, without any prefix match. A deterministic command-ID collision with an unrelated row is resolved safely instead of attempting a duplicate unique insert.
+- All active logical rows are resolved before mutation. The deterministic newest winner keeps its row ID, existing parent-share value, and merged photo IDs; every winner/loser photo payload is decoded fail-closed before losers are soft-deleted. Existing progress-event IDs and `sourceRecordID` values are never rewritten. A transition leaves one active record and one logical award event without additional XP.
+- Record-only repair creates at most one zero-XP event. Event-only repair creates no event. If historical storage already contains multiple legacy logical events, they remain immutable: Task 6 adds no event/XP and performs no destructive event reconciliation.
+- Optional canonical nutrition snapshots are validated against command identity/provenance, rebound to the actual winner record ID/status/time, installed, and exactly read back before any Core Data mutation. A pre-save sidecar failure or mismatch produces zero record/XP writes; a Core Data save failure may leave an orphan sidecar revision but no matching active Core Data revision.
+- After a successful Core Data save, the same revision is loaded a second time. An exact match is returned as frozen recorded guidance; a missing, corrupt, mismatched, or throwing post-save load returns explicit current-guidance fallback while preserving the already-successful record/event transaction.
+- `prepareRecord` is read-only and captures the actual meal-item provenance, stable identity, photos, ordered reasons, allergy contexts, visual nutrients, alternatives, and canonical snapshot. Confirmation revalidates that the same unambiguous logical item is still present and that current allergy policy still permits the status. Removed/changed/ambiguous items and older prepared revisions fail before sidecar install or persistence. Equal-timestamp idempotent replay remains supported without accepting a conflicting payload.
+- Difficult-day preparation also freezes the typed same-meal alternative selection. Confirmation recomputes it from the current meal and raw child-allergy context and requires exact equality, so a removed, nutrient-changed, reprioritized, or newly allergy-risk alternative cannot be stored from a stale review. Alternative candidates are qualified and ranked by shared-nutrient count, target order, and meal order before canonical-label deduplication.
+- Alternative selection and alternative nutrient targeting run only for `difficultToday`; the other five statuses use the current item visual's representative nutrients and return no alternatives. Nutrition rule-load failure is distinguished from valid-rules unknown-menu fallback with an explicit fallback rule version/source.
+- The recording sheet now requires status/reason selection, nutrition review, and explicit final confirmation. Cancellation writes nothing. It exposes all six active statuses, retains raw `difficultToday` with the exact label `오늘은 안 먹어요`, uses unique menu-scoped accessibility identifiers, and presents one recommended `allergyAvoided` CTA plus five disabled non-safe statuses for a risky menu.
+- Recording feedback is rendered above every active menu/reason/review step, so preparation and final-save failures remain visible without navigating backward. The recommended allergy action uses the same exact `알레르기로 피했어요` display and accessibility copy as the status contract.
+- Production `ChildNavigationView` injects a `FileNutrientImpactSidecar` under Application Support without logging path values or secrets. The no-op sidecar remains only for nil-snapshot tests/backward-compatible construction. The immediate-write `record(item:status:)` convenience path was removed.
+- Growth presentation reads new two-part identities as `메뉴 · 급식 기록` and preserves all six current labels for three-part legacy identities.
+- Canonical, iOS, and Android identity-rule mirrors and the Python validator/tests now encode stable current identity and active `half` while preserving historical fixture/read compatibility.
+- Android runtime now follows the same stable two-part identity and strict six-status XP contract. It resolves exact date/menu logical rows including custom IDs, deterministically preserves/merges active data, soft-deletes duplicates, retains exact legacy/custom source events, rejects unrelated stable-ID collisions with the distinct `RecordIdentityCollision` failure, and keeps exact rice/riceball boundaries. Strict policy decoding rejects unknown nested `caps` keys as well as unknown root/status keys.
+- Android Today and persistence share one allergy policy. Commands carry required raw child/item allergy sets plus their exact sorted intersection; mismatches fail closed and every risky non-`allergyAvoided` status is rejected in both UI and use case. Stale commands and equal-time conflicting revisions are rejected while exact replay remains idempotent.
+- Parent-share state is immutable during record transitions on both platforms. Android replay equality intentionally excludes the incoming parent-share request, so the first transition preserves the stored value and an identical retry remains idempotent in both stored-true and stored-false directions.
+
+## TDD and review evidence
+
+- RED — Today tests failed to compile before `TodayForestError.allergySafetyRequired` and `prepareRecord` existed: `build/verification/task6-red-vm/Task6RedVM.xcresult`.
+- RED — storage/transaction tests exposed the old status-based identity and missing persistence defenses: `build/verification/task6-red-core/Task6RedCore.xcresult`.
+- RED — two-part Growth titles and updated legacy labels failed before parser/label compatibility was added: `build/verification/task6-growth-red/Results.xcresult`.
+- RED — independent-review tests for stale preparation/revision, raw allergy mismatch, collision handling, post-save readback, corrupt loser photos, exact parent-share preservation, and difficult-only alternatives failed at compile/behavior boundaries: `build/verification/task6-review-p1p2-red/Results.xcresult`.
+- RED — the non-difficult nutrient-source regression failed before status-gated targeting was added: `build/verification/task6-nondifficult-red/Results.xcresult`.
+- RED — a stable command resolving a UUID/custom logical row failed with Core Data `NSConstraintConflict` because the existing exact `meal:<recordID>` award event was missed and reinserted: 0/1 passed, 1 failed at `build/verification/task6-custom-record-event-red-1/Results.xcresult`.
+- RED — difficult-day confirmation accepted a frozen alternative after that menu became allergy-risk, disappeared, or lost the target nutrients: 0/1 passed with six assertions failing at `build/verification/task6-alt-refresh-red-1/Results.xcresult`.
+- RED — canonical-label deduplication discarded a stronger later alternative before priority sorting: 0/1 passed at `build/verification/task6-alt-priority-red-1/Results.xcresult`.
+- RED — the risk CTA/accessibility descriptor still emitted `안전하게 피했어요`: 0/1 passed at `build/verification/task6-allergy-copy-red-1/Results.xcresult`.
+- RED — Android focused tests reproduced risky non-avoidance UI/storage acceptance and stale/equal-conflicting stable-row overwrites. Required raw allergy fields first produced the expected compile RED, followed by an exact-context behavioral RED before strict validation was added.
+- RED — Android first-transition success followed by an identical retry failed with `RecordMealException` when the immutable stored parent-share value differed from the incoming request. The regression covers both false→true and true→false request directions.
+- RED — Android accepted an unexpected nested `caps.unexpected` key before exact nested-key validation; `xpPolicyRejectsUnknownCapKeys` failed 0/1 as expected before the decoder fix.
+- During GREEN, membership fixtures were corrected to use actual loaded-meal items; the production provenance and ambiguity guards were not weakened. Concurrent sidecar fixtures were likewise corrected to compare the same difficult revision.
+- GREEN — the new custom-record/event regression passed 1/1 after adding only exact resolved-record-ID candidates: `build/verification/task6-custom-record-event-green-1/Results.xcresult`.
+- GREEN — Round 2 remediation focused suites: 145/145 passed, 0 failed/skipped/expected failures: `build/verification/task6-round2-remediation-focused-1/Results.xcresult`.
+- GREEN — final full iOS XCTest suite: 491/491 passed, 0 failed/skipped/expected failures: `build/verification/task6-round2-remediation-full-1/Results.xcresult`.
+- GREEN — final Android main/Room KAPT compile succeeded; focused Today/Record suites passed, and the final targeted parent-share/collision/nested-caps regressions passed 3/3. The full JVM suite passed 186/186 with zero failures/errors. Because the repository path contains Korean Unicode, Gradle's normal debug unit-test classpath cannot resolve broad main symbols; the same freshly generated main classes JAR was supplied from `/tmp/android-main-classes.jar` through a repo-external ASCII init script. No workaround file is tracked.
+- GREEN — `scripts/validate-native-rebuild-contracts.py` passed; `scripts.tests.test_native_rebuild_contracts` passed 34/34. Canonical/iOS/Android contract SHA-256 values are identical: `0507b7f41c93463fa3de4232ae659ae5087f39ce620e483bd9a2d5be37d026b8`.
+- GREEN — fresh Debug simulator app build succeeded with 0 errors and 1 known warning: `build/verification/task6-review-final-app-1/BuildResults.xcresult`.
+- All final Xcode evidence used iPhone 17 Pro, iOS 26.5, simulator `DCAC5291-31BF-4515-B31B-1667CD8EB1E3`, with separate fresh DerivedData/result-bundle paths.
+
+## Safety and compatibility coverage
+
+- Required regressions cover all six statuses, allergy-only recording and guardian action, storage-layer rejection, transitions, photo/source preservation, cancel-with-zero-writes, sidecar ordering/failure/readback, and Core Data failure without a matching active revision.
+- Additional coverage includes stale source/alternative meal refresh, newest-then-older confirmation, equal-timestamp replay/conflict, exact raw allergy intersection, deterministic/prefix/collision identity behavior, exact custom/UUID record-event preservation, concurrent duplicates, corrupt winner/loser photos, parent-share preservation, record-only/event-only repair, multiple immutable legacy events, and two-/three-part Growth labels on both platforms.
+- Sidecar coverage includes incoming identity/canonical mismatches with zero installs/writes, winner rebinding, pre-save exact readback, post-save exact/missing/throwing paths, install races, and Core Data rollback.
+- No managed-model, migration version/digest, secret, stored path value, or historical fixture content changed.
+
+## Known non-blocking warning
+
+- The final app-build xcresult contains the existing `_LottieStub.o` arm64/x86_64 architecture warning. Build status is `succeeded` with zero errors; the warning is outside Task 6.

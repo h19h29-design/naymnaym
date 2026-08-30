@@ -1,5 +1,81 @@
 import SwiftUI
 
+struct MealRecordingReviewDraft: Equatable, Sendable {
+    let item: RebuildMealItem
+    let preparedRecord: PreparedMealRecord
+}
+
+struct MealRecordingReviewState: Equatable, Sendable {
+    private(set) var draft: MealRecordingReviewDraft?
+
+    mutating func present(_ draft: MealRecordingReviewDraft) {
+        self.draft = draft
+    }
+
+    mutating func cancel() {
+        draft = nil
+    }
+}
+
+@MainActor
+enum MealRecordingActionLayout {
+    static func gridStatuses(
+        isAllergyRisk: Bool
+    ) -> [RebuildEatingStatus] {
+        guard isAllergyRisk else {
+            return TodayForestViewModel.activeStatuses
+        }
+        return TodayForestViewModel.activeStatuses.filter {
+            $0 != .allergyAvoided
+        }
+    }
+
+    static func recommendedStatuses(
+        isAllergyRisk: Bool
+    ) -> [RebuildEatingStatus] {
+        isAllergyRisk ? [.allergyAvoided] : []
+    }
+}
+
+enum MealRecordingAccessibilityID {
+    static func status(
+        menuIndex: Int,
+        item: RebuildMealItem,
+        status: RebuildEatingStatus
+    ) -> String {
+        "meal_recording_status_\(menuToken(index: menuIndex, item: item))_\(status.rawValue)"
+    }
+
+    static func allergyAvoidance(
+        menuIndex: Int,
+        item: RebuildMealItem
+    ) -> String {
+        "meal_allergy_safe_choice_\(menuToken(index: menuIndex, item: item))"
+    }
+
+    static func guardianCheck(
+        menuIndex: Int,
+        item: RebuildMealItem
+    ) -> String {
+        "meal_guardian_check_\(menuToken(index: menuIndex, item: item))"
+    }
+
+    private static func menuToken(
+        index: Int,
+        item: RebuildMealItem
+    ) -> String {
+        let identity = MealRecordIdentityNormalizer.normalizedMenuName(
+            item.name
+        )
+        let safeIdentity = identity.map { character in
+            character.isLetter || character.isNumber
+                ? String(character)
+                : "_"
+        }.joined()
+        return "\(index)_\(safeIdentity)"
+    }
+}
+
 struct MealRecordingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -8,25 +84,44 @@ struct MealRecordingSheet: View {
     @State private var difficultItem: RebuildMealItem?
     @State private var selectedReasons: [RebuildDifficultyReason] = []
     @State private var guardianItem: RebuildMealItem?
+    @State private var reviewState = MealRecordingReviewState()
     @State private var savedMenuNames = Set<String>()
     @State private var isSaving = false
     @State private var saveMessage: String?
+    @State private var savedNutritionGuidance: NutrientImpactGuidance?
+
+    private var reviewDraft: MealRecordingReviewDraft? {
+        reviewState.draft
+    }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let difficultItem {
-                    difficultyReasonStep(for: difficultItem)
-                } else {
-                    menuList
+            VStack(spacing: 0) {
+                if let saveMessage {
+                    recordingFeedback(saveMessage)
+                }
+                Group {
+                    if let reviewDraft {
+                        nutritionReviewStep(reviewDraft)
+                    } else if let difficultItem {
+                        difficultyReasonStep(for: difficultItem)
+                    } else {
+                        menuList
+                    }
                 }
             }
             .background(RebuildDesignTokens.cream50)
-            .navigationTitle(difficultItem == nil ? "급식 기록" : "어려운 이유")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if difficultItem != nil {
+                    if reviewDraft != nil {
+                        Button("선택으로") {
+                            cancelNutritionReview()
+                        }
+                        .frame(minHeight: RebuildDesignTokens.minimumActionSize)
+                        .accessibilityLabel("영양 확인을 취소하고 메뉴로 돌아가기")
+                    } else if difficultItem != nil {
                         Button("메뉴로") {
                             self.difficultItem = nil
                             selectedReasons = []
@@ -61,24 +156,19 @@ struct MealRecordingSheet: View {
         }
     }
 
+    private var navigationTitle: String {
+        if reviewDraft != nil {
+            return "영양 확인"
+        }
+        return difficultItem == nil ? "급식 기록" : "어려운 이유"
+    }
+
     private var menuList: some View {
         let menuItems = Array((viewModel.meal?.menuItems ?? []).enumerated())
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
-                if let saveMessage {
-                    Text(saveMessage)
-                        .font(RebuildDesignTokens.bodyFont)
-                        .foregroundStyle(RebuildDesignTokens.forest700)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(RebuildDesignTokens.spacing[3])
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RebuildDesignTokens.leaf300.opacity(0.28))
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: RebuildDesignTokens.radii[0]
-                            )
-                        )
-                        .accessibilityIdentifier("meal_recording_feedback")
+                if let savedNutritionGuidance {
+                    savedGuidanceCard(savedNutritionGuidance)
                 }
 
                 Text(
@@ -228,7 +318,7 @@ struct MealRecordingSheet: View {
                 .accessibilityIdentifier("meal_action_prompt_\(index)")
 
             if isRisk {
-                allergySafetyActions(for: item)
+                allergySafetyActions(for: item, index: index)
             }
 
             LazyVGrid(
@@ -237,9 +327,14 @@ struct MealRecordingSheet: View {
                     : [GridItem(.adaptive(minimum: 132), spacing: 8)],
                 spacing: 8
             ) {
-                ForEach(TodayForestViewModel.activeStatuses, id: \.self) {
+                ForEach(
+                    MealRecordingActionLayout.gridStatuses(
+                        isAllergyRisk: isRisk
+                    ),
+                    id: \.self
+                ) {
                     status in
-                    statusButton(status, item: item)
+                    statusButton(status, item: item, index: index)
                 }
             }
         }
@@ -267,7 +362,8 @@ struct MealRecordingSheet: View {
     }
 
     private func allergySafetyActions(
-        for item: RebuildMealItem
+        for item: RebuildMealItem,
+        index: Int
     ) -> some View {
         let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
@@ -285,15 +381,21 @@ struct MealRecordingSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             actionButton(
-                title: "안전하게 피했어요",
+                title: RebuildEatingStatus.allergyAvoided.childTitle,
                 foreground: .white,
                 background: RebuildDesignTokens.danger700,
                 enabled: !isSaving,
                 accessibilityLabel: actionDescriptor.allergyAvoidanceLabel,
                 accessibilityHint: actionDescriptor.allergyAvoidanceHint
             ) {
-                save(item: item, status: .allergyAvoided)
+                prepare(item: item, status: .allergyAvoided)
             }
+            .accessibilityIdentifier(
+                MealRecordingAccessibilityID.allergyAvoidance(
+                    menuIndex: index,
+                    item: item
+                )
+            )
             actionButton(
                 title: "보호자와 확인하기",
                 foreground: RebuildDesignTokens.danger700,
@@ -304,6 +406,12 @@ struct MealRecordingSheet: View {
             ) {
                 guardianItem = item
             }
+            .accessibilityIdentifier(
+                MealRecordingAccessibilityID.guardianCheck(
+                    menuIndex: index,
+                    item: item
+                )
+            )
         }
         .padding(RebuildDesignTokens.spacing[3])
         .background(RebuildDesignTokens.danger700.opacity(0.08))
@@ -317,7 +425,8 @@ struct MealRecordingSheet: View {
 
     private func statusButton(
         _ status: RebuildEatingStatus,
-        item: RebuildMealItem
+        item: RebuildMealItem,
+        index: Int
     ) -> some View {
         let enabled = viewModel.isStatusEnabled(status, for: item) && !isSaving
         let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
@@ -342,10 +451,54 @@ struct MealRecordingSheet: View {
                 difficultItem = item
                 selectedReasons = []
             } else {
-                save(item: item, status: status)
+                prepare(item: item, status: status)
             }
         }
-        .accessibilityIdentifier("status_\(status.rawValue)")
+        .accessibilityIdentifier(
+            MealRecordingAccessibilityID.status(
+                menuIndex: index,
+                item: item,
+                status: status
+            )
+        )
+    }
+
+    private func savedGuidanceCard(
+        _ guidance: NutrientImpactGuidance
+    ) -> some View {
+        let snapshot = guidance.snapshot
+        return VStack(
+            alignment: .leading,
+            spacing: RebuildDesignTokens.spacing[2]
+        ) {
+            Text(guidance.source.childLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(RebuildDesignTokens.forest700)
+            Text(snapshot.headline)
+                .font(RebuildDesignTokens.headlineFont)
+                .foregroundStyle(RebuildDesignTokens.ink900)
+                .fixedSize(horizontal: false, vertical: true)
+            MealNutrientChips(nutrientIDs: snapshot.nutrients)
+            Text(snapshot.explanation)
+                .font(RebuildDesignTokens.bodyFont)
+                .foregroundStyle(RebuildDesignTokens.ink900)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(snapshot.disclaimer)
+                .font(.footnote)
+                .foregroundStyle(RebuildDesignTokens.muted600)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(RebuildDesignTokens.spacing[3])
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[1],
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("meal_recording_saved_nutrition_guidance")
     }
 
     private func difficultyReasonStep(
@@ -444,13 +597,13 @@ struct MealRecordingSheet: View {
                 }
 
                 actionButton(
-                    title: "이대로 기록하기",
+                    title: "영양 안내 확인하기",
                     foreground: .white,
                     background: RebuildDesignTokens.forest700,
                     enabled: !isSaving,
-                    accessibilityHint: "선택한 이유와 함께 오늘은 어려워요로 기록합니다"
+                    accessibilityHint: "선택한 이유를 유지하고 저장 전 영양 안내를 확인합니다"
                 ) {
-                    save(
+                    prepare(
                         item: item,
                         status: .difficultToday,
                         reasons: selectedReasons
@@ -459,6 +612,130 @@ struct MealRecordingSheet: View {
             }
             .padding(RebuildDesignTokens.spacing[4])
         }
+    }
+
+    private func nutritionReviewStep(
+        _ draft: MealRecordingReviewDraft
+    ) -> some View {
+        let snapshot = draft.preparedRecord.nutritionSnapshot
+        let status = draft.preparedRecord.command.status
+        let isRisk = viewModel.isAllergyRisk(draft.item)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[4]) {
+                VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
+                    Text(draft.item.name)
+                        .font(RebuildDesignTokens.titleFont.bold())
+                        .foregroundStyle(RebuildDesignTokens.ink900)
+                        .accessibilityAddTraits(.isHeader)
+                    Label(
+                        status.childTitle,
+                        systemImage: status == .allergyAvoided
+                            ? "checkmark.shield.fill"
+                            : "checkmark.circle.fill"
+                    )
+                    .font(RebuildDesignTokens.bodyFont)
+                    .foregroundStyle(
+                        status == .allergyAvoided
+                            ? RebuildDesignTokens.danger700
+                            : RebuildDesignTokens.forest700
+                    )
+                }
+
+                if isRisk {
+                    Label(
+                        "알레르기 안전 선택을 확인했어요",
+                        systemImage: "exclamationmark.shield.fill"
+                    )
+                    .font(RebuildDesignTokens.headlineFont)
+                    .foregroundStyle(RebuildDesignTokens.danger700)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
+                    Text(snapshot.headline)
+                        .font(RebuildDesignTokens.headlineFont)
+                        .foregroundStyle(RebuildDesignTokens.ink900)
+                        .fixedSize(horizontal: false, vertical: true)
+                    MealNutrientChips(nutrientIDs: snapshot.nutrients)
+                    Text(snapshot.explanation)
+                        .font(RebuildDesignTokens.bodyFont)
+                        .foregroundStyle(RebuildDesignTokens.ink900)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !snapshot.alternatives.isEmpty {
+                        Text("같은 급식에서 함께 살펴볼 메뉴")
+                            .font(RebuildDesignTokens.headlineFont)
+                            .foregroundStyle(RebuildDesignTokens.forest700)
+                        ForEach(snapshot.alternatives, id: \.self) { alternative in
+                            Label(alternative, systemImage: "fork.knife")
+                                .font(RebuildDesignTokens.bodyFont)
+                                .foregroundStyle(RebuildDesignTokens.ink900)
+                        }
+                        Text("먹는 양이나 같은 영양을 보장하는 뜻은 아니에요.")
+                            .font(.footnote)
+                            .foregroundStyle(RebuildDesignTokens.muted600)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Text(snapshot.disclaimer)
+                        .font(.footnote)
+                        .foregroundStyle(RebuildDesignTokens.muted600)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(RebuildDesignTokens.spacing[3])
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: RebuildDesignTokens.radii[1],
+                        style: .continuous
+                    )
+                )
+
+                actionButton(
+                    title: "확인하고 저장하기",
+                    foreground: .white,
+                    background: RebuildDesignTokens.forest700,
+                    enabled: !isSaving,
+                    accessibilityHint: "검토한 상태와 영양 안내를 최종 저장합니다"
+                ) {
+                    confirm(draft)
+                }
+                .accessibilityIdentifier("meal_recording_confirm")
+
+                actionButton(
+                    title: "취소",
+                    foreground: RebuildDesignTokens.forest700,
+                    background: RebuildDesignTokens.cream100,
+                    enabled: !isSaving,
+                    accessibilityHint: "아무 것도 저장하지 않고 메뉴 선택으로 돌아갑니다"
+                ) {
+                    cancelNutritionReview()
+                }
+                .accessibilityIdentifier("meal_recording_cancel")
+            }
+            .padding(RebuildDesignTokens.spacing[4])
+        }
+        .accessibilityIdentifier("meal_recording_nutrition_review")
+    }
+
+    private func recordingFeedback(_ message: String) -> some View {
+        Text(message)
+            .font(RebuildDesignTokens.bodyFont)
+            .foregroundStyle(RebuildDesignTokens.forest700)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(RebuildDesignTokens.spacing[3])
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RebuildDesignTokens.leaf300.opacity(0.28))
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: RebuildDesignTokens.radii[0]
+                )
+            )
+            .padding(.horizontal, RebuildDesignTokens.spacing[4])
+            .padding(.top, RebuildDesignTokens.spacing[2])
+            .accessibilityLabel("기록 안내: \(message)")
+            .accessibilityIdentifier("meal_recording_feedback")
     }
 
     private func actionButton(
@@ -505,31 +782,63 @@ struct MealRecordingSheet: View {
         )
     }
 
-    private func save(
+    private func prepare(
         item: RebuildMealItem,
         status: RebuildEatingStatus,
         reasons: [RebuildDifficultyReason] = []
     ) {
         guard !isSaving else { return }
+        saveMessage = nil
         isSaving = true
         Task {
             do {
-                let result = try await viewModel.record(
+                let preparedRecord = try await viewModel.prepareRecord(
                     item: item,
                     status: status,
                     difficultyReasons: reasons
                 )
-                savedMenuNames.insert(item.name)
-                saveMessage = result.xpGranted > 0
-                    ? "\(item.name) 기록 완료 · \(result.xpGranted) XP"
-                    : "\(item.name) 기록을 저장했어요."
+                reviewState.present(
+                    MealRecordingReviewDraft(
+                        item: item,
+                        preparedRecord: preparedRecord
+                    )
+                )
                 difficultItem = nil
                 selectedReasons = []
+            } catch {
+                saveMessage = "영양 안내를 준비하지 못했어요. 다시 시도해 주세요."
+            }
+            isSaving = false
+        }
+    }
+
+    private func confirm(_ draft: MealRecordingReviewDraft) {
+        guard !isSaving, reviewDraft == draft else { return }
+        saveMessage = nil
+        isSaving = true
+        Task {
+            do {
+                let result = try await viewModel.record(
+                    prepared: draft.preparedRecord
+                )
+                savedMenuNames.insert(draft.item.name)
+                saveMessage = result.xpGranted > 0
+                    ? "\(draft.item.name) 기록 완료 · \(result.xpGranted) XP"
+                    : "\(draft.item.name) 기록을 저장했어요."
+                savedNutritionGuidance = result.nutritionGuidance
+                reviewState.cancel()
             } catch {
                 saveMessage = "기록을 저장하지 못했어요. 다시 시도해 주세요."
             }
             isSaving = false
         }
+    }
+
+    private func cancelNutritionReview() {
+        guard !isSaving else { return }
+        reviewState.cancel()
+        difficultItem = nil
+        selectedReasons = []
     }
 }
 
@@ -537,11 +846,11 @@ extension RebuildEatingStatus {
     var childTitle: String {
         switch self {
         case .finished: return "다 먹었어요"
-        case .oneBite: return "한입도전"
-        case .half: return "절반 먹었어요"
-        case .smelledOnly: return "냄새만 맡아봤어요"
-        case .difficultToday: return "오늘은 어려워요"
-        case .allergyAvoided: return "안전하게 피했어요"
+        case .half: return "반 정도 먹었어요"
+        case .oneBite: return "한 입 도전"
+        case .smelledOnly: return "냄새만 맡았어요"
+        case .difficultToday: return "오늘은 안 먹어요"
+        case .allergyAvoided: return "알레르기로 피했어요"
         }
     }
 }

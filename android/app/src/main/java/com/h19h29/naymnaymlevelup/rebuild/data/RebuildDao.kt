@@ -50,13 +50,13 @@ interface MealRecordDao {
         SELECT * FROM meal_records
         WHERE date = :date
           AND normalizedMenuName = :normalizedMenuName
-        LIMIT 1
+        ORDER BY updatedAtEpochMillis DESC, id ASC
         """,
     )
-    suspend fun findAwardRecord(
+    suspend fun findLogicalRecords(
         date: String,
         normalizedMenuName: String,
-    ): MealRecordEntity?
+    ): List<MealRecordEntity>
 
     @Query(
         """
@@ -180,23 +180,16 @@ interface ProgressDao {
         SELECT * FROM progress_events
         WHERE id LIKE 'meal:%'
           AND (
-            substr(
-              id,
-              1,
-              length('meal:' || :awardPrefix)
-            ) = 'meal:' || :awardPrefix
-            OR substr(
-              sourceRecordId,
-              1,
-              length(:awardPrefix)
-            ) = :awardPrefix
+            id IN (:eventIds)
+            OR sourceRecordId IN (:recordIds)
           )
-        LIMIT 1
+        ORDER BY occurredAtEpochMillis ASC, id ASC
         """,
     )
-    suspend fun findAwardEvent(
-        awardPrefix: String,
-    ): ProgressEventEntity?
+    suspend fun findLogicalMealEvents(
+        recordIds: List<String>,
+        eventIds: List<String>,
+    ): List<ProgressEventEntity>
 
     @Query("SELECT * FROM progress_events WHERE id = :id LIMIT 1")
     suspend fun find(id: String): ProgressEventEntity?

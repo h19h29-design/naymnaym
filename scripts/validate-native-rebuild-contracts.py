@@ -41,10 +41,14 @@ EXPECTED_ARRAYS = {
 EXPECTED_IDENTITY_RULES = {
     "dateFormat": "yyyy-MM-dd",
     "normalizedMenuName": "trimAndLowercase",
-    "recordIdentityComponents": ["date", "normalizedMenuName", "status"],
-    "recordIdentity": "{date}|{normalizedMenuName}|{status}",
+    "recordIdentityComponents": ["date", "normalizedMenuName"],
+    "recordIdentity": "{date}|{normalizedMenuName}",
     "progressEventIdentity": "meal:{recordIdentity}",
     "progressEventSourceRecordIdentity": "{recordIdentity}",
+    "legacyRecordIdentityComponents": ["date", "normalizedMenuName", "status"],
+    "legacyRecordIdentity": "{date}|{normalizedMenuName}|{status}",
+    "legacyProgressEventIdentity": "meal:{legacyRecordIdentity}",
+    "legacyProgressEventSourceRecordIdentity": "{legacyRecordIdentity}",
 }
 EXPECTED_RECORD_IDENTITIES = [
     {
@@ -252,7 +256,11 @@ def is_canonical_date(value):
     return True
 
 
-def record_identity(date, normalized_menu_name, status):
+def record_identity(date, normalized_menu_name):
+    return f"{date}|{normalized_menu_name}"
+
+
+def legacy_record_identity(date, normalized_menu_name, status):
     return f"{date}|{normalized_menu_name}|{status}"
 
 
@@ -318,7 +326,7 @@ def validate_fixtures(fixtures, eating_statuses):
             normalized_menu_name = normalize_menu_name(record.get("menuName"))
             if not normalized_menu_name or "|" in normalized_menu_name:
                 raise ValueError("fixture menuName must normalize to a non-empty pipe-free string")
-            actual = record_identity(date, normalized_menu_name, status)
+            actual = legacy_record_identity(date, normalized_menu_name, status)
         except ValueError as error:
             errors.append(f"domain-fixtures.json: recordIdentities[{index}]: {error}")
             continue
@@ -749,7 +757,7 @@ def validate_meal_loop_fixtures(fixtures, rules, policy):
         elif duplicate["normalizedMenuName"] != normalized_menu_name:
             errors.append("meal-loop-fixtures.json: duplicateEvent normalizedMenuName must be canonical")
         else:
-            expected_record_id = record_identity(
+            expected_record_id = legacy_record_identity(
                 duplicate["date"], duplicate["normalizedMenuName"], duplicate["status"]
             )
             expected_event_id = f"meal:{expected_record_id}"

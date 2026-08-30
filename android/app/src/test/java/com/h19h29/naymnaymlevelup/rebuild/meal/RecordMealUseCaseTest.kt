@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -17,6 +18,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class RecordMealUseCaseTest {
+    @Test
+    fun bundledXpPolicyDecodesWithAllSixStatusesActiveAndNoLegacyStatuses() {
+        RecordMealUseCase(
+            store = FakeMealRecordingStore(),
+            policyBytes = contractBytes("xp-policy.json"),
+        )
+    }
+
     @Test
     fun sharedSpinachFixtureAwardsOnce() = runTest {
         val store = FakeMealRecordingStore()
@@ -166,17 +175,129 @@ class RecordMealUseCaseTest {
         val first = useCase.execute(command())
         val transitioned = useCase.execute(
             command(
-                recordID = "2026-07-25|시금치나물|finished",
                 status = EatingStatus.Finished,
+                occurredAt = Instant.ofEpochSecond(1_753_430_401),
             ),
         )
 
         assertEquals(18, first.xpGranted)
         assertEquals(0, transitioned.xpGranted)
         assertEquals(18, transitioned.totalXP)
-        assertEquals(2, store.records.size)
-        assertEquals(2, store.events.size)
-        assertEquals(listOf(0, 18), store.events.values.map { it.amount }.sorted())
+        assertEquals(1, store.records.size)
+        assertEquals(EatingStatus.Finished.wireValue, store.records.values.single().status)
+        assertEquals(1, store.events.size)
+        assertEquals(18, store.events.values.single().amount)
+    }
+
+    @Test
+    fun newerRevisionCannotBeOverwrittenByAnOlderCommand() = runTest {
+        val store = FakeMealRecordingStore()
+        val useCase = useCase(store)
+        val newer = command(
+            status = EatingStatus.Finished,
+            photoIDs = listOf("newer-photo"),
+            parentShareEnabled = true,
+            occurredAt = Instant.ofEpochSecond(1_753_430_410),
+        )
+        useCase.execute(newer)
+        val recordsBefore = LinkedHashMap(store.records)
+        val eventsBefore = LinkedHashMap(store.events)
+
+        val error = expectFailure<RecordMealException> {
+            useCase.execute(
+                command(
+                    status = EatingStatus.OneBite,
+                    photoIDs = listOf("older-photo"),
+                    parentShareEnabled = false,
+                    occurredAt = Instant.ofEpochSecond(1_753_430_400),
+                ),
+            )
+        }
+
+        assertEquals("StaleRevision", error.failure.name)
+        assertEquals(recordsBefore, store.records)
+        assertEquals(eventsBefore, store.events)
+    }
+
+    @Test
+    fun equalTimestampExactReplaySucceedsWithoutAdditionalXp() = runTest {
+        val store = FakeMealRecordingStore()
+        val useCase = useCase(store)
+        val replay = command(
+            photoIDs = listOf("photo-1"),
+            parentShareEnabled = true,
+        )
+
+        val first = useCase.execute(replay)
+        val second = useCase.execute(replay)
+
+        assertEquals(18, first.xpGranted)
+        assertEquals(0, second.xpGranted)
+        assertEquals(18, second.totalXP)
+        assertEquals(1, store.records.size)
+        assertEquals(1, store.events.size)
+        assertEquals("[\"photo-1\"]", store.records.values.single().photoIdsJson)
+        assertTrue(store.records.values.single().parentShareEnabled)
+    }
+
+    @Test
+    fun equalTimestampConflictingPayloadIsRejectedBeforeMutation() = runTest {
+        val cases = listOf(
+            "status" to (
+                command() to command(status = EatingStatus.Finished)
+                ),
+            "difficulty reasons" to (
+                command(
+                    status = EatingStatus.DifficultToday,
+                    difficultyReasons = listOf(DifficultyReason.Texture),
+                ) to command(
+                    status = EatingStatus.DifficultToday,
+                    difficultyReasons = listOf(DifficultyReason.Taste),
+                )
+                ),
+            "allergy overlap" to (
+                command(
+                    status = EatingStatus.AllergyAvoided,
+                    allergyCodes = listOf(5),
+                ) to command(
+                    status = EatingStatus.AllergyAvoided,
+                    allergyCodes = listOf(5, 7),
+                )
+                ),
+            "photo" to (
+                command(photoIDs = listOf("photo-1")) to
+                    command(photoIDs = listOf("photo-1", "photo-2"))
+                ),
+            "raw menu" to (
+                command(
+                    recordID = "2026-07-25|spinach",
+                    menuName = "spinach",
+                ) to command(
+                    recordID = "2026-07-25|spinach",
+                    menuName = " SPINACH ",
+                )
+                ),
+        )
+
+        cases.forEach { (label, revisions) ->
+            val store = FakeMealRecordingStore()
+            val useCase = useCase(store)
+            useCase.execute(revisions.first)
+            val recordsBefore = LinkedHashMap(store.records)
+            val eventsBefore = LinkedHashMap(store.events)
+
+            val error = expectFailure<RecordMealException> {
+                useCase.execute(revisions.second)
+            }
+
+            assertEquals(
+                label,
+                "ConflictingRevision",
+                error.failure.name,
+            )
+            assertEquals(label, recordsBefore, store.records)
+            assertEquals(label, eventsBefore, store.events)
+        }
     }
 
     @Test
@@ -189,11 +310,13 @@ class RecordMealUseCaseTest {
                 ),
             )
         }
-        val recordSealed = useCase(recordStore).execute(command())
+        val recordSealed = useCase(recordStore).execute(
+            command(occurredAt = Instant.ofEpochSecond(1_753_430_401)),
+        )
 
         assertEquals(0, recordSealed.xpGranted)
         assertEquals(0, recordSealed.totalXP)
-        assertEquals(2, recordStore.records.size)
+        assertEquals(1, recordStore.records.size)
         assertEquals(1, recordStore.events.size)
 
         val eventStore = FakeMealRecordingStore().apply {
@@ -208,7 +331,236 @@ class RecordMealUseCaseTest {
         assertEquals(0, eventSealed.xpGranted)
         assertEquals(10, eventSealed.totalXP)
         assertEquals(1, eventStore.records.size)
-        assertEquals(2, eventStore.events.size)
+        assertEquals(1, eventStore.events.size)
+    }
+
+    @Test
+    fun newestLegacyWinnerPreservesIdentityMetadataAndSourceEventWhileSoftDeletingDuplicates() =
+        runTest {
+            val store = FakeMealRecordingStore().apply {
+                seedRecordEntity(
+                    id = "2026-07-25|rice|finished",
+                    normalizedMenuName = "rice",
+                    status = EatingStatus.Finished,
+                    photoIdsJson = "[\"older-photo\"]",
+                    parentShareEnabled = false,
+                    updatedAtEpochMillis = 1_000,
+                )
+                seedRecordEntity(
+                    id = "2026-07-25|rice|half",
+                    normalizedMenuName = "rice",
+                    status = EatingStatus.Half,
+                    photoIdsJson = "[\"winner-photo\"]",
+                    parentShareEnabled = true,
+                    updatedAtEpochMillis = 2_000,
+                )
+                seedEvent(
+                    id = "meal:2026-07-25|rice|finished",
+                    amount = 10,
+                    sourceRecordId = "2026-07-25|rice|finished",
+                )
+            }
+
+            val result = useCase(store).execute(
+                command(
+                    recordID = "2026-07-25|rice",
+                    menuName = "RICE",
+                    status = EatingStatus.OneBite,
+                    photoIDs = listOf("winner-photo", "new-photo"),
+                    parentShareEnabled = false,
+                ),
+            )
+
+            assertEquals(RecordMealResult(0, 10, MotionState.MealSuccess), result)
+            assertEquals(2, store.records.size)
+            val winner = store.records.getValue("2026-07-25|rice|half")
+            assertEquals(EatingStatus.OneBite.wireValue, winner.status)
+            assertEquals(
+                "[\"winner-photo\", \"older-photo\", \"new-photo\"]",
+                winner.photoIdsJson,
+            )
+            assertTrue(winner.parentShareEnabled)
+            assertNull(winner.deletedAtEpochMillis)
+            assertEquals(
+                Instant.ofEpochSecond(1_753_430_400).toEpochMilli(),
+                store.records.getValue("2026-07-25|rice|finished")
+                    .deletedAtEpochMillis,
+            )
+            assertEquals(1, store.records.values.count { it.deletedAtEpochMillis == null })
+            assertEquals(1, store.events.size)
+            assertEquals(
+                "2026-07-25|rice|finished",
+                store.events.values.single().sourceRecordId,
+            )
+        }
+
+    @Test
+    fun corruptActiveLoserPhotoJsonFailsClosedBeforeAnyMutation() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedRecordEntity(
+                id = "2026-07-25|rice|oneBite",
+                normalizedMenuName = "rice",
+                status = EatingStatus.OneBite,
+                photoIdsJson = "{",
+                updatedAtEpochMillis = 1_000,
+            )
+            seedRecordEntity(
+                id = "2026-07-25|rice|half",
+                normalizedMenuName = "rice",
+                status = EatingStatus.Half,
+                photoIdsJson = "[\"winner-photo\"]",
+                updatedAtEpochMillis = 2_000,
+            )
+        }
+        val before = LinkedHashMap(store.records)
+
+        val error = expectFailure<ContractLoadException> {
+            useCase(store).execute(
+                command(
+                    recordID = "2026-07-25|rice",
+                    menuName = "rice",
+                    status = EatingStatus.Finished,
+                ),
+            )
+        }
+
+        assertEquals("meal-record.json", error.contractName)
+        assertEquals(before, store.records)
+        assertEquals(2, store.records.values.count { it.deletedAtEpochMillis == null })
+        assertTrue(store.events.isEmpty())
+    }
+
+    @Test
+    fun migratedCustomWinnerAndItsExactSourceEventArePreserved() = runTest {
+        val migratedId = "550e8400-e29b-41d4-a716-446655440000"
+        val store = FakeMealRecordingStore().apply {
+            seedRecordEntity(
+                id = "2026-07-25|rice|finished",
+                normalizedMenuName = "rice",
+                status = EatingStatus.Finished,
+                photoIdsJson = "[\"legacy-photo\"]",
+                updatedAtEpochMillis = 1_000,
+            )
+            seedRecordEntity(
+                id = migratedId,
+                normalizedMenuName = "rice",
+                status = EatingStatus.Half,
+                photoIdsJson = "[\"migrated-photo\"]",
+                parentShareEnabled = true,
+                updatedAtEpochMillis = 2_000,
+            )
+            seedEvent(
+                id = "meal:$migratedId",
+                amount = 12,
+                sourceRecordId = migratedId,
+            )
+        }
+
+        val result = useCase(store).execute(
+            command(
+                recordID = "2026-07-25|rice",
+                menuName = "rice",
+                status = EatingStatus.OneBite,
+                photoIDs = listOf("new-photo"),
+                parentShareEnabled = false,
+            ),
+        )
+
+        assertEquals(RecordMealResult(0, 12, MotionState.MealSuccess), result)
+        val winner = store.records.getValue(migratedId)
+        assertEquals(EatingStatus.OneBite.wireValue, winner.status)
+        assertEquals(
+            "[\"migrated-photo\", \"legacy-photo\", \"new-photo\"]",
+            winner.photoIdsJson,
+        )
+        assertTrue(winner.parentShareEnabled)
+        assertNull(winner.deletedAtEpochMillis)
+        assertEquals(1, store.records.values.count { it.deletedAtEpochMillis == null })
+        assertEquals(2, store.records.size)
+        assertEquals(1, store.events.size)
+        assertEquals("meal:$migratedId", store.events.values.single().id)
+        assertEquals(migratedId, store.events.values.single().sourceRecordId)
+    }
+
+    @Test
+    fun equalTimestampLegacyWinnerUsesAscendingIdentityTieBreak() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedRecordEntity(
+                id = "2026-07-25|rice|oneBite",
+                normalizedMenuName = "rice",
+                status = EatingStatus.OneBite,
+                updatedAtEpochMillis = 2_000,
+            )
+            seedRecordEntity(
+                id = "2026-07-25|rice|half",
+                normalizedMenuName = "rice",
+                status = EatingStatus.Half,
+                updatedAtEpochMillis = 2_000,
+            )
+        }
+
+        useCase(store).execute(
+            command(
+                recordID = "2026-07-25|rice",
+                menuName = "rice",
+                status = EatingStatus.Finished,
+            ),
+        )
+
+        assertNull(store.records.getValue("2026-07-25|rice|half").deletedAtEpochMillis)
+        assertEquals(
+            Instant.ofEpochSecond(1_753_430_400).toEpochMilli(),
+            store.records.getValue("2026-07-25|rice|oneBite").deletedAtEpochMillis,
+        )
+    }
+
+    @Test
+    fun exactLogicalIdentityDoesNotTreatRiceballAsRice() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedEvent(
+                id = "meal:2026-07-25|riceball|finished",
+                amount = 10,
+                sourceRecordId = "2026-07-25|riceball|finished",
+            )
+        }
+
+        val result = useCase(store).execute(
+            command(
+                recordID = "2026-07-25|rice",
+                menuName = "rice",
+            ),
+        )
+
+        assertEquals(18, result.xpGranted)
+        assertEquals(28, result.totalXP)
+        assertEquals(2, store.events.size)
+    }
+
+    @Test
+    fun unrelatedStableIdentityCollisionFailsWithoutOverwriting() = runTest {
+        val store = FakeMealRecordingStore().apply {
+            seedRecordEntity(
+                id = "2026-07-25|rice",
+                normalizedMenuName = "riceball",
+                status = EatingStatus.Finished,
+                updatedAtEpochMillis = 2_000,
+            )
+        }
+        val original = store.records.getValue("2026-07-25|rice")
+
+        val error = expectFailure<RecordMealException> {
+            useCase(store).execute(
+                command(
+                    recordID = "2026-07-25|rice",
+                    menuName = "rice",
+                ),
+            )
+        }
+
+        assertEquals(RecordMealFailure.RecordIdentityCollision, error.failure)
+        assertEquals(listOf("2026-07-25|rice"), store.recordLookups)
+        assertEquals(original, store.records.getValue("2026-07-25|rice"))
+        assertTrue(store.events.isEmpty())
     }
 
     @Test
@@ -280,79 +632,131 @@ class RecordMealUseCaseTest {
     }
 
     @Test
-    fun legacyHalfAndMismatchedCanonicalIdentityAreRejectedWithoutWrites() = runTest {
+    fun allSixStatusesAreActiveAndLegacyCommandIdentityIsRejected() = runTest {
         val store = FakeMealRecordingStore()
         val useCase = useCase(store)
 
-        val legacy = expectFailure<RecordMealException> {
+        val half = useCase.execute(command(status = EatingStatus.Half))
+        assertEquals(12, half.xpGranted)
+
+        val legacyIdentity = expectFailure<RecordMealException> {
             useCase.execute(
-                command(
-                    recordID = "2026-07-25|시금치나물|half",
-                    status = EatingStatus.Half,
-                ),
+                command(recordID = "2026-07-25|시금치나물|finished"),
             )
         }
-        assertEquals(RecordMealFailure.InactiveStatus, legacy.failure)
-
-        val mismatch = expectFailure<RecordMealException> {
-            useCase.execute(command(recordID = "not-canonical"))
-        }
-        assertEquals(RecordMealFailure.InvalidRecordIdentity, mismatch.failure)
+        assertEquals(
+            RecordMealFailure.InvalidRecordIdentity,
+            legacyIdentity.failure,
+        )
 
         val impossibleDate = expectFailure<RecordMealException> {
             useCase.execute(
                 command(
-                    recordID = "2026-02-30|시금치나물|oneBite",
+                    recordID = "2026-02-30|시금치나물",
                     date = "2026-02-30",
                 ),
             )
         }
         assertEquals(RecordMealFailure.InvalidRecordIdentity, impossibleDate.failure)
-        assertTrue(store.records.isEmpty())
-        assertTrue(store.events.isEmpty())
+        assertEquals(1, store.records.size)
+        assertEquals(1, store.events.size)
     }
 
     @Test
     fun canonicalIdentityTrimsAndLowercasesWithoutRemovingInteriorSpaces() = runTest {
         val store = FakeMealRecordingStore()
         val command = command(
-            recordID = "2026-07-25|spinach 나물|oneBite",
+            recordID = "2026-07-25|spinach 나물",
             menuName = "  SPINACH 나물 \n",
         )
 
         useCase(store).execute(command)
 
         val record = store.records.values.single()
-        assertEquals("2026-07-25|spinach 나물|oneBite", record.id)
+        assertEquals("2026-07-25|spinach 나물", record.id)
         assertEquals("spinach 나물", record.normalizedMenuName)
         assertEquals("  SPINACH 나물 \n", record.menuName)
     }
 
     @Test
-    fun allergyRiskCannotBeRecordedAsChallengeAndSafetyRecordWins() = runTest {
-        val store = FakeMealRecordingStore()
-        val useCase = useCase(store)
+    fun allergyRiskRejectsEveryNonAvoidanceStatusAndAllowsSafetyRecord() = runTest {
+        EatingStatus.entries
+            .filterNot { it == EatingStatus.AllergyAvoided }
+            .forEach { status ->
+                val store = FakeMealRecordingStore()
+                val unsafe = expectFailure<RecordMealException> {
+                    useCase(store).execute(
+                        command(
+                            status = status,
+                            allergyCodes = listOf(5),
+                            childAllergyCodes = listOf(2, 5),
+                            itemAllergyCodes = listOf(5, 9),
+                        ),
+                    )
+                }
+                assertEquals(
+                    status.wireValue,
+                    RecordMealFailure.AllergySafetyRequired,
+                    unsafe.failure,
+                )
+                assertTrue(store.records.isEmpty())
+                assertTrue(store.events.isEmpty())
+            }
 
-        val unsafe = expectFailure<RecordMealException> {
-            useCase.execute(command(allergyCodes = listOf(5)))
-        }
-        assertEquals(RecordMealFailure.AllergySafetyRequired, unsafe.failure)
-
-        val safety = useCase.execute(
+        val safety = useCase(FakeMealRecordingStore()).execute(
             command(
-                recordID = "2026-07-25|시금치나물|allergyAvoided",
                 status = EatingStatus.AllergyAvoided,
                 allergyCodes = listOf(5),
+                childAllergyCodes = listOf(2, 5),
+                itemAllergyCodes = listOf(5, 9),
             ),
         )
         assertEquals(RecordMealResult(8, 8, MotionState.MealSuccess), safety)
     }
 
     @Test
+    fun allergyContextMustMatchTheExactSortedIntersectionBeforeAnyWrite() = runTest {
+        val commands = listOf(
+            command(
+                status = EatingStatus.AllergyAvoided,
+                allergyCodes = emptyList(),
+                childAllergyCodes = listOf(5),
+                itemAllergyCodes = listOf(5),
+            ),
+            command(
+                status = EatingStatus.AllergyAvoided,
+                allergyCodes = listOf(5),
+                childAllergyCodes = listOf(5, 7),
+                itemAllergyCodes = listOf(7, 9),
+            ),
+            command(
+                status = EatingStatus.AllergyAvoided,
+                allergyCodes = listOf(7, 5),
+                childAllergyCodes = listOf(5, 7),
+                itemAllergyCodes = listOf(5, 7, 9),
+            ),
+        )
+
+        commands.forEach { invalidCommand ->
+            val store = FakeMealRecordingStore()
+
+            val error = expectFailure<RecordMealException> {
+                useCase(store).execute(invalidCommand)
+            }
+
+            assertEquals(
+                RecordMealFailure.AllergyContextMismatch,
+                error.failure,
+            )
+            assertTrue(store.records.isEmpty())
+            assertTrue(store.events.isEmpty())
+        }
+    }
+
+    @Test
     fun difficultRecordUsesComfortMotionAndNeverDeductsXp() = runTest {
         val result = useCase(FakeMealRecordingStore()).execute(
             command(
-                recordID = "2026-07-25|시금치나물|difficultToday",
                 status = EatingStatus.DifficultToday,
                 difficultyReasons = listOf(DifficultyReason.Texture),
             ),
@@ -362,19 +766,29 @@ class RecordMealUseCaseTest {
     }
 
     @Test
-    fun updatingExistingCanonicalRecordCannotCreateMissingXp() = runTest {
-        val store = FakeMealRecordingStore().apply {
-            seedRecord(command(parentShareEnabled = false))
+    fun updatingExistingStableRecordPreservesParentShareInBothDirections() = runTest {
+        listOf(false to true, true to false).forEach { (stored, incoming) ->
+            val store = FakeMealRecordingStore().apply {
+                seedRecord(command(parentShareEnabled = stored))
+            }
+
+            val transition = command(
+                parentShareEnabled = incoming,
+                occurredAt = Instant.ofEpochSecond(1_753_430_401),
+            )
+            val useCase = useCase(store)
+            val result = useCase.execute(transition)
+            val replay = useCase.execute(transition)
+
+            assertEquals(0, result.xpGranted)
+            assertEquals(0, replay.xpGranted)
+            assertEquals(0, result.totalXP)
+            assertEquals(0, replay.totalXP)
+            assertEquals(1, store.records.size)
+            assertEquals(stored, store.records.values.single().parentShareEnabled)
+            assertEquals(1, store.events.size)
+            assertEquals(0, store.events.values.single().amount)
         }
-
-        val result = useCase(store).execute(command(parentShareEnabled = true))
-
-        assertEquals(0, result.xpGranted)
-        assertEquals(0, result.totalXP)
-        assertEquals(1, store.records.size)
-        assertEquals(true, store.records.values.single().parentShareEnabled)
-        assertEquals(1, store.events.size)
-        assertEquals(0, store.events.values.single().amount)
     }
 
     @Test
@@ -474,21 +888,21 @@ class RecordMealUseCaseTest {
     }
 
     @Test
-    fun xpPolicyCannotPromoteLegacyHalfToActive() {
+    fun xpPolicyRejectsAnyLegacyReadCompatibleStatus() {
         val policy = JSONObject(contractBytes("xp-policy.json").decodeToString())
         policy.put(
             "activeStatuses",
             JSONArray(
                 listOf(
-                    "half",
                     "finished",
+                    "oneBite",
                     "smelledOnly",
                     "difficultToday",
                     "allergyAvoided",
                 ),
             ),
         )
-        policy.put("legacyReadCompatibleStatuses", JSONArray(listOf("oneBite")))
+        policy.put("legacyReadCompatibleStatuses", JSONArray(listOf("half")))
 
         val error = expectFailure<ContractLoadException> {
             RecordMealUseCase(
@@ -504,6 +918,21 @@ class RecordMealUseCaseTest {
     fun xpPolicyCannotEnableStatusTransitionAwards() {
         val policy = JSONObject(contractBytes("xp-policy.json").decodeToString())
         policy.put("statusTransitionsGrantAdditionalXP", true)
+
+        val error = expectFailure<ContractLoadException> {
+            RecordMealUseCase(
+                store = FakeMealRecordingStore(),
+                policyBytes = policy.toString().encodeToByteArray(),
+            )
+        }
+
+        assertEquals("xp-policy.json", error.contractName)
+    }
+
+    @Test
+    fun xpPolicyRejectsUnknownCapKeys() {
+        val policy = JSONObject(contractBytes("xp-policy.json").decodeToString())
+        policy.getJSONObject("caps").put("unexpected", 0)
 
         val error = expectFailure<ContractLoadException> {
             RecordMealUseCase(
@@ -554,14 +983,17 @@ class RecordMealUseCaseTest {
         )
 
     private fun command(
-        recordID: String = "2026-07-25|시금치나물|oneBite",
+        recordID: String = "2026-07-25|시금치나물",
         date: String = "2026-07-25",
         menuName: String = "시금치나물",
         status: EatingStatus = EatingStatus.OneBite,
         difficultyReasons: List<DifficultyReason> = emptyList(),
         allergyCodes: List<Int> = emptyList(),
+        childAllergyCodes: List<Int> = allergyCodes,
+        itemAllergyCodes: List<Int> = allergyCodes,
         photoIDs: List<String> = emptyList(),
         parentShareEnabled: Boolean = false,
+        occurredAt: Instant = Instant.ofEpochSecond(1_753_430_400),
     ): RecordMealCommand = RecordMealCommand(
         recordID = recordID,
         date = date,
@@ -569,9 +1001,11 @@ class RecordMealUseCaseTest {
         status = status,
         difficultyReasons = difficultyReasons,
         allergyCodes = allergyCodes,
+        childAllergyCodes = childAllergyCodes,
+        itemAllergyCodes = itemAllergyCodes,
         photoIDs = photoIDs,
         parentShareEnabled = parentShareEnabled,
-        occurredAt = Instant.ofEpochSecond(1_753_430_400),
+        occurredAt = occurredAt,
     )
 
     private inline fun <reified T : Throwable> expectFailure(
@@ -597,6 +1031,7 @@ private class FakeMealRecordingStore(
     private val mutex = Mutex()
     val records = linkedMapOf<String, MealRecordEntity>()
     val events = linkedMapOf<String, ProgressEventEntity>()
+    val recordLookups = mutableListOf<String>()
 
     override suspend fun <T> withTransaction(
         block: suspend MealRecordingTransaction.() -> T,
@@ -605,34 +1040,40 @@ private class FakeMealRecordingStore(
         val workingEvents = LinkedHashMap(events)
         val transaction = object : MealRecordingTransaction {
             override suspend fun findRecord(id: String): MealRecordEntity? =
-                workingRecords[id]
+                workingRecords[id].also { recordLookups += id }
 
-            override suspend fun findAwardRecord(
+            override suspend fun findLogicalRecords(
                 date: String,
                 normalizedMenuName: String,
-            ): MealRecordEntity? =
-                workingRecords.values.firstOrNull {
+            ): List<MealRecordEntity> =
+                workingRecords.values.filter {
                     it.date == date &&
                         it.normalizedMenuName == normalizedMenuName
-                }
+                }.sortedWith(
+                    compareByDescending<MealRecordEntity> {
+                        it.updatedAtEpochMillis
+                    }.thenBy { it.id },
+                )
 
             override suspend fun upsertRecord(record: MealRecordEntity) {
                 workingRecords[record.id] = record
             }
 
-            override suspend fun findProgressEvent(id: String): ProgressEventEntity? =
-                workingEvents[id]
-
-            override suspend fun findAwardEvent(
-                awardPrefix: String,
-            ): ProgressEventEntity? =
-                workingEvents.values.firstOrNull {
+            override suspend fun findLogicalMealEvents(
+                recordIds: List<String>,
+                eventIds: List<String>,
+            ): List<ProgressEventEntity> =
+                workingEvents.values.filter {
                     it.id.startsWith("meal:") &&
                         (
-                            it.id.startsWith("meal:$awardPrefix") ||
-                                it.sourceRecordId?.startsWith(awardPrefix) == true
+                            it.id in eventIds ||
+                                it.sourceRecordId in recordIds
                             )
-                }
+                }.sortedWith(
+                    compareBy<ProgressEventEntity> {
+                        it.occurredAtEpochMillis
+                    }.thenBy { it.id },
+                )
 
             override suspend fun insertProgressEvent(event: ProgressEventEntity): Boolean {
                 if (failProgressInsert) {
@@ -741,6 +1182,30 @@ private class FakeMealRecordingStore(
             parentShareEnabled = command.parentShareEnabled,
             updatedAtEpochMillis = command.occurredAt.toEpochMilli(),
             deletedAtEpochMillis = null,
+        )
+    }
+
+    fun seedRecordEntity(
+        id: String,
+        normalizedMenuName: String,
+        status: EatingStatus,
+        photoIdsJson: String = "[]",
+        parentShareEnabled: Boolean = false,
+        updatedAtEpochMillis: Long,
+        deletedAtEpochMillis: Long? = null,
+    ) {
+        records[id] = MealRecordEntity(
+            id = id,
+            date = "2026-07-25",
+            menuName = normalizedMenuName,
+            normalizedMenuName = normalizedMenuName,
+            status = status.wireValue,
+            difficultyReasonsJson = "[]",
+            allergyCodesJson = "[]",
+            photoIdsJson = photoIdsJson,
+            parentShareEnabled = parentShareEnabled,
+            updatedAtEpochMillis = updatedAtEpochMillis,
+            deletedAtEpochMillis = deletedAtEpochMillis,
         )
     }
 

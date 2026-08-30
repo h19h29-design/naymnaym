@@ -94,11 +94,52 @@ final class GrowthRepositoryTests: XCTestCase {
         XCTAssertEqual(presentation.xpText, "+18 XP")
     }
 
+    func testStableMealIdentityPresentationUsesMenuRecordLabel() {
+        let presentation = GrowthEventPresentation(
+            event: RebuildProgressEvent(
+                id: "meal:2026-07-25|시금치 나물",
+                amount: 18,
+                occurredAt: Date(timeIntervalSince1970: 100),
+                sourceRecordID: "2026-07-25|시금치 나물"
+            )
+        )
+
+        XCTAssertEqual(presentation.title, "시금치 나물 · 급식 기록")
+        XCTAssertEqual(presentation.xpText, "+18 XP")
+    }
+
+    func testLegacyMealIdentityPresentationUsesCurrentStatusLabels() {
+        let cases: [(status: String, label: String)] = [
+            ("finished", "다 먹었어요"),
+            ("half", "반 정도 먹었어요"),
+            ("oneBite", "한 입 도전"),
+            ("smelledOnly", "냄새만 맡았어요"),
+            ("difficultToday", "오늘은 안 먹어요"),
+            ("allergyAvoided", "알레르기로 피했어요"),
+        ]
+
+        for testCase in cases {
+            let presentation = GrowthEventPresentation(
+                event: RebuildProgressEvent(
+                    id: "meal:2026-07-25|시금치 나물|\(testCase.status)",
+                    amount: 12,
+                    occurredAt: Date(timeIntervalSince1970: 100)
+                )
+            )
+
+            XCTAssertEqual(
+                presentation.title,
+                "시금치 나물 · \(testCase.label)",
+                testCase.status
+            )
+        }
+    }
+
     func testCanonicalMealPresentationRejectsNoncanonicalIdentityAndSupportsHalf() {
         let cases: [(id: String, expectedTitle: String)] = [
             (
                 "meal:2026-07-25|오이|half",
-                "오이 · 절반 먹었어요"
+                "오이 · 반 정도 먹었어요"
             ),
             (
                 "meal:2026-02-30|오이|finished",

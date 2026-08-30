@@ -125,9 +125,38 @@ enum TodaySafetyAction: Equatable, Sendable {
     case guardianCheck
 }
 
+struct PreparedMealRecord: Equatable, Sendable {
+    let command: RecordMealCommand
+    let sourceMealDate: String
+    let sourceItem: RebuildMealItem
+    fileprivate let alternativeSelection: SameMealAlternativeSelection?
+
+    var nutritionSnapshot: NutrientImpactSnapshot {
+        guard let snapshot = command.nutritionSnapshot else {
+            preconditionFailure("Prepared meal records require a nutrition snapshot.")
+        }
+        return snapshot
+    }
+
+    fileprivate init(
+        command: RecordMealCommand,
+        sourceMealDate: String,
+        sourceItem: RebuildMealItem,
+        alternativeSelection: SameMealAlternativeSelection?
+    ) {
+        precondition(command.nutritionSnapshot != nil)
+        self.command = command
+        self.sourceMealDate = sourceMealDate
+        self.sourceItem = sourceItem
+        self.alternativeSelection = alternativeSelection
+    }
+}
+
 enum TodayForestError: Error, Equatable {
     case mealUnavailable
-    case allergyOneBiteDisabled
+    case allergySafetyRequired
+    case nutritionSnapshotUnavailable
+    case stalePreparedRecord
 }
 
 @MainActor
@@ -136,6 +165,7 @@ final class TodayForestViewModel: ObservableObject {
 
     static let activeStatuses: [RebuildEatingStatus] = [
         .finished,
+        .half,
         .oneBite,
         .smelledOnly,
         .difficultToday,
@@ -162,6 +192,7 @@ final class TodayForestViewModel: ObservableObject {
     @Published private(set) var motion: RebuildMotionState = .idle
     @Published private(set) var motionRevision = 0
     @Published private(set) var message: String?
+    @Published private(set) var lastNutritionGuidance: NutrientImpactGuidance?
 
     let dateText: String
     let dateKey: String
@@ -259,7 +290,10 @@ final class TodayForestViewModel: ObservableObject {
         _ status: RebuildEatingStatus,
         for item: RebuildMealItem
     ) -> Bool {
-        !(isAllergyRisk(item) && status == .oneBite)
+        MealSafetyPolicy.allowedStatuses(
+            childAllergyCodes: Set(allergyCodes),
+            itemAllergyCodes: Set(item.allergyCodes)
+        ).contains(status)
     }
 
     func prioritizedSafetyActions(
@@ -270,22 +304,24 @@ final class TodayForestViewModel: ObservableObject {
             : []
     }
 
-    func record(
+    func prepareRecord(
         item: RebuildMealItem,
         status: RebuildEatingStatus,
         difficultyReasons: [RebuildDifficultyReason] = [],
         parentShareEnabled: Bool = false
-    ) async throws -> RecordMealResult {
-        guard meal != nil else {
+    ) async throws -> PreparedMealRecord {
+        guard let meal,
+              meal.date == dateKey,
+              meal.menuItems.filter({ $0 == item }).count == 1 else {
             throw TodayForestError.mealUnavailable
         }
         guard isStatusEnabled(status, for: item) else {
-            throw TodayForestError.allergyOneBiteDisabled
+            throw TodayForestError.allergySafetyRequired
         }
 
-        let normalizedMenuName = item.name
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        let normalizedMenuName = MealRecordIdentityNormalizer.normalizedMenuName(
+            item.name
+        )
         let photoIDs = try await photoMetadataStore.photoIDs(
             date: dateKey,
             normalizedMenuName: normalizedMenuName
@@ -293,30 +329,156 @@ final class TodayForestViewModel: ObservableObject {
         let reasons = status == .difficultToday
             ? Self.orderedDifficultyReasons(difficultyReasons)
             : []
-        let matchedAllergyCodes = status == .allergyAvoided
-            ? Array(Set(item.allergyCodes).intersection(allergyCodes)).sorted()
-            : []
+        let matchedAllergyCodes = Array(
+            Set(item.allergyCodes).intersection(allergyCodes)
+        ).sorted()
+        let occurredAt = now()
+        let recordID = "\(dateKey)|\(normalizedMenuName)"
+        let visual = MealVisualResolver.resolve(item: item)
+        let alternativeSelection: SameMealAlternativeSelection?
+        if status == .difficultToday {
+            alternativeSelection = SameMealAlternativeSelector.select(
+                from: meal,
+                currentItem: item,
+                childAllergyCodes: allergyCodes
+            )
+        } else {
+            alternativeSelection = nil
+        }
+        let nutrientIDs = Self.nutrientIDsForSnapshot(
+            status: status,
+            representativeNutrientIDs: visual.representativeNutrientIDs,
+            alternativeTargetNutrientIDs:
+                alternativeSelection?.provenance.targetNutrientIDs
+        )
+        let nutritionSnapshot: NutrientImpactSnapshot?
+        if status == .difficultToday, let alternativeSelection {
+            nutritionSnapshot = NutrientImpactSnapshotFactory.make(
+                ruleVersion: visual.ruleVersion,
+                recordID: recordID,
+                date: dateKey,
+                normalizedMenuName: normalizedMenuName,
+                status: status,
+                recordUpdatedAt: occurredAt,
+                nutrientIDs: nutrientIDs,
+                alternativeSelection: alternativeSelection
+            )
+        } else {
+            nutritionSnapshot = NutrientImpactSnapshotFactory.make(
+                ruleVersion: visual.ruleVersion,
+                recordID: recordID,
+                date: dateKey,
+                normalizedMenuName: normalizedMenuName,
+                status: status,
+                recordUpdatedAt: occurredAt,
+                nutrientIDs: nutrientIDs
+            )
+        }
+        guard let nutritionSnapshot else {
+            throw TodayForestError.nutritionSnapshotUnavailable
+        }
         let command = RecordMealCommand(
-            recordID: "\(dateKey)|\(normalizedMenuName)|\(status.rawValue)",
+            recordID: recordID,
             date: dateKey,
             menuName: item.name,
             status: status,
             difficultyReasons: reasons,
             allergyCodes: matchedAllergyCodes,
+            childAllergyCodes: Array(Set(allergyCodes)).sorted(),
+            itemAllergyCodes: Array(Set(item.allergyCodes)).sorted(),
             photoIDs: photoIDs,
             parentShareEnabled: parentShareEnabled,
-            occurredAt: now()
+            occurredAt: occurredAt,
+            nutritionSnapshot: nutritionSnapshot
         )
-        let result = try await recorder.execute(command)
+        return PreparedMealRecord(
+            command: command,
+            sourceMealDate: meal.date,
+            sourceItem: item,
+            alternativeSelection: alternativeSelection
+        )
+    }
+
+    static func nutrientIDsForSnapshot(
+        status: RebuildEatingStatus,
+        representativeNutrientIDs: [String],
+        alternativeTargetNutrientIDs: [String]?
+    ) -> [String] {
+        guard status == .difficultToday else {
+            return representativeNutrientIDs
+        }
+        return alternativeTargetNutrientIDs ?? representativeNutrientIDs
+    }
+
+    func record(
+        prepared: PreparedMealRecord
+    ) async throws -> RecordMealResult {
+        try validateCurrentMeal(for: prepared)
+        let result = try await recorder.execute(prepared.command)
         progressRevision += 1
         totalXP = result.totalXP
         lastGrantedXP = result.xpGranted
         motion = result.motion
         motionRevision += 1
+        lastNutritionGuidance = result.nutritionGuidance
         message = result.xpGranted > 0
             ? "\(result.xpGranted) XP를 얻었어요!"
             : "오늘 기록을 저장했어요."
         return result
+    }
+
+    private func validateCurrentMeal(
+        for prepared: PreparedMealRecord
+    ) throws {
+        let command = prepared.command
+        let identity = MealRecordIdentityNormalizer.normalizedMenuName(
+            prepared.sourceItem.name
+        )
+        guard let meal,
+              meal.date == dateKey,
+              prepared.sourceMealDate == dateKey,
+              command.date == dateKey,
+              command.recordID == "\(dateKey)|\(identity)" else {
+            throw TodayForestError.stalePreparedRecord
+        }
+        let matchingItems = meal.menuItems.filter {
+            MealRecordIdentityNormalizer.normalizedMenuName($0.name)
+                == identity
+        }
+        guard matchingItems.count == 1,
+              let currentItem = matchingItems.first else {
+            throw TodayForestError.stalePreparedRecord
+        }
+
+        do {
+            try MealSafetyPolicy.validate(
+                childAllergyCodes: Set(allergyCodes),
+                itemAllergyCodes: Set(currentItem.allergyCodes),
+                status: command.status
+            )
+        } catch RecordMealError.allergySafetyRequired {
+            throw TodayForestError.allergySafetyRequired
+        }
+
+        let currentChildAllergies = Array(Set(allergyCodes)).sorted()
+        let currentItemAllergies = Array(Set(currentItem.allergyCodes)).sorted()
+        let currentMatchedAllergies = Array(
+            Set(currentChildAllergies).intersection(currentItemAllergies)
+        ).sorted()
+        let currentAlternativeSelection = command.status == .difficultToday
+            ? SameMealAlternativeSelector.select(
+                from: meal,
+                currentItem: currentItem,
+                childAllergyCodes: currentChildAllergies
+            )
+            : nil
+        guard currentItem == prepared.sourceItem,
+              command.childAllergyCodes == currentChildAllergies,
+              command.itemAllergyCodes == currentItemAllergies,
+              command.allergyCodes == currentMatchedAllergies,
+              currentAlternativeSelection == prepared.alternativeSelection else {
+            throw TodayForestError.stalePreparedRecord
+        }
     }
 
     static func orderedDifficultyReasons(

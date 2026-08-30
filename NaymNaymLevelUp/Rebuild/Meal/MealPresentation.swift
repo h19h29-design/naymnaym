@@ -65,11 +65,34 @@ enum MealFoodCategory: String, Codable, CaseIterable, Sendable {
     }
 }
 
+enum NutritionRuleResolutionSource: Equatable, Sendable {
+    case loadedRules
+    case fallbackRulesUnavailable
+}
+
 struct MealVisual: Equatable, Sendable {
     let category: MealFoodCategory
     let iconKey: String
     let confidence: NutritionMatchConfidence
     let representativeNutrientIDs: [String]
+    let ruleVersion: Int
+    let ruleSource: NutritionRuleResolutionSource
+
+    init(
+        category: MealFoodCategory,
+        iconKey: String,
+        confidence: NutritionMatchConfidence,
+        representativeNutrientIDs: [String],
+        ruleVersion: Int = NutritionRuleEngine.supportedRuleVersion,
+        ruleSource: NutritionRuleResolutionSource = .loadedRules
+    ) {
+        self.category = category
+        self.iconKey = iconKey
+        self.confidence = confidence
+        self.representativeNutrientIDs = representativeNutrientIDs
+        self.ruleVersion = ruleVersion
+        self.ruleSource = ruleSource
+    }
 
     var categoryLabel: String {
         category.childLabel
@@ -351,7 +374,7 @@ struct MealRecordingActionDescriptor: Equatable, Sendable {
     }
 
     var allergyAvoidanceLabel: String {
-        controlLabel(for: "안전하게 피했어요")
+        controlLabel(for: RebuildEatingStatus.allergyAvoided.childTitle)
     }
 
     var allergyAvoidanceHint: String {
@@ -460,7 +483,26 @@ struct MealVisualResolver {
     }
 
     static func resolve(item: RebuildMealItem) -> MealVisual {
-        bundled?.resolve(item: item) ?? fallback()
+        guard let bundled else {
+            return fallback(
+                ruleVersion: NutritionRuleEngine.unavailableFallbackRuleVersion,
+                ruleSource: .fallbackRulesUnavailable
+            )
+        }
+        return bundled.resolve(item: item)
+    }
+
+    static func resolve(
+        item: RebuildMealItem,
+        engine: NutritionRuleEngine?
+    ) -> MealVisual {
+        guard let engine else {
+            return fallback(
+                ruleVersion: NutritionRuleEngine.unavailableFallbackRuleVersion,
+                ruleSource: .fallbackRulesUnavailable
+            )
+        }
+        return resolve(item: item, engine: engine)
     }
 
     static func resolve(
@@ -497,12 +539,17 @@ struct MealVisualResolver {
                 category: category,
                 iconKey: iconKey,
                 confidence: confidence,
-                representativeNutrientIDs: nutrientIDs
+                representativeNutrientIDs: nutrientIDs,
+                ruleVersion: engine.ruleVersion,
+                ruleSource: .loadedRules
             )
         }
 
         guard !structuredNutrients.isEmpty else {
-            return fallback()
+            return fallback(
+                ruleVersion: engine.ruleVersion,
+                ruleSource: .loadedRules
+            )
         }
 
         let category = category(for: presentationName, metadata: nil)
@@ -510,16 +557,23 @@ struct MealVisualResolver {
             category: category,
             iconKey: MealVisualIconManifest.iconKey(for: category),
             confidence: .exact,
-            representativeNutrientIDs: structuredNutrients
+            representativeNutrientIDs: structuredNutrients,
+            ruleVersion: engine.ruleVersion,
+            ruleSource: .loadedRules
         )
     }
 
-    static func fallback() -> MealVisual {
+    static func fallback(
+        ruleVersion: Int = NutritionRuleEngine.unavailableFallbackRuleVersion,
+        ruleSource: NutritionRuleResolutionSource = .fallbackRulesUnavailable
+    ) -> MealVisual {
         MealVisual(
             category: .other,
             iconKey: MealVisualIconManifest.iconKey(for: .other),
             confidence: .fallback,
-            representativeNutrientIDs: []
+            representativeNutrientIDs: [],
+            ruleVersion: ruleVersion,
+            ruleSource: ruleSource
         )
     }
 

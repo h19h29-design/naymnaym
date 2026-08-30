@@ -54,6 +54,7 @@ struct NutritionRulePresentationMatch: Equatable, Sendable {
 
 struct NutritionRuleEngine {
     static let supportedRuleVersion = 1
+    static let unavailableFallbackRuleVersion = 0
 
     private let rules: NutritionRulesDocument
 

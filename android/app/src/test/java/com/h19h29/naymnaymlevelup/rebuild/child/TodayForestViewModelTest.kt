@@ -87,12 +87,24 @@ class TodayForestViewModelTest {
     }
 
     @Test
-    fun allergyRiskDisablesOneBiteAndPrioritizesSafetyActions() {
+    fun allergyRiskAllowsOnlyAllergyAvoidedAcrossAllSixStatuses() {
         val viewModel = viewModel(allergyCodes = listOf(5))
         val risky = MEAL.menuItems.first()
 
         assertTrue(viewModel.isAllergyRisk(risky))
-        assertFalse(viewModel.isStatusEnabled(EatingStatus.OneBite, risky))
+        assertEquals(
+            listOf(
+                EatingStatus.Finished to false,
+                EatingStatus.Half to false,
+                EatingStatus.OneBite to false,
+                EatingStatus.SmelledOnly to false,
+                EatingStatus.DifficultToday to false,
+                EatingStatus.AllergyAvoided to true,
+            ),
+            TodayForestViewModel.activeStatuses.map { status ->
+                status to viewModel.isStatusEnabled(status, risky)
+            },
+        )
         assertEquals(
             listOf(TodaySafetyAction.AllergyAvoided, TodaySafetyAction.GuardianCheck),
             viewModel.prioritizedSafetyActions(risky),
@@ -100,12 +112,44 @@ class TodayForestViewModelTest {
         assertEquals(
             listOf(
                 EatingStatus.Finished,
+                EatingStatus.Half,
                 EatingStatus.OneBite,
                 EatingStatus.SmelledOnly,
                 EatingStatus.DifficultToday,
                 EatingStatus.AllergyAvoided,
             ),
             TodayForestViewModel.activeStatuses,
+        )
+    }
+
+    @Test
+    fun safeMenuAllowsAllSixStatuses() {
+        val viewModel = viewModel(allergyCodes = listOf(5))
+        val safe = MEAL.menuItems.first().copy(allergyCodes = listOf(7, 9))
+
+        assertFalse(viewModel.isAllergyRisk(safe))
+        assertEquals(
+            TodayForestViewModel.activeStatuses,
+            TodayForestViewModel.activeStatuses.filter { status ->
+                viewModel.isStatusEnabled(status, safe)
+            },
+        )
+    }
+
+    @Test
+    fun allSixStatusLabelsMatchTheChildContract() {
+        assertEquals(
+            listOf(
+                "finished" to "다 먹었어요",
+                "half" to "반 정도 먹었어요",
+                "oneBite" to "한 입 도전",
+                "smelledOnly" to "냄새만 맡았어요",
+                "difficultToday" to "오늘은 안 먹어요",
+                "allergyAvoided" to "알레르기로 피했어요",
+            ),
+            TodayForestViewModel.activeStatuses.map { status ->
+                status.wireValue to status.childTitle
+            },
         )
     }
 
@@ -144,31 +188,60 @@ class TodayForestViewModelTest {
         )
         assertEquals(listOf("photo-1", "photo-2"), command.photoIDs)
         assertEquals(
-            "2026-07-25|김치 볶음밥|difficultToday",
+            "2026-07-25|김치 볶음밥",
             command.recordID,
         )
     }
 
     @Test
-    fun smelledAndAllergyAvoidedSkipDifficultyReasons() = runTest {
+    fun riskyNonAvoidanceStatusesAreRejectedBeforeRecorder() = runTest {
         val recorder = CapturingRecorder()
         val viewModel = viewModel(recorder = recorder, allergyCodes = listOf(5))
         viewModel.load()
 
-        viewModel.record(
-            MEAL.menuItems.first(),
-            EatingStatus.SmelledOnly,
-            listOf(DifficultyReason.Smell),
+        TodayForestViewModel.activeStatuses
+            .filterNot { it == EatingStatus.AllergyAvoided }
+            .forEach { status ->
+                val error = expectTodayFailure {
+                    viewModel.record(
+                        MEAL.menuItems.first(),
+                        status,
+                        listOf(DifficultyReason.Smell),
+                    )
+                }
+                assertEquals(
+                    status.wireValue,
+                    TodayForestError.AllergySafetyRequired,
+                    error.reason,
+                )
+            }
+
+        assertTrue(recorder.commands.isEmpty())
+    }
+
+    @Test
+    fun allergyAvoidedPersistsExactSortedOverlapAndSkipsDifficultyReasons() = runTest {
+        val recorder = CapturingRecorder()
+        val viewModel = viewModel(
+            recorder = recorder,
+            allergyCodes = listOf(7, 5, 2, 5),
         )
+        viewModel.load()
+        val risky = MEAL.menuItems.first().copy(
+            allergyCodes = listOf(9, 7, 5, 7),
+        )
+
         viewModel.record(
-            MEAL.menuItems.first(),
+            risky,
             EatingStatus.AllergyAvoided,
             listOf(DifficultyReason.Texture),
         )
 
-        assertTrue(recorder.commands[0].difficultyReasons.isEmpty())
-        assertTrue(recorder.commands[1].difficultyReasons.isEmpty())
-        assertEquals(listOf(5), recorder.commands[1].allergyCodes)
+        val command = recorder.commands.single()
+        assertTrue(command.difficultyReasons.isEmpty())
+        assertEquals(listOf(5, 7), command.allergyCodes)
+        assertEquals(listOf(2, 5, 7), command.childAllergyCodes)
+        assertEquals(listOf(5, 7, 9), command.itemAllergyCodes)
     }
 
     @Test
@@ -202,6 +275,17 @@ class TodayForestViewModelTest {
         date = LocalDate.of(2026, 7, 25),
         now = { Instant.parse("2026-07-25T03:00:00Z") },
     )
+
+    private suspend fun expectTodayFailure(
+        block: suspend () -> Unit,
+    ): TodayForestException {
+        try {
+            block()
+        } catch (error: TodayForestException) {
+            return error
+        }
+        throw AssertionError("Expected TodayForestException")
+    }
 
     private class FakeMealRepository(
         var mealState: MealLoadState,

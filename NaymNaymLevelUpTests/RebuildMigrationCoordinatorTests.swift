@@ -754,12 +754,14 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
                 $0 = Result {
                     try useCase.execute(
                         RecordMealCommand(
-                            recordID: "2026-07-25|시금치나물|oneBite",
+                            recordID: "2026-07-25|시금치나물",
                             date: "2026-07-25",
                             menuName: "시금치나물",
                             status: .oneBite,
                             difficultyReasons: [],
                             allergyCodes: [],
+                            childAllergyCodes: [],
+                            itemAllergyCodes: [],
                             photoIDs: [],
                             parentShareEnabled: false,
                             occurredAt: Date(timeIntervalSince1970: 1_784_948_400)
