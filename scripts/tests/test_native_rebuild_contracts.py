@@ -153,7 +153,7 @@ class NativeRebuildContractTests(unittest.TestCase):
         self.assertEqual(policy["version"], 1)
         self.assertEqual(
             policy["thresholds"],
-            [0, 80, 180, 320, 500, 720, 1000],
+            [0, 80, 180, 320, 500, 720, 1000, 1300, 1650, 2050, 2500, 3000],
         )
         self.assertEqual(
             policy["titles"],
@@ -165,28 +165,49 @@ class NativeRebuildContractTests(unittest.TestCase):
                 "급식 히어로",
                 "영양 마스터",
                 "레전드 냠냠러",
+                "별빛 셰프",
+                "균형 수호자",
+                "숲의 영양 기사",
+                "황금 한입 챔피언",
+                "전설의 급식대장",
             ],
         )
 
     def test_validator_rejects_growth_policy_drift(self):
-        policy = {
-            "version": 1,
-            "thresholds": [0, 80, 180, 320, 500, 720, 720],
-            "titles": [
-                "냠냠 새싹",
-                "한 입 탐험가",
-                "냠냠 용사",
-                "편식 몬스터 사냥꾼",
-                "급식 히어로",
-                "영양 마스터",
-                "영양 마스터",
-            ],
-        }
+        thresholds = [0, 80, 180, 320, 500, 720, 1000, 1300, 1650, 2050, 2500, 3000]
+        titles = [
+            "냠냠 새싹",
+            "한 입 탐험가",
+            "냠냠 용사",
+            "편식 몬스터 사냥꾼",
+            "급식 히어로",
+            "영양 마스터",
+            "레전드 냠냠러",
+            "별빛 셰프",
+            "균형 수호자",
+            "숲의 영양 기사",
+            "황금 한입 챔피언",
+            "전설의 급식대장",
+        ]
+        invalid_policies = [
+            {
+                "version": 1,
+                "thresholds": thresholds[:7],
+                "titles": titles[:7],
+            },
+            {
+                "version": 1,
+                "thresholds": thresholds + [3400],
+                "titles": titles + ["미출시 단계"],
+            },
+        ]
 
-        result = self._run_validator_with(growth_policy=policy)
+        for policy in invalid_policies:
+            with self.subTest(stage_count=len(policy["thresholds"])):
+                result = self._run_validator_with(growth_policy=policy)
 
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("growth-policy.json", result.stderr)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("growth-policy.json", result.stderr)
 
     def test_xp_policy_preserves_existing_values(self):
         policy = json.loads((CONTRACTS / "xp-policy.json").read_text())

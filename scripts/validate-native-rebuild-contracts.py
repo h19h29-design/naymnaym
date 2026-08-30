@@ -107,7 +107,20 @@ EXPECTED_STATUS_XP = {
     "allergyAvoided": 8,
 }
 EXPECTED_CAPS = {"base": 50, "challengeBonus": 70, "total": 100}
-EXPECTED_GROWTH_THRESHOLDS = [0, 80, 180, 320, 500, 720, 1000]
+EXPECTED_GROWTH_THRESHOLDS = [
+    0,
+    80,
+    180,
+    320,
+    500,
+    720,
+    1000,
+    1300,
+    1650,
+    2050,
+    2500,
+    3000,
+]
 EXPECTED_GROWTH_TITLES = [
     "냠냠 새싹",
     "한 입 탐험가",
@@ -116,6 +129,11 @@ EXPECTED_GROWTH_TITLES = [
     "급식 히어로",
     "영양 마스터",
     "레전드 냠냠러",
+    "별빛 셰프",
+    "균형 수호자",
+    "숲의 영양 기사",
+    "황금 한입 챔피언",
+    "전설의 급식대장",
 ]
 EXPECTED_FOREST_LAYER_ORDER = [
     "sky",
@@ -522,12 +540,12 @@ def validate_growth_policy(policy):
         )
     if (
         not isinstance(thresholds, list)
-        or len(thresholds) != 7
+        or len(thresholds) != 12
         or not all(is_integer(value) and value >= 0 for value in thresholds)
         or any(left >= right for left, right in zip(thresholds, thresholds[1:]))
     ):
         errors.append(
-            "growth-policy.json: thresholds must be seven increasing non-negative integers"
+            "growth-policy.json: thresholds must be twelve increasing non-negative integers"
         )
 
     titles = policy.get("titles")
@@ -537,12 +555,12 @@ def validate_growth_policy(policy):
         )
     if (
         not isinstance(titles, list)
-        or len(titles) != 7
+        or len(titles) != 12
         or not all(isinstance(value, str) and value for value in titles)
-        or len(set(titles)) != 7
+        or len(set(titles)) != 12
     ):
         errors.append(
-            "growth-policy.json: titles must be seven unique non-empty strings"
+            "growth-policy.json: titles must be twelve unique non-empty strings"
         )
     return errors
 

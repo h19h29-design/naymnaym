@@ -24,7 +24,7 @@ struct GrowthPolicy: Equatable, Sendable {
             }
             let document = try JSONDecoder().decode(Document.self, from: data)
             guard document.version == 1,
-                  (2...14).contains(document.thresholds.count),
+                  document.thresholds.count == 12,
                   document.thresholds.first == 0,
                   zip(
                     document.thresholds,
