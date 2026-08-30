@@ -2,7 +2,7 @@
   "version": 1,
   "userRoles": ["child", "parent"],
   "eatingStatuses": ["oneBite", "finished", "half", "smelledOnly", "difficultToday", "allergyAvoided"],
-  "recordableEatingStatuses": ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
+  "recordableEatingStatuses": ["oneBite", "finished", "half", "smelledOnly", "difficultToday", "allergyAvoided"],
   "syncStates": ["localOnly", "queued", "synced", "failed", "deleted"],
   "motionStates": ["idle", "tapReaction", "mealSuccess", "levelUp", "comfort", "reducedMotion"],
   "identityRules": {

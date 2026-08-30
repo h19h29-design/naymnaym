@@ -23,6 +23,7 @@ EXPECTED_ARRAYS = {
     "recordableEatingStatuses": [
         "oneBite",
         "finished",
+        "half",
         "smelledOnly",
         "difficultToday",
         "allergyAvoided",
@@ -564,8 +565,8 @@ def validate_xp_policy(policy, eating_statuses, recordable_statuses):
     legacy_is_valid = validate_unique_strings(legacy, "xp-policy.json: legacyReadCompatibleStatuses", errors)
     if active_is_valid and active != recordable_statuses:
         errors.append("xp-policy.json: activeStatuses must match recordable eating statuses")
-    if legacy_is_valid and legacy != ["half"]:
-        errors.append("xp-policy.json: half is the only legacy read-compatible status")
+    if legacy_is_valid and legacy != []:
+        errors.append("xp-policy.json: legacy read-compatible statuses must be empty")
     if active_is_valid and legacy_is_valid:
         if set(active) & set(legacy):
             errors.append("xp-policy.json: active and legacy statuses must not overlap")

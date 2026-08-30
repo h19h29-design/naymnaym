@@ -227,9 +227,16 @@ class NativeRebuildContractTests(unittest.TestCase):
         self.assertEqual(policy["caps"], {"base": 50, "challengeBonus": 70, "total": 100})
         self.assertEqual(
             policy["activeStatuses"],
-            ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
+            [
+                "oneBite",
+                "finished",
+                "half",
+                "smelledOnly",
+                "difficultToday",
+                "allergyAvoided",
+            ],
         )
-        self.assertEqual(policy["legacyReadCompatibleStatuses"], ["half"])
+        self.assertEqual(policy["legacyReadCompatibleStatuses"], [])
         self.assertEqual(
             policy["awardIdentityComponents"],
             ["date", "normalizedMenuName"],
@@ -404,12 +411,6 @@ class NativeRebuildContractTests(unittest.TestCase):
         invalid_mutations = [
             {"date": "2026-7-25"},
             {"status": "unknown"},
-            {
-                "status": "half",
-                "recordID": "2026-07-25|시금치 나물|half",
-                "eventID": "meal:2026-07-25|시금치 나물|half",
-                "duplicateEventID": "meal:2026-07-25|시금치 나물|half",
-            },
             {"menuName": "시금치 나물|oneBite"},
             {"recordID": "2026-07-25|시금치 나물|finished"},
             {"eventID": "meal:2026-07-25|시금치 나물|finished"},
@@ -444,7 +445,7 @@ class NativeRebuildContractTests(unittest.TestCase):
             "oneBite", "finished", "half", "smelledOnly", "difficultToday", "allergyAvoided"
         ])
         self.assertEqual(contract["recordableEatingStatuses"], [
-            "oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"
+            "oneBite", "finished", "half", "smelledOnly", "difficultToday", "allergyAvoided"
         ])
         self.assertEqual(contract["syncStates"], ["localOnly", "queued", "synced", "failed", "deleted"])
         self.assertEqual(contract["motionStates"], [

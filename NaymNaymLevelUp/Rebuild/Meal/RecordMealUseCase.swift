@@ -467,7 +467,7 @@ private struct XPPolicyDocument: Decodable {
             && active.count == activeStatuses.count
             && legacy.count == legacyReadCompatibleStatuses.count
             && active.isDisjoint(with: legacy)
-            && legacy == Set([RebuildEatingStatus.half.rawValue])
+            && legacy.isEmpty
             && active.union(legacy) == knownStatuses
             && awardIdentityComponents == ["date", "normalizedMenuName"]
             && awardIdentity == "{date}|{normalizedMenuName}"

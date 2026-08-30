@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "activeStatuses": ["oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided"],
-  "legacyReadCompatibleStatuses": ["half"],
+  "activeStatuses": ["oneBite", "finished", "half", "smelledOnly", "difficultToday", "allergyAvoided"],
+  "legacyReadCompatibleStatuses": [],
   "awardIdentityComponents": ["date", "normalizedMenuName"],
   "awardIdentity": "{date}|{normalizedMenuName}",
   "statusTransitionsGrantAdditionalXP": false,

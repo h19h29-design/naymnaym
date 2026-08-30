@@ -554,7 +554,7 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
         XCTAssertEqual(try count(RebuildEntityName.progressEvent, in: container), 0)
     }
 
-    func testXPPolicyCannotPromoteLegacyHalfToActive() throws {
+    func testXPPolicyCannotDemoteHalfToLegacyStatus() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         var policy = try XCTUnwrap(
             JSONSerialization.jsonObject(
@@ -562,9 +562,9 @@ final class RebuildRecordMealUseCaseTests: XCTestCase {
             ) as? [String: Any]
         )
         policy["activeStatuses"] = [
-            "half", "finished", "smelledOnly", "difficultToday", "allergyAvoided",
+            "oneBite", "finished", "smelledOnly", "difficultToday", "allergyAvoided",
         ]
-        policy["legacyReadCompatibleStatuses"] = ["oneBite"]
+        policy["legacyReadCompatibleStatuses"] = ["half"]
         let tampered = try JSONSerialization.data(withJSONObject: policy)
 
         XCTAssertThrowsError(
