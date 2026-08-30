@@ -18,10 +18,12 @@
 3. 8–12 임계값은 1300, 1650, 2050, 2500, 3000 XP다.
 4. XP 원장과 사용자 기록은 그대로 두고 현재 단계를 정책에서 다시 계산한다.
 5. 미출시 14단계 후보는 마이그레이션 원본이 아니라 편집 원본이다. 8–14의 소재를 8–12에 통합한다.
-6. 오늘·주간·월간은 같은 MealDayDetailView와 정확한 dateKey를 사용한다.
-7. 기존 NutritionRuleEngine을 확장해 대표 영양소 피드백을 제공한다. 개별 메뉴의 정량 영양값은 추정하지 않는다.
-8. 알레르기 안전 규칙은 선택 UI와 RecordMealUseCase가 동일한 정책을 사용한다.
-9. 기존 1–7 마스코트, 숲 레이어, 디자인 토큰, Core Data 엔티티를 재사용한다.
+6. 성장 상태는 변경하지 않은 Core Data v1과 migration state를 그대로 두고, bounded `growth-stage-state-v2` UserDefaults 값만 단조 증가 방식으로 추가한다. 기존 UserDefaults 진행 값은 읽기 전용 권리 하한으로 union한다.
+7. 영양 안내는 Core Data 열이나 v2 backfill이 아니라 정확한 meal-record revision에 결합된 versioned immutable sidecar로 보존한다.
+8. 오늘·주간·월간은 같은 MealDayDetailView와 정확한 dateKey를 사용한다.
+9. 기존 NutritionRuleEngine을 확장해 대표 영양소 피드백을 제공한다. 개별 메뉴의 정량 영양값은 추정하지 않는다.
+10. 알레르기 안전 규칙은 선택 UI와 RecordMealUseCase가 동일한 정책을 사용한다.
+11. 기존 1–7 마스코트, 숲 레이어, 디자인 토큰, Core Data 엔티티를 재사용한다.
 
 ## 2. 진실 공급원
 
@@ -66,9 +68,10 @@ Ponytail 원칙에 따라 이미 있는 코드와 타입을 우선 사용한다.
 
 | 요구 | 재사용할 현재 자산 | 필요한 최소 변경 |
 |---|---|---|
-| 성장 계산 | GrowthPolicy, GrowthPolicyLoader, GrowthViewModel, growth-policy.json | 12단계 계약·카피·테스트 교체 |
+| 성장 계산 | GrowthPolicy, GrowthPolicyLoader, GrowthViewModel, growth-policy.json | 12단계 계약·카피·테스트 교체; legacy `PlayerProgress`의 공개 1–7 계산 계약은 유지 |
 | XP 보존 | RebuildProgressEvent, RebuildProgressRepository | 원장 불변 검증 추가 |
-| 공개 데이터 이관 | LegacyDefaultsReader, RebuildMigrationCoordinator, migration state/digest | 선택 스킨·기존 배지 백필드와 검증 추가 |
+| 성장 권리 저장 | `LegacyDefaultsReader`, `ProgressStore`의 read-only raw payload, bounded `growth-stage-state-v2` UserDefaults store | XP 단계·유효 legacy level/skin·저장된 최고 해금 단계를 단조 증가 union; Core Data와 v1 migration state는 변경하지 않음 |
+| 공개 데이터 이관 | LegacyDefaultsReader, RebuildMigrationCoordinator, migration state/digest | 기존 v1 이관을 재실행하거나 v2 backfill하지 않고, raw progress 권리·배지·스킨 보존 검증 추가 |
 | 성장 화면 | GrowthView, CollectionView, CollectionProgress | 12단계 로드맵, 2열 도감, 선택 상세 |
 | 마스코트 | Squirrel_Growth_Level_1…7, MascotRig level_01…07, forest layers | 8–12 첫 제작 레이어 추가와 안전한 대체 |
 | 날짜 계산 | MealScheduleCalendar | 월–일 7일, dateKey 헬퍼 보강 |
@@ -78,7 +81,8 @@ Ponytail 원칙에 따라 이미 있는 코드와 타입을 우선 사용한다.
 | 영양 규칙 | NutritionRuleEngine, NutritionInsight, nutrition-rules.json | 분류·확신도·대체 메뉴·저장 스냅샷 확장 |
 | 알레르기 | 프로필 allergyCodes, 메뉴 allergyCodes, 현재 저장 검증 | 공유 SafetyPolicy로 UI/유스케이스 통일 |
 | 색·타이포 | RebuildDesignTokens, legacy AppColors의 검증된 색 값 | 의미 색과 컴포넌트 상태만 추가 |
-| 저장 모델 | RebuildProfile, RebuildMealRecord | legacy 진행 스냅샷·영양 스냅샷용 선택 속성 추가 |
+| 영양 안내 저장 | 기존 RebuildMealRecord revision 필드 + Application Support sidecar | immutable, versioned snapshot을 정확한 record revision fingerprint에 결합; Core Data 열 추가 없음 |
+| 저장 모델 | RebuildProfile, RebuildMealRecord | 기존 Core Data v1 스키마와 migration state를 그대로 유지 |
 
 새 GrowthSystem, MealPlatform, NutritionService 계층을 만들지 않는다. 화면에서 사용하는 가벼운 조합 타입은 허용하되 저장소와 네트워크 추상화를 복제하지 않는다.
 
@@ -121,12 +125,32 @@ Ponytail 원칙에 따라 이미 있는 코드와 타입을 우선 사용한다.
 
 ### 5.3 단계 표시와 선택
 
-- 현재 단계는 totalXP로 매번 파생한다.
+- 현재 XP 단계는 변경하지 않은 `RebuildProgressEvent` 원장의 기존 합계 의미에서 매번 파생한다.
 - 다음 목표는 다음 임계값까지 남은 XP로 계산한다.
-- highestUnlockedStageID 또는 unlockedStages 배열을 새로 저장하지 않는다.
-- 현재 요구에는 “도감 항목 선택 상세”만 필요하며, 새 후반 단계를 활성 스킨으로 선택하는 기능은 추가하지 않는다.
-- 공개 선택 스킨 skin-1…skin-7은 사용자 선호로 별도 보존한다.
+- bounded `growth-stage-state-v2` UserDefaults payload에는 `version`, `highestUnlockedStageID`, `selectedStageID`만 Codable로 저장한다. 누락·부분·범위를 벗어난 값은 안전한 기본값으로 읽는다.
+- `highestUnlockedStageID`는 XP 단계, raw legacy `level`, 유효한 `skin-1…skin-7` 단계, 저장된 최고 해금 단계의 최대값을 `1...12`로 clamp한 값이며, 이전 값보다 낮게 저장하지 않는다.
+- `selectedStageID`는 이미 해금된 유효 단계만 사용한다. 없거나 잠겨 있으면 유효한 legacy skin 선택, 그 다음 최고 해금 단계 순으로 표시한다. 새 후반 단계를 활성 스킨으로 선택하는 기능은 추가하지 않는다.
+- 공개 선택 스킨 `skin-1…skin-7`과 legacy badge 문자열은 `player-progress` 원본에서 읽기 전용 권리로 union하며, legacy 원본을 재인코딩하거나 삭제하지 않는다.
 - 에셋이 없거나 로드에 실패하면 현재 XP와 단계명은 유지하고 가장 높은 검증된 1–7 기본 몸체와 중립 프레임을 사용한다. 대체 표시를 새 완성 캐릭터로 표현하지 않는다.
+
+### 5.4 성장 권리 저장·롤백 계약
+
+성장 권리는 기존 Core Data v1 스키마와 `RebuildMigrationState` version/digest를 건드리지 않는다. v1 migration을 재실행하거나 별도의 v2 backfill을 수행하지 않는다. `growth-stage-state-v2`는 파생된 표시 권리를 빠르게 복원하기 위한 bounded additive cache일 뿐이며, 쓰기 실패 시 XP 원장과 read-only legacy 권리로 다시 계산한다.
+
+권리 계산은 다음과 같다.
+
+```text
+xpStage = stage(totalXP from unchanged RebuildProgressEvent semantics)
+legacyLevel = valid raw player-progress.level, else 1
+legacySkinStage = valid skin-1...skin-7 suffix, else 1
+storedHighest = valid growth-stage-state-v2.highestUnlockedStageID, else 1
+highestUnlocked = clamp(max(xpStage, legacyLevel, legacySkinStage, storedHighest), 1...12)
+selected = valid stored selectedStageID <= highestUnlocked
+        ?? valid legacy skin stage <= highestUnlocked
+        ?? highestUnlocked
+```
+
+The raw `player-progress` payload is never written as part of this calculation. A malformed or partially written v2 payload must not alter XP, records, badges, skins, parent links, or the legacy defaults bytes. On rollback to 1.1, the old bundle may display only its seven-stage view; the new v2 key remains unknown to it and is read again when the updated bundle returns.
 
 ## 6. 저장과 마이그레이션
 
@@ -137,42 +161,73 @@ Ponytail 원칙에 따라 이미 있는 코드와 타입을 우선 사용한다.
 1. legacy recordExp + challengeExp + balanceExp + safetyExp 합계와 이관 뒤 progress event 합계가 정확히 같다.
 2. 기존 Rebuild 원장의 event id, amount, occurredAt, sourceRecordID를 단계 변경 때문에 수정하지 않는다.
 3. 같은 XP에서 공개 1.1의 단계보다 낮은 단계가 되지 않는다.
-4. meal record, photo 상대 경로, challenge, parent link, share flag의 개수와 식별자가 보존된다. Rebuild에 직접 대응 엔티티가 없는 challenge 상세는 versioned legacy 진행 스냅샷에 둔다.
-5. badges 문자열과 currentSkinId를 읽고 이관 뒤에도 표시 가능한 형태로 보존한다.
+4. meal record, photo 상대 경로, challenge, parent link, share flag의 개수와 식별자가 보존된다. Rebuild에 직접 대응 엔티티가 없는 challenge 상세는 기존 legacy UserDefaults 원본에서 읽으며 별도 v2 backfill을 만들지 않는다.
+5. badges 문자열과 currentSkinId를 legacy `player-progress` 원본에서 읽기 전용으로 union하고, 원본 문자열·순서·바이트를 보존한다.
 6. skin-1…skin-7 식별자와 공개 이미지 매핑을 바꾸지 않는다.
 7. 기존 UserDefaults 원본은 검증 성공만으로 삭제하지 않는다.
 8. 검증 실패 시 migration completed를 기록하지 않는다.
 9. 영양 스냅샷이 없는 과거 기록은 정상적으로 열리고 필요할 때 현재 규칙으로 “현재 기준 안내”만 만든다.
 
-### 6.2 최소 저장 확장
+### 6.2 성장 상태의 최소 additive cache
 
-현재 프로그램식 Core Data 모델과 자동 추론 마이그레이션을 유지한다. 새 엔티티를 만들지 않고 선택 속성 두 개만 추가한다.
+현재 프로그램식 Core Data 모델, `NaymRebuild.sqlite`, `RebuildMigrationState`의 version/digest와 공개 v1 migration 경로를 **그대로 유지한다**. 새 Core Data 엔티티·속성·모델 버전은 추가하지 않으며, 기존 migration state를 올리거나 v1 migration을 재실행하지 않는다.
 
-RebuildProfile:
+bounded UserDefaults 키 `growth-stage-state-v2`만 추가한다. Codable payload는 다음 세 값으로 제한한다.
 
-- legacyProgressSnapshotJSON: String?, Rebuild에 직접 대응 필드가 없는 공개 진행 데이터의 versioned 스냅샷
+- `version: Int` (현재 1)
+- `highestUnlockedStageID: Int`
+- `selectedStageID: Int?`
 
-RebuildMealRecord:
+이 값은 편의상 파생 표시 권리를 캐시할 뿐 XP·기록의 진실 공급원이 아니다. `highestUnlockedStageID`는 읽은 XP 단계, 유효한 raw legacy `player-progress.level`, 유효한 `skin-1…skin-7` 단계, 기존 v2 값의 최대값을 `1...12`로 clamp한 뒤 이전 값보다 낮게 저장하지 않는다. malformed/partial/out-of-range JSON은 무시하고 같은 규칙으로 다시 파생한다. `selectedStageID`는 이미 해금된 유효 단계만 허용하며, 아니면 유효한 legacy skin 선택, 그 다음 최고 해금 단계로 표시한다.
 
-- nutritionInsightJSON: String?, 저장 시점의 버전 있는 대표 영양 피드백
+`LegacyDefaultsReader`/`ProgressStore.readPersisted`는 `player-progress`의 level·badges·currentSkinId·XP 구성요소를 읽기 전용으로 제공한다. 원본 UserDefaults payload를 재인코딩·삭제·backfill하지 않는다. CollectionView는 새 파생 배지와 별개로 legacy badge 문자열을 union해 “이전 뱃지”로 보여 주며, 새 컬렉션 수집률 분모에 섞지 않는다. 이 과정은 부모 링크·사진·식사 기록·XP 원장에 쓰지 않는다.
 
-LegacyProgressSnapshot에는 schemaVersion, totalChallenges, badges, selectedSkinID, challenge record의 원래 식별자·날짜·메뉴·행동·상태·획득 XP를 둔다. XP 계산은 계속 RebuildProgressEvent 원장만 사용하고 이 스냅샷에서 다시 더하지 않는다. 도감의 “이전에 받은 배지”와 공개 선택 스킨 복구만 이 스냅샷을 읽는다.
+### 6.3 영양 안내 sidecar와 정확한 기록 리비전
 
-NutritionInsight 저장 문서에는 schemaVersion, ruleVersion, normalizedMenuKey, eatingStatus, 대표 영양소 ID, 어린이용 문장, 대체 메뉴 식별자, createdAt만 둔다. 메뉴별 정량값은 넣지 않는다.
+영양 안내는 Core Data optional column이나 v2 migration backfill로 저장하지 않는다. Application Support 아래의 전용 sidecar 디렉터리에 **versioned immutable** JSON 파일로 저장하고, 해당 파일은 정확한 meal-record revision에만 결합한다.
 
-이 속성들은 기존 SQLite에 대한 추가 선택 속성이므로 RebuildPersistentStore의 자동·추론 마이그레이션 경로를 사용한다. 실제 디스크의 이전 모델 스토어를 복사한 업그레이드 테스트가 통과하기 전에는 출시하지 않는다. 추론이 실패하면 빈 스토어로 교체하지 않고 기존 스토어를 유지한 채 복구 가능한 오류를 표시한다.
+```swift
+struct NutrientImpactSnapshot: Codable, Hashable, Sendable {
+    let schemaVersion: Int
+    let ruleVersion: Int
+    let recordID: String
+    let date: String
+    let normalizedMenuName: String
+    let status: RebuildEatingStatus
+    let recordUpdatedAt: Date
+    let nutrients: [String]
+    let headline: String
+    let explanation: String
+    let alternatives: [String]
+    let disclaimer: String
+}
 
-### 6.3 마이그레이션 버전
+protocol NutrientImpactSidecar {
+    func install(_ snapshot: NutrientImpactSnapshot) throws
+    func load(matching record: RebuildMealRecordRevision) throws -> NutrientImpactSnapshot?
+}
 
-기존 migration state가 완료 상태여도 새 호환성 필드가 비어 있으면 한 번의 v2 backfill을 실행한다.
+struct RebuildMealRecordRevision: Equatable, Sendable {
+    let recordID: String
+    let date: String
+    let normalizedMenuName: String
+    let status: RebuildEatingStatus
+    let updatedAt: Date
+}
+```
 
-1. LegacyDefaultsReader가 이미 읽는 progress와 challenge records를 사용한다.
-2. currentSkinId가 skin-1…skin-7이면 selectedSkinID로 복사하고, 아니면 화면은 skin-1로 복구하되 스냅샷의 원본 문자열은 유지한다.
-3. badges는 화면 합성 시 중복만 제거하고 스냅샷에는 원래 문자열과 순서를 유지한다.
-4. CollectionView는 정책 배지와 “이전에 받은 배지”를 별도 그룹으로 합쳐 보여 준다.
-5. 기존 배지를 새 컬렉션 배지로 임의 변환하거나 XP를 다시 지급하지 않는다.
-6. challenge는 원래 식별자·상세를 스냅샷에 보존하고, 기존 변환 로직으로 만든 progress event의 sourceRecordID와 대조한다.
-7. 프로필·XP·기록·사진·링크·challenge·배지·스킨 검증을 통과한 뒤에만 v2 완료를 기록한다.
+`recordID + date + normalizedMenuName + status + recordUpdatedAt`로 안전한 결정적 fingerprint/file name을 만들고, 임시 파일 → 원자 rename → 즉시 read-back 검증 순서를 사용한다. Core Data record/event 저장이 실패하면 새 파일은 orphan으로 남아도 읽히지 않으며 기존 matching snapshot은 덮어쓰지 않는다. 상태 변경은 이전 파일을 수정하지 않고 새 revision 파일을 만든다. reader는 현재 활성 Core Data 행의 date/menu/status/updatedAt 및 recordID가 모두 일치할 때만 당시 snapshot으로 인정한다. 일치 파일이 없거나 손상·schema/rule/fingerprint가 다르면 snapshot을 무시하고 “현재 기준 안내”로 명시한다. orphan을 이번 범위에서 적극 삭제하지 않는다.
+
+sidecar에는 교육용 문장과 식별자만 저장하며 메뉴·학교·프로필·부모 연결을 복제하지 않는다. 개별 메뉴의 g/mg/kcal, 의학적 결핍·건강 악화 단정, 알레르기 회피를 번복시키는 권유 문구는 저장 검증에서 거부한다. 기존 `parentShareEnabled`가 true인 record만 기존 공유 정책의 대상이며 새 권한·Supabase schema는 만들지 않는다.
+
+저장 순서는 다음과 같다.
+
+1. UI가 확정한 안전한 command와 frozen snapshot으로 정확한 record revision fingerprint를 만든다.
+2. sidecar를 설치하고 read-back/금지 문구 검증을 끝낸다.
+3. 기존 `RecordMealUseCase` Core Data record/event transaction을 실행한다.
+4. 기록 성공 후 같은 fingerprint를 가진 sidecar를 다시 읽어 당시 안내를 표시한다.
+
+Core Data v1 schema exact test와 v1 migration state exact test는 필수다. sidecar 도입 때문에 model migration이나 v2 backfill을 추가하지 않는다.
 
 ## 7. 날짜와 급식 상세
 
@@ -315,7 +370,7 @@ MealSafetyPolicy를 순수 함수로 두고 UI와 RecordMealUseCase가 함께 �
 
 논리 키는 dateKey + normalizedMenuName이다. 상태는 식별자의 일부가 아니다.
 
-- 기존 활성 기록이 있으면 그 record id를 유지하고 status, reasons, snapshot, updatedAt을 갱신한다.
+- 기존 활성 기록이 있으면 그 record id를 유지하고 status, reasons, updatedAt을 갱신한다. 영양 snapshot은 해당 revision의 sidecar를 새로 설치하며 Core Data 행에는 저장하지 않는다.
 - 과거 상태 기반 id가 여러 개 있으면 updatedAt이 가장 최근인 하나를 현재 기록으로 선택하고 나머지는 deletedAt으로 비활성화한다.
 - 행을 물리 삭제하지 않는다.
 - 사진 recordID와 기존 progress event sourceRecordID는 다시 쓰지 않는다.
@@ -430,13 +485,13 @@ legacy AppColors의 검증된 값을 참고해 RebuildDesignTokens 안에 의미
 고정 fixture로 다음 경로를 모두 실행한다.
 
 - 공개 1.1 신규 업그레이드
-- 이미 완료된 Rebuild v1 store의 v2 backfill
-- 미출시 14단계 정책으로 높은 XP를 쌓은 store
-- optional 필드가 없는 오래된 Codable payload
+- 이미 완료된 Rebuild v1 store가 `alreadyCompleted`로 유지되는 경로
+- 과거 14단계 후보에서 높은 XP를 쌓은 QA fixture의 12단계 해석
+- optional 필드가 없는 오래된 Codable payload와 malformed/partial `growth-stage-state-v2`
 - 사진·보호자 링크·공유 상태가 있는 payload
 - 배지와 skin-7 선택이 있는 payload
 
-각 fixture에서 XP 합계, record/photo/link 식별자, badge 문자열, selectedSkinID, 원본 store 존재를 비교한다.
+각 fixture에서 XP 합계, record/photo/link 식별자, badge 문자열, legacy `currentSkinId`, v2 최고 해금·선택 값, 원본 UserDefaults 바이트, v1 migration state version/digest를 비교한다. Core Data model attribute 집합이 공개 v1과 같고 v2 backfill이 호출되지 않는 것도 고정한다.
 
 ### 14.3 달력·상세 테스트
 
@@ -452,14 +507,24 @@ legacy AppColors의 검증된 값을 참고해 RebuildDesignTokens 안에 의미
 - 알레르기 번호와 공백을 제거해도 원문이 보존되는지
 - 구조화 nutrient가 키워드 규칙보다 우선하는지
 - exact/keyword/fallback 결과
-- individual menu snapshot에 정량값이 생성되지 않는지
+- individual menu sidecar snapshot에 정량값이 생성되지 않는지
 - 어려웠어요 대체 메뉴가 같은 급식·알레르기 안전 조건을 지키는지
 - 여섯 상태가 모두 노출되는지
 - 알레르기 위험 상태가 UI와 유스케이스에서 동일하게 허용/차단되는지
 - 상태 수정 뒤 활성 기록 1개, XP 이벤트 1개인지
 - 이전 기록의 사진과 sourceRecordID가 유지되는지
 
-### 14.5 UI·접근성·시각 회귀
+### 14.5 영양 sidecar·Core Data v1 회귀
+
+- `NutrientImpactSidecar` 설치/read-back 성공 뒤에만 기존 record/event가 저장되는지
+- sidecar 설치 실패·Core Data 저장 실패·재시작 경계에서 record/event와 sidecar가 서로 거짓으로 결합되지 않는지
+- 상태 변경은 immutable 새 revision 파일을 만들고 이전 파일을 덮어쓰지 않는지
+- 현재 record의 recordID/date/normalizedMenuName/status/updatedAt과 정확히 맞는 sidecar만 당시 안내로 읽는지
+- 손상 JSON, fingerprint 불일치, path traversal, 금지 문구·정량값은 무시하고 “현재 기준 안내”로 내리는지
+- 공개 v1 `RebuildManagedModel` attribute 집합·optional 집합·unique constraint와 `RebuildMigrationState` version/digest가 그대로인지
+- 새 optional Core Data column, model migration, v2 migration backfill이 존재하지 않는지
+
+### 14.6 UI·접근성·시각 회귀
 
 - TodayForest, MealDayDetail, MealRecording, Growth, Collection 스냅샷
 - 일반/최대 Dynamic Type, light/dark가 지원 범위라면 양쪽
@@ -469,7 +534,7 @@ legacy AppColors의 검증된 값을 참고해 RebuildDesignTokens 안에 의미
 - 12단계 각 에셋과 fallback
 - 공개용 네 장 스크린샷에 디버그·개인정보·임시 문구가 없는지
 
-### 14.6 출시 검증
+### 14.7 출시 검증
 
 - Debug와 Release 빌드
 - Release에서 실제 root가 기대한 Rebuild인지
@@ -481,14 +546,13 @@ legacy AppColors의 검증된 값을 참고해 RebuildDesignTokens 안에 의미
 
 ## 15. 구현 순서
 
-1. 성장 정책과 마이그레이션 불변 테스트를 먼저 추가한다.
-2. Core Data 선택 속성과 v2 backfill을 구현하고 디스크 업그레이드를 검증한다.
-3. 12단계 정책·성장 화면·도감을 연결한다.
-4. 날짜 계약을 월–일로 보강하고 공통 MealDayDetailView를 연결한다.
-5. NutritionRuleEngine을 최소 확장하고 기록 확인·snapshot을 구현한다.
-6. MealSafetyPolicy와 활성 기록 단일화를 적용한다.
-7. 의미 색·음식 아이콘·8–12 에셋을 연결한다.
-8. 접근성, 스냅샷, 오프라인, 스토어 제출 자산을 검증한다.
+1. 성장 정책, read-only legacy rights union, bounded `growth-stage-state-v2`와 Core Data v1/migration-state 불변 테스트를 먼저 추가한다.
+2. 12단계 정책·성장 화면·도감을 연결하고 8–12의 검증된 원화 또는 중립 fallback을 표시한다.
+3. 날짜 계약을 월–일로 보강하고 공통 `MealDayDetailView`를 연결한다.
+4. `NutritionRuleEngine`을 최소 확장하고 `NutrientImpactSnapshot`·immutable sidecar·정확한 record revision을 테스트한다.
+5. `MealSafetyPolicy`와 활성 기록 단일화를 적용하고 상태 선택→영양 확인→확정→저장 흐름을 연결한다.
+6. 의미 색·음식 아이콘·접근성 레이아웃을 연결한다.
+7. sidecar·v1 Core Data schema·v1 migration state·오프라인·스크린샷·스토어 제출 자산을 검증한다.
 
 각 단계는 기존 테스트를 유지하며 다음 단계로 이동한다. 에셋 제작 지연이 데이터·달력·안전 로직 검증을 막지 않도록 asset key와 fallback 계약을 먼저 고정한다.
 
