@@ -66,13 +66,19 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
 
     private let directoryURL: URL
     private let fileManager: FileManager
+    private let directorySync: @Sendable (Int32) -> Int32
 
-    init(directoryURL: URL, fileManager: FileManager = .default) {
+    init(
+        directoryURL: URL,
+        fileManager: FileManager = .default,
+        directorySync: @escaping @Sendable (Int32) -> Int32 = { Darwin.fsync($0) }
+    ) {
         // The injected parent chain is a trusted Application Support root.
         // The final sidecar directory and every file within it are opened
         // descriptor-relative with no-follow semantics.
         self.directoryURL = directoryURL
         self.fileManager = fileManager
+        self.directorySync = directorySync
     }
 
     func install(_ snapshot: NutrientImpactSnapshot) throws {
@@ -133,6 +139,11 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             return
         }
         didPublish = true
+        guard directorySync(directoryDescriptor) == 0 else {
+            // Publication already succeeded. Preserve the immutable final
+            // inode so a retry can observe and validate the same winner.
+            throw NutrientImpactSidecarError.writeFailed
+        }
 
         guard let readBack = readValidSnapshot(
             directoryDescriptor: directoryDescriptor,
@@ -557,7 +568,7 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     }
 
     private static func containsForbiddenCopy(_ value: String) -> Bool {
-        let lowercased = value.precomposedStringWithCompatibilityMapping.lowercased()
+        let lowercased = normalizedSafetyText(value)
         let secretPatterns = [
             #"(?:^|[^a-z0-9])api[ _-]?key(?:$|[^a-z0-9])"#,
             #"(?:^|[^a-z0-9])api[ _-]?token(?:$|[^a-z0-9])"#,
@@ -588,9 +599,8 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             return true
         }
 
-        // Remove only explicit educational disclaimers before scanning for
-        // medical claims. The disclaimer itself is allowed, while a diagnosis
-        // or treatment assertion elsewhere in the copy remains forbidden.
+        // Remove explicit negated educational clauses, then scan for
+        // claim-shaped language rather than rejecting bare topic words.
         let normalizedForMedical = lowercased.filter { !$0.isWhitespace }
         let safeDisclaimerMarkers = [
             "진단이나치료를대신하지않습니다",
@@ -602,28 +612,23 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         let medicalClaimText = safeDisclaimerMarkers.reduce(normalizedForMedical) {
             $0.replacingOccurrences(of: $1, with: "")
         }
-        let medicalPhrases = [
-            "결핍",
-            "부족",
-            "진단",
-            "치료",
-            "처방",
-            "질병",
-            "의학적",
-            "의료적",
-            "건강 악화",
-            "악화",
-            "모자라",
-            "몸이나빠",
-            "건강이나빠",
-            "몸에해로",
-            "빈혈",
-            "고혈압",
-            "당뇨",
+        let safeMedicalNegations = [
+            #"(?:결핍|부족)(?:을|이라고|하다고)?진단하지않(?:아요|습니다|는|기로)"#,
+            #"(?:진단|치료|처방)(?:을|를)?하지않(?:아요|습니다|는)"#,
         ]
-        guard !medicalPhrases.contains(where: medicalClaimText.contains) else {
-            return true
+        let claimCandidate = safeMedicalNegations.reduce(medicalClaimText) { text, pattern in
+            text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
+        let medicalClaimPatterns = [
+            #"(?:결핍|부족|모자라)(?:입니다|이에요|예요|해요|합니다|하다|해서|하니|하면|라서|이라고)"#,
+            #"(?:결핍|부족|모자라).*(?:몸|건강|악화|나빠|해로|질병|위험|꼭먹|섭취해야)"#,
+            #"(?:진단|치료|처방)(?:이|가|을|를|은|는|해|하|받|필요|해야|됩니다|돼요)"#,
+            #"(?:질병|빈혈|고혈압|당뇨)(?:이|가|을|를|입니다|이에요|위험|진단|치료|생겨|걸려)"#,
+            #"(?:의학적|의료적)(?:진단|판단|효과|치료|처방)"#,
+        ]
+        guard !medicalClaimPatterns.contains(where: { pattern in
+            claimCandidate.range(of: pattern, options: .regularExpression) != nil
+        }) else { return true }
 
         let compact = lowercased.filter { !$0.isWhitespace }
         let directAllergyReversalPhrases = [
@@ -645,10 +650,47 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             "알레르기라도",
             "알레르기지만",
             "알레르기인데도",
+            "알레르기가있는데",
+            "알레르기가있으면",
+            "알레르기있으면",
         ]
-        let retryOrEatMarkers = ["먹어", "먹기", "다시시도", "다시살펴", "재도전"]
-        return allergyConditionMarkers.contains(where: compact.contains)
-            && retryOrEatMarkers.contains(where: compact.contains)
+        let avoidanceMarkers = [
+            "먹지않",
+            "안먹",
+            "피해",
+            "피하",
+            "제외",
+            "중단",
+            "시도하지않",
+        ]
+        let retryOrEatMarkers = [
+            "한입시도",
+            "조금먹어보",
+            "먹어보",
+            "다시먹",
+            "다시시도",
+            "다시살펴",
+            "재도전",
+            "시도해",
+            "시도하세요",
+        ]
+        let hasAllergyCondition = allergyConditionMarkers.contains(where: compact.contains)
+        if hasAllergyCondition, retryOrEatMarkers.contains(where: compact.contains) {
+            return true
+        }
+        if hasAllergyCondition, avoidanceMarkers.contains(where: compact.contains) {
+            return false
+        }
+        return false
+    }
+
+    private static func normalizedSafetyText(_ value: String) -> String {
+        var withoutFormatCharacters = String()
+        withoutFormatCharacters.reserveCapacity(value.utf8.count)
+        for scalar in value.unicodeScalars where scalar.properties.generalCategory != .format {
+            withoutFormatCharacters.unicodeScalars.append(scalar)
+        }
+        return withoutFormatCharacters.precomposedStringWithCompatibilityMapping.lowercased()
     }
 
     private static func validDate(_ value: String) -> Bool {

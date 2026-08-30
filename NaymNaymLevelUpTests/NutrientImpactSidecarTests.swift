@@ -239,6 +239,67 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertNoThrow(try store.install(contractDisclaimer))
     }
 
+    func testSafetyCopyPolicyHandlesInvisibleAllergyAndMedicalVariants() throws {
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let rejectedCopy = [
+            "철분 12\u{200B}mg을 섭취했어요.",
+            "철분 １２\u{200B}㎎을 섭취했어요.",
+            "알레르기가 있는데 한 입 시도해요.",
+            "알레르기가 있으면 조금 먹어 보세요.",
+            "알레르기가 있는데 먹지 않다가 한 입 시도해요.",
+            "철분이 모자라서 몸이 나빠져요.",
+            "철분 결핍이라고 진단해요.",
+            "이 증상은 치료가 필요해요.",
+        ]
+        for copy in rejectedCopy {
+            assertInstallRejected(store, fixtureSnapshot(headline: copy))
+        }
+
+        let allowedCopy = [
+            "영양소 부족을 진단하지 않아요.",
+            "알레르기가 있는데 먹지 않아요.",
+            "알레르기가 있으면 피해요.",
+        ]
+        for (index, copy) in allowedCopy.enumerated() {
+            XCTAssertNoThrow(
+                try store.install(fixtureSnapshot(recordID: "safe-copy-\(index)", headline: copy))
+            )
+        }
+        XCTAssertNoThrow(
+            try store.install(fixtureSnapshot(
+                recordID: "safe-canonical-disclaimer",
+                disclaimer: "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
+            ))
+        )
+    }
+
+    func testDirectorySyncFailureKeepsPublishedRevisionImmutable() throws {
+        let snapshot = fixtureSnapshot(recordID: "directory-sync-failure")
+        let failingStore = FileNutrientImpactSidecar(
+            directoryURL: temporaryDirectory,
+            directorySync: { _ in -1 }
+        )
+
+        XCTAssertThrowsError(try failingStore.install(snapshot)) { error in
+            XCTAssertEqual(error as? NutrientImpactSidecarError, .writeFailed)
+        }
+        let file = try XCTUnwrap(singleJSONFile())
+        let publishedBytes = try Data(contentsOf: file)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
+
+        let restartedStore = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let revision = RebuildMealRecordRevision(
+            recordID: snapshot.recordID,
+            date: snapshot.date,
+            normalizedMenuName: snapshot.normalizedMenuName,
+            status: snapshot.status,
+            updatedAt: snapshot.recordUpdatedAt
+        )
+        XCTAssertEqual(try restartedStore.load(matching: revision), snapshot)
+        XCTAssertNoThrow(try restartedStore.install(snapshot))
+        XCTAssertEqual(try Data(contentsOf: file), publishedBytes)
+    }
+
     func testUTF8ByteLimitsRejectCombiningPayloadAndOversizedFileReturnsNil() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let combiningPayload = String(

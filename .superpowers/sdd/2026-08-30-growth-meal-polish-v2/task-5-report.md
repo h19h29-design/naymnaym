@@ -72,3 +72,27 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 - One focused attempt was cancelled before any `xctest` process appeared because the shared simulator install service entered `simctl diagnose`; this was kept separate from assertion failures. After the result bundle completed, focused and full suites both passed.
 - Full-suite xcresult contains one pre-existing QoS warning in `MascotMotionControllerTests.swift`; the focused Task 5 bundle contains no runtime warning. The known non-failing `_LottieStub.o` x86_64 link warning also remains outside Task 5.
 - No Task 6 integration, Core Data mutation, UI/assets/release/Android change, upload, submission, or browser action was performed.
+
+## Review fix round 2
+
+### Scope
+
+- Hardened safety-copy scanning by removing invisible Unicode format characters only in the validation view, then applying compatibility and case normalization. Stored snapshot copy remains byte-for-byte unchanged; zero-width and full-width quantitative variants can no longer bypass the policy.
+- Replaced broad medical-topic substring rejection with claim-shaped patterns plus explicit safe negations. Actual diagnosis, treatment, deficiency, and harm claims remain rejected, while `영양소 부족을 진단하지 않아요` and the canonical educational disclaimer are accepted.
+- Expanded allergy-condition handling for `알레르기가 있는데` and `알레르기가 있으면`: retry/eating encouragement is rejected, while explicit avoidance such as `먹지 않아요` and `피해요` remains valid.
+- Added directory durability after atomic exclusive publication: a successful `renameatx_np(..., RENAME_EXCL)` is followed by `fsync(directoryFD)`. A sync failure reports `writeFailed` but deliberately preserves the already-published immutable inode so retries observe the same winner; it never removes another writer's file.
+
+### TDD and verification
+
+- RED — the new durability test failed to compile because the directory-sync seam did not exist (`extra argument 'directorySync' in call`), confirming the missing behavior before implementation.
+- RED — a mixed avoidance-plus-retry sentence was initially accepted, proving that a safe-word shortcut could mask later eating encouragement; retry detection now takes precedence.
+- GREEN — focused sidecar + persistent schema suite: 30/30 passed, 0 failures (`task5-review-fix-round2-focused-final.xcresult`).
+- GREEN — full iOS suite: 434/434 passed, 0 failures (`task5-review-fix-round2-full-final.xcresult`).
+- Native rebuild Python contracts: 32/32 passed.
+- `git diff --check`: passed.
+- Core Data v1 model/migration and project membership are unchanged from `d5b79a4`; only the Task 5 sidecar source, its tests, and this report changed.
+
+### Warnings
+
+- The known non-failing `_LottieStub.o` x86_64 architecture warning remains unrelated to Task 5.
+- No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.
