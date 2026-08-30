@@ -204,6 +204,7 @@ final class TodayForestViewModel: ObservableObject {
     private let progressProvider: any TodayProgressProvider
     private let school: RebuildSchool?
     private let now: Clock
+    private let calendar: Calendar
     private var progressRevision = 0
 
     var mealScheduleRepository: any MealScheduleRepository {
@@ -244,6 +245,7 @@ final class TodayForestViewModel: ObservableObject {
             localizedCalendar.timeZone =
                 TimeZone(identifier: "Asia/Seoul") ?? .current
         }
+        self.calendar = localizedCalendar
         let keyFormatter = DateFormatter()
         keyFormatter.calendar = localizedCalendar
         keyFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -257,6 +259,32 @@ final class TodayForestViewModel: ObservableObject {
         displayFormatter.timeZone = localizedCalendar.timeZone
         displayFormatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
         dateText = displayFormatter.string(from: date)
+    }
+
+    func recordingViewModel(
+        for route: MealDayRoute
+    ) -> TodayForestViewModel? {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: route.dateKey),
+              formatter.string(from: date) == route.dateKey else {
+            return nil
+        }
+
+        return TodayForestViewModel(
+            repository: repository,
+            recorder: recorder,
+            photoMetadataStore: photoMetadataStore,
+            progressProvider: progressProvider,
+            school: school,
+            allergyCodes: allergyCodes,
+            date: date,
+            calendar: calendar,
+            now: now
+        )
     }
 
     func load() async {

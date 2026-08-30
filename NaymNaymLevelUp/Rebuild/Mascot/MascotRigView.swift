@@ -125,7 +125,9 @@ struct MascotRigView: View {
             )
             .offset(y: projection.bodyOffsetY)
             .animation(
-                .easeInOut(duration: reduceMotion ? 0.125 : 0.08),
+                reduceMotion
+                    ? MascotReducedMotionPolicy.animation
+                    : .easeInOut(duration: 0.08),
                 value: projection.eyesClosed
             )
         } else if let fallbackLayers =
@@ -148,7 +150,9 @@ struct MascotRigView: View {
             )
             .offset(y: projection.bodyOffsetY)
             .animation(
-                .easeInOut(duration: reduceMotion ? 0.125 : 0.08),
+                reduceMotion
+                    ? MascotReducedMotionPolicy.animation
+                    : .easeInOut(duration: 0.08),
                 value: projection.eyesClosed
             )
         }

@@ -29,6 +29,12 @@ struct MealScheduleSelectionState: Equatable {
     }
 }
 
+private struct MealScheduleDateStatePresentation {
+    let label: String
+    let systemImage: String
+    let color: Color
+}
+
 enum MealScheduleRow: String, CaseIterable, Identifiable {
     case grain
     case soup
@@ -318,13 +324,12 @@ struct UnavailableMealScheduleRepository: MealScheduleRepository {
 
 private struct MealScheduleLoadResult: Sendable {
     let key: String
-    let meal: RebuildMealDay?
-    let failed: Bool
+    let state: MealLoadState
 }
 
 @MainActor
 final class MealScheduleViewModel: ObservableObject {
-    @Published private(set) var meals: [String: RebuildMealDay] = [:]
+    @Published private(set) var states: [String: MealLoadState] = [:]
     @Published private(set) var isLoading = false
     @Published private(set) var message: String?
 
@@ -343,7 +348,15 @@ final class MealScheduleViewModel: ObservableObject {
     }
 
     func meal(for date: Date) -> RebuildMealDay? {
-        meals[MealScheduleCalendar.key(for: date)]
+        guard let state = loadState(for: date) else { return nil }
+        return Self.meal(
+            from: state,
+            expectedDate: MealScheduleCalendar.key(for: date)
+        )
+    }
+
+    func loadState(for date: Date) -> MealLoadState? {
+        states[MealScheduleCalendar.key(for: date)]
     }
 
     func load(dates: [Date]) async {
@@ -379,8 +392,7 @@ final class MealScheduleViewModel: ObservableObject {
                         }
                         return MealScheduleLoadResult(
                             key: key,
-                            meal: Self.meal(from: state, expectedDate: key),
-                            failed: Self.isFailed(state, expectedDate: key)
+                            state: Self.sanitized(state, expectedDate: key)
                         )
                     }
                 }
@@ -395,9 +407,12 @@ final class MealScheduleViewModel: ObservableObject {
         }
 
         for result in results {
-            meals[result.key] = result.meal
+            states[result.key] = result.state
         }
-        if school != nil, results.allSatisfy(\.failed) {
+        if school != nil, results.allSatisfy({ result in
+            if case .failed = result.state { return true }
+            return false
+        }) {
             message = "급식을 불러오지 못했어요. 네트워크 연결을 확인해 주세요."
         }
         isLoading = false
@@ -420,29 +435,54 @@ final class MealScheduleViewModel: ObservableObject {
         return candidate
     }
 
-    private nonisolated static func isFailed(
+    private nonisolated static func sanitized(
         _ state: MealLoadState,
         expectedDate: String
-    ) -> Bool {
+    ) -> MealLoadState {
         switch state {
-        case .failed:
-            return true
-        case let .cached(meal, _), let .live(meal):
-            return meal.date != expectedDate
+        case let .cached(meal, refreshedAt):
+            guard meal.date == expectedDate else {
+                return .failed(message: "selected date mismatch", cached: nil)
+            }
+            return .cached(meal, refreshedAt: refreshedAt)
+        case let .live(meal):
+            guard meal.date == expectedDate else {
+                return .failed(message: "selected date mismatch", cached: nil)
+            }
+            return .live(meal)
         case let .refreshing(cached):
-            return cached?.date != nil && cached?.date != expectedDate
+            guard cached?.date == nil || cached?.date == expectedDate else {
+                return .failed(message: "selected date mismatch", cached: nil)
+            }
+            return .refreshing(cached)
+        case let .failed(message, cached):
+            guard cached?.date == nil || cached?.date == expectedDate else {
+                return .failed(message: "selected date mismatch", cached: nil)
+            }
+            return .failed(message: message, cached: cached)
         case .empty:
-            return false
+            return .empty
         }
     }
 }
 
 struct MealScheduleView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var viewModel: MealScheduleViewModel
+    private let recordingViewModelFactory: (MealDayRoute) -> TodayForestViewModel?
     @State private var mode: MealScheduleMode = .daily
     @State private var anchorDate = Date()
     @State private var selectedDate = Date()
     @State private var selection = MealScheduleSelectionState()
+
+    init(
+        viewModel: MealScheduleViewModel,
+        recordingViewModelFactory: @escaping (MealDayRoute) -> TodayForestViewModel? = { _ in nil }
+    ) {
+        self.viewModel = viewModel
+        self.recordingViewModelFactory = recordingViewModelFactory
+    }
 
     var body: some View {
         NavigationStack {
@@ -479,11 +519,17 @@ struct MealScheduleView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                 }
-                .background(RebuildDesignTokens.cream50)
+                .background(
+                    RebuildDesignTokens.semanticPalette(.background).surface
+                )
                 .onChange(of: mode) { _ in
                     selectedDate = anchorDate
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    if reduceMotion {
                         proxy.scrollTo("meal_schedule_top", anchor: .top)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("meal_schedule_top", anchor: .top)
+                        }
                     }
                 }
             }
@@ -496,7 +542,8 @@ struct MealScheduleView: View {
             MealDayDetailView(
                 route: route,
                 repository: viewModel.repository,
-                school: viewModel.school
+                school: viewModel.school,
+                recordingViewModel: recordingViewModelFactory(route)
             )
         }
         .accessibilityIdentifier("meal_schedule_screen")
@@ -505,8 +552,7 @@ struct MealScheduleView: View {
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
             MealScheduleHeaderBackground()
-                .frame(height: 124)
-                .clipped()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             LinearGradient(
                 colors: [
                     RebuildDesignTokens.cream50.opacity(0.38),
@@ -515,37 +561,18 @@ struct MealScheduleView: View {
                 startPoint: .topTrailing,
                 endPoint: .bottomLeading
             )
-            .frame(height: 124)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("급식표")
                     .font(.largeTitle.bold())
                     .foregroundStyle(RebuildDesignTokens.ink900)
                     .accessibilityAddTraits(.isHeader)
-                HStack(spacing: 8) {
-                    Text(viewModel.schoolName)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(RebuildDesignTokens.forest700)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Label(
-                        viewModel.isLoading ? "업데이트 중" : "업데이트됨",
-                        systemImage: viewModel.isLoading
-                            ? "arrow.triangle.2.circlepath"
-                            : "checkmark.circle.fill"
-                    )
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(RebuildDesignTokens.forest500)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.86))
-                    .clipShape(Capsule())
-                }
+                headerMetadata
             }
             .padding(18)
         }
-        .frame(height: 124)
-        .clipped()
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .bottomLeading)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[2],
@@ -561,8 +588,49 @@ struct MealScheduleView: View {
         }
     }
 
+    @ViewBuilder
+    private var headerMetadata: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                schoolNameLabel
+                updateStateLabel
+            }
+        } else {
+            HStack(spacing: 8) {
+                schoolNameLabel
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                updateStateLabel
+            }
+        }
+    }
+
+    private var schoolNameLabel: some View {
+        Text(viewModel.schoolName)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(RebuildDesignTokens.forest700)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var updateStateLabel: some View {
+        Label(
+            viewModel.isLoading ? "업데이트 중" : "업데이트됨",
+            systemImage: viewModel.isLoading
+                ? "arrow.triangle.2.circlepath"
+                : "checkmark.circle.fill"
+        )
+        .font(.caption.weight(.bold))
+        .foregroundStyle(RebuildDesignTokens.forest700)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.9))
+        .clipShape(Capsule())
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var modeSelector: some View {
-        HStack(spacing: 4) {
+        let palette = RebuildDesignTokens.semanticPalette(.schedule)
+        return HStack(spacing: 4) {
             ForEach(MealScheduleMode.allCases) { item in
                 Button {
                     mode = item
@@ -571,19 +639,23 @@ struct MealScheduleView: View {
                         .font(.subheadline.bold())
                         .foregroundStyle(
                             mode == item
-                                ? Color.white
+                                ? palette.foreground
                                 : RebuildDesignTokens.muted600
                         )
-                        .frame(maxWidth: .infinity, minHeight: 38)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: RebuildDesignTokens.minimumActionSize
+                        )
                         .background(
                             mode == item
-                                ? RebuildDesignTokens.forest700
+                                ? palette.surface
                                 : Color.clear
                         )
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("meal_schedule_mode_\(item.rawValue)")
+                .accessibilityAddTraits(mode == item ? .isSelected : [])
             }
         }
         .padding(4)
@@ -602,8 +674,9 @@ struct MealScheduleView: View {
                 .font(.headline.bold())
                 .foregroundStyle(RebuildDesignTokens.ink900)
                 .frame(maxWidth: .infinity)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.8)
+                .fixedSize(horizontal: false, vertical: true)
             periodButton(systemImage: "chevron.right", direction: 1)
         }
         .frame(minHeight: RebuildDesignTokens.minimumActionSize)
@@ -613,7 +686,8 @@ struct MealScheduleView: View {
         systemImage: String,
         direction: Int
     ) -> some View {
-        Button {
+        let palette = RebuildDesignTokens.semanticPalette(.schedule)
+        return Button {
             let shifted = MealScheduleCalendar.shifted(
                 anchorDate,
                 mode: mode,
@@ -624,7 +698,7 @@ struct MealScheduleView: View {
         } label: {
             Image(systemName: systemImage)
                 .font(.headline.bold())
-                .foregroundStyle(RebuildDesignTokens.forest700)
+                .foregroundStyle(palette.surface)
                 .frame(
                     width: RebuildDesignTokens.minimumActionSize,
                     height: RebuildDesignTokens.minimumActionSize
@@ -632,6 +706,11 @@ struct MealScheduleView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(
+            direction < 0
+                ? "\(mode.title) 이전 기간"
+                : "\(mode.title) 다음 기간"
+        )
     }
 
     private var dailyContent: some View {
@@ -718,10 +797,13 @@ struct MealScheduleView: View {
             } label: {
                 Label("급식 상세 보기", systemImage: "arrow.up.right.square")
                     .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: RebuildDesignTokens.minimumActionSize
+                    )
             }
             .buttonStyle(.borderedProminent)
-            .tint(RebuildDesignTokens.forest700)
+            .tint(RebuildDesignTokens.semanticPalette(.schedule).surface)
             .accessibilityIdentifier(
                 "meal_schedule_day_detail_\(MealScheduleCalendar.key(for: anchorDate))"
             )
@@ -730,23 +812,65 @@ struct MealScheduleView: View {
         .accessibilityIdentifier("meal_schedule_daily")
     }
 
-    private var weeklyContent: some View {
-        let dates = MealScheduleCalendar.weekDates(containing: anchorDate)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("이번 주 메뉴")
+    @ViewBuilder
+    private func scheduleSectionHeading(
+        title: String,
+        subtitle: String
+    ) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
                     .font(.headline.bold())
                     .foregroundStyle(RebuildDesignTokens.forest500)
-                Spacer()
-                Text("요일별 메뉴를 한눈에 비교")
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.headline.bold())
+                    .foregroundStyle(RebuildDesignTokens.forest500)
+                Spacer(minLength: 8)
+                Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(RebuildDesignTokens.muted600)
             }
+        }
+    }
 
+    private var weeklyContent: some View {
+        let dates = MealScheduleCalendar.weekDates(containing: anchorDate)
+        return VStack(alignment: .leading, spacing: 12) {
+            scheduleSectionHeading(
+                title: "이번 주 메뉴",
+                subtitle: dynamicTypeSize.isAccessibilitySize
+                    ? "요일별 대표 메뉴"
+                    : "요일별 메뉴를 한눈에 비교"
+            )
+
+            if dynamicTypeSize.isAccessibilitySize {
+                weeklyAccessiblePreview(dates: dates)
+            } else {
+                weeklyMenuTable(dates: dates)
+            }
+
+            selectedMealInformation
+        }
+        .mealScheduleCard()
+        .accessibilityIdentifier("meal_schedule_weekly")
+    }
+
+    private func weeklyMenuTable(dates: [Date]) -> some View {
+        let rowHeaderWidth: CGFloat = 52
+        let dayColumnWidth: CGFloat = 84
+        return ScrollView(.horizontal, showsIndicators: false) {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     Color.clear
-                        .frame(width: 52, height: 50)
+                        .frame(width: rowHeaderWidth, height: 50)
                     ForEach(dates, id: \.self) { date in
                         let selected = MealScheduleCalendar.sameDay(
                             date,
@@ -766,18 +890,23 @@ struct MealScheduleView: View {
                                     ? Color.white
                                     : RebuildDesignTokens.forest700
                             )
-                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .frame(width: dayColumnWidth)
+                            .frame(
+                                minHeight: RebuildDesignTokens.minimumActionSize
+                            )
                             .background(
                                 selected
                                     ? RebuildDesignTokens.forest700
                                     : Color.white
                             )
+                            .contentShape(Rectangle())
                             .mealScheduleCellBorder()
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier(
                             "meal_schedule_week_day_\(MealScheduleCalendar.key(for: date))"
                         )
+                        .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }
 
@@ -786,8 +915,8 @@ struct MealScheduleView: View {
                         Text(row.compactTitle)
                             .font(.caption2.bold())
                             .foregroundStyle(RebuildDesignTokens.forest700)
-                            .frame(width: 52)
-                            .frame(minHeight: 58)
+                            .frame(width: rowHeaderWidth)
+                            .frame(minHeight: 64)
                             .background(
                                 RebuildDesignTokens.cream50.opacity(0.72)
                             )
@@ -813,24 +942,22 @@ struct MealScheduleView: View {
                                     )
                                     .multilineTextAlignment(.center)
                                     .lineLimit(3)
-                                    .minimumScaleFactor(0.76)
-                                    .frame(
-                                        maxWidth: .infinity,
-                                        minHeight: 58,
-                                        alignment: .center
-                                    )
+                                    .frame(width: dayColumnWidth)
+                                    .frame(minHeight: 64, alignment: .center)
                                     .padding(.horizontal, 2)
                                     .background(
                                         selected
                                             ? RebuildDesignTokens.leaf300.opacity(0.2)
                                             : Color.white
                                     )
+                                    .contentShape(Rectangle())
                                     .mealScheduleCellBorder()
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier(
                                 "meal_schedule_week_menu_\(MealScheduleCalendar.key(for: date))_\(row.rawValue)"
                             )
+                            .accessibilityAddTraits(selected ? .isSelected : [])
                         }
                     }
                 }
@@ -841,42 +968,16 @@ struct MealScheduleView: View {
                     style: .continuous
                 )
             )
-
-            selectedMealInformation
         }
-        .mealScheduleCard()
-        .accessibilityIdentifier("meal_schedule_weekly")
     }
 
-    private var monthlyContent: some View {
-        let dates = MealScheduleCalendar.monthGridDates(containing: anchorDate)
-        let columns = Array(
-            repeating: GridItem(.flexible(), spacing: 0),
-            count: 7
-        )
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("\(monthNumber)월 급식 달력")
-                    .font(.headline.bold())
-                    .foregroundStyle(RebuildDesignTokens.forest500)
-                Spacer()
-                Text("선택 전에도 대표 메뉴 표시")
-                    .font(.caption2)
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-            }
-
-            LazyVGrid(columns: columns, spacing: 0) {
-                ForEach(["월", "화", "수", "목", "금", "토", "일"], id: \.self) { day in
-                    Text(day)
-                        .font(.caption.bold())
-                        .foregroundStyle(RebuildDesignTokens.forest700)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(Color.white)
-                        .mealScheduleCellBorder()
-                }
-
-                ForEach(dates, id: \.self) { date in
+    private func weeklyAccessiblePreview(dates: [Date]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: 8) {
+                ForEach(dates.indices, id: \.self) { index in
+                    let date: Date = dates[index]
                     let meal = viewModel.meal(for: date)
+                    let statePresentation = dateStatePresentation(for: date)
                     let visuals = meal?.menuItems.map {
                         MealVisualResolver.resolve(item: $0)
                     } ?? []
@@ -891,63 +992,223 @@ struct MealScheduleView: View {
                     Button {
                         select(date: date)
                     } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(summary.dateLabel)
-                                .font(.caption2.bold())
-                                .foregroundStyle(
-                                    selected
-                                        ? RebuildDesignTokens.forest500
-                                        : dateIsInDisplayedMonth(date)
-                                            ? RebuildDesignTokens.forest700
-                                            : RebuildDesignTokens.muted600.opacity(0.45)
-                                )
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(weekdayFormatter.string(from: date))
+                                .font(.headline.bold())
+                            Text(shortDateFormatter.string(from: date))
+                                .font(.body.weight(.semibold))
 
-                            if let representativeIconKey = summary.representativeIconKey {
-                                HStack(spacing: 2) {
-                                    MealVisualIcon(iconKey: representativeIconKey)
-                                        .font(.caption2.weight(.semibold))
-                                    if let additionalMenuLabel = summary.additionalMenuLabel {
-                                        Text(additionalMenuLabel)
-                                            .font(.caption2.weight(.bold))
+                            if let representativeMenu = meal?.menuItems.first?.name {
+                                Text(representativeMenu)
+                                    .font(.footnote.weight(.semibold))
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if let iconKey = summary.representativeIconKey {
+                                HStack(spacing: 6) {
+                                    MealVisualIcon(iconKey: iconKey)
+                                        .font(.title3.weight(.semibold))
+                                    if let count = summary.additionalMenuLabel {
+                                        Text(count)
+                                            .font(.body.bold())
                                     }
                                 }
-                                .foregroundStyle(
-                                    selected
-                                        ? RebuildDesignTokens.forest700
-                                        : RebuildDesignTokens.ink900
-                                )
                             } else {
-                                Text("정보 없음")
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(
-                                        RebuildDesignTokens.muted600
-                                    )
+                                Label(
+                                    statePresentation.label,
+                                    systemImage: statePresentation.systemImage
+                                )
+                                    .font(.footnote.weight(.semibold))
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer(minLength: 0)
                         }
-                        .padding(6)
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: 82,
-                            alignment: .topLeading
+                        .foregroundStyle(
+                            selected
+                                ? Color.white
+                                : RebuildDesignTokens.ink900
                         )
+                        .padding(12)
+                        .frame(width: 132)
+                        .frame(minHeight: 120, alignment: .topLeading)
                         .background(
                             selected
-                                ? RebuildDesignTokens.leaf300.opacity(0.22)
+                                ? RebuildDesignTokens.forest700
                                 : Color.white
                         )
-                        .mealScheduleCellBorder()
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: RebuildDesignTokens.radii[0],
+                                style: .continuous
+                            )
+                        )
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: RebuildDesignTokens.radii[0],
+                                style: .continuous
+                            )
+                            .stroke(
+                                selected
+                                    ? RebuildDesignTokens.forest700
+                                    : RebuildDesignTokens.forest500.opacity(0.24),
+                                lineWidth: selected ? 2 : 1
+                            )
+                        }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(monthCellAccessibility(date: date, meal: meal))
+                    .accessibilityLabel(
+                        monthCellAccessibility(
+                            date: date,
+                            meal: meal,
+                            state: statePresentation
+                        )
+                    )
+                    .accessibilityIdentifier(
+                        "meal_schedule_week_day_\(MealScheduleCalendar.key(for: date))"
+                    )
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: RebuildDesignTokens.radii[0],
-                    style: .continuous
-                )
+        }
+    }
+
+    private var monthlyContent: some View {
+        let dates = MealScheduleCalendar.monthGridDates(containing: anchorDate)
+        let cellWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 60 : 48
+        let columns = Array(
+            repeating: GridItem(.fixed(cellWidth), spacing: 0),
+            count: 7
+        )
+        return VStack(alignment: .leading, spacing: 12) {
+            scheduleSectionHeading(
+                title: "\(monthNumber)월 급식 달력",
+                subtitle: "선택 전에도 대표 메뉴 표시"
             )
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyVGrid(columns: columns, spacing: 0) {
+                    ForEach(["월", "화", "수", "목", "금", "토", "일"], id: \.self) { day in
+                        Text(day)
+                            .font(.caption.bold())
+                            .foregroundStyle(RebuildDesignTokens.forest700)
+                            .frame(width: cellWidth)
+                            .frame(
+                                minHeight: RebuildDesignTokens.minimumActionSize
+                            )
+                            .background(Color.white)
+                            .mealScheduleCellBorder()
+                    }
+
+                    ForEach(dates, id: \.self) { date in
+                        let meal = viewModel.meal(for: date)
+                        let statePresentation = dateStatePresentation(for: date)
+                        let visuals = meal?.menuItems.map {
+                            MealVisualResolver.resolve(item: $0)
+                        } ?? []
+                        let summary = MealMonthCellSummary(
+                            dateLabel: dayFormatter.string(from: date),
+                            visuals: visuals
+                        )
+                        let selected = MealScheduleCalendar.sameDay(
+                            date,
+                            selectedDate
+                        )
+                        let dateStyle = MealMonthDateVisualStyle.resolve(
+                            position: selected
+                                ? .selected
+                                : dateIsInDisplayedMonth(date)
+                                    ? .currentMonth
+                                    : .adjacentMonth
+                        )
+                        Button {
+                            select(date: date)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 4) {
+                                    Text(summary.dateLabel)
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(dateStyle.foreground)
+                                    Spacer(minLength: 0)
+                                    Circle()
+                                        .fill(statePresentation.color)
+                                        .frame(width: 8, height: 8)
+                                        .accessibilityHidden(true)
+                                }
+
+                                if let iconKey = summary.representativeIconKey {
+                                    Group {
+                                        if dynamicTypeSize.isAccessibilitySize {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                MealVisualIcon(iconKey: iconKey)
+                                                    .font(.headline.weight(.semibold))
+                                                if let count = summary.additionalMenuLabel {
+                                                    Text(count)
+                                                        .font(.caption.bold())
+                                                }
+                                            }
+                                        } else {
+                                            HStack(spacing: 2) {
+                                                MealVisualIcon(iconKey: iconKey)
+                                                    .font(.caption2.weight(.semibold))
+                                                if let count = summary.additionalMenuLabel {
+                                                    Text(count)
+                                                        .font(.caption2.weight(.bold))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .foregroundStyle(
+                                        selected
+                                            ? RebuildDesignTokens.forest700
+                                            : RebuildDesignTokens.ink900
+                                    )
+                                } else if dynamicTypeSize.isAccessibilitySize {
+                                    Image(systemName: statePresentation.systemImage)
+                                        .font(.headline)
+                                        .foregroundStyle(dateStyle.foreground)
+                                        .accessibilityHidden(true)
+                                } else {
+                                    Text(statePresentation.label)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(dateStyle.foreground)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(6)
+                            .frame(width: cellWidth)
+                            .frame(
+                                minHeight: dynamicTypeSize.isAccessibilitySize
+                                    ? 112
+                                    : 82,
+                                alignment: .topLeading
+                            )
+                            .background(dateStyle.surface)
+                            .contentShape(Rectangle())
+                            .mealScheduleCellBorder()
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            monthCellAccessibility(
+                                date: date,
+                                meal: meal,
+                                state: statePresentation
+                            )
+                        )
+                        .accessibilityIdentifier(
+                            "meal_schedule_month_day_\(MealScheduleCalendar.key(for: date))"
+                        )
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }
+                .frame(width: cellWidth * 7)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: RebuildDesignTokens.radii[0],
+                        style: .continuous
+                    )
+                )
+            }
 
             selectedMealInformation
         }
@@ -959,6 +1220,9 @@ struct MealScheduleView: View {
         meals: [RebuildMealDay]
     ) -> some View {
         let summary = MealScheduleNutritionSummary(meals: meals)
+        let columns = dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 96), spacing: 6)]
         return VStack(alignment: .leading, spacing: 8) {
             Text(
                 meals.count > 1
@@ -968,68 +1232,84 @@ struct MealScheduleView: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(RebuildDesignTokens.forest700)
 
-            HStack(spacing: 6) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
                 ForEach(summary.tiles) { tile in
-                    VStack(spacing: 4) {
-                        Text(tile.title)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(RebuildDesignTokens.muted600)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                        Text(tile.value)
-                            .font(.footnote.weight(.bold))
-                            .foregroundStyle(
-                                tile.title == "열량"
-                                    ? Color.orange
-                                    : RebuildDesignTokens.ink900
-                            )
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(RebuildDesignTokens.cream50.opacity(0.9))
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: RebuildDesignTokens.radii[0],
-                            style: .continuous
-                        )
-                    )
-                    .overlay {
-                        RoundedRectangle(
-                            cornerRadius: RebuildDesignTokens.radii[0],
-                            style: .continuous
-                        )
-                        .stroke(
-                            RebuildDesignTokens.forest500.opacity(0.18),
-                            lineWidth: 1
-                        )
-                    }
+                    nutritionTile(tile)
                 }
             }
         }
     }
 
+    private func nutritionTile(
+        _ tile: MealScheduleNutritionTile
+    ) -> some View {
+        VStack(spacing: 4) {
+            Text(tile.title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(RebuildDesignTokens.muted600)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.85)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(tile.value)
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(
+                    tile.title == "열량"
+                        ? RebuildDesignTokens.danger700
+                        : RebuildDesignTokens.ink900
+                )
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.85)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: RebuildDesignTokens.minimumActionSize
+        )
+        .background(RebuildDesignTokens.cream50.opacity(0.9))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+            .stroke(
+                RebuildDesignTokens.forest500.opacity(0.18),
+                lineWidth: 1
+            )
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private var selectedMealInformation: some View {
         let selectedMeal = viewModel.meal(for: selectedDate)
+        let statePresentation = dateStatePresentation(for: selectedDate)
+        let emptyStateForeground = MealMonthDateVisualStyle.resolve(
+            position: .selected
+        ).foreground
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("선택한 날짜의 영양 정보")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RebuildDesignTokens.forest500)
-                Spacer()
-                Text(fullDateFormatter.string(from: selectedDate))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-            }
+            scheduleSectionHeading(
+                title: "선택한 날짜의 영양 정보",
+                subtitle: fullDateFormatter.string(from: selectedDate)
+            )
             if let selectedMeal {
                 menuVisualSummary(meal: selectedMeal)
                 allergySummary(meal: selectedMeal)
                 nutritionSummary(meals: [selectedMeal])
             } else {
-                Text("해당 날짜의 영양 정보가 없어요.")
-                    .font(RebuildDesignTokens.bodyFont)
-                    .foregroundStyle(RebuildDesignTokens.muted600)
+                Label(
+                    selectedDateEmptyMessage(),
+                    systemImage: statePresentation.systemImage
+                )
+                    .font(RebuildDesignTokens.bodyFont.weight(.semibold))
+                    .foregroundStyle(emptyStateForeground)
                     .frame(
                         maxWidth: .infinity,
                         minHeight: RebuildDesignTokens.minimumActionSize,
@@ -1081,13 +1361,9 @@ struct MealScheduleView: View {
                                 .foregroundStyle(RebuildDesignTokens.muted600)
                                 .fixedSize(horizontal: false, vertical: true)
                             if !item.allergyLabels.isEmpty {
-                                Text(
-                                    "알레르기: "
-                                        + item.allergyLabels.joined(separator: " · ")
+                                allergyBadge(
+                                    item.allergyLabels.joined(separator: " · ")
                                 )
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Color.orange.opacity(0.9))
-                                .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
@@ -1113,31 +1389,23 @@ struct MealScheduleView: View {
         ).sorted()
 
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("알레르기 정보")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RebuildDesignTokens.forest700)
-                Spacer()
-                Text("번호와 이름을 함께 표시")
-                    .font(.caption2)
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-            }
+            scheduleSectionHeading(
+                title: "알레르기 정보",
+                subtitle: "번호와 이름을 함께 표시"
+            )
 
             if codes.isEmpty {
-                Text("표시된 알레르기 정보가 없어요.")
+                Label(
+                    MealAllergyVisualStyle.clear.title,
+                    systemImage: MealAllergyVisualStyle.clear.systemImage
+                )
                     .font(.caption)
                     .foregroundStyle(RebuildDesignTokens.muted600)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(codes, id: \.self) { code in
-                            Text(AllergyMap.label(for: code))
-                                .font(.caption.bold())
-                                .foregroundStyle(Color.orange.opacity(0.9))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.orange.opacity(0.1))
-                                .clipShape(Capsule())
+                            allergyBadge(AllergyMap.label(for: code))
                         }
                     }
                 }
@@ -1151,6 +1419,34 @@ struct MealScheduleView: View {
                 style: .continuous
             )
         )
+    }
+
+    private func allergyBadge(_ title: String) -> some View {
+        let style = MealAllergyVisualStyle.risk(labels: [title])
+        let palette = RebuildDesignTokens.semanticPalette(.safety)
+        return Label(style.title, systemImage: style.systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(palette.foreground)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(palette.surface)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: RebuildDesignTokens.radii[0],
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: RebuildDesignTokens.radii[0],
+                    style: .continuous
+                )
+                .stroke(
+                    palette.foreground,
+                    lineWidth: style.borderWidth
+                )
+            }
     }
 
     private func notice(_ message: String) -> some View {
@@ -1213,16 +1509,75 @@ struct MealScheduleView: View {
 
     private func monthCellAccessibility(
         date: Date,
-        meal: RebuildMealDay?
+        meal: RebuildMealDay?,
+        state: MealScheduleDateStatePresentation
     ) -> String {
         guard let meal, let firstItem = meal.menuItems.first else {
-            return "\(fullDateFormatter.string(from: date)), 급식 정보 없음"
+            return "\(fullDateFormatter.string(from: date)), \(state.label)"
         }
         let additionalCount = max(meal.menuItems.count - 1, 0)
         let suffix = additionalCount > 0
             ? ", 외 \(additionalCount)개 메뉴"
             : ""
-        return "\(fullDateFormatter.string(from: date)), \(firstItem.name)\(suffix)"
+        return "\(fullDateFormatter.string(from: date)), \(state.label), \(firstItem.name)\(suffix)"
+    }
+
+    private func dateStatePresentation(
+        for date: Date
+    ) -> MealScheduleDateStatePresentation {
+        guard let state = viewModel.loadState(for: date) else {
+            return MealScheduleDateStatePresentation(
+                label: viewModel.isLoading ? "확인 중" : "확인 전",
+                systemImage: viewModel.isLoading
+                    ? "arrow.triangle.2.circlepath"
+                    : "clock",
+                color: RebuildDesignTokens.muted600
+            )
+        }
+
+        switch state {
+        case .cached:
+            return MealScheduleDateStatePresentation(
+                label: "저장된 급식",
+                systemImage: "internaldrive",
+                color: RebuildDesignTokens.forest700
+            )
+        case .refreshing:
+            return MealScheduleDateStatePresentation(
+                label: "업데이트 중",
+                systemImage: "arrow.triangle.2.circlepath",
+                color: RebuildDesignTokens.semanticPalette(.schedule).surface
+            )
+        case .live:
+            return MealScheduleDateStatePresentation(
+                label: "최신 급식",
+                systemImage: "checkmark.circle.fill",
+                color: RebuildDesignTokens.forest700
+            )
+        case .empty:
+            return MealScheduleDateStatePresentation(
+                label: "급식 없음",
+                systemImage: "calendar.badge.minus",
+                color: RebuildDesignTokens.muted600
+            )
+        case .failed:
+            return MealScheduleDateStatePresentation(
+                label: "불러오기 실패",
+                systemImage: "exclamationmark.triangle.fill",
+                color: RebuildDesignTokens.danger700
+            )
+        }
+    }
+
+    private func selectedDateEmptyMessage() -> String {
+        switch viewModel.loadState(for: selectedDate) {
+        case .failed:
+            return "해당 날짜의 급식을 불러오지 못했어요."
+        case .empty:
+            return "해당 날짜에는 등록된 급식이 없어요."
+        default:
+            return "해당 날짜의 영양 정보를 아직 확인할 수 없어요."
+        }
     }
 
     private func select(date: Date) {

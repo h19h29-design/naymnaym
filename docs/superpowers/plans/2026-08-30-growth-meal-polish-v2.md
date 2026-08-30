@@ -493,21 +493,21 @@
 - `MealRecordingSheet` scopes every per-menu control identifier with `<menuIndex>_<normalizedMenuToken>`: `meal_recording_status_<menuIndex>_<normalizedMenuToken>_<rawValue>`, `meal_allergy_safe_choice_<menuIndex>_<normalizedMenuToken>`, and `meal_guardian_check_<menuIndex>_<normalizedMenuToken>`. It also exposes `meal_recording_nutrition_review` and `meal_recording_confirm`. Its flow is status → optional difficult reason → representative impact review → confirm/save → XP result.
 - Add semantic colors to existing `RebuildDesignTokens` only (`growth`, `mission`, `appetite`, `nutrition`, `schedule`, `safety`, `background`) and keep existing hex values/spacing/radii/minimum action size as the base contract.
 
-- [ ] Step 1: Add tests `testDetailAccessibilityOrderIsDateStateMenuAllergyNutritionCTA`, `testRecordingReviewAppearsBeforeAnyWrite`, `testLargeContentSizeKeepsStatusActionsReachable`, `testReduceMotionUsesStaticResult`, `testAllergyStateUsesTextIconAndShape`, and `testSemanticTokensKeepMinimumContrast`. Assert all identifiers and 48pt minimum frames in the view inspection/presentation model.
-- [ ] Step 2: Run RED. Expected RED: the current recording sheet writes immediately on status tap, does not expose half, and detail/accessibility identifiers and semantic token cases are incomplete.
+- [x] Step 1: Add tests `testDetailAccessibilityOrderIsDateStateMenuAllergyNutritionCTA`, `testRecordingReviewAppearsBeforeAnyWrite`, `testLargeContentSizeKeepsStatusActionsReachable`, `testReduceMotionUsesStaticResult`, `testAllergyStateUsesTextIconAndShape`, and `testSemanticTokensKeepMinimumContrast`. Assert all identifiers and 48pt minimum frames in the view inspection/presentation model.
+- [x] Step 2: Run RED. Expected RED: the current recording sheet writes immediately on status tap, does not expose half, and detail/accessibility identifiers and semantic token cases are incomplete.
 
   ```bash
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/MealScheduleSelectionTests -only-testing:NaymNaymLevelUpTests/TodayForestViewModelTests -only-testing:NaymNaymLevelUpTests/RebuildDesignTokensTests
   ```
 
-- [ ] Step 3: Refactor only the existing views: show menu previews before selection, put selected-date data and full nutrition totals in the shared detail, render icon/name/allergy/chips, keep difficult reason conditional, and require an explicit confirm after the safe impact review. Use semantic tokens, system fonts, labels plus icons/shapes, Dynamic Type without fixed 10pt text, and Reduce Motion static mascot/result.
-- [ ] Step 4: Run GREEN with the focused suites and manual accessibility environment checks (`UIContentSizeCategory.accessibilityExtraExtraExtraLarge`, VoiceOver order, Reduce Motion, Increase Contrast). Verify no selected-date fallback or immediate write remains.
+- [x] Step 3: Refactor only the existing views: show menu previews before selection, put selected-date data and full nutrition totals in the shared detail, render icon/name/allergy/chips, keep difficult reason conditional, and require an explicit confirm after the safe impact review. Use semantic tokens, system fonts, labels plus icons/shapes, Dynamic Type without fixed 10pt text, and Reduce Motion static mascot/result.
+- [x] Step 4: Run GREEN with the focused suites and manual accessibility environment checks (`UIContentSizeCategory.accessibilityExtraExtraExtraLarge`, VoiceOver order, Reduce Motion, Increase Contrast). Verify no selected-date fallback or immediate write remains.
 
   ```bash
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/MealScheduleSelectionTests -only-testing:NaymNaymLevelUpTests/TodayForestViewModelTests -only-testing:NaymNaymLevelUpTests/RebuildDesignTokensTests
   ```
 
-- [ ] Step 5: Commit the user-facing detail and accessibility UI.
+- [x] Step 5: Commit the user-facing detail and accessibility UI.
 
   ```bash
   git add NaymNaymLevelUp/Rebuild/Child/MealDayDetailView.swift NaymNaymLevelUp/Rebuild/Child/MealScheduleView.swift NaymNaymLevelUp/Rebuild/Child/TodayForestView.swift NaymNaymLevelUp/Rebuild/Child/MealRecordingSheet.swift NaymNaymLevelUp/Rebuild/Foundation/RebuildDesignTokens.swift NaymNaymLevelUpTests/RebuildDesignTokensTests.swift NaymNaymLevelUpTests/MealScheduleSelectionTests.swift NaymNaymLevelUpTests/TodayForestViewModelTests.swift

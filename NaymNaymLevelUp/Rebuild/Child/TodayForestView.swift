@@ -1,12 +1,19 @@
 import SwiftUI
 
 struct TodayForestView: View {
+    private enum PresentedSheet: String, Identifiable {
+        case mealDetail
+
+        var id: String { rawValue }
+    }
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var viewModel: TodayForestViewModel
     let growthPolicy: GrowthPolicy
     let isTabActive: Bool
     let isAppActive: Bool
-    @State private var isShowingMealDetail = false
+    @State private var presentedSheet: PresentedSheet?
 
     var body: some View {
         NavigationStack {
@@ -35,7 +42,7 @@ struct TodayForestView: View {
         .task {
             await viewModel.load()
         }
-        .sheet(isPresented: $isShowingMealDetail) {
+        .sheet(item: $presentedSheet) { _ in
             MealDayDetailView(
                 route: MealDayRoute(dateKey: viewModel.dateKey),
                 repository: viewModel.mealScheduleRepository,
@@ -71,40 +78,25 @@ struct TodayForestView: View {
     }
 
     private var characterStage: some View {
-        HStack(alignment: .center, spacing: RebuildDesignTokens.spacing[3]) {
-            GeometryReader { proxy in
-                MascotRigView(
-                    level: min(currentLevel, 7),
-                    state: viewModel.motion,
-                    reduceMotion: reduceMotion,
-                    playbackRevision: viewModel.motionRevision
-                )
-                .frame(
-                    width: proxy.size.width,
-                    height: proxy.size.height,
-                    alignment: .center
-                )
-                .clipped()
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(
+                    alignment: .leading,
+                    spacing: RebuildDesignTokens.spacing[3]
+                ) {
+                    characterMascot
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    characterDetails
+                }
+            } else {
+                HStack(
+                    alignment: .center,
+                    spacing: RebuildDesignTokens.spacing[3]
+                ) {
+                    characterMascot
+                    characterDetails
+                }
             }
-            .frame(width: 132, height: 152)
-
-            VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[1]) {
-                Text("레벨 \(currentLevel) · \(growthPolicy.title(for: currentLevel))")
-                    .font(RebuildDesignTokens.headlineFont)
-                    .foregroundStyle(RebuildDesignTokens.forest700)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(characterMessage)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(RebuildDesignTokens.ink900)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("총 \(viewModel.totalXP) XP")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-                ProgressView(value: growthPolicy.progress(totalXP: viewModel.totalXP))
-                    .tint(RebuildDesignTokens.forest500)
-                    .accessibilityLabel("다음 레벨까지 성장 진행도")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity)
@@ -116,6 +108,50 @@ struct TodayForestView: View {
             )
         )
         .accessibilityIdentifier("today_character_hub")
+    }
+
+    private var characterMascot: some View {
+        GeometryReader { proxy in
+            MascotRigView(
+                level: min(currentLevel, 7),
+                state: viewModel.motion,
+                reduceMotion: reduceMotion,
+                playbackRevision: viewModel.motionRevision
+            )
+            .frame(
+                width: proxy.size.width,
+                height: proxy.size.height,
+                alignment: .center
+            )
+            .clipped()
+        }
+        .frame(width: 132, height: 152)
+        .accessibilityHidden(true)
+    }
+
+    private var characterDetails: some View {
+        let growth = RebuildDesignTokens.semanticPalette(.growth)
+        return VStack(
+            alignment: .leading,
+            spacing: RebuildDesignTokens.spacing[1]
+        ) {
+            Text("레벨 \(currentLevel) · \(growthPolicy.title(for: currentLevel))")
+                .font(RebuildDesignTokens.headlineFont)
+                .foregroundStyle(growth.surface)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(characterMessage)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(RebuildDesignTokens.ink900)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("총 \(viewModel.totalXP) XP")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(RebuildDesignTokens.muted600)
+                .fixedSize(horizontal: false, vertical: true)
+            ProgressView(value: growthPolicy.progress(totalXP: viewModel.totalXP))
+                .tint(growth.surface)
+                .accessibilityLabel("다음 레벨까지 성장 진행도")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var mealSummary: some View {
@@ -174,13 +210,7 @@ struct TodayForestView: View {
                                     .foregroundStyle(RebuildDesignTokens.muted600)
                                     .fixedSize(horizontal: false, vertical: true)
                                 if !item.allergyLabels.isEmpty {
-                                    Text(
-                                        "알레르기: "
-                                            + item.allergyLabels.joined(separator: " · ")
-                                    )
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(Color.orange.opacity(0.9))
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    allergySignal(item)
                                 }
                             }
                         }
@@ -227,9 +257,37 @@ struct TodayForestView: View {
         .accessibilityIdentifier("today_meal_summary")
     }
 
+    private func allergySignal(_ item: RebuildMealItem) -> some View {
+        let safety = RebuildDesignTokens.semanticPalette(.safety)
+        let style = MealAllergyVisualStyle.resolve(for: item)
+        return Label(
+            style.title,
+            systemImage: style.systemImage
+        )
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(safety.foreground)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, RebuildDesignTokens.spacing[2])
+        .padding(.vertical, RebuildDesignTokens.spacing[1])
+        .background(safety.surface)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+            .stroke(safety.foreground, lineWidth: 2)
+        }
+    }
+
     private var primaryAction: some View {
         Button {
-            isShowingMealDetail = true
+            presentedSheet = .mealDetail
         } label: {
             Text(viewModel.primaryActionTitle)
                 .font(RebuildDesignTokens.headlineFont)
@@ -262,6 +320,10 @@ struct TodayForestView: View {
 
     private var currentLevel: Int {
         growthPolicy.level(totalXP: viewModel.totalXP)
+    }
+
+    private var isShowingMealDetail: Bool {
+        presentedSheet != nil
     }
 
     private var characterMessage: String {

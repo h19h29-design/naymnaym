@@ -23,4 +23,45 @@ final class RebuildDesignTokensTests: XCTestCase {
             GrowthLockedPalette.silhouetteHex
         )
     }
+
+    func testSemanticTokensKeepMinimumContrast() {
+        XCTAssertEqual(
+            Set(RebuildDesignTokens.SemanticRole.allCases),
+            Set([
+            .growth,
+            .mission,
+            .appetite,
+            .nutrition,
+            .schedule,
+            .safety,
+                .background,
+            ])
+        )
+
+        for role in RebuildDesignTokens.SemanticRole.allCases {
+            let palette = RebuildDesignTokens.semanticPalette(role)
+            XCTAssertGreaterThanOrEqual(
+                AppReadabilityPolicy.contrastRatio(
+                    foregroundHex: palette.foregroundHex,
+                    backgroundHex: palette.surfaceHex
+                ),
+                4.5,
+                "Expected \(role) foreground and surface to remain readable"
+            )
+        }
+    }
+
+    func testMonthDateStylesKeepNormalTextContrast() {
+        for position in MealMonthDateVisualStyle.Position.allCases {
+            let style = MealMonthDateVisualStyle.resolve(position: position)
+            XCTAssertGreaterThanOrEqual(
+                AppReadabilityPolicy.contrastRatio(
+                    foregroundHex: style.foregroundHex,
+                    backgroundHex: style.surfaceHex
+                ),
+                4.5,
+                "Expected \(position) month date text to remain readable"
+            )
+        }
+    }
 }

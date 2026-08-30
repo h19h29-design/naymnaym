@@ -91,7 +91,12 @@ struct ChildNavigationView: View {
                 }
                 .tag(RebuildChildTab.today)
 
-            MealScheduleView(viewModel: mealScheduleViewModel)
+            MealScheduleView(
+                viewModel: mealScheduleViewModel,
+                recordingViewModelFactory: { route in
+                    todayViewModel.recordingViewModel(for: route)
+                }
+            )
                 .tabItem {
                     Label(
                         RebuildChildTab.meals.title,

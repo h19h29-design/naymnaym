@@ -191,6 +191,189 @@ final class MealScheduleSelectionTests: XCTestCase {
         XCTAssertEqual(selection.route, MealDayRoute(dateKey: "2026-08-12"))
     }
 
+    func testDetailAccessibilityOrderIsDateStateMenuAllergyNutritionCTA() {
+        let item = RebuildMealItem(
+            name: "  시금치 나물  ",
+            allergyCodes: [5],
+            nutrients: ["fiber"],
+            tags: [],
+            sourceRawText: "시금치 나물(5)"
+        )
+        let meal = RebuildMealDay(
+            date: "2026-08-12",
+            menuItems: [item],
+            calorie: "770 Kcal",
+            nutrition: .empty
+        )
+        let elements = MealDayDetailAccessibility.make(
+            dateKey: "2026-08-12",
+            stateLabel: "학교 급식",
+            meal: meal,
+            canRecord: true
+        )
+
+        XCTAssertEqual(
+            elements.map(\.section),
+            [.date, .state, .menu, .allergy, .nutrition, .recordCTA]
+        )
+        XCTAssertEqual(
+            elements.map(\.identifier),
+            [
+                "meal_day_date",
+                "meal_day_status",
+                "meal_day_menu_시금치 나물",
+                "meal_day_allergy",
+                "meal_day_nutrition",
+                "meal_day_record_cta",
+            ]
+        )
+        XCTAssertEqual(
+            MealDayDetailAccessibility.rootID(dateKey: "2026-08-12"),
+            "meal_day_detail_2026-08-12"
+        )
+        XCTAssertEqual(
+            elements.map(\.sortPriority),
+            elements.map(\.sortPriority).sorted(by: >)
+        )
+    }
+
+    func testDetailAccessibilityMakesDuplicateMenuIdentifiersUniqueAndStable() {
+        let item = RebuildMealItem(
+            name: "우유",
+            allergyCodes: [2],
+            nutrients: [],
+            tags: [],
+            sourceRawText: "우유(2)"
+        )
+        let meal = RebuildMealDay(
+            date: "2026-08-12",
+            menuItems: [item, item],
+            calorie: "",
+            nutrition: .empty
+        )
+
+        let menuIdentifiers = MealDayDetailAccessibility.make(
+            dateKey: meal.date,
+            stateLabel: "학교 급식",
+            meal: meal,
+            canRecord: false
+        )
+        .filter { $0.section == .menu }
+        .map(\.identifier)
+
+        XCTAssertEqual(
+            menuIdentifiers,
+            ["meal_day_menu_우유", "meal_day_menu_우유_2"]
+        )
+        XCTAssertEqual(Set(menuIdentifiers).count, 2)
+    }
+
+    func testDetailAccessibilityAvoidsNaturalSuffixIdentifierCollision() {
+        let milk = RebuildMealItem(
+            name: "우유",
+            allergyCodes: [2],
+            nutrients: [],
+            tags: [],
+            sourceRawText: "우유(2)"
+        )
+        let naturallySuffixed = RebuildMealItem(
+            name: "우유_2",
+            allergyCodes: [],
+            nutrients: [],
+            tags: [],
+            sourceRawText: "우유_2"
+        )
+        let meal = RebuildMealDay(
+            date: "2026-08-12",
+            menuItems: [milk, milk, naturallySuffixed],
+            calorie: "",
+            nutrition: .empty
+        )
+
+        let identifiers = MealDayDetailAccessibility.make(
+            dateKey: meal.date,
+            stateLabel: "최신 급식",
+            meal: meal,
+            canRecord: false
+        )
+        .filter { $0.section == .menu }
+        .map(\.identifier)
+
+        XCTAssertEqual(
+            identifiers,
+            [
+                "meal_day_menu_우유",
+                "meal_day_menu_우유_2",
+                "meal_day_menu_우유_2_2",
+            ]
+        )
+        XCTAssertEqual(Set(identifiers).count, identifiers.count)
+    }
+
+    func testCachedDetailExposesSavedTimeAndRefreshAction() async {
+        let cachedAt = Date(timeIntervalSince1970: 1_786_461_600)
+        let meal = RebuildMealDay.fixture(
+            date: "2026-08-12",
+            menuName: "저장 메뉴"
+        )
+        let repository = RecordingMealScheduleRepository(
+            states: [
+                meal.date: .cached(meal, refreshedAt: cachedAt),
+            ]
+        )
+        let viewModel = MealDayDetailViewModel(
+            route: MealDayRoute(dateKey: meal.date),
+            repository: repository,
+            school: nil
+        )
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.showsCachedRefreshAction)
+        XCTAssertTrue(viewModel.statePresentation.label.hasPrefix("저장된 급식 · "))
+        XCTAssertNotEqual(viewModel.statePresentation.label, "저장된 급식")
+    }
+
+    func testSchedulePreservesEmptyAndFailedStatesPerDate() async {
+        let emptyDate = seoulDate(year: 2026, month: 8, day: 29)
+        let failedDate = seoulDate(year: 2026, month: 8, day: 30)
+        let repository = RecordingMealScheduleRepository(
+            states: [
+                "2026-08-29": .empty,
+                "2026-08-30": .failed(message: "offline", cached: nil),
+            ]
+        )
+        let schedule = MealScheduleViewModel(repository: repository, school: nil)
+
+        await schedule.load(dates: [emptyDate, failedDate])
+
+        guard case .empty = schedule.loadState(for: emptyDate) else {
+            return XCTFail("Expected the exact date to retain empty state")
+        }
+        guard case let .failed(message, cached) = schedule.loadState(for: failedDate) else {
+            return XCTFail("Expected the exact date to retain failed state")
+        }
+        XCTAssertEqual(message, "offline")
+        XCTAssertNil(cached)
+    }
+
+    func testAllergyStateUsesTextIconAndShape() {
+        let riskyItem = RebuildMealItem(
+            name: "두부조림",
+            allergyCodes: [5],
+            nutrients: [],
+            tags: [],
+            sourceRawText: "두부조림(5)"
+        )
+        let style = MealAllergyVisualStyle.resolve(for: riskyItem)
+
+        XCTAssertEqual(style.title, "알레르기 정보 확인: 5. 대두")
+        XCTAssertEqual(style.systemImage, "exclamationmark.shield.fill")
+        XCTAssertGreaterThanOrEqual(style.borderWidth, 2)
+        XCTAssertGreaterThan(style.cornerRadius, 0)
+        XCTAssertEqual(style.channels, [.text, .icon, .shape])
+    }
+
     func testMismatchedRefreshRetainsExactCachedMeal() async {
         let selectedCache = RebuildMealDay.fixture(
             date: "2026-08-12",

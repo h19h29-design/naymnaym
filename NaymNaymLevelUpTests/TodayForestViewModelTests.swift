@@ -114,6 +114,24 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.meal, exactMeal)
     }
 
+    func testScheduleRouteBuildsDateScopedRecordingViewModel() throws {
+        let source = makeViewModel(allergyCodes: [2, 5])
+
+        let scoped = try XCTUnwrap(
+            source.recordingViewModel(
+                for: MealDayRoute(dateKey: "2026-08-12")
+            )
+        )
+
+        XCTAssertEqual(scoped.dateKey, "2026-08-12")
+        XCTAssertEqual(scoped.allergyCodes, [2, 5])
+        XCTAssertNil(
+            source.recordingViewModel(
+                for: MealDayRoute(dateKey: "not-a-date")
+            )
+        )
+    }
+
     func testLoadRefreshesSchoolAndKeepsRepositoryResult() async {
         let repository = TodayMealRepositoryStub(
             states: [
@@ -294,6 +312,83 @@ final class TodayForestViewModelTests: XCTestCase {
 
         XCTAssertNil(reviewState.draft)
         XCTAssertTrue(recorder.commands.isEmpty)
+    }
+
+    func testRecordingReviewAppearsBeforeAnyWrite() async throws {
+        let recorder = TodayMealRecorderSpy()
+        let item = RebuildMealItem.todayFixture()
+        let viewModel = makeViewModel(recorder: recorder)
+        await viewModel.load()
+
+        let prepared = try await viewModel.prepareRecord(
+            item: item,
+            status: .oneBite
+        )
+        var reviewState = MealRecordingReviewState()
+        reviewState.present(
+            MealRecordingReviewDraft(
+                item: item,
+                preparedRecord: prepared
+            )
+        )
+
+        XCTAssertNotNil(reviewState.draft)
+        XCTAssertTrue(recorder.commands.isEmpty)
+    }
+
+    func testLargeContentSizeKeepsStatusActionsReachable() {
+        let item = RebuildMealItem.todayFixture(name: "시금치 나물")
+        let descriptor = MealRecordingActionLayout.descriptor(
+            isAccessibilitySize: true,
+            isAllergyRisk: false,
+            menuIndex: 2,
+            item: item
+        )
+
+        XCTAssertEqual(
+            descriptor.columnCount,
+            1
+        )
+        XCTAssertEqual(descriptor.statuses, TodayForestViewModel.activeStatuses)
+        XCTAssertGreaterThanOrEqual(descriptor.minimumHitDimension, 48)
+        XCTAssertEqual(
+            descriptor.statusIdentifiers,
+            TodayForestViewModel.activeStatuses.map {
+                "meal_recording_status_2_시금치_나물_\($0.rawValue)"
+            }
+        )
+        XCTAssertEqual(
+            MealRecordingAccessibilityID.nutritionReview,
+            "meal_recording_nutrition_review"
+        )
+        XCTAssertEqual(MealRecordingAccessibilityID.confirm, "meal_recording_confirm")
+    }
+
+    func testReduceMotionUsesStaticResult() async throws {
+        XCTAssertEqual(MascotReducedMotionPolicy.renderMode, .staticFinal)
+        XCTAssertEqual(MascotReducedMotionPolicy.transitionDuration, 0)
+        XCTAssertFalse(MascotReducedMotionPolicy.schedulesCompletion)
+        XCTAssertFalse(MascotReducedMotionPolicy.emitsHaptic)
+
+        let controller = MascotMotionController(spec: .fixture)
+
+        controller.play(
+            .mealSuccess,
+            reduceMotion: true,
+            at: 1_000
+        )
+
+        XCTAssertEqual(controller.activeState, .reducedMotion)
+        XCTAssertFalse(controller.isPlaybackActive)
+        XCTAssertEqual(controller.pose.bodyOffsetY, 0)
+        XCTAssertEqual(controller.pose.bodyScaleX, 1)
+        XCTAssertEqual(controller.pose.bodyScaleY, 1)
+
+        let staticPose = controller.pose
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertEqual(controller.activeState, .reducedMotion)
+        XCTAssertEqual(controller.pose, staticPose)
     }
 
     func testNutritionReviewConfirmWritesPreparedCommandOnce() async throws {

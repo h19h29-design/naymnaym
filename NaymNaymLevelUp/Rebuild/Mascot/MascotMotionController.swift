@@ -1,6 +1,22 @@
 import Combine
 import SwiftUI
 
+enum MascotReducedMotionRenderMode: Equatable {
+    case staticFinal
+}
+
+enum MascotReducedMotionPolicy {
+    static let renderMode: MascotReducedMotionRenderMode = .staticFinal
+    static let transitionDuration: TimeInterval = 0
+    static let schedulesCompletion = false
+    static let emitsHaptic = false
+
+    static var animation: Animation? {
+        guard transitionDuration > 0 else { return nil }
+        return .easeInOut(duration: transitionDuration)
+    }
+}
+
 @MainActor
 final class MascotMotionController: ObservableObject {
     @Published private(set) var pose: MascotPose = .rest
@@ -43,11 +59,16 @@ final class MascotMotionController: ObservableObject {
         if reduceMotion {
             activeState = .reducedMotion
             isPlaybackActive = false
-            pose = pose(for: state, progress: 0.5, reduceMotion: true)
-            scheduleCompletion(
-                after: spec.state(for: .reducedMotion).duration,
-                generation: generation
-            )
+            switch MascotReducedMotionPolicy.renderMode {
+            case .staticFinal:
+                pose = pose(for: state, progress: 0.5, reduceMotion: true)
+            }
+            if MascotReducedMotionPolicy.schedulesCompletion {
+                scheduleCompletion(
+                    after: spec.state(for: .reducedMotion).duration,
+                    generation: generation
+                )
+            }
             return
         }
 

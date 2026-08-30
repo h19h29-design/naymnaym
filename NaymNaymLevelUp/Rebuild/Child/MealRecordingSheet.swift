@@ -19,6 +19,13 @@ struct MealRecordingReviewState: Equatable, Sendable {
 
 @MainActor
 enum MealRecordingActionLayout {
+    struct Descriptor: Equatable {
+        let columnCount: Int
+        let minimumHitDimension: CGFloat
+        let statuses: [RebuildEatingStatus]
+        let statusIdentifiers: [String]
+    }
+
     static func gridStatuses(
         isAllergyRisk: Bool
     ) -> [RebuildEatingStatus] {
@@ -35,9 +42,34 @@ enum MealRecordingActionLayout {
     ) -> [RebuildEatingStatus] {
         isAllergyRisk ? [.allergyAvoided] : []
     }
+
+    static func descriptor(
+        isAccessibilitySize: Bool,
+        isAllergyRisk: Bool,
+        menuIndex: Int,
+        item: RebuildMealItem
+    ) -> Descriptor {
+        let statuses = gridStatuses(isAllergyRisk: isAllergyRisk)
+        return Descriptor(
+            columnCount: isAccessibilitySize ? 1 : 2,
+            minimumHitDimension: RebuildDesignTokens.minimumActionSize,
+            statuses: statuses,
+            statusIdentifiers: statuses.map {
+                MealRecordingAccessibilityID.status(
+                    menuIndex: menuIndex,
+                    item: item,
+                    status: $0
+                )
+            }
+        )
+    }
 }
 
 enum MealRecordingAccessibilityID {
+    static let nutritionReview = "meal_recording_nutrition_review"
+    static let confirm = "meal_recording_confirm"
+    static let cancel = "meal_recording_cancel"
+
     static func status(
         menuIndex: Int,
         item: RebuildMealItem,
@@ -119,20 +151,29 @@ struct MealRecordingSheet: View {
                         Button("선택으로") {
                             cancelNutritionReview()
                         }
-                        .frame(minHeight: RebuildDesignTokens.minimumActionSize)
+                        .frame(
+                            minWidth: RebuildDesignTokens.minimumActionSize,
+                            minHeight: RebuildDesignTokens.minimumActionSize
+                        )
                         .accessibilityLabel("영양 확인을 취소하고 메뉴로 돌아가기")
                     } else if difficultItem != nil {
                         Button("메뉴로") {
                             self.difficultItem = nil
                             selectedReasons = []
                         }
-                        .frame(minHeight: RebuildDesignTokens.minimumActionSize)
+                        .frame(
+                            minWidth: RebuildDesignTokens.minimumActionSize,
+                            minHeight: RebuildDesignTokens.minimumActionSize
+                        )
                         .accessibilityLabel("메뉴 기록 목록으로 돌아가기")
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { dismiss() }
-                        .frame(minHeight: RebuildDesignTokens.minimumActionSize)
+                        .frame(
+                            minWidth: RebuildDesignTokens.minimumActionSize,
+                            minHeight: RebuildDesignTokens.minimumActionSize
+                        )
                         .accessibilityLabel("급식 기록 닫기")
                 }
             }
@@ -179,9 +220,11 @@ struct MealRecordingSheet: View {
                 .foregroundStyle(RebuildDesignTokens.muted600)
                 .fixedSize(horizontal: false, vertical: true)
 
-                ForEach(menuItems, id: \.offset) {
-                    index, item in
-                    menuOverview(item, index: index)
+                ForEach(menuItems, id: \.offset) { index, item in
+                    VStack(spacing: RebuildDesignTokens.spacing[3]) {
+                        menuOverview(item, index: index)
+                        menuActions(item, index: index)
+                    }
                 }
 
                 if let meal = viewModel.meal {
@@ -210,10 +253,6 @@ struct MealRecordingSheet: View {
                     .accessibilityElement(children: .combine)
                 }
 
-                ForEach(menuItems, id: \.offset) {
-                    index, item in
-                    menuActions(item, index: index)
-                }
             }
             .padding(RebuildDesignTokens.spacing[4])
         }
@@ -225,6 +264,7 @@ struct MealRecordingSheet: View {
     ) -> some View {
         let isRisk = viewModel.isAllergyRisk(item)
         let visual = MealVisualResolver.resolve(item: item)
+        let allergyStyle = MealAllergyVisualStyle.resolve(for: item)
         let accessibility = MealAccessibilityDescriptor(
             item: item,
             visual: visual,
@@ -235,13 +275,17 @@ struct MealRecordingSheet: View {
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
             HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
                 MealVisualIcon(iconKey: visual.iconKey)
-                    .font(.headline)
+                    .font(.title2)
                     .foregroundStyle(
                         isRisk
                             ? RebuildDesignTokens.danger700
                             : RebuildDesignTokens.forest700
                     )
-                    .frame(width: 28, height: 28)
+                    .frame(width: 56, height: 56)
+                    .background(
+                        RebuildDesignTokens.semanticPalette(.appetite).surface
+                    )
+                    .clipShape(Circle())
 
                 Text(item.name)
                     .font(RebuildDesignTokens.titleFont.bold())
@@ -273,9 +317,12 @@ struct MealRecordingSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !item.allergyLabels.isEmpty {
-                Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
+                Label(
+                    allergyStyle.title,
+                    systemImage: allergyStyle.systemImage
+                )
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.orange.opacity(0.9))
+                    .foregroundStyle(RebuildDesignTokens.danger700)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -310,6 +357,12 @@ struct MealRecordingSheet: View {
     ) -> some View {
         let isRisk = viewModel.isAllergyRisk(item)
         let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
+        let layout = MealRecordingActionLayout.descriptor(
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
+            isAllergyRisk: isRisk,
+            menuIndex: index,
+            item: item
+        )
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
             Text(actionDescriptor.prompt)
                 .font(RebuildDesignTokens.headlineFont)
@@ -322,19 +375,19 @@ struct MealRecordingSheet: View {
             }
 
             LazyVGrid(
-                columns: dynamicTypeSize.isAccessibilitySize
+                columns: layout.columnCount == 1
                     ? [GridItem(.flexible())]
                     : [GridItem(.adaptive(minimum: 132), spacing: 8)],
                 spacing: 8
             ) {
-                ForEach(
-                    MealRecordingActionLayout.gridStatuses(
-                        isAllergyRisk: isRisk
-                    ),
-                    id: \.self
-                ) {
+                ForEach(layout.statuses, id: \.self) {
                     status in
-                    statusButton(status, item: item, index: index)
+                    statusButton(
+                        status,
+                        item: item,
+                        index: index,
+                        minimumHitDimension: layout.minimumHitDimension
+                    )
                 }
             }
         }
@@ -421,12 +474,20 @@ struct MealRecordingSheet: View {
                 style: .continuous
             )
         )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+            .stroke(RebuildDesignTokens.danger700, lineWidth: 2)
+        }
     }
 
     private func statusButton(
         _ status: RebuildEatingStatus,
         item: RebuildMealItem,
-        index: Int
+        index: Int,
+        minimumHitDimension: CGFloat
     ) -> some View {
         let enabled = viewModel.isStatusEnabled(status, for: item) && !isSaving
         let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
@@ -454,6 +515,7 @@ struct MealRecordingSheet: View {
                 prepare(item: item, status: status)
             }
         }
+        .frame(minHeight: minimumHitDimension)
         .accessibilityIdentifier(
             MealRecordingAccessibilityID.status(
                 menuIndex: index,
@@ -544,9 +606,13 @@ struct MealRecordingSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if !item.allergyLabels.isEmpty {
-                        Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
+                        let allergyStyle = MealAllergyVisualStyle.resolve(for: item)
+                        Label(
+                            allergyStyle.title,
+                            systemImage: allergyStyle.systemImage
+                        )
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.orange.opacity(0.9))
+                            .foregroundStyle(RebuildDesignTokens.danger700)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -701,7 +767,7 @@ struct MealRecordingSheet: View {
                 ) {
                     confirm(draft)
                 }
-                .accessibilityIdentifier("meal_recording_confirm")
+                .accessibilityIdentifier(MealRecordingAccessibilityID.confirm)
 
                 actionButton(
                     title: "취소",
@@ -712,11 +778,11 @@ struct MealRecordingSheet: View {
                 ) {
                     cancelNutritionReview()
                 }
-                .accessibilityIdentifier("meal_recording_cancel")
+                .accessibilityIdentifier(MealRecordingAccessibilityID.cancel)
             }
             .padding(RebuildDesignTokens.spacing[4])
         }
-        .accessibilityIdentifier("meal_recording_nutrition_review")
+        .accessibilityIdentifier(MealRecordingAccessibilityID.nutritionReview)
     }
 
     private func recordingFeedback(_ message: String) -> some View {
