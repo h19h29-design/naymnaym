@@ -117,3 +117,26 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 
 - The known non-failing `_LottieStub.o` architecture warning remains outside Task 5.
 - No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.
+
+## Review fix round 4
+
+### Scope
+
+- Medical-copy validation now recognizes Korean conjugation stems such as `모자라요`, `모자랍니다`, and `모자란 상태` while preserving complete explicit negation and the canonical educational disclaimer.
+- Allergy-copy validation now covers conditional and causal particles, masks explicit avoidance/guardian-safe alternatives structurally, and rejects residual eating, tasting, swallowing, or retry cues in mixed unsafe-plus-safe sentences.
+- Reviewer copy cases now include per-case assertion diagnostics and additional particle/conjugation variants. Existing `EEXIST` winner validation, directory `fsync`, and fail-closed write behavior remain unchanged.
+
+### TDD and verification
+
+- RED — the focused safety suite isolated rejected copy case 12, `철분이 모자랍니다.`, which was not covered by the prior `모자라` literal shape.
+- GREEN — focused sidecar + persistent schema suite: 31/31 passed, 0 failures (`task5-review-fix-round4-focused-final2.xcresult`) on `Codex Task5 iPhone 17 Pro Fresh` (iPhone 17 Pro, iOS 26.5, `DCAC5291-31BF-4515-B31B-1667CD8EB1E3`).
+- GREEN — full iOS suite: 435/435 passed, 0 failures (`task5-review-fix-round4-full.xcresult`) on the same fresh simulator.
+- Native rebuild Python contracts: 32/32 passed (`python3 scripts/tests/test_native_rebuild_contracts.py`).
+- `git diff --check`: passed.
+- Core Data v1 model/migration and Xcode project membership are unchanged from `116f5fa`; the round changes are limited to the sidecar source, its tests, and this report.
+
+### Warnings
+
+- The earlier stale simulator runs entered `simctl diagnose` without starting `xctest`; after a scoped CoreSimulator restart, manual installation and both test suites succeeded on the fresh simulator. This was infrastructure evidence, not a test assertion failure.
+- The known non-failing `_LottieStub.o` x86_64 architecture warning remains outside Task 5.
+- No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.

@@ -248,16 +248,29 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "알레르기가 있는데 한 입 먹어요.",
             "알레르기가 있으면 조금 먹어 보세요.",
             "알레르기가 있다면 조금 먹어 보세요.",
+            "알레르기가 있는 경우 한 입 먹어요.",
+            "알레르기가 있으면 소량 섭취해 보세요.",
+            "알레르기가 있더라도 맛을 보세요.",
+            "알레르기가 있을 때 드세요.",
+            "알레르기가 있어서 먹어요.",
+            "알레르기 때문에 먹어 봐요.",
             "알레르기가 있는데 먹지 않다가 한 입 시도해요.",
             "철분이 모자라요.",
+            "철분이 모자랍니다.",
+            "철분이 모자란 상태예요.",
             "철분이 부족해요.",
             "철분 결핍이에요.",
+            "철분 결핍 상태예요.",
+            "영양소 부족을 진단하지 않아요. 철분 결핍 상태예요.",
             "철분이 모자라서 몸이 나빠져요.",
             "철분 결핍이라고 진단해요.",
             "이 증상은 치료가 필요해요.",
         ]
-        for copy in rejectedCopy {
-            assertInstallRejected(store, fixtureSnapshot(headline: copy))
+        for (index, copy) in rejectedCopy.enumerated() {
+            XCTAssertThrowsError(
+                try store.install(fixtureSnapshot(headline: copy)),
+                "Rejected copy case \(index): \(copy)"
+            )
         }
 
         let allowedCopy = [
@@ -265,6 +278,15 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "알레르기가 있는데 먹지 않아요.",
             "알레르기가 있으면 피해요.",
             "알레르기가 있으면 먹어 보지 않아요.",
+            "알레르기가 있으면 먹어 보면 안 돼요.",
+            "알레르기가 있으면 먹으면 안 됩니다.",
+            "알레르기가 있는 경우 보호자와 확인해요.",
+            "알레르기가 있어서 먹지 않아요.",
+            "알레르기 때문에 다른 반찬을 선택해요.",
+            "알레르기가 있으면 피하고 다른 반찬을 먹어요.",
+            "해당 음식은 피하고 다른 반찬을 먹어요.",
+            "철분이 부족하다고 판단하지 않아요.",
+            "철분이 부족하지 않아요.",
         ]
         for (index, copy) in allowedCopy.enumerated() {
             XCTAssertNoThrow(

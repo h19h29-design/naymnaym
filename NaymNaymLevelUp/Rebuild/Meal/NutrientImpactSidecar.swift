@@ -605,8 +605,8 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             return true
         }
 
-        // Remove explicit negated educational clauses, then scan for
-        // claim-shaped language rather than rejecting bare topic words.
+        // Remove only complete, explicitly negated educational clauses.
+        // Any medical-risk root left afterward is unsafe.
         let normalizedForMedical = lowercased.filter { !$0.isWhitespace }
         let safeDisclaimerMarkers = [
             "진단이나치료를대신하지않습니다",
@@ -619,21 +619,27 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             $0.replacingOccurrences(of: $1, with: "")
         }
         let safeMedicalNegations = [
-            #"(?:결핍|부족)(?:을|이라고|하다고)?진단하지않(?:아요|습니다|는|기로)"#,
-            #"(?:진단|치료|처방)(?:을|를)?하지않(?:아요|습니다|는)"#,
+            // Keep a complete medical clause together while accepting the
+            // common Korean case/quotative particles between the topic and
+            // the diagnostic verb. Any risk root left outside a complete
+            // negated clause remains fail-closed below.
+            #"(?:결핍|부족|모자(?:라|랍|란|랄|람|랐))(?:이|가|을|를|은|는|도|이라고|이라|하다고|하다는|한)?(?:진단|판단)하지않(?:아요|습니다|는|기로|을)?"#,
+            #"(?:결핍|부족|모자(?:라|랍|란|랄|람|랐))(?:이|가|을|를|은|는|도)?(?:아니|없)(?:에요|예요|어요|습니다|다)"#,
+            #"(?:결핍|부족|모자(?:라|랍|란|랄|람|랐))(?:하)?지않(?:아요|습니다|는|기로|을)?"#,
+            #"(?:진단|치료|처방)(?:이|가|을|를|은|는|도)?하지않(?:아요|습니다|는|기로|을)?"#,
         ]
         let claimCandidate = safeMedicalNegations.reduce(medicalClaimText) { text, pattern in
             text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
-        let medicalClaimPatterns = [
-            #"(?:결핍|부족)(?:입니다|이에요|예요|해요|합니다|하다|해서|하니|하면|이라고)"#,
-            #"모자라(?:요|습니다|서|니|면)"#,
-            #"(?:결핍|부족|모자라).*(?:몸|건강|악화|나빠|해로|질병|위험|꼭먹|섭취해야)"#,
-            #"(?:진단|치료|처방)(?:이|가|을|를|은|는|해|하|받|필요|해야|됩니다|돼요)"#,
-            #"(?:질병|빈혈|고혈압|당뇨)(?:이|가|을|를|입니다|이에요|위험|진단|치료|생겨|걸려)"#,
-            #"(?:의학적|의료적)(?:진단|판단|효과|치료|처방)"#,
+        let medicalRiskPatterns = [
+            #"(?:결핍|부족)(?:하|해|합|한|함|입니다|이에요|예요|해요|합니다|이라고|상태)"#,
+            #"모자(?:라|랍|란|랄|람|랐)"#,
+            #"(?:진단|치료|처방)"#,
+            #"(?:질병|빈혈|고혈압|당뇨)"#,
+            #"(?:의학적|의료적)"#,
+            #"(?:몸이나빠|건강이나빠|해로|악화)"#,
         ]
-        guard !medicalClaimPatterns.contains(where: { pattern in
+        guard !medicalRiskPatterns.contains(where: { pattern in
             claimCandidate.range(of: pattern, options: .regularExpression) != nil
         }) else { return true }
 
@@ -650,33 +656,48 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             return true
         }
         let allergyConditionPattern =
-            #"알레르기(?:가)?(?:있(?:는데|으면|다면|어도|더라도)|여도|라도|지만|인데도)"#
+            #"(?:알레르기(?:가)?(?:있(?:는데|으면|다면|어도|더라도|는경우|을때|을경우|어|어서|으니|으므로|으니까|기때문에)|인데|인데도|여도|라도|지만|때문에|라서)|알레르기(?:라면|인경우|일때|라서|때문에|라))"#
         guard let conditionRange = compact.range(
             of: allergyConditionPattern,
             options: .regularExpression
         ) else { return false }
 
         var actionText = String(compact[conditionRange.upperBound...])
-        let avoidanceActionPatterns = [
-            #"(?:한입|조금|다시)?(?:먹어보|먹|시도|맛보)지않(?:아요|습니다|기로|도록|기)?"#,
-            #"(?:먹지|시도하지|맛보지)말(?:아요|세요|기)?"#,
-            #"안먹(?:어요|습니다|기로|도록|기)?"#,
-            #"(?:피하|피해|제외|중단)(?:요|세요|해요|합니다|하기|하도록)?"#,
+        let safeAlternativeActionPatterns = [
+            #"(?:피하|피해|제외|중단)(?:고|며|서)?(?:다른|대체|대신)(?:반찬|메뉴|음식)(?:을|를|으로)?(?:먹|섭취|선택|고르|살펴|바꾸)(?:어|아|해|봐요|세요|기로|기|요|습니다)?"#,
+            #"(?:다른|대체|대신)(?:반찬|메뉴|음식)(?:을|를|으로)?(?:먹|섭취|선택|고르|살펴|바꾸)(?:어|아|해|봐요|세요|기로|기|요|습니다)?"#,
         ]
-        for pattern in avoidanceActionPatterns {
-            actionText = actionText.replacingOccurrences(
+        let demonstrablySafeActionPatterns = [
+            #"(?:한입|소량|조금)?(?:먹어보|먹|섭취|시도|맛보|삼키)(?:지않|지말|지마)(?:아요|습니다|세요|요|기로|도록|기|고)?"#,
+            #"(?:한입|소량|조금)?(?:먹어보|먹|섭취|시도|맛보|삼키)(?:으)?면안(?:돼요|됩니다|돼|됨|된다)"#,
+            #"(?:먹지|섭취하지|시도하지|맛보지|삼키지)말(?:아요|세요|요|기|고)?"#,
+            #"안(?:먹|드시|드셔|드세)(?:어요|습니다|기로|도록|기|요|세요)?"#,
+            #"(?:피하|피해|피할|제외|중단)(?:지않|지말|지마|면안|고|며|서|요|세요|해요|합니다|하기|하도록|할게요)?"#,
+            #"(?:보호자|선생님)(?:와|과|에게|께|한테)?(?:먼저)?(?:확인|물어봐|물어|알려|상의)(?:요|해요|하세요|합니다|보기|봐요|볼게요|하기)?"#,
+        ]
+        var foundSafeAction = false
+        for pattern in safeAlternativeActionPatterns + demonstrablySafeActionPatterns {
+            let masked = actionText.replacingOccurrences(
                 of: pattern,
                 with: "",
                 options: .regularExpression
             )
+            foundSafeAction = foundSafeAction || masked != actionText
+            actionText = masked
         }
-        let positiveActionPatterns = [
-            #"한입(?:먹|시도|맛보)"#,
-            #"조금(?:먹어보|먹|시도|맛보)"#,
-            #"(?:먹어보|다시먹|다시시도|시도|맛보|재도전)"#,
-            #"먹(?:어요|으세요|어주세요|기)"#,
+        guard foundSafeAction else {
+            return true
+        }
+        let residualRiskPatterns = [
+            #"먹"#,
+            #"섭취"#,
+            #"시도"#,
+            #"맛.*보"#,
+            #"드시|드셔|드세"#,
+            #"삼키"#,
+            #"한입|소량|조금"#,
         ]
-        return positiveActionPatterns.contains { pattern in
+        return residualRiskPatterns.contains { pattern in
             actionText.range(of: pattern, options: .regularExpression) != nil
         }
     }
