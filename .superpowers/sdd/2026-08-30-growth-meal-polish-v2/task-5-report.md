@@ -149,7 +149,7 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 - Added `NutrientImpactSnapshotFactory` so Task 6 can create snapshots without assembling safety-sensitive strings manually. The existing `NutrientImpactSnapshot` fields and schema remain unchanged.
 - The catalog covers all six eating statuses. `smelledOnly`, `difficultToday`, and `allergyAvoided` copies describe exploration, pacing, or safety and contain no eating claim; the other statuses use bounded educational encouragement without medical diagnosis, quantitative claims, or pressure to eat. The disclaimer is the exact `educationNotice` from `nutrition-rules.json`.
 - Nutrient IDs are allow-listed, deduplicated, and sorted by the contract order. The sidecar additionally requires the stored array to already equal that canonical order, so order/duplicate mutations fail closed. Nutrient names use a neutral ` · ` separator.
-- Alternatives are validated as same-meal menu labels, not free-form guidance: at most two labels, UTF-8 length/control/path checks, NFC duplicate detection, and sentence-ending punctuation rejection. Spaces and ordinary Korean menu punctuation such as `고구마 (찐 것)` remain valid.
+- Alternatives are validated as same-meal menu labels, not free-form guidance: the factory applies NFC and Unicode space-separator canonicalization, trims/collapses spaces, permits at most two unique bounded labels, and rejects controls/format/path separators, sentence-ending punctuation, quantity units, secret markers, and clear medical/allergy/action roots. Ordinary labels and punctuation such as `김치·두부`, `고구마 (찐 것)`, and `2026년산 고구마` remain valid.
 - Removed the unused `containsForbiddenCopy` and `normalizedSafetyText` regex grammar entirely. Existing atomic temp-file publication, `EEXIST` no-overwrite, fsync, no-follow, digest, NFC fingerprint, byte limits, and concurrency behavior remain unchanged.
 
 ### TDD and verification
@@ -163,3 +163,25 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 ### Warnings
 
 - Task 6 has not yet been wired to the factory in this task; the API is available for that integration. No Core Data model/migration, UI/assets, release metadata, Android behavior, upload, submission, browser action, or secret handling was changed.
+
+## Review fix round 6 — canonical menu grammar and copy quality
+
+### Scope
+
+- Refined all six exact catalog entries to the approved child-facing copy. Finished/half/one-bite messages celebrate the recorded experience, smelled-only keeps exploration separate from nutrition education, difficult-today uses a non-quantitative “may have consumed less” estimate with reassurance, and allergy-avoided prioritizes guardian/school safety without loss or eating advice.
+- Added explicit table assertions for every status, including the difficult-today estimate/encouragement requirements and the absence of eating language from smelled-only and allergy-avoided copy. Canonical UTF-8 comparison remains byte-exact and the public snapshot fields are unchanged.
+- Replaced permissive alternative validation with a small factory label grammar. Factory inputs normalize NFC and Unicode space separators, trim/collapse spaces, reject duplicate canonical labels, and cap labels at two bounded values. Direct sidecar inputs must already equal that canonical unique representation. Controls/format characters, `/` and `\\`, sentence-ending punctuation, quantity-unit markers (including compatibility/full-width forms), secret markers, and clear medical/allergy/action roots are rejected; ordinary Korean/numeric menu names remain accepted. Quantity matching requires a real unit boundary so labels such as `12 garlic noodles` are not blocked by the `g` unit.
+- Every newly rejected direct snapshot uses a unique revision and is checked for exact `.invalidSnapshot` plus unchanged JSON and temporary-artifact sets. Atomic publication, EEXIST/no-overwrite, fsync, no-follow, digest, NFC fingerprint, size, and concurrency guarantees remain intact.
+
+### TDD and verification
+
+- RED — the new exact status table and menu-label canonicalization tests failed against the old copy/label behavior (`task5-review5-red/Task5Review5Red.xcresult`: 2 failures).
+- GREEN — focused sidecar + persistent schema suite: 36/36 passed, 0 failures, 0 skips (`build/verification/task5-review6-focused-final/Task5Review6FocusedFinal.xcresult`) on `Codex Task5 iPhone 17 Pro Fresh` (iPhone 17 Pro, iOS 26.5, `DCAC5291-31BF-4515-B31B-1667CD8EB1E3`). Sidecar: 23/23; persistent schema: 13/13.
+- GREEN — full iOS suite: 440/440 passed, 0 failures, 0 skips (`build/verification/task5-review6-full-final/Task5Review6FullFinal.xcresult`) on the same fresh simulator.
+- GREEN — native rebuild Python contracts: 32/32 passed (`python3 scripts/tests/test_native_rebuild_contracts.py`).
+- `git diff --check`: passed.
+
+### Warnings
+
+- The known non-failing `_LottieStub.o` x86_64 architecture warning remains unrelated to Task 5.
+- No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.

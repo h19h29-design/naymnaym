@@ -623,6 +623,164 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertEqual(try jsonFiles().count, statuses.count)
     }
 
+    func testCanonicalCopyCatalogUsesExactStatusTable() throws {
+        let expectedCopies: [(RebuildEatingStatus, NutrientImpactCopy)] = [
+            (
+                .finished,
+                NutrientImpactCopy(
+                    headline: "오늘 급식, 즐겁게 잘 마무리했어요!",
+                    explanation: "이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요. 오늘의 식사 경험을 멋지게 기록했어요.",
+                    disclaimer: NutrientImpactCopyCatalog.educationNotice
+                )
+            ),
+            (
+                .half,
+                NutrientImpactCopy(
+                    headline: "절반까지 차근차근 먹어 봤어요!",
+                    explanation: "절반까지 시도한 경험을 잘 기록했어요. 이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요.",
+                    disclaimer: NutrientImpactCopyCatalog.educationNotice
+                )
+            ),
+            (
+                .oneBite,
+                NutrientImpactCopy(
+                    headline: "한 입 도전, 멋지게 해냈어요!",
+                    explanation: "한 입으로 새로운 맛과 식감을 살펴봤어요. 이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요.",
+                    disclaimer: NutrientImpactCopyCatalog.educationNotice
+                )
+            ),
+            (
+                .smelledOnly,
+                NutrientImpactCopy(
+                    headline: "냄새와 느낌을 살펴본 것도 멋진 탐색이에요!",
+                    explanation: "오늘은 냄새와 느낌을 천천히 알아봤어요. 이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요.",
+                    disclaimer: NutrientImpactCopyCatalog.educationNotice
+                )
+            ),
+            (
+                .difficultToday,
+                NutrientImpactCopy(
+                    headline: "오늘은 이 메뉴의 대표 영양소를 덜 섭취했을 수 있어요.",
+                    explanation: "이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요. 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요.",
+                    disclaimer: NutrientImpactCopyCatalog.educationNotice
+                )
+            ),
+            (
+                .allergyAvoided,
+                NutrientImpactCopy(
+                    headline: "알레르기 안전을 먼저 챙긴 선택이에요!",
+                    explanation: "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴에서도 철분 같은 대표 영양소를 살펴볼 수 있어요.",
+                    disclaimer: NutrientImpactCopyCatalog.educationNotice
+                )
+            ),
+        ]
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+
+        for (index, entry) in expectedCopies.enumerated() {
+            let (status, expected) = entry
+            XCTAssertEqual(
+                NutrientImpactCopyCatalog.makeCopy(status: status, nutrientIDs: ["iron"]),
+                expected,
+                "Unexpected canonical copy for status index \(index)"
+            )
+            let snapshot = try XCTUnwrap(
+                NutrientImpactSnapshotFactory.make(
+                    recordID: "canonical-copy-table-\(index)",
+                    date: "2026-08-30",
+                    normalizedMenuName: "현미밥",
+                    status: status,
+                    recordUpdatedAt: Date(timeIntervalSince1970: TimeInterval(index + 10)),
+                    nutrientIDs: ["iron"],
+                    alternativeMenuLabels: ["두부"]
+                )
+            )
+            XCTAssertEqual(snapshot.headline, expected.headline)
+            XCTAssertEqual(snapshot.explanation, expected.explanation)
+            XCTAssertEqual(snapshot.disclaimer, expected.disclaimer)
+            if status == .smelledOnly || status == .allergyAvoided {
+                XCTAssertFalse(expected.headline.contains("섭취"))
+                XCTAssertFalse(expected.explanation.contains("섭취"))
+                XCTAssertFalse(expected.explanation.contains("먹"))
+            }
+            if status == .difficultToday {
+                XCTAssertTrue(expected.headline.contains("덜 섭취했을 수 있어요"))
+                XCTAssertTrue(expected.explanation.contains("보통 철분"))
+                XCTAssertTrue(expected.explanation.contains("그래도 괜찮아요"))
+                XCTAssertTrue(expected.explanation.contains("솔직하게 기록한 것이 첫걸음"))
+            }
+            XCTAssertNoThrow(try store.install(snapshot))
+        }
+    }
+
+    func testMenuLabelCanonicalizationRejectsPolicyDataAndPreservesRealLabels() throws {
+        let valid = NutrientImpactSnapshotFactory.make(
+            recordID: "menu-label-canonical",
+            date: "2026-08-30",
+            normalizedMenuName: "현미밥",
+            status: .finished,
+            recordUpdatedAt: Date(timeIntervalSince1970: 10),
+            nutrientIDs: ["carbohydrate"],
+            alternativeMenuLabels: ["\u{00A0}김치\u{00A0} ·  두부\u{00A0}", "고구마 (찐 것)"]
+        )
+        XCTAssertEqual(valid?.alternatives, ["김치 · 두부", "고구마 (찐 것)"])
+
+        let ordinaryKoreanLabels = NutrientImpactSnapshotFactory.make(
+            recordID: "menu-label-ordinary",
+            date: "2026-08-30",
+            normalizedMenuName: "현미밥",
+            status: .finished,
+            recordUpdatedAt: Date(timeIntervalSince1970: 11),
+            nutrientIDs: ["carbohydrate"],
+            alternativeMenuLabels: ["2026년산 고구마", "12 garlic noodles"]
+        )
+        XCTAssertNotNil(ordinaryKoreanLabels)
+
+        let rejectedFactoryLabels = [
+            "알레르기가 있어도 한 입 먹어도 괜찮아요",
+            "철분 12mg",
+            "fake secret marker: API token",
+            "/tmp/file",
+            "\u{200B}두부",
+        ]
+        for (index, label) in rejectedFactoryLabels.enumerated() {
+            XCTAssertNil(
+                NutrientImpactSnapshotFactory.make(
+                    recordID: "menu-label-factory-rejected-\(index)",
+                    date: "2026-08-30",
+                    normalizedMenuName: "현미밥",
+                    status: .finished,
+                    recordUpdatedAt: Date(timeIntervalSince1970: TimeInterval(index + 20)),
+                    nutrientIDs: ["carbohydrate"],
+                    alternativeMenuLabels: [label]
+                ),
+                "Factory accepted policy-bearing label at index \(index)"
+            )
+        }
+
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let rejectedDirectLabels: [[String]] = [
+            ["알레르기가 있어도 한 입 먹어도 괜찮아요"],
+            ["철분 12mg"],
+            ["fake secret marker: API token"],
+            ["/tmp/file"],
+            [" 두부 "],
+            ["두부", " 두부 "],
+            ["두부", "\u{00A0}두부\u{00A0}"],
+            ["두부", "김치", "사과"],
+            ["\u{0000}두부"],
+            ["\u{200B}두부"],
+        ]
+        for (index, labels) in rejectedDirectLabels.enumerated() {
+            assertInstallRejected(
+                store,
+                fixtureSnapshot(
+                    recordID: "menu-label-direct-rejected-\(index)",
+                    alternatives: labels
+                )
+            )
+        }
+    }
+
     func testSidecarRejectsMutatedAndPreviouslyAmbiguousSafetyCopy() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let canonical = try XCTUnwrap(
@@ -655,9 +813,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 recordID: "mutated-copy-\(index)",
                 headline: copy
             )
-            XCTAssertThrowsError(try store.install(snapshot)) { error in
-                XCTAssertEqual(error as? NutrientImpactSidecarError, .invalidSnapshot)
-            }
+            assertInstallRejected(store, snapshot)
         }
 
         for (index, copy) in [
@@ -670,9 +826,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 recordID: "safe-but-noncanonical-\(index)",
                 explanation: copy
             )
-            XCTAssertThrowsError(try store.install(snapshot)) { error in
-                XCTAssertEqual(error as? NutrientImpactSidecarError, .invalidSnapshot)
-            }
+            assertInstallRejected(store, snapshot)
         }
 
         XCTAssertTrue(try jsonFiles().isEmpty)

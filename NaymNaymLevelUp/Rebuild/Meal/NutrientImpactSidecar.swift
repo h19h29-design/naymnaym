@@ -47,6 +47,23 @@ enum NutrientImpactCopyCatalog {
         "carbohydrate": "탄수화물",
     ]
 
+    private static let maximumMenuLabelBytes = 256
+    private static let maximumMenuLabelCharacters = 80
+    private static let quantityUnits = [
+        "kcal", "mg", "g", "킬로칼로리", "밀리그램", "그램",
+    ]
+    private static let secretMarkers = [
+        "api key", "api token", "access token", "refresh token", "bearer",
+        "client secret", "private key", "password", "passwd", "secret",
+        "인증 토큰", "액세스 토큰", "개인키", "시크릿",
+    ]
+    private static let policyRoots = [
+        "알레르기", "진단", "치료", "처방", "결핍", "부족", "모자라",
+        "빈혈", "고혈압", "당뇨", "의학", "의료", "먹어", "먹기", "섭취",
+        "맛보", "시도", "삼키", "드셔", "드세", "피해", "피하", "피할",
+        "제외", "중단", "보호자",
+    ]
+
     static func normalizedNutrientIDs(_ values: [String]) -> [String]? {
         guard values.allSatisfy({ nutrientNames[$0] != nil }) else {
             return nil
@@ -68,23 +85,23 @@ enum NutrientImpactCopyCatalog {
 
         switch status {
         case .finished:
-            headline = "오늘 \(phrase) 정보를 살펴봤어요."
-            explanation = "오늘의 급식에서 \(phrase) 정보를 확인하고 즐겁게 마무리했어요."
+            headline = "오늘 급식, 즐겁게 잘 마무리했어요!"
+            explanation = "\(commonNutritionSentence(for: phrase)) 오늘의 식사 경험을 멋지게 기록했어요."
         case .half:
-            headline = "\(phrase) 정보를 차근차근 경험했어요."
-            explanation = "먹은 만큼의 경험을 기록하며 \(phrase) 정보를 알아가요."
+            headline = "절반까지 차근차근 먹어 봤어요!"
+            explanation = "절반까지 시도한 경험을 잘 기록했어요. \(commonNutritionSentence(for: phrase))"
         case .oneBite:
-            headline = "오늘 한 입으로 \(phrase) 정보를 경험했어요."
-            explanation = "작은 한 걸음으로 \(phrase) 정보를 알아가는 중이에요."
+            headline = "한 입 도전, 멋지게 해냈어요!"
+            explanation = "한 입으로 새로운 맛과 식감을 살펴봤어요. \(commonNutritionSentence(for: phrase))"
         case .smelledOnly:
-            headline = "냄새를 살펴본 것도 멋진 탐색이에요."
-            explanation = "오늘은 냄새와 느낌으로 \(phrase) 정보를 천천히 알아봤어요."
+            headline = "냄새와 느낌을 살펴본 것도 멋진 탐색이에요!"
+            explanation = "오늘은 냄새와 느낌을 천천히 알아봤어요. \(commonNutritionSentence(for: phrase))"
         case .difficultToday:
-            headline = "오늘은 천천히 살펴본 것으로 충분해요."
-            explanation = "다음에 다시 만날 때를 위해 \(phrase) 정보를 기억해 두어요."
+            headline = "오늘은 이 메뉴의 대표 영양소를 덜 섭취했을 수 있어요."
+            explanation = "\(commonNutritionSentence(for: phrase)) 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요."
         case .allergyAvoided:
-            headline = "안전하게 피한 선택이 가장 중요해요."
-            explanation = "보호자와 학교 안내를 먼저 확인하며 \(phrase) 정보를 안전하게 알아봐요."
+            headline = "알레르기 안전을 먼저 챙긴 선택이에요!"
+            explanation = "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴에서도 \(phrase) 같은 대표 영양소를 살펴볼 수 있어요."
         }
 
         return NutrientImpactCopy(
@@ -113,13 +130,25 @@ enum NutrientImpactCopyCatalog {
     }
 
     static func validateMenuLabels(_ values: [String]) -> Bool {
-        guard values.count <= 2,
-              values.allSatisfy(validMenuLabel),
-              Set(values.map { $0.precomposedStringWithCanonicalMapping }).count == values.count
-        else {
-            return false
+        guard let canonical = canonicalMenuLabels(values) else { return false }
+        return canonical == values
+    }
+
+    /// Canonicalize menu labels at the factory boundary. The sidecar itself
+    /// accepts only this exact representation, so whitespace/NFC variants and
+    /// duplicates cannot be smuggled into persisted snapshots.
+    static func canonicalMenuLabels(_ values: [String]) -> [String]? {
+        guard values.count <= 2 else { return nil }
+
+        var canonical: [String] = []
+        canonical.reserveCapacity(values.count)
+        for value in values {
+            guard let label = canonicalMenuLabel(value), !canonical.contains(label) else {
+                return nil
+            }
+            canonical.append(label)
         }
-        return true
+        return canonical
     }
 
     private static func nutrientPhrase(for nutrientIDs: [String]) -> String {
@@ -133,20 +162,49 @@ enum NutrientImpactCopyCatalog {
         expected.utf8.elementsEqual(actual.utf8)
     }
 
-    private static func validMenuLabel(_ value: String) -> Bool {
-        let endsWithSentencePunctuation = value.unicodeScalars.last.map {
+    private static func commonNutritionSentence(for phrase: String) -> String {
+        "이 메뉴에서는 보통 \(phrase) 같은 대표 영양소를 만날 수 있어요."
+    }
+
+    private static func canonicalMenuLabel(_ value: String) -> String? {
+        let normalized = value.precomposedStringWithCanonicalMapping
+        guard normalized.utf8.count <= maximumMenuLabelBytes,
+              normalized.count <= maximumMenuLabelCharacters,
+              !containsControlCharacter(normalized),
+              !containsFormatCharacter(normalized),
+              !containsPathSeparator(normalized)
+        else {
+            return nil
+        }
+
+        var result = String()
+        result.reserveCapacity(normalized.count)
+        var pendingSpace = false
+        for scalar in normalized.unicodeScalars {
+            if scalar.properties.generalCategory == .spaceSeparator {
+                pendingSpace = !result.isEmpty
+                continue
+            }
+            if pendingSpace {
+                result.append(" ")
+                pendingSpace = false
+            }
+            result.unicodeScalars.append(scalar)
+        }
+
+        let endsWithSentencePunctuation = result.unicodeScalars.last.map {
             ".!?。！？".unicodeScalars.contains($0)
         } ?? false
-        guard !value.isEmpty,
-              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              value.utf8.count <= 1_024,
-              !containsControlCharacter(value),
-              !containsPathTraversal(value),
-              !endsWithSentencePunctuation
+        guard !result.isEmpty,
+              !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !endsWithSentencePunctuation,
+              !containsQuantityMarker(result),
+              !containsSecretMarker(result),
+              !containsPolicyRoot(result)
         else {
-            return false
+            return nil
         }
-        return true
+        return result
     }
 
     private static func containsControlCharacter(_ value: String) -> Bool {
@@ -158,11 +216,96 @@ enum NutrientImpactCopyCatalog {
         }
     }
 
-    private static func containsPathTraversal(_ value: String) -> Bool {
-        value.split(
-            omittingEmptySubsequences: false,
-            whereSeparator: { $0 == "/" || $0 == "\\" }
-        ).contains { $0 == "." || $0 == ".." }
+    private static func containsFormatCharacter(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            scalar.properties.generalCategory == .format
+        }
+    }
+
+    private static func containsPathSeparator(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            scalar.value == 0x2F || scalar.value == 0x5C
+        }
+    }
+
+    private static func containsQuantityMarker(_ value: String) -> Bool {
+        let compatible = value.precomposedStringWithCompatibilityMapping.lowercased()
+        let scalars = Array(compatible.unicodeScalars)
+        var index = 0
+
+        while index < scalars.count {
+            guard isASCIIDigit(scalars[index]) else {
+                index += 1
+                continue
+            }
+
+            var cursor = index
+            while cursor < scalars.count, isASCIIDigit(scalars[cursor]) {
+                cursor += 1
+            }
+            if cursor < scalars.count, scalars[cursor].value == 0x2E || scalars[cursor].value == 0x2C {
+                cursor += 1
+                while cursor < scalars.count, isASCIIDigit(scalars[cursor]) {
+                    cursor += 1
+                }
+            }
+            while cursor < scalars.count,
+                  scalars[cursor].properties.generalCategory == .spaceSeparator {
+                cursor += 1
+            }
+            for unit in quantityUnits {
+                let unitScalars = Array(
+                    unit.precomposedStringWithCompatibilityMapping.lowercased().unicodeScalars
+                )
+                guard cursor + unitScalars.count <= scalars.count else { continue }
+                guard Array(scalars[cursor..<(cursor + unitScalars.count)]) == unitScalars else {
+                    continue
+                }
+                let afterUnit = cursor + unitScalars.count
+                if afterUnit == scalars.count || !isAlphaNumeric(scalars[afterUnit]) {
+                    return true
+                }
+            }
+            index = cursor
+        }
+        return false
+    }
+
+    private static func containsSecretMarker(_ value: String) -> Bool {
+        let normalized = policyTokens(for: value).joined(separator: " ")
+        return secretMarkers.contains(where: normalized.contains)
+            || value.precomposedStringWithCompatibilityMapping.lowercased().contains("sk-")
+    }
+
+    private static func containsPolicyRoot(_ value: String) -> Bool {
+        let normalized = policyTokens(for: value).joined(separator: " ")
+        return policyRoots.contains(where: normalized.contains)
+    }
+
+    private static func policyTokens(for value: String) -> [String] {
+        let compatible = value.precomposedStringWithCompatibilityMapping.lowercased()
+        var tokens: [String] = []
+        var token = String()
+        for scalar in compatible.unicodeScalars {
+            if scalar.properties.isAlphabetic || scalar.properties.numericType != nil {
+                token.unicodeScalars.append(scalar)
+            } else if !token.isEmpty {
+                tokens.append(token)
+                token.removeAll(keepingCapacity: true)
+            }
+        }
+        if !token.isEmpty {
+            tokens.append(token)
+        }
+        return tokens
+    }
+
+    private static func isASCIIDigit(_ scalar: Unicode.Scalar) -> Bool {
+        (0x30...0x39).contains(scalar.value)
+    }
+
+    private static func isAlphaNumeric(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.properties.isAlphabetic || scalar.properties.numericType != nil
     }
 }
 
@@ -185,7 +328,7 @@ enum NutrientImpactSnapshotFactory {
                   status: status,
                   nutrientIDs: nutrients
               ),
-              NutrientImpactCopyCatalog.validateMenuLabels(alternativeMenuLabels)
+              let alternatives = NutrientImpactCopyCatalog.canonicalMenuLabels(alternativeMenuLabels)
         else {
             return nil
         }
@@ -200,7 +343,7 @@ enum NutrientImpactSnapshotFactory {
             nutrients: nutrients,
             headline: copy.headline,
             explanation: copy.explanation,
-            alternatives: alternativeMenuLabels,
+            alternatives: alternatives,
             disclaimer: copy.disclaimer
         )
     }

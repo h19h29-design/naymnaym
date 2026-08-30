@@ -387,7 +387,7 @@
   }
   ```
 
-- `FileNutrientImpactSidecar` stores under an Application Support subdirectory, hashes a canonical revision string with existing CryptoKit, accepts only `NutrientImpactCopyCatalog` canonical copy for each status and normalized nutrient-ID list, structurally validates same-meal menu labels, writes temp → atomic rename → read-back, never overwrites a prior revision, and returns nil for malformed/schema/rule/fingerprint mismatch. `NutrientImpactSnapshotFactory` supplies the copy so callers do not manually assemble safety text. Include a no-op implementation for callers that record without an impact snapshot.
+- `FileNutrientImpactSidecar` stores under an Application Support subdirectory, hashes a canonical revision string with existing CryptoKit, accepts only `NutrientImpactCopyCatalog` canonical copy for each status and normalized nutrient-ID list, requires canonical same-meal menu labels from the factory, writes temp → atomic rename → read-back, never overwrites a prior revision, and returns nil for malformed/schema/rule/fingerprint mismatch. `NutrientImpactSnapshotFactory` supplies the copy and canonical labels so callers do not manually assemble safety text or bypass label validation. Include a no-op implementation for callers that record without an impact snapshot.
 
 - [ ] Step 1: Add failing tests `testInstallRoundTripsOnlyForExactRevision`, `testStatusChangeCreatesNewImmutableFile`, `testCorruptedOrMismatchedSnapshotFallsBackToCurrentGuidance`, `testInstallRejectsPathTraversalAndForbiddenQuantities`, and `testSidecarDoesNotChangeManagedModelSchema`. Use a temporary Application Support directory and assert old JSON bytes remain unchanged after a new status revision.
 
@@ -407,7 +407,7 @@
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/NutrientImpactSidecarTests -only-testing:NaymNaymLevelUpTests/RebuildPersistentStoreTests
   ```
 
-- [ ] Step 3: Implement the sidecar with `schemaVersion == 1`, canonical catalog/factory copy and disclaimer rules for all six statuses, deterministic canonical fingerprint, safe filename, atomic install/read-back, exact active revision matching, and orphan-tolerant reads. Treat alternatives as at most two bounded same-meal menu labels. Do not add a Core Data attribute or call any migration/backfill path.
+- [ ] Step 3: Implement the sidecar with `schemaVersion == 1`, canonical catalog/factory copy and disclaimer rules for all six statuses, deterministic canonical fingerprint, safe filename, atomic install/read-back, exact active revision matching, and orphan-tolerant reads. Treat alternatives as at most two factory-canonicalized, unique, bounded same-meal menu labels; reject controls/format/path separators and the bounded quantity/secret/medical/action label deny set without NLU. Do not add a Core Data attribute or call any migration/backfill path.
 - [ ] Step 4: Run GREEN and verify the public v1 model exact test, malformed/path traversal/forbidden-copy handling, restart read-back, and no matching read for an orphan or stale revision.
 
   ```bash
