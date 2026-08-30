@@ -7,9 +7,11 @@ final class MealDayDetailViewModel: ObservableObject {
     @Published private(set) var meal: RebuildMealDay?
     @Published private(set) var state: MealLoadState = .empty
     @Published private(set) var isLoading = false
+    @Published private(set) var hasLoaded = false
 
     private let repository: any MealScheduleRepository
     private let school: RebuildSchool?
+    private var loadGeneration = 0
 
     init(
         route: MealDayRoute,
@@ -22,20 +24,29 @@ final class MealDayDetailViewModel: ObservableObject {
     }
 
     func load() async {
-        isLoading = true
+        guard !isLoading else { return }
 
-        apply(await repository.currentState(date: route.dateKey))
-        if let school {
-            if case let .failed(_, cached) = state {
-                state = .refreshing(cached)
-            } else {
-                state = .refreshing(meal)
+        loadGeneration += 1
+        let generation = loadGeneration
+        isLoading = true
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+                hasLoaded = true
             }
-            await repository.refresh(date: route.dateKey, school: school)
-            apply(await repository.currentState(date: route.dateKey))
         }
 
-        isLoading = false
+        let initialState = await repository.currentState(date: route.dateKey)
+        guard generation == loadGeneration else { return }
+        apply(initialState)
+        if let school {
+            state = .refreshing(meal)
+            await repository.refresh(date: route.dateKey, school: school)
+            guard generation == loadGeneration else { return }
+            let refreshedState = await repository.currentState(date: route.dateKey)
+            guard generation == loadGeneration else { return }
+            apply(refreshedState)
+        }
     }
 
     private func apply(_ candidate: MealLoadState) {
@@ -75,8 +86,7 @@ final class MealDayDetailViewModel: ObservableObject {
     }
 
     private func applyDateMismatch() {
-        meal = nil
-        state = .failed(message: "selected date mismatch", cached: nil)
+        state = .failed(message: "selected date mismatch", cached: meal)
     }
 }
 
@@ -154,20 +164,24 @@ struct MealDayDetailView: View {
     @ViewBuilder
     private var stateBadge: some View {
         Group {
-            switch viewModel.state {
-            case .cached:
-                Label("저장된 급식", systemImage: "internaldrive")
-            case .refreshing:
-                Label(
-                    viewModel.meal == nil ? "급식을 확인하고 있어요" : "저장된 급식 · 업데이트 중",
-                    systemImage: "arrow.triangle.2.circlepath"
-                )
-            case .live:
-                Label("학교 급식", systemImage: "checkmark.circle.fill")
-            case .empty:
-                Label("급식 정보 없음", systemImage: "calendar.badge.exclamationmark")
-            case .failed:
-                Label("급식을 불러오지 못했어요", systemImage: "exclamationmark.triangle.fill")
+            if !viewModel.hasLoaded || viewModel.isLoading {
+                Label("급식을 확인하고 있어요", systemImage: "arrow.triangle.2.circlepath")
+            } else {
+                switch viewModel.state {
+                case .cached:
+                    Label("저장된 급식", systemImage: "internaldrive")
+                case .refreshing:
+                    Label(
+                        viewModel.meal == nil ? "급식을 확인하고 있어요" : "저장된 급식 · 업데이트 중",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                case .live:
+                    Label("학교 급식", systemImage: "checkmark.circle.fill")
+                case .empty:
+                    Label("급식 정보 없음", systemImage: "calendar.badge.exclamationmark")
+                case .failed:
+                    Label("급식을 불러오지 못했어요", systemImage: "exclamationmark.triangle.fill")
+                }
             }
         }
         .font(.footnote.weight(.semibold))
@@ -176,38 +190,51 @@ struct MealDayDetailView: View {
 
     @ViewBuilder
     private var stateContent: some View {
-        switch viewModel.state {
-        case .cached, .refreshing, .live:
-            if let meal = viewModel.meal {
-                mealContent(meal)
-            } else {
-                ProgressView("급식을 확인하고 있어요.")
-                    .frame(maxWidth: .infinity, minHeight: 120)
-            }
-        case .empty:
-            messageCard(
-                title: "이 날짜에는 등록된 급식이 없어요",
-                message: "주말·방학·휴업일에는 급식이 없을 수 있어요."
-            )
-        case let .failed(message, cached):
-            VStack(alignment: .leading, spacing: 12) {
-                if let cached {
-                    mealContent(cached)
+        if !viewModel.hasLoaded {
+            ProgressView("급식을 확인하고 있어요.")
+                .frame(maxWidth: .infinity, minHeight: 120)
+        } else {
+            switch viewModel.state {
+            case .cached, .refreshing, .live:
+                if let meal = viewModel.meal {
+                    mealContent(meal)
                 } else {
+                    ProgressView("급식을 확인하고 있어요.")
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                }
+            case .empty:
+                VStack(alignment: .leading, spacing: 12) {
                     messageCard(
-                        title: "급식을 불러오지 못했어요",
-                        message: message == "selected date mismatch"
-                            ? "선택한 날짜와 응답 날짜가 달라 표시하지 않았어요."
-                            : "인터넷 연결을 확인하고 다시 시도해 주세요."
+                        title: "이 날짜에는 등록된 급식이 없어요",
+                        message: "주말·방학·휴업일에는 급식이 없을 수 있어요."
                     )
+                    retryButton
                 }
-                Button("다시 시도") {
-                    Task { await viewModel.load() }
+            case let .failed(message, cached):
+                VStack(alignment: .leading, spacing: 12) {
+                    if let cached {
+                        mealContent(cached)
+                    } else {
+                        messageCard(
+                            title: "급식을 불러오지 못했어요",
+                            message: message == "selected date mismatch"
+                                ? "선택한 날짜와 응답 날짜가 달라 표시하지 않았어요."
+                                : "인터넷 연결을 확인하고 다시 시도해 주세요."
+                        )
+                    }
+                    retryButton
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RebuildDesignTokens.forest700)
             }
         }
+    }
+
+    private var retryButton: some View {
+        Button("다시 시도") {
+            Task { await viewModel.load() }
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(RebuildDesignTokens.forest700)
+        .disabled(viewModel.isLoading)
     }
 
     private func mealContent(_ meal: RebuildMealDay) -> some View {
@@ -269,6 +296,8 @@ struct MealDayDetailView: View {
 
     private var recordButton: some View {
         Button {
+            guard let recordingViewModel else { return }
+            recordingViewModel.synchronizeMeal(viewModel.meal, for: route)
             isShowingRecorder = true
         } label: {
             Text("급식 기록하기")

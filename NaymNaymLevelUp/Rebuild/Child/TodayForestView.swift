@@ -6,7 +6,6 @@ struct TodayForestView: View {
     let growthPolicy: GrowthPolicy
     let isTabActive: Bool
     let isAppActive: Bool
-    @State private var isShowingRecorder = false
     @State private var isShowingMealDetail = false
 
     var body: some View {
@@ -14,7 +13,7 @@ struct TodayForestView: View {
             ForestSceneView(
                 reduceMotion: reduceMotion,
                 activity: ForestSceneActivity(
-                    isSheetPresented: isShowingRecorder || isShowingMealDetail,
+                    isSheetPresented: isShowingMealDetail,
                     isTabActive: isTabActive,
                     isAppActive: isAppActive
                 )
@@ -35,9 +34,6 @@ struct TodayForestView: View {
         }
         .task {
             await viewModel.load()
-        }
-        .sheet(isPresented: $isShowingRecorder) {
-            MealRecordingSheet(viewModel: viewModel)
         }
         .sheet(isPresented: $isShowingMealDetail) {
             MealDayDetailView(
@@ -214,7 +210,7 @@ struct TodayForestView: View {
         .frame(maxWidth: .infinity)
         .foregroundStyle(.white)
         .background(
-            viewModel.isPrimaryActionEnabled
+            viewModel.isMealDetailActionEnabled
                 ? RebuildDesignTokens.forest700
                 : RebuildDesignTokens.muted600
         )
@@ -224,7 +220,7 @@ struct TodayForestView: View {
                 style: .continuous
             )
         )
-        .disabled(!viewModel.isPrimaryActionEnabled)
+        .disabled(!viewModel.isMealDetailActionEnabled)
         .accessibilityLabel(viewModel.primaryActionTitle)
         .accessibilityHint("메뉴별로 먹은 상태를 기록합니다")
         .accessibilityIdentifier("today_primary_action")

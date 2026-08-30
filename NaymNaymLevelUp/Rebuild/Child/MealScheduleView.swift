@@ -17,6 +17,18 @@ enum MealScheduleMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct MealScheduleSelectionState: Equatable {
+    var route: MealDayRoute?
+
+    init(route: MealDayRoute? = nil) {
+        self.route = route
+    }
+
+    mutating func select(dateKey: String) {
+        route = MealDayRoute(dateKey: dateKey)
+    }
+}
+
 enum MealScheduleRow: String, CaseIterable, Identifiable {
     case grain
     case soup
@@ -199,10 +211,6 @@ enum MealScheduleCalendar {
         }
     }
 
-    static func schoolWeekDates(containing date: Date) -> [Date] {
-        weekDates(containing: date)
-    }
-
     static func startOfSchoolWeek(for date: Date) -> Date {
         let localNoon = noon(on: date)
         let weekday = calendar.component(.weekday, from: localNoon)
@@ -239,10 +247,6 @@ enum MealScheduleCalendar {
         return (0...dayCount).compactMap { offset -> Date? in
             dateByAddingDays(offset, to: start)
         }
-    }
-
-    static func monthWeekdays(containing date: Date) -> [Date] {
-        monthGridDates(containing: date)
     }
 
     static func shifted(
@@ -438,7 +442,7 @@ struct MealScheduleView: View {
     @State private var mode: MealScheduleMode = .daily
     @State private var anchorDate = Date()
     @State private var selectedDate = Date()
-    @State private var selectedRoute: MealDayRoute?
+    @State private var selection = MealScheduleSelectionState()
 
     var body: some View {
         NavigationStack {
@@ -488,7 +492,7 @@ struct MealScheduleView: View {
         .task(id: loadKey) {
             await viewModel.load(dates: visibleDates)
         }
-        .sheet(item: $selectedRoute) { route in
+        .sheet(item: $selection.route) { route in
             MealDayDetailView(
                 route: route,
                 repository: viewModel.repository,
@@ -1134,7 +1138,7 @@ struct MealScheduleView: View {
 
     private func select(date: Date) {
         selectedDate = date
-        selectedRoute = MealDayRoute(dateKey: MealScheduleCalendar.key(for: date))
+        selection.select(dateKey: MealScheduleCalendar.key(for: date))
     }
 
     private var fullDateFormatter: DateFormatter {

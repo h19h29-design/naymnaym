@@ -48,6 +48,7 @@ final class TodayForestViewModelTests: XCTestCase {
         await empty.load()
         XCTAssertEqual(empty.sourceLabel, "급식 정보 없음")
         XCTAssertFalse(empty.isPrimaryActionEnabled)
+        XCTAssertTrue(empty.isMealDetailActionEnabled)
 
         let failed = makeViewModel(
             repository: TodayMealRepositoryStub(
@@ -57,6 +58,30 @@ final class TodayForestViewModelTests: XCTestCase {
         await failed.load()
         XCTAssertEqual(failed.sourceLabel, "급식을 불러오지 못했어요")
         XCTAssertFalse(failed.isPrimaryActionEnabled)
+        XCTAssertTrue(failed.isMealDetailActionEnabled)
+    }
+
+    func testDetailMealSynchronizationOnlyAcceptsExactDate() {
+        let viewModel = makeViewModel()
+        let exactMeal = RebuildMealDay.todayFixture()
+        let wrongDateMeal = RebuildMealDay(
+            date: "2026-07-26",
+            menuItems: exactMeal.menuItems,
+            calorie: exactMeal.calorie,
+            nutrition: exactMeal.nutrition
+        )
+
+        viewModel.synchronizeMeal(
+            exactMeal,
+            for: MealDayRoute(dateKey: "2026-07-25")
+        )
+        XCTAssertEqual(viewModel.meal, exactMeal)
+
+        viewModel.synchronizeMeal(
+            wrongDateMeal,
+            for: MealDayRoute(dateKey: "2026-07-25")
+        )
+        XCTAssertEqual(viewModel.meal, exactMeal)
     }
 
     func testLoadRefreshesSchoolAndKeepsRepositoryResult() async {

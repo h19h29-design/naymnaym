@@ -181,6 +181,73 @@ final class MealScheduleSelectionTests: XCTestCase {
         XCTAssertEqual(requestedDates.count, 2)
     }
 
+    func testCompactPreviewDoesNotSelectRouteBeforeTap() {
+        var selection = MealScheduleSelectionState()
+
+        XCTAssertNil(selection.route)
+
+        selection.select(dateKey: "2026-08-12")
+
+        XCTAssertEqual(selection.route, MealDayRoute(dateKey: "2026-08-12"))
+    }
+
+    func testMismatchedRefreshRetainsExactCachedMeal() async {
+        let selectedCache = RebuildMealDay.fixture(
+            date: "2026-08-12",
+            menuName: "선택 날짜 캐시"
+        )
+        let wrongDateMeal = RebuildMealDay.fixture(
+            date: "2026-08-13",
+            menuName: "다른 날짜 급식"
+        )
+        let repository = RefreshingMealScheduleRepository(
+            initial: .cached(selectedCache, refreshedAt: nil),
+            refreshed: .live(wrongDateMeal)
+        )
+        let school = RebuildSchool(
+            name: "냠냠초등학교",
+            officeCode: "B10",
+            schoolCode: "7010111"
+        )
+        let viewModel = MealDayDetailViewModel(
+            route: MealDayRoute(dateKey: "2026-08-12"),
+            repository: repository,
+            school: school
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.meal, selectedCache)
+        XCTAssertEqual(
+            viewModel.state,
+            .failed(message: "selected date mismatch", cached: selectedCache)
+        )
+    }
+
+    func testDetailStartsUnloadedAndIgnoresOverlappingLoad() async {
+        let repository = BlockingMealScheduleRepository()
+        let viewModel = MealDayDetailViewModel(
+            route: MealDayRoute(dateKey: "2026-08-12"),
+            repository: repository,
+            school: nil
+        )
+
+        XCTAssertFalse(viewModel.hasLoaded)
+        let firstLoad = Task { await viewModel.load() }
+        await repository.waitForCurrentState()
+        XCTAssertTrue(viewModel.isLoading)
+
+        let secondLoad = Task { await viewModel.load() }
+        await Task.yield()
+        await repository.release()
+        await firstLoad.value
+        await secondLoad.value
+
+        XCTAssertTrue(viewModel.hasLoaded)
+        let callCount = await repository.currentStateCallCount
+        XCTAssertEqual(callCount, 1)
+    }
+
     private func seoulDate(year: Int, month: Int, day: Int) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
@@ -204,6 +271,54 @@ private actor RecordingMealScheduleRepository: MealScheduleRepository {
     }
 
     func refresh(date: String, school: RebuildSchool) async {}
+}
+
+private actor RefreshingMealScheduleRepository: MealScheduleRepository {
+    private let initial: MealLoadState
+    private let refreshed: MealLoadState
+    private var currentStateCallCountStorage = 0
+
+    init(initial: MealLoadState, refreshed: MealLoadState) {
+        self.initial = initial
+        self.refreshed = refreshed
+    }
+
+    var currentStateCallCount: Int {
+        currentStateCallCountStorage
+    }
+
+    func currentState(date: String) async -> MealLoadState {
+        currentStateCallCountStorage += 1
+        return currentStateCallCountStorage == 1 ? initial : refreshed
+    }
+
+    func refresh(date: String, school: RebuildSchool) async {}
+}
+
+private actor BlockingMealScheduleRepository: MealScheduleRepository {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var currentStateCallCount = 0
+
+    func currentState(date: String) async -> MealLoadState {
+        currentStateCallCount += 1
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+        return .empty
+    }
+
+    func refresh(date: String, school: RebuildSchool) async {}
+
+    func waitForCurrentState() async {
+        while currentStateCallCount == 0 {
+            await Task.yield()
+        }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
 }
 
 private extension RebuildMealDay {

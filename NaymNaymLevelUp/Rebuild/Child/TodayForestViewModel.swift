@@ -183,6 +183,10 @@ final class TodayForestViewModel: ObservableObject {
         school
     }
 
+    var isMealDetailActionEnabled: Bool {
+        !isLoading
+    }
+
     init(
         repository: any TodayMealRepository,
         recorder: any TodayMealRecorder,
@@ -242,6 +246,13 @@ final class TodayForestViewModel: ObservableObject {
 
     func isAllergyRisk(_ item: RebuildMealItem) -> Bool {
         !Set(item.allergyCodes).isDisjoint(with: allergyCodes)
+    }
+
+    func synchronizeMeal(_ meal: RebuildMealDay?, for route: MealDayRoute) {
+        guard route.dateKey == dateKey else { return }
+        guard meal?.date == nil || meal?.date == dateKey else { return }
+        self.meal = meal
+        isPrimaryActionEnabled = meal?.menuItems.isEmpty == false
     }
 
     func isStatusEnabled(
