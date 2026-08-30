@@ -5,15 +5,17 @@ private enum CollectionSection: String, CaseIterable, Identifiable {
     case nutrition
     case challenge
     case streak
+    case legacy
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .characters: return "캐릭터 14"
+        case .characters: return "캐릭터"
         case .nutrition: return "영양 탐험 12"
         case .challenge: return "식사 도전 12"
         case .streak: return "꾸준함 12"
+        case .legacy: return "이전 뱃지"
         }
     }
 
@@ -23,6 +25,7 @@ private enum CollectionSection: String, CaseIterable, Identifiable {
         case .nutrition: return .nutrition
         case .challenge: return .challenge
         case .streak: return .streak
+        case .legacy: return nil
         }
     }
 }
@@ -31,10 +34,32 @@ struct CollectionView: View {
     let provider: any CollectionSnapshotProviding
     let policy: GrowthPolicy
     let isActive: Bool
+    private let legacyRights: LegacyGrowthRights
+    private let stateStore: any GrowthStageStateStore
 
     @State private var progress: CollectionProgress?
+    @State private var entitlement: GrowthEntitlement?
     @State private var loadFailed = false
     @State private var selectedSection: CollectionSection = .characters
+
+    init(
+        provider: any CollectionSnapshotProviding,
+        policy: GrowthPolicy,
+        isActive: Bool,
+        defaults: UserDefaults = .standard,
+        legacyDefaultsDomainName: String? = nil,
+        stateStore: (any GrowthStageStateStore)? = nil
+    ) {
+        self.provider = provider
+        self.policy = policy
+        self.isActive = isActive
+        legacyRights = LegacyDefaultsReader.readGrowthRights(
+            defaults: defaults,
+            persistentDomainName: legacyDefaultsDomainName
+        )
+        self.stateStore = stateStore
+            ?? UserDefaultsGrowthStageStateStore(defaults: defaults)
+    }
 
     var body: some View {
         NavigationStack {
@@ -56,7 +81,8 @@ struct CollectionView: View {
     }
 
     private func content(progress: CollectionProgress) -> some View {
-        let unlockedLevel = policy.level(totalXP: progress.totalXP)
+        let unlockedLevel = entitlement?.highestUnlockedStageID
+            ?? policy.level(totalXP: progress.totalXP)
         let unlockedCharacters = min(unlockedLevel, policy.thresholds.count)
         let totalCollected = unlockedCharacters + progress.collectedCount
 
@@ -75,6 +101,8 @@ struct CollectionView: View {
                     characterGrid(unlockedLevel: unlockedLevel)
                 } else if let category = selectedSection.badgeCategory {
                     badgeGrid(progress: progress, category: category)
+                } else {
+                    legacyBadgeGrid(progress: progress)
                 }
             }
             .padding(.horizontal, RebuildDesignTokens.spacing[4])
@@ -104,12 +132,17 @@ struct CollectionView: View {
                     .font(.title2)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[0]) {
-                    Text("전체 수집 \(totalCollected) / 50")
+                    Text("전체 수집 \(totalCollected) / \(policy.thresholds.count + progress.badges.count)")
                         .font(RebuildDesignTokens.headlineFont)
                         .foregroundStyle(RebuildDesignTokens.ink900)
-                    Text("레벨 \(unlockedLevel) · 배지 \(progress.collectedCount) / 36")
+                    Text("레벨 \(unlockedLevel) · 배지 \(progress.collectedCount) / \(progress.badges.count)")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(RebuildDesignTokens.muted600)
+                    if !progress.legacyBadgeIDsForDisplay.isEmpty {
+                        Text("\(progress.legacyBadgeGroupTitle) \(progress.legacyBadgeIDsForDisplay.count)개 보관")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(RebuildDesignTokens.muted600)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -137,7 +170,7 @@ struct CollectionView: View {
                     Button {
                         selectedSection = section
                     } label: {
-                        Text(section.title)
+                        Text(section == .characters ? "캐릭터 \(policy.thresholds.count)" : section.title)
                             .font(.footnote.weight(.bold))
                             .lineLimit(1)
                             .padding(.horizontal, RebuildDesignTokens.spacing[3])
@@ -153,7 +186,9 @@ struct CollectionView: View {
                     .accessibilityIdentifier("collection_section_\(section.rawValue)")
                     .accessibilityLabel(
                         section == .characters
-                            ? "캐릭터 14개"
+                            ? "캐릭터 \(policy.thresholds.count)개"
+                            : section == .legacy
+                            ? "\(section.title), \(progress.legacyBadgeIDsForDisplay.count)개 보관"
                             : "\(section.title), \(section.badgeCategory.map { progress.earnedCount(for: $0) } ?? 0)개 획득"
                     )
                 }
@@ -183,7 +218,8 @@ struct CollectionView: View {
         threshold: Int,
         isUnlocked: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
+        let art = GrowthStageArtResolver.resolve(stageID: level)
+        return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
             ZStack(alignment: .topTrailing) {
                 RoundedRectangle(
                     cornerRadius: RebuildDesignTokens.radii[1],
@@ -191,8 +227,10 @@ struct CollectionView: View {
                 )
                 .fill(isUnlocked ? RebuildDesignTokens.cream100 : GrowthLockedPalette.surfaceColor)
                 MascotRestArtView(
-                    level: min(level, 7),
-                    silhouetteColor: isUnlocked ? nil : GrowthLockedPalette.silhouetteColor
+                    level: art.artStageID,
+                    silhouetteColor: isUnlocked && !art.usesNeutralFallback
+                        ? nil
+                        : GrowthLockedPalette.silhouetteColor
                 )
                 .padding(RebuildDesignTokens.spacing[2])
                 .accessibilityHidden(true)
@@ -211,6 +249,11 @@ struct CollectionView: View {
             Text("레벨 \(level)")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(RebuildDesignTokens.muted600)
+            if art.usesNeutralFallback {
+                Text("중립 미리보기")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+            }
             Text(isUnlocked ? policy.title(for: level) : "아직 잠겨 있어요")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(RebuildDesignTokens.ink900)
@@ -230,8 +273,8 @@ struct CollectionView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isUnlocked
-                ? "레벨 \(level) 해금, \(policy.title(for: level))"
-                : "레벨 \(level) 잠김, \(threshold) XP에 해금"
+                ? "레벨 \(level) 해금, \(policy.title(for: level))\(art.usesNeutralFallback ? ", 중립 미리보기" : "")"
+                : "레벨 \(level) 잠김, \(threshold) XP에 해금\(art.usesNeutralFallback ? ", 중립 미리보기" : "")"
         )
         .accessibilityIdentifier(
             isUnlocked
@@ -284,11 +327,47 @@ struct CollectionView: View {
         .accessibilityIdentifier("collection_badge_\(badge.id)_\(isEarned ? "earned" : "locked")")
     }
 
+    private func legacyBadgeGrid(progress: CollectionProgress) -> some View {
+        let columns = [
+            GridItem(.flexible(), spacing: RebuildDesignTokens.spacing[3]),
+            GridItem(.flexible(), spacing: RebuildDesignTokens.spacing[3]),
+        ]
+        return LazyVGrid(columns: columns, spacing: RebuildDesignTokens.spacing[3]) {
+            ForEach(progress.legacyBadgeIDsForDisplay, id: \.self) { badgeID in
+                VStack(spacing: RebuildDesignTokens.spacing[1]) {
+                    Image(systemName: "seal.fill")
+                        .font(.title2)
+                        .foregroundStyle(RebuildDesignTokens.forest700)
+                        .frame(width: 48, height: 48)
+                        .background(RebuildDesignTokens.cream100)
+                        .clipShape(Circle())
+                        .accessibilityHidden(true)
+                    Text(badgeID)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(RebuildDesignTokens.ink900)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 116)
+                .padding(RebuildDesignTokens.spacing[2])
+                .background(Color.white)
+                .clipShape(RoundedRectangle(
+                    cornerRadius: RebuildDesignTokens.radii[1],
+                    style: .continuous
+                ))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(progress.legacyBadgeGroupTitle), \(badgeID)")
+                .accessibilityIdentifier("collection_legacy_badge_\(badgeID)")
+            }
+        }
+    }
+
     private func stageSymbol(for level: Int) -> String {
         switch level {
         case 8...9: return "leaf.fill"
         case 10...11: return "medal.fill"
-        case 12...13: return "crown.fill"
+        case 12: return "crown.fill"
         default: return "sparkles"
         }
     }
@@ -319,12 +398,27 @@ struct CollectionView: View {
         loadFailed = false
         do {
             let snapshot = try await provider.loadCollection()
+            let resolved = GrowthEntitlementResolver.resolve(
+                policy: policy,
+                totalXP: snapshot.totalXP,
+                legacy: legacyRights,
+                stored: stateStore.read()
+            )
+            stateStore.writeMonotonic(
+                GrowthStageStateV2(
+                    version: GrowthStageStateV2.currentVersion,
+                    highestUnlockedStageID: resolved.highestUnlockedStageID,
+                    selectedStageID: resolved.selectedStageID
+                )
+            )
             let policyData = try loadRebuildContractData(named: "collection-policy.json")
             progress = try CollectionProgress.evaluate(
                 totalXP: snapshot.totalXP,
                 records: snapshot.records,
-                policyData: policyData
+                policyData: policyData,
+                legacy: legacyRights
             )
+            entitlement = resolved
         } catch {
             loadFailed = true
         }

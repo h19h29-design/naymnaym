@@ -112,6 +112,22 @@ final class ProgressStore {
             )
         }
     }
+
+    func readLegacyGrowthRights(domainName: String) throws -> LegacyGrowthRights? {
+        switch try store.readPersistedData(domainName: domainName) {
+        case .missing:
+            return nil
+        case .value(let data):
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let payload = try decoder.decode(
+                MigrationPlayerProgressPayload.self,
+                from: data
+            )
+            return payload.legacyGrowthRights
+        }
+    }
+
     func save(_ progress: PlayerProgress) { store.save(progress) }
     func clear() { store.clear() }
 }
@@ -138,6 +154,14 @@ private struct MigrationPlayerProgressPayload: Decodable {
             challengeExp: challengeExp,
             balanceExp: balanceExp,
             safetyExp: safetyExp
+        )
+    }
+
+    var legacyGrowthRights: LegacyGrowthRights {
+        LegacyGrowthRights(
+            level: level,
+            currentSkinID: currentSkinId,
+            badges: badges ?? []
         )
     }
 }

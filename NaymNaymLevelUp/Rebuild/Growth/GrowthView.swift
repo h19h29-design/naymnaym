@@ -6,9 +6,31 @@ struct GrowthView: View {
     let provider: any GrowthSnapshotProviding
     let policy: GrowthPolicy
     let isActive: Bool
+    private let legacyRights: LegacyGrowthRights
+    private let stateStore: any GrowthStageStateStore
 
     @State private var snapshot: GrowthSnapshot?
+    @State private var entitlement: GrowthEntitlement?
     @State private var loadFailed = false
+
+    init(
+        provider: any GrowthSnapshotProviding,
+        policy: GrowthPolicy,
+        isActive: Bool,
+        defaults: UserDefaults = .standard,
+        legacyDefaultsDomainName: String? = nil,
+        stateStore: (any GrowthStageStateStore)? = nil
+    ) {
+        self.provider = provider
+        self.policy = policy
+        self.isActive = isActive
+        legacyRights = LegacyDefaultsReader.readGrowthRights(
+            defaults: defaults,
+            persistentDomainName: legacyDefaultsDomainName
+        )
+        self.stateStore = stateStore
+            ?? UserDefaultsGrowthStageStateStore(defaults: defaults)
+    }
 
     var body: some View {
         NavigationStack {
@@ -30,22 +52,28 @@ struct GrowthView: View {
     }
 
     private func content(_ snapshot: GrowthSnapshot) -> some View {
-        let level = policy.level(totalXP: snapshot.totalXP)
-        let nextThreshold = policy.nextThreshold(totalXP: snapshot.totalXP)
+        let fallbackLevel = policy.level(totalXP: snapshot.totalXP)
+        let highestUnlockedStageID = entitlement?.highestUnlockedStageID
+            ?? fallbackLevel
+        let selectedStageID = entitlement?.selectedStageID
+            ?? highestUnlockedStageID
+        let nextThreshold = highestUnlockedStageID < policy.thresholds.count
+            ? policy.thresholds[highestUnlockedStageID]
+            : nil
 
         return ScrollView {
             LazyVStack(
                 alignment: .leading,
                 spacing: RebuildDesignTokens.spacing[3]
             ) {
-                currentCharacter(level: level)
+                currentCharacter(level: selectedStageID)
                 progressCard(
                     snapshot: snapshot,
-                    level: level,
+                    level: highestUnlockedStageID,
                     nextThreshold: nextThreshold
                 )
                 nextUnlock(
-                    level: level,
+                    level: highestUnlockedStageID,
                     nextThreshold: nextThreshold
                 )
                 recentEvents(snapshot.recentEvents)
@@ -65,18 +93,34 @@ struct GrowthView: View {
     }
 
     private func currentCharacter(level: Int) -> some View {
-        VStack(spacing: RebuildDesignTokens.spacing[2]) {
-            MascotRigView(
-                level: min(level, 7),
-                state: .idle,
-                reduceMotion: reduceMotion
-            )
-            .frame(width: 188, height: 188)
+        let art = GrowthStageArtResolver.resolve(stageID: level)
+        return VStack(spacing: RebuildDesignTokens.spacing[2]) {
+            if art.usesNeutralFallback {
+                MascotRestArtView(
+                    level: art.artStageID,
+                    silhouetteColor: GrowthLockedPalette.silhouetteColor
+                )
+                .frame(width: 188, height: 188)
+                .accessibilityHidden(true)
+            } else {
+                MascotRigView(
+                    level: art.artStageID,
+                    state: .idle,
+                    reduceMotion: reduceMotion
+                )
+                .frame(width: 188, height: 188)
+                .accessibilityHidden(true)
+            }
 
             Text(policy.title(for: level))
                 .font(RebuildDesignTokens.titleFont.bold())
                 .foregroundStyle(RebuildDesignTokens.forest700)
                 .fixedSize(horizontal: false, vertical: true)
+            if art.usesNeutralFallback {
+                Text("중립 미리보기")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+            }
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity)
@@ -146,12 +190,14 @@ struct GrowthView: View {
     ) -> some View {
         if let nextThreshold {
             let nextLevel = level + 1
+            let art = GrowthStageArtResolver.resolve(stageID: nextLevel)
             HStack(spacing: RebuildDesignTokens.spacing[3]) {
-            MascotRestArtView(
-                    level: min(nextLevel, 7),
+                MascotRestArtView(
+                    level: art.artStageID,
                     silhouetteColor: GrowthLockedPalette.silhouetteColor
                 )
                 .frame(width: 92, height: 92)
+                .accessibilityHidden(true)
 
                 VStack(
                     alignment: .leading,
@@ -166,6 +212,11 @@ struct GrowthView: View {
                     Text("\(nextThreshold) XP에 만나요")
                         .font(.footnote)
                         .foregroundStyle(GrowthLockedPalette.textColor)
+                    if art.usesNeutralFallback {
+                        Text("중립 미리보기")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(RebuildDesignTokens.muted600)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -272,7 +323,22 @@ struct GrowthView: View {
     private func reload() async {
         loadFailed = false
         do {
-            snapshot = try await provider.load(limit: 20)
+            let loadedSnapshot = try await provider.load(limit: 20)
+            let resolved = GrowthEntitlementResolver.resolve(
+                policy: policy,
+                totalXP: loadedSnapshot.totalXP,
+                legacy: legacyRights,
+                stored: stateStore.read()
+            )
+            stateStore.writeMonotonic(
+                GrowthStageStateV2(
+                    version: GrowthStageStateV2.currentVersion,
+                    highestUnlockedStageID: resolved.highestUnlockedStageID,
+                    selectedStageID: resolved.selectedStageID
+                )
+            )
+            entitlement = resolved
+            snapshot = loadedSnapshot
         } catch {
             loadFailed = true
         }

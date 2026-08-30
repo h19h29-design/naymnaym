@@ -41,6 +41,67 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(try count(RebuildEntityName.migrationState, in: container.viewContext), 1)
     }
 
+    func testLegacyProgressBytesAndV1MigrationStateRemainUnchanged() throws {
+        let defaults = makeDefaults()
+        let originalProgress = Data(
+            #"{"level":7,"exp":0,"recordExp":0,"challengeExp":0,"balanceExp":0,"safetyExp":0,"totalChallenges":3,"badges":["legacy-a","legacy-a"],"currentSkinId":"skin-7"}"#.utf8
+        )
+        defaults.set(originalProgress, forKey: LegacyDefaultsReader.Key.progress)
+        let container = try RebuildPersistentStore.makeInMemory()
+        let coordinator = RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
+            container: container
+        )
+
+        XCTAssertEqual(try coordinator.runIfNeeded(targetVersion: 1), .migrated)
+        let stateBeforeGrowth = try XCTUnwrap(
+            RebuildMigrationStateRepository(context: container.viewContext).load()
+        )
+        let rights = try LegacyDefaultsReader(
+            defaults: defaults,
+            persistentDomainName: domainName(for: defaults)
+        ).readGrowthRights()
+        let result = GrowthEntitlementResolver.resolve(
+            policy: try GrowthPolicy.bundled(),
+            totalXP: 0,
+            legacy: rights,
+            stored: nil
+        )
+
+        XCTAssertEqual(result.highestUnlockedStageID, 7)
+        XCTAssertEqual(defaults.data(forKey: LegacyDefaultsReader.Key.progress), originalProgress)
+        XCTAssertEqual(
+            try RebuildMigrationStateRepository(context: container.viewContext).load(),
+            stateBeforeGrowth
+        )
+    }
+
+    func testCompletedV1MigrationRemainsAlreadyCompleted() throws {
+        let defaults = makeDefaults()
+        let originalProgress = Data(
+            #"{"level":7,"exp":0,"badges":["legacy-badge"],"currentSkinId":"skin-7"}"#.utf8
+        )
+        defaults.set(originalProgress, forKey: LegacyDefaultsReader.Key.progress)
+        let container = try RebuildPersistentStore.makeInMemory()
+        let stateRepository = RebuildMigrationStateRepository(context: container.viewContext)
+        try stateRepository.markCompleted(
+            version: 1,
+            sourceDigest: "sha256:existing"
+        )
+        let stateBefore = try XCTUnwrap(stateRepository.load())
+
+        let outcome = try RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName(for: defaults),
+            container: container
+        ).runIfNeeded(targetVersion: 1)
+
+        XCTAssertEqual(outcome, .alreadyCompleted)
+        XCTAssertEqual(defaults.data(forKey: LegacyDefaultsReader.Key.progress), originalProgress)
+        XCTAssertEqual(try stateRepository.load(), stateBefore)
+    }
+
     func testNoLegacyDataDoesNotCreateRowsOrCompletionState() throws {
         let defaults = makeDefaults()
         let container = try RebuildPersistentStore.makeInMemory()

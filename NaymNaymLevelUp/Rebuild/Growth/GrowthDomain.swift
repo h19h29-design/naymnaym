@@ -103,6 +103,228 @@ struct GrowthPolicy: Equatable, Sendable {
     }
 }
 
+struct GrowthStageStateV2: Codable, Equatable, Sendable {
+    static let key = "growth-stage-state-v2"
+    static let currentVersion = 1
+    static let validStageRange = 1...12
+
+    let version: Int
+    let highestUnlockedStageID: Int
+    let selectedStageID: Int?
+}
+
+struct LegacyGrowthRights: Equatable, Sendable {
+    let level: Int?
+    let currentSkinID: String?
+    let badges: [String]
+
+    static let empty = LegacyGrowthRights(
+        level: nil,
+        currentSkinID: nil,
+        badges: []
+    )
+}
+
+struct GrowthEntitlement: Equatable, Sendable {
+    let highestUnlockedStageID: Int
+    let selectedStageID: Int
+    let legacyBadgeIDs: [String]
+}
+
+protocol GrowthStageStateStore: Sendable {
+    func read() -> GrowthStageStateV2?
+    func writeMonotonic(_ state: GrowthStageStateV2)
+}
+
+struct UserDefaultsGrowthStageStateStore: GrowthStageStateStore, @unchecked Sendable {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func read() -> GrowthStageStateV2? {
+        guard let data = defaults.data(forKey: GrowthStageStateV2.key),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any],
+              let version = dictionary["version"] as? Int,
+              version == GrowthStageStateV2.currentVersion,
+              dictionary["highestUnlockedStageID"] != nil,
+              Set(dictionary.keys).isSubset(of: [
+                  "version",
+                  "highestUnlockedStageID",
+                  "selectedStageID",
+              ]),
+              let decoded = try? JSONDecoder().decode(
+                  GrowthStageStateV2.self,
+                  from: data
+              )
+        else {
+            return nil
+        }
+
+        guard GrowthStageStateV2.validStageRange.contains(decoded.highestUnlockedStageID) else {
+            return nil
+        }
+        let highest = decoded.highestUnlockedStageID
+        let selected: Int? = decoded.selectedStageID.flatMap { stageID in
+            guard let stageID = Self.validStage(stageID), stageID <= highest else {
+                return nil
+            }
+            return stageID
+        }
+        return GrowthStageStateV2(
+            version: GrowthStageStateV2.currentVersion,
+            highestUnlockedStageID: highest,
+            selectedStageID: selected
+        )
+    }
+
+    func writeMonotonic(_ state: GrowthStageStateV2) {
+        guard state.version == GrowthStageStateV2.currentVersion else {
+            return
+        }
+        let existing = read()
+        let existingHighest = existing?.highestUnlockedStageID ?? 1
+        let candidateHighest = Self.clampStage(state.highestUnlockedStageID)
+        let highest = max(existingHighest, candidateHighest)
+        let selected = Self.validStage(state.selectedStageID)
+            .flatMap { $0 <= highest ? $0 : nil }
+            ?? existing?.selectedStageID.flatMap { $0 <= highest ? $0 : nil }
+
+        let canonical = GrowthStageStateV2(
+            version: GrowthStageStateV2.currentVersion,
+            highestUnlockedStageID: highest,
+            selectedStageID: selected
+        )
+        guard let data = try? JSONEncoder().encode(canonical) else {
+            return
+        }
+        defaults.set(data, forKey: GrowthStageStateV2.key)
+    }
+
+    private static func validStage(_ stageID: Int?) -> Int? {
+        guard let stageID,
+              GrowthStageStateV2.validStageRange.contains(stageID)
+        else {
+            return nil
+        }
+        return stageID
+    }
+
+    private static func clampStage(_ stageID: Int) -> Int {
+        min(
+            max(stageID, GrowthStageStateV2.validStageRange.lowerBound),
+            GrowthStageStateV2.validStageRange.upperBound
+        )
+    }
+}
+
+enum GrowthEntitlementResolver {
+    static func resolve(
+        policy: GrowthPolicy,
+        totalXP: Int,
+        legacy: LegacyGrowthRights,
+        stored: GrowthStageStateV2?
+    ) -> GrowthEntitlement {
+        let xpStage = clampStage(policy.level(totalXP: totalXP))
+        let legacyLevel = validStage(legacy.level)
+        let legacySkinStage = legacySkinStage(for: legacy.currentSkinID)
+        let storedHighest: Int? = {
+            guard let stored,
+                  stored.version == GrowthStageStateV2.currentVersion
+            else {
+                return nil
+            }
+            return validStage(stored.highestUnlockedStageID)
+        }()
+
+        let highest = [
+            xpStage,
+            legacyLevel,
+            legacySkinStage,
+            storedHighest,
+        ]
+        .compactMap { $0 }
+        .max() ?? 1
+
+        let selected = validSelectedStage(
+            stored?.version == GrowthStageStateV2.currentVersion
+                ? stored?.selectedStageID
+                : nil,
+            highest: highest
+        )
+            ?? legacySkinStage.flatMap { $0 <= highest ? $0 : nil }
+            ?? highest
+
+        return GrowthEntitlement(
+            highestUnlockedStageID: highest,
+            selectedStageID: selected,
+            legacyBadgeIDs: legacy.badges
+        )
+    }
+
+    private static func validSelectedStage(
+        _ stageID: Int?,
+        highest: Int
+    ) -> Int? {
+        guard let stageID = validStage(stageID), stageID <= highest else {
+            return nil
+        }
+        return stageID
+    }
+
+    private static func validStage(_ stageID: Int?) -> Int? {
+        guard let stageID,
+              GrowthStageStateV2.validStageRange.contains(stageID)
+        else {
+            return nil
+        }
+        return stageID
+    }
+
+    private static func clampStage(_ stageID: Int) -> Int {
+        min(
+            max(stageID, GrowthStageStateV2.validStageRange.lowerBound),
+            GrowthStageStateV2.validStageRange.upperBound
+        )
+    }
+
+    private static func legacySkinStage(for skinID: String?) -> Int? {
+        guard let skinID,
+              skinID.hasPrefix("skin-"),
+              let suffix = Int(skinID.dropFirst("skin-".count)),
+              (1...7).contains(suffix),
+              skinID == "skin-\(suffix)"
+        else {
+            return nil
+        }
+        return suffix
+    }
+}
+
+struct GrowthStageArtResolution: Equatable, Sendable {
+    let stageID: Int
+    let artStageID: Int
+    let usesNeutralFallback: Bool
+}
+
+enum GrowthStageArtResolver {
+    static let highestVerifiedStageID = 7
+
+    static func resolve(stageID: Int) -> GrowthStageArtResolution {
+        let safeStageID = min(
+            max(stageID, GrowthStageStateV2.validStageRange.lowerBound),
+            GrowthStageStateV2.validStageRange.upperBound
+        )
+        return GrowthStageArtResolution(
+            stageID: safeStageID,
+            artStageID: min(safeStageID, highestVerifiedStageID),
+            usesNeutralFallback: safeStageID > highestVerifiedStageID
+        )
+    }
+}
+
 struct GrowthSnapshot: Equatable, Sendable {
     let totalXP: Int
     let recentEvents: [RebuildProgressEvent]

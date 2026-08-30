@@ -4,6 +4,7 @@ import Foundation
 struct LegacySnapshot {
     let profile: UserProfile?
     let progress: PlayerProgress
+    let growthRights: LegacyGrowthRights
     let mealRecords: [MealRecord]
     let mealPhotoRecords: [MealPhotoRecord]
     let challenges: [ChallengeRecord]
@@ -15,6 +16,7 @@ struct LegacySnapshot {
     init(
         profile: UserProfile?,
         progress: PlayerProgress,
+        growthRights: LegacyGrowthRights? = nil,
         mealRecords: [MealRecord],
         mealPhotoRecords: [MealPhotoRecord],
         challenges: [ChallengeRecord],
@@ -24,6 +26,11 @@ struct LegacySnapshot {
     ) {
         self.profile = profile
         self.progress = progress
+        self.growthRights = growthRights ?? LegacyGrowthRights(
+            level: progress.level,
+            currentSkinID: progress.currentSkinId,
+            badges: progress.badges
+        )
         self.mealRecords = mealRecords
         self.mealPhotoRecords = mealPhotoRecords
         self.challenges = challenges
@@ -82,6 +89,8 @@ struct LegacyDefaultsReader {
             .readPersisted(domainName: persistentDomainName)
         let progress = try ProgressStore(defaults: defaults)
             .readPersisted(domainName: persistentDomainName)
+        let growthRights = try ProgressStore(defaults: defaults)
+            .readLegacyGrowthRights(domainName: persistentDomainName)
         let mealRecords = try MealRecordStore(defaults: defaults)
             .readPersisted(domainName: persistentDomainName)
         let mealPhotoRecords = try MealPhotoMetadataStore(defaults: defaults)
@@ -104,6 +113,7 @@ struct LegacyDefaultsReader {
         return LegacySnapshot(
             profile: profile.value,
             progress: progress.value ?? PlayerProgress(),
+            growthRights: growthRights ?? .empty,
             mealRecords: mealRecords.value ?? [],
             mealPhotoRecords: mealPhotoRecords.value ?? [],
             challenges: challenges.value ?? [],
@@ -111,6 +121,30 @@ struct LegacyDefaultsReader {
             childLink: childLink.value,
             sourceKeys: presentKeys
         )
+    }
+
+    func readGrowthRights() throws -> LegacyGrowthRights {
+        try ProgressStore(defaults: defaults)
+            .readLegacyGrowthRights(domainName: persistentDomainName)
+            ?? .empty
+    }
+
+    static func readGrowthRights(
+        defaults: UserDefaults = .standard,
+        persistentDomainName: String? = nil
+    ) -> LegacyGrowthRights {
+        let domainName = persistentDomainName
+            ?? (defaults === UserDefaults.standard ? Bundle.main.bundleIdentifier : nil)
+        guard let domainName,
+              !domainName.isEmpty,
+              let rights = try? LegacyDefaultsReader(
+                  defaults: defaults,
+                  persistentDomainName: domainName
+              ).readGrowthRights()
+        else {
+            return .empty
+        }
+        return rights
     }
 
     func sourceDigest(for snapshot: LegacySnapshot) throws -> String {

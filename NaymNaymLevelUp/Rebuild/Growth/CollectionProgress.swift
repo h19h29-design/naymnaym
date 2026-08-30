@@ -31,6 +31,25 @@ struct CollectionProgress: Equatable, Sendable {
     let positiveRecordCount: Int
     let activeDayCount: Int
     let longestWeekdayStreak: Int
+    let legacyBadgeIDs: [String]
+
+    init(
+        totalXP: Int,
+        badges: [CollectionBadge],
+        earnedBadgeIDs: Set<String>,
+        positiveRecordCount: Int,
+        activeDayCount: Int,
+        longestWeekdayStreak: Int,
+        legacyBadgeIDs: [String] = []
+    ) {
+        self.totalXP = totalXP
+        self.badges = badges
+        self.earnedBadgeIDs = earnedBadgeIDs
+        self.positiveRecordCount = positiveRecordCount
+        self.activeDayCount = activeDayCount
+        self.longestWeekdayStreak = longestWeekdayStreak
+        self.legacyBadgeIDs = legacyBadgeIDs
+    }
 
     var collectedCount: Int {
         earnedBadgeIDs.count
@@ -46,10 +65,22 @@ struct CollectionProgress: Equatable, Sendable {
         badges.filter { $0.category == category }
     }
 
+    var legacyBadgeGroupTitle: String { "이전 뱃지" }
+
+    var legacyBadgeIDsForDisplay: [String] {
+        var seen = Set<String>()
+        return legacyBadgeIDs.filter { badgeID in
+            let trimmed = badgeID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            return seen.insert(badgeID).inserted
+        }
+    }
+
     static func evaluate(
         totalXP: Int,
         records: [CollectionRecord],
-        policyData: Data
+        policyData: Data,
+        legacy: LegacyGrowthRights = .empty
     ) throws -> CollectionProgress {
         let policy = try CollectionPolicy(data: policyData)
         let positiveRecords = deduplicatedPositiveRecords(
@@ -80,7 +111,8 @@ struct CollectionProgress: Equatable, Sendable {
             earnedBadgeIDs: earned,
             positiveRecordCount: positiveRecords.count,
             activeDayCount: activeDates.count,
-            longestWeekdayStreak: metrics["weekday_streak", default: 0]
+            longestWeekdayStreak: metrics["weekday_streak", default: 0],
+            legacyBadgeIDs: legacy.badges
         )
     }
 

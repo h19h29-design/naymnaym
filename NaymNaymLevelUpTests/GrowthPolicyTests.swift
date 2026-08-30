@@ -1,7 +1,18 @@
+import Foundation
 import XCTest
 @testable import NaymNaymLevelUp
 
 final class GrowthPolicyTests: XCTestCase {
+    private var suiteNames: [String] = []
+
+    override func tearDown() {
+        for suiteName in suiteNames {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
+        suiteNames.removeAll()
+        super.tearDown()
+    }
+
     private var policy: GrowthPolicy {
         get throws {
             try GrowthPolicy(data: Self.canonicalPolicy)
@@ -96,6 +107,238 @@ final class GrowthPolicyTests: XCTestCase {
         }
     }
 
+    func testHighestUnlockedIsMonotonicUnionOfXPLegacyLevelSkinAndStoredState() throws {
+        let defaults = makeDefaults()
+        let store = UserDefaultsGrowthStageStateStore(defaults: defaults)
+        store.writeMonotonic(
+            GrowthStageStateV2(
+                version: 1,
+                highestUnlockedStageID: 9,
+                selectedStageID: 9
+            )
+        )
+
+        let result = GrowthEntitlementResolver.resolve(
+            policy: try policy,
+            totalXP: 0,
+            legacy: LegacyGrowthRights(
+                level: 6,
+                currentSkinID: "skin-7",
+                badges: []
+            ),
+            stored: store.read()
+        )
+
+        XCTAssertEqual(result.highestUnlockedStageID, 9)
+        XCTAssertEqual(result.selectedStageID, 9)
+
+        let xpDrivenResult = GrowthEntitlementResolver.resolve(
+            policy: try policy,
+            totalXP: 2_500,
+            legacy: LegacyGrowthRights(
+                level: 3,
+                currentSkinID: "skin-2",
+                badges: []
+            ),
+            stored: GrowthStageStateV2(
+                version: 1,
+                highestUnlockedStageID: 8,
+                selectedStageID: 8
+            )
+        )
+
+        XCTAssertEqual(xpDrivenResult.highestUnlockedStageID, 11)
+        XCTAssertEqual(xpDrivenResult.selectedStageID, 8)
+    }
+
+    func testStoredSelectionMustBeValidAndMonotonicWritesNeverLowerHighest() throws {
+        let defaults = makeDefaults()
+        let store = UserDefaultsGrowthStageStateStore(defaults: defaults)
+
+        store.writeMonotonic(
+            GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: 9,
+                selectedStageID: 5
+            )
+        )
+        let persistedObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: XCTUnwrap(defaults.data(forKey: GrowthStageStateV2.key))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(
+            Set(persistedObject.keys),
+            Set(["version", "highestUnlockedStageID", "selectedStageID"])
+        )
+        store.writeMonotonic(
+            GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: 4,
+                selectedStageID: 4
+            )
+        )
+
+        XCTAssertEqual(store.read()?.highestUnlockedStageID, 9)
+        XCTAssertEqual(store.read()?.selectedStageID, 4)
+
+        let policy = try! policy
+        let selected = GrowthEntitlementResolver.resolve(
+            policy: policy,
+            totalXP: 0,
+            legacy: LegacyGrowthRights(
+                level: 7,
+                currentSkinID: "skin-5",
+                badges: []
+            ),
+            stored: GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: 9,
+                selectedStageID: 9
+            )
+        )
+        XCTAssertEqual(selected.selectedStageID, 9)
+
+        let invalidStoredSelection = GrowthEntitlementResolver.resolve(
+            policy: policy,
+            totalXP: 0,
+            legacy: LegacyGrowthRights(
+                level: 7,
+                currentSkinID: "skin-5",
+                badges: []
+            ),
+            stored: GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: 9,
+                selectedStageID: 10
+            )
+        )
+        XCTAssertEqual(invalidStoredSelection.highestUnlockedStageID, 9)
+        XCTAssertEqual(invalidStoredSelection.selectedStageID, 5)
+
+        let noStoredSelection = GrowthEntitlementResolver.resolve(
+            policy: policy,
+            totalXP: 0,
+            legacy: .empty,
+            stored: GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: 9,
+                selectedStageID: nil
+            )
+        )
+        XCTAssertEqual(noStoredSelection.highestUnlockedStageID, 9)
+        XCTAssertEqual(noStoredSelection.selectedStageID, 9)
+
+        defaults.set(
+            Data(#"{"version":1,"highestUnlockedStageID":9,"selectedStageID":10}"#.utf8),
+            forKey: GrowthStageStateV2.key
+        )
+        XCTAssertEqual(store.read()?.highestUnlockedStageID, 9)
+        XCTAssertNil(store.read()?.selectedStageID)
+
+        store.writeMonotonic(
+            GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion + 1,
+                highestUnlockedStageID: 12,
+                selectedStageID: 12
+            )
+        )
+        XCTAssertEqual(store.read()?.highestUnlockedStageID, 9)
+    }
+
+    func testMalformedAndPartialV2PayloadCannotLowerLegacyRights() throws {
+        let defaults = makeDefaults()
+        let payloads = [
+            Data(#"{"version":1,"highestUnlockedStageID":2}"#.utf8),
+            Data(#"{"version":2,"highestUnlockedStageID":12,"selectedStageID":12}"#.utf8),
+            Data(#"{"version":1,"highestUnlockedStageID":0,"selectedStageID":0}"#.utf8),
+            Data(#"{"version":1,"highestUnlockedStageID":99,"selectedStageID":99}"#.utf8),
+            Data(#"{"version":1,"highestUnlockedStageID":2,"unexpected":true}"#.utf8),
+            Data("not-json".utf8),
+        ]
+
+        for payload in payloads {
+            defaults.set(payload, forKey: GrowthStageStateV2.key)
+            let result = GrowthEntitlementResolver.resolve(
+                policy: try policy,
+                totalXP: 1_000,
+                legacy: LegacyGrowthRights(
+                    level: 7,
+                    currentSkinID: "skin-7",
+                    badges: ["legacy-badge"]
+                ),
+                stored: UserDefaultsGrowthStageStateStore(defaults: defaults).read()
+            )
+
+            XCTAssertEqual(result.highestUnlockedStageID, 7)
+            XCTAssertEqual(result.selectedStageID, 7)
+            XCTAssertEqual(result.legacyBadgeIDs, ["legacy-badge"])
+        }
+
+        defaults.set(
+            Data(#"{"version":2,"highestUnlockedStageID":12,"selectedStageID":1}"#.utf8),
+            forKey: GrowthStageStateV2.key
+        )
+        let wrongVersionResult = GrowthEntitlementResolver.resolve(
+            policy: try policy,
+            totalXP: 0,
+            legacy: LegacyGrowthRights(
+                level: 7,
+                currentSkinID: "skin-7",
+                badges: []
+            ),
+            stored: UserDefaultsGrowthStageStateStore(defaults: defaults).read()
+        )
+        XCTAssertEqual(wrongVersionResult.highestUnlockedStageID, 7)
+        XCTAssertEqual(wrongVersionResult.selectedStageID, 7)
+    }
+
+    func testLegacyBadgeAndSkinRightsAreVisibleWithoutChangingLegacyPayload() throws {
+        let defaults = makeDefaults()
+        let original = Data(
+            #"{"level":0,"exp":0,"recordExp":0,"challengeExp":0,"balanceExp":0,"safetyExp":0,"totalChallenges":4,"badges":["legacy-a","legacy-a","legacy-b"],"currentSkinId":"skin-7"}"#.utf8
+        )
+        defaults.set(original, forKey: LegacyDefaultsReader.Key.progress)
+
+        let rights = try LegacyDefaultsReader(
+            defaults: defaults,
+            persistentDomainName: suiteNames[0]
+        ).readGrowthRights()
+        let result = GrowthEntitlementResolver.resolve(
+            policy: try policy,
+            totalXP: 0,
+            legacy: rights,
+            stored: nil
+        )
+
+        XCTAssertEqual(result.highestUnlockedStageID, 7)
+        XCTAssertEqual(result.selectedStageID, 7)
+        XCTAssertEqual(result.legacyBadgeIDs, ["legacy-a", "legacy-a", "legacy-b"])
+
+        UserDefaultsGrowthStageStateStore(defaults: defaults).writeMonotonic(
+            GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: result.highestUnlockedStageID,
+                selectedStageID: result.selectedStageID
+            )
+        )
+        XCTAssertEqual(defaults.data(forKey: LegacyDefaultsReader.Key.progress), original)
+    }
+
+    func testMissingStageAssetUsesVerifiedOneToSevenFallback() {
+        for stageID in 1...7 {
+            let resolution = GrowthStageArtResolver.resolve(stageID: stageID)
+            XCTAssertEqual(resolution.artStageID, stageID)
+            XCTAssertFalse(resolution.usesNeutralFallback)
+        }
+
+        for stageID in 8...12 {
+            let resolution = GrowthStageArtResolver.resolve(stageID: stageID)
+            XCTAssertEqual(resolution.artStageID, 7)
+            XCTAssertTrue(resolution.usesNeutralFallback)
+        }
+    }
+
     func testMalformedOrMissingPolicyNeverSilentlyFallsBack() {
         XCTAssertThrowsError(
             try GrowthPolicy(
@@ -144,4 +387,12 @@ final class GrowthPolicyTests: XCTestCase {
         }
         """.utf8
     )
+
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "GrowthPolicyTests.\(UUID().uuidString)"
+        suiteNames.append(suiteName)
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
 }

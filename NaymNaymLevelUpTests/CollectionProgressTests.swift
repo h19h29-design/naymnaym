@@ -46,6 +46,25 @@ final class CollectionProgressTests: XCTestCase {
         XCTAssertFalse(progress.earnedBadgeIDs.contains("nutrition_vegetable_5"))
     }
 
+    func testLegacyBadgesStayInSeparateGroupOutsideNewDenominator() throws {
+        let progress = try CollectionProgress.evaluate(
+            totalXP: 0,
+            records: [],
+            policyData: Self.policy,
+            legacy: LegacyGrowthRights(
+                level: 7,
+                currentSkinID: "skin-7",
+                badges: ["legacy-a", "legacy-a", "legacy-b"]
+            )
+        )
+
+        XCTAssertEqual(progress.collectedCount, 0)
+        XCTAssertEqual(progress.badges.count, 13)
+        XCTAssertEqual(progress.legacyBadgeIDs, ["legacy-a", "legacy-a", "legacy-b"])
+        XCTAssertEqual(progress.legacyBadgeIDsForDisplay, ["legacy-a", "legacy-b"])
+        XCTAssertEqual(progress.legacyBadgeGroupTitle, "이전 뱃지")
+    }
+
     private func collectionRecord(
         _ date: String,
         _ menu: String,
