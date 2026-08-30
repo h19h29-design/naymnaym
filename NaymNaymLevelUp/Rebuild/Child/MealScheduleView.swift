@@ -706,11 +706,12 @@ struct MealScheduleView: View {
 
             menuVisualSummary(meal: meal)
 
+            allergySummary(meal: meal)
+
             Text("영양 정보")
                 .font(.subheadline.bold())
                 .foregroundStyle(RebuildDesignTokens.forest500)
             nutritionSummary(meals: meal.map { [$0] } ?? [])
-            allergySummary(meal: meal)
 
             Button {
                 select(date: anchorDate)
@@ -1023,8 +1024,8 @@ struct MealScheduleView: View {
             }
             if let selectedMeal {
                 menuVisualSummary(meal: selectedMeal)
-                nutritionSummary(meals: [selectedMeal])
                 allergySummary(meal: selectedMeal)
+                nutritionSummary(meals: [selectedMeal])
             } else {
                 Text("해당 날짜의 영양 정보가 없어요.")
                     .font(RebuildDesignTokens.bodyFont)
@@ -1317,7 +1318,7 @@ struct MealScheduleNutritionSummary {
             values.append(
                 MealScheduleNutritionTile(
                     title: "열량",
-                    value: "\(String(average)) kcal"
+                    value: Self.formatted(average, unit: "kcal")
                 )
             )
         }
@@ -1361,14 +1362,15 @@ struct MealScheduleNutritionSummary {
         guard !sourceMeals.isEmpty else { return nil }
         let values = sourceMeals.map { value(for: field, in: $0.nutrition) }
         let average = values.reduce(0, +) / Double(values.count)
-        let units = Set(
-            sourceMeals.compactMap {
-                $0.nutrition.sourceUnits[field]?.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
-            }
-        )
-        return (average, units.count == 1 ? units.first : nil)
+        let units = sourceMeals.compactMap {
+            $0.nutrition.sourceUnits[field]?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).nilIfEmpty
+        }
+        let unit = units.count == sourceMeals.count && Set(units).count == 1
+            ? units.first
+            : nil
+        return (average, unit)
     }
 
     private static func value(
@@ -1386,8 +1388,28 @@ struct MealScheduleNutritionSummary {
     }
 
     private static func formatted(_ value: Double, unit: String?) -> String {
+        var number = String(
+            format: "%.3f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
+        while number.last == "0" {
+            number.removeLast()
+        }
+        if number.last == "." {
+            number.removeLast()
+        }
+        if number == "-0" {
+            number = "0"
+        }
         let suffix = unit.map { " \($0)" } ?? ""
-        return "\(String(value))\(suffix)"
+        return "\(number)\(suffix)"
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 

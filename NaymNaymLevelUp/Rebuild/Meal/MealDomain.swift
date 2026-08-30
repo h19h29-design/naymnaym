@@ -91,14 +91,25 @@ struct RebuildNutritionInfo: Codable, Equatable, Sendable {
         calcium = try container.decode(Double.self, forKey: .calcium)
         iron = try container.decode(Double.self, forKey: .iron)
         vitamin = try container.decode(Double.self, forKey: .vitamin)
-        sourceFields = try container.decodeIfPresent(
-            Set<SourceField>.self,
-            forKey: .sourceFields
-        ) ?? []
+        if container.contains(.sourceFields) {
+            sourceFields = try container.decodeIfPresent(
+                Set<SourceField>.self,
+                forKey: .sourceFields
+            ) ?? []
+        } else {
+            sourceFields = Self.inferredSourceFields(
+                carbs: carbs,
+                protein: protein,
+                fat: fat,
+                calcium: calcium,
+                iron: iron,
+                vitamin: vitamin
+            )
+        }
         sourceUnits = try container.decodeIfPresent(
-            [SourceField: String].self,
+            DecodedSourceUnits.self,
             forKey: .sourceUnits
-        ) ?? [:]
+        )?.values ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -121,6 +132,68 @@ struct RebuildNutritionInfo: Codable, Equatable, Sendable {
         iron: 0,
         vitamin: 0
     )
+
+    private static func inferredSourceFields(
+        carbs: Double,
+        protein: Double,
+        fat: Double,
+        calcium: Double,
+        iron: Double,
+        vitamin: Double
+    ) -> Set<SourceField> {
+        let values: [(SourceField, Double)] = [
+            (.carbs, carbs),
+            (.protein, protein),
+            (.fat, fat),
+            (.calcium, calcium),
+            (.iron, iron),
+            (.vitamin, vitamin),
+        ]
+        return Set(
+            values.compactMap { field, value in
+                value == 0 ? nil : field
+            }
+        )
+    }
+
+    private struct DecodedSourceUnits: Decodable {
+        let values: [SourceField: String]
+
+        init(from decoder: Decoder) throws {
+            if let keyed = try? decoder.container(keyedBy: DynamicCodingKey.self) {
+                var decoded: [SourceField: String] = [:]
+                for key in keyed.allKeys {
+                    guard let field = SourceField(rawValue: key.stringValue),
+                          let unit = try? keyed.decode(String.self, forKey: key)
+                    else {
+                        continue
+                    }
+                    decoded[field] = unit
+                }
+                values = decoded
+                return
+            }
+
+            values = try decoder.singleValueContainer().decode(
+                [SourceField: String].self
+            )
+        }
+    }
+
+    private struct DynamicCodingKey: CodingKey {
+        let stringValue: String
+        let intValue: Int?
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+            intValue = nil
+        }
+
+        init?(intValue: Int) {
+            stringValue = String(intValue)
+            self.intValue = intValue
+        }
+    }
 }
 
 struct RebuildMealDay: Codable, Equatable, Sendable {

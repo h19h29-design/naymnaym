@@ -75,6 +75,54 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(nutrition.vitamin, 42, accuracy: 0.001)
     }
 
+    func testLegacyNutritionPayloadInfersOnlyNonzeroSourceFieldsWithoutInventingUnits() throws {
+        let data = try XCTUnwrap(
+            """
+            {
+              "carbs": 84.25,
+              "protein": 0,
+              "fat": 0,
+              "calcium": 180.75,
+              "iron": 0,
+              "vitamin": 42
+            }
+            """.data(using: .utf8)
+        )
+
+        let nutrition = try JSONDecoder().decode(
+            RebuildNutritionInfo.self,
+            from: data
+        )
+
+        XCTAssertEqual(nutrition.sourceFields, [.carbs, .calcium, .vitamin])
+        XCTAssertEqual(nutrition.sourceUnits, [:])
+    }
+
+    func testExplicitEmptyNutritionSourceFieldsRemainEmptyForNewPayloads() throws {
+        let data = try XCTUnwrap(
+            """
+            {
+              "carbs": 84.25,
+              "protein": 21.5,
+              "fat": 0,
+              "calcium": 180.75,
+              "iron": 0,
+              "vitamin": 42,
+              "sourceFields": [],
+              "sourceUnits": {}
+            }
+            """.data(using: .utf8)
+        )
+
+        let nutrition = try JSONDecoder().decode(
+            RebuildNutritionInfo.self,
+            from: data
+        )
+
+        XCTAssertEqual(nutrition.sourceFields, [])
+        XCTAssertEqual(nutrition.sourceUnits, [:])
+    }
+
     func testWholeMealTotalsOmitMissingZerosPreserveDecimalsAndKeepVitaminUnitNeutral() {
         let nutrition = RebuildNutritionInfo(
             carbs: 84.25,
@@ -151,6 +199,70 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(summary.tiles.map(\.title), ["열량", "단백질"])
         XCTAssertEqual(summary.tiles[0].value, "770.5 kcal")
         XCTAssertEqual(summary.tiles[1].value, "12.5 g")
+    }
+
+    func testScheduleAveragesRequireAgreedUnitsAndUseStableTrimmedPrecision() {
+        func meal(
+            date: String,
+            calorie: String,
+            protein: Double,
+            unit: String?
+        ) -> RebuildMealDay {
+            RebuildMealDay(
+                date: date,
+                menuItems: [],
+                calorie: calorie,
+                nutrition: RebuildNutritionInfo(
+                    carbs: 0,
+                    protein: protein,
+                    fat: 0,
+                    calcium: 0,
+                    iron: 0,
+                    vitamin: 0,
+                    sourceFields: [.protein],
+                    sourceUnits: unit.map { [.protein: $0] } ?? [:]
+                )
+            )
+        }
+
+        let first = meal(
+            date: "2026-08-26",
+            calorie: "770.1 Kcal",
+            protein: 0.1,
+            unit: "g"
+        )
+        let second = meal(
+            date: "2026-08-27",
+            calorie: "770.2 Kcal",
+            protein: 0.2,
+            unit: "g"
+        )
+        let missingUnit = meal(
+            date: "2026-08-28",
+            calorie: "770.3 Kcal",
+            protein: 0.3,
+            unit: nil
+        )
+        let differentUnit = meal(
+            date: "2026-08-29",
+            calorie: "770.4 Kcal",
+            protein: 0.3,
+            unit: "mg"
+        )
+
+        let sameUnitSummary = MealScheduleNutritionSummary(meals: [first, second])
+        XCTAssertEqual(sameUnitSummary.tiles[0].value, "770.15 kcal")
+        XCTAssertEqual(sameUnitSummary.tiles[1].value, "0.15 g")
+
+        let missingUnitSummary = MealScheduleNutritionSummary(
+            meals: [first, missingUnit]
+        )
+        XCTAssertEqual(missingUnitSummary.tiles[1].value, "0.2")
+
+        let mixedUnitSummary = MealScheduleNutritionSummary(
+            meals: [first, differentUnit]
+        )
+        XCTAssertEqual(mixedUnitSummary.tiles[1].value, "0.2")
     }
 
     func testNutritionInsightExposesOptionalPresentationMetadata() throws {
@@ -420,10 +532,23 @@ final class MealPresentationTests: XCTestCase {
         let actionIndex = try XCTUnwrap(order.firstIndex(of: "먹은 정도 기록"))
         let totalsIndex = try XCTUnwrap(order.firstIndex(of: "전체 급식 기준 · NEIS 제공"))
 
-        XCTAssertLessThan(menuIndex, actionIndex)
-        XCTAssertLessThan(menuIndex, totalsIndex)
-        XCTAssertLessThan(allergyIndex, actionIndex)
+        XCTAssertLessThan(menuIndex, allergyIndex)
         XCTAssertLessThan(allergyIndex, totalsIndex)
+        XCTAssertLessThan(totalsIndex, actionIndex)
+    }
+
+    func testScheduleAccessibilityPlacesAllergyBeforeNutritionAndCallToAction() {
+        let descriptor = MealScheduleAccessibilityDescriptor(
+            menuLabels: ["시금치나물"],
+            allergySummary: "알레르기 정보",
+            nutritionSummary: "전체 급식 영양",
+            callToActionLabel: "급식 상세 보기"
+        )
+
+        XCTAssertEqual(
+            descriptor.readingOrder,
+            ["시금치나물", "알레르기 정보", "전체 급식 영양", "급식 상세 보기"]
+        )
     }
 
     func testRepresentativeChipsAndAccessibilityDescriptorKeepSafeOrder() throws {

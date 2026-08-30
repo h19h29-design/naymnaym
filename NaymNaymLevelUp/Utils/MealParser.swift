@@ -111,15 +111,16 @@ enum MealParser {
     ) -> (value: Double, unit: String?)? {
         guard let keywordRange = text.range(of: keyword, options: [.caseInsensitive]) else { return nil }
         let suffix = String(text[keywordRange.upperBound...])
+        let line = firstLogicalLine(in: suffix)
         let pattern = #"([0-9]+(?:\.[0-9]+)?)"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(suffix.startIndex..<suffix.endIndex, in: suffix)
-        guard let match = regex.firstMatch(in: suffix, range: range),
-              let numberRange = Range(match.range(at: 1), in: suffix)
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        guard let match = regex.firstMatch(in: line, range: range),
+              let numberRange = Range(match.range(at: 1), in: line)
         else {
             return nil
         }
-        let prefix = String(suffix[..<numberRange.lowerBound])
+        let prefix = String(line[..<numberRange.lowerBound])
         let unit: String?
         if let unitRegex = try? NSRegularExpression(pattern: #"\(\s*([A-Za-z가-힣]+)\s*\)"#),
            let unitMatch = unitRegex.firstMatch(
@@ -131,7 +132,19 @@ enum MealParser {
         } else {
             unit = nil
         }
-        guard let value = Double(suffix[numberRange]) else { return nil }
+        guard let value = Double(line[numberRange]) else { return nil }
         return (value, unit)
+    }
+
+    private static func firstLogicalLine(in text: String) -> String {
+        let newlineIndex = text.firstIndex(where: \.isNewline)
+        let htmlBreakIndex = text.range(
+            of: #"<br\s*/?>"#,
+            options: [.regularExpression, .caseInsensitive]
+        )?.lowerBound
+        let lineEnd = [newlineIndex, htmlBreakIndex]
+            .compactMap { $0 }
+            .min() ?? text.endIndex
+        return String(text[..<lineEnd])
     }
 }

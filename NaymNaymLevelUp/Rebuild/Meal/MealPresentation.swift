@@ -313,7 +313,20 @@ struct MealRecordingAccessibilityDescriptor: Equatable, Sendable {
     let callToActionLabel: String
 
     var readingOrder: [String] {
-        menu.readingOrder + [callToActionLabel, wholeMealLabel]
+        menu.readingOrder + [wholeMealLabel, callToActionLabel]
+    }
+}
+
+struct MealScheduleAccessibilityDescriptor: Equatable, Sendable {
+    let menuLabels: [String]
+    let allergySummary: String
+    let nutritionSummary: String
+    let callToActionLabel: String?
+
+    var readingOrder: [String] {
+        menuLabels
+            + [allergySummary, nutritionSummary]
+            + (callToActionLabel.map { [$0] } ?? [])
     }
 }
 

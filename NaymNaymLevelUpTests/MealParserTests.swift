@@ -39,6 +39,17 @@ final class MealParserTests: XCTestCase {
         XCTAssertEqual(nutrition.iron, 3.4, accuracy: 0.01)
     }
 
+    func testParseRebuildNutritionDoesNotBorrowValueFromTheNextLogicalLine() {
+        let nutrition = MealParser.parseRebuildNutrition(
+            text: "탄수화물(g) :\n단백질(g) : 21.5"
+        )
+
+        XCTAssertFalse(nutrition.sourceFields.contains(.carbs))
+        XCTAssertEqual(nutrition.protein, 21.5, accuracy: 0.001)
+        XCTAssertTrue(nutrition.sourceFields.contains(.protein))
+        XCTAssertEqual(nutrition.sourceUnits, [.protein: "g"])
+    }
+
     func testIntroMissionPrioritizesAllergySafety() {
         let meal = MealDay(
             date: "20260624",
