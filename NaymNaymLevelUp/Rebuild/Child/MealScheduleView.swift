@@ -704,6 +704,8 @@ struct MealScheduleView: View {
                 )
             }
 
+            menuVisualSummary(meal: meal)
+
             Text("영양 정보")
                 .font(.subheadline.bold())
                 .foregroundStyle(RebuildDesignTokens.forest500)
@@ -896,15 +898,25 @@ struct MealScheduleView: View {
                                 Array((meal?.menuItems ?? []).prefix(3).enumerated()),
                                 id: \.offset
                             ) { _, item in
-                                Text(item.name)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(
-                                        selected
-                                            ? RebuildDesignTokens.forest700
-                                            : RebuildDesignTokens.ink900
+                                let visual = MealVisualResolver.resolve(item: item)
+                                HStack(spacing: 2) {
+                                    Image(
+                                        systemName: MealVisualIconManifest.systemSymbol(
+                                            for: visual.iconKey
+                                        ) ?? "fork.knife"
                                     )
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                    Text(item.name)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+                                }
+                                .foregroundStyle(
+                                    selected
+                                        ? RebuildDesignTokens.forest700
+                                        : RebuildDesignTokens.ink900
+                                )
                             }
 
                             if meal == nil {
@@ -950,41 +962,51 @@ struct MealScheduleView: View {
         meals: [RebuildMealDay]
     ) -> some View {
         let summary = MealScheduleNutritionSummary(meals: meals)
-        return HStack(spacing: 6) {
-            ForEach(summary.tiles) { tile in
-                VStack(spacing: 4) {
-                    Text(tile.title)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(RebuildDesignTokens.muted600)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    Text(tile.value)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(
-                            tile.title == "열량"
-                                ? Color.orange
-                                : RebuildDesignTokens.ink900
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(
+                meals.count > 1
+                    ? "전체 급식 기준 · NEIS 제공 (기간 평균)"
+                    : "전체 급식 기준 · NEIS 제공"
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(RebuildDesignTokens.forest700)
+
+            HStack(spacing: 6) {
+                ForEach(summary.tiles) { tile in
+                    VStack(spacing: 4) {
+                        Text(tile.title)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(RebuildDesignTokens.muted600)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Text(tile.value)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(
+                                tile.title == "열량"
+                                    ? Color.orange
+                                    : RebuildDesignTokens.ink900
+                            )
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(RebuildDesignTokens.cream50.opacity(0.9))
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: RebuildDesignTokens.radii[0],
+                            style: .continuous
                         )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(RebuildDesignTokens.cream50.opacity(0.9))
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: RebuildDesignTokens.radii[0],
-                        style: .continuous
                     )
-                )
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: RebuildDesignTokens.radii[0],
-                        style: .continuous
-                    )
-                    .stroke(
-                        RebuildDesignTokens.forest500.opacity(0.18),
-                        lineWidth: 1
-                    )
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: RebuildDesignTokens.radii[0],
+                            style: .continuous
+                        )
+                        .stroke(
+                            RebuildDesignTokens.forest500.opacity(0.18),
+                            lineWidth: 1
+                        )
+                    }
                 }
             }
         }
@@ -1004,6 +1026,7 @@ struct MealScheduleView: View {
                     .foregroundStyle(RebuildDesignTokens.muted600)
             }
             if let selectedMeal {
+                menuVisualSummary(meal: selectedMeal)
                 nutritionSummary(meals: [selectedMeal])
                 allergySummary(meal: selectedMeal)
             } else {
@@ -1020,6 +1043,66 @@ struct MealScheduleView: View {
         .accessibilityIdentifier(
             "meal_schedule_selected_information_\(MealScheduleCalendar.key(for: selectedDate))"
         )
+    }
+
+    @ViewBuilder
+    private func menuVisualSummary(meal: RebuildMealDay?) -> some View {
+        if let meal {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("메뉴별 안내")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(RebuildDesignTokens.forest500)
+
+                ForEach(Array(meal.menuItems.enumerated()), id: \.offset) { _, item in
+                    let visual = MealVisualResolver.resolve(item: item)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(
+                            systemName: MealVisualIconManifest.systemSymbol(
+                                for: visual.iconKey
+                            ) ?? "fork.knife"
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(RebuildDesignTokens.forest700)
+                        .frame(width: 24, height: 24)
+                        .accessibilityLabel(visual.categoryLabel)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(RebuildDesignTokens.ink900)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 6) {
+                                Text(visual.categoryLabel)
+                                Text(visual.confidenceLabel)
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(RebuildDesignTokens.forest700)
+                            Text(visual.representativeCopy)
+                                .font(.caption2)
+                                .foregroundStyle(RebuildDesignTokens.muted600)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if !item.allergyLabels.isEmpty {
+                                Text(
+                                    "알레르기: "
+                                        + item.allergyLabels.joined(separator: " · ")
+                                )
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.orange.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(RebuildDesignTokens.cream50.opacity(0.72))
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: RebuildDesignTokens.radii[0],
+                            style: .continuous
+                        )
+                    )
+                }
+            }
+        }
     }
 
     @ViewBuilder

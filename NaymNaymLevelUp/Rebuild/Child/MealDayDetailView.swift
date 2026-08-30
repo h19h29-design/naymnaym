@@ -252,21 +252,62 @@ struct MealDayDetailView: View {
     }
 
     private func mealContent(_ meal: RebuildMealDay) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let totals = MealWholeMealTotals(meal: meal)
+        return VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(meal.menuItems.enumerated()), id: \.offset) { _, item in
-                HStack(alignment: .top, spacing: 10) {
-                    Circle()
-                        .fill(RebuildDesignTokens.forest500)
-                        .frame(width: 7, height: 7)
-                        .padding(.top, 7)
-                        .accessibilityHidden(true)
-                    Text(item.name)
-                        .font(RebuildDesignTokens.bodyFont)
-                        .foregroundStyle(RebuildDesignTokens.ink900)
+                let visual = MealVisualResolver.resolve(item: item)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(
+                            systemName: MealVisualIconManifest.systemSymbol(
+                                for: visual.iconKey
+                            ) ?? "fork.knife"
+                        )
+                        .font(.headline)
+                        .foregroundStyle(RebuildDesignTokens.forest700)
+                        .frame(width: 26, height: 26)
+                        .accessibilityLabel(visual.categoryLabel)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.name)
+                                .font(RebuildDesignTokens.bodyFont.weight(.semibold))
+                                .foregroundStyle(RebuildDesignTokens.ink900)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 6) {
+                                Text(visual.categoryLabel)
+                                Text(visual.confidenceLabel)
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(RebuildDesignTokens.forest700)
+                        }
+                    }
+
+                    Text(visual.representativeCopy)
+                        .font(.caption)
+                        .foregroundStyle(RebuildDesignTokens.muted600)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if !item.allergyLabels.isEmpty {
+                        Text("알레르기: \(item.allergyLabels.joined(separator: " · "))")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.orange.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .padding(12)
+                .background(RebuildDesignTokens.cream50.opacity(0.72))
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: RebuildDesignTokens.radii[0],
+                        style: .continuous
+                    )
+                )
             }
-            Text(meal.calorie)
+
+            Text(totals.sourceLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(RebuildDesignTokens.forest700)
+            Text(totals.calorie)
                 .font(.footnote)
                 .foregroundStyle(RebuildDesignTokens.muted600)
         }

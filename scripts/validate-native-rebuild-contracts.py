@@ -90,6 +90,21 @@ EXPECTED_NUTRITION_RULES = [
     {"keywords": ["밥", "면", "빵", "떡", "잡채", "국수"], "nutrients": ["carbohydrate"]},
     {"keywords": ["김치", "과일", "토마토", "귤", "사과", "배추"], "nutrients": ["vitamin"]},
 ]
+EXPECTED_NUTRITION_ICON_FALLBACKS = {
+    "food.grain": "fork.knife",
+    "food.soup": "cup.and.saucer.fill",
+    "food.meat": "fork.knife",
+    "food.fish": "fish.fill",
+    "food.egg": "oval.fill",
+    "food.bean": "leaf.fill",
+    "food.vegetable": "leaf.fill",
+    "food.fruit": "leaf.fill",
+    "food.dairy": "cup.and.saucer.fill",
+    "food.noodle": "fork.knife",
+    "food.bread": "fork.knife",
+    "food.kimchi": "leaf.fill",
+    "food.other": "fork.knife",
+}
 EXPECTED_NUTRIENTS = {
     "fiber": {"childName": "식이섬유", "alternatives": ["사과", "고구마"]},
     "vitamin": {"childName": "비타민", "alternatives": ["귤", "토마토"]},
@@ -400,8 +415,9 @@ def validate_nutrition_rules(rules):
     expected_keys = {
         "version", "matching", "deduplicateNutrientIds", "omissionCopy", "educationNotice", "nutrientOrder", "nutrients", "rules"
     }
-    if set(rules) != expected_keys:
-        errors.append("nutrition-rules.json: must contain only the v1 schema fields")
+    optional_keys = {"iconManifest"}
+    if not set(rules).issubset(expected_keys | optional_keys):
+        errors.append("nutrition-rules.json: must contain only the v1 schema fields and optional presentation fields")
     if rules.get("version") != 1 or not is_integer(rules.get("version")):
         errors.append("nutrition-rules.json: version must be exactly integer 1")
     if rules.get("matching") != "caseInsensitiveSubstring":
@@ -437,21 +453,89 @@ def validate_nutrition_rules(rules):
                 if not 1 <= len(alternatives) <= 2:
                     errors.append(f"nutrition-rules.json: nutrients.{nutrient_id}.alternatives must contain one or two foods")
 
+    icon_manifest = rules.get("iconManifest")
+    if icon_manifest is not None:
+        if not isinstance(icon_manifest, dict):
+            errors.append("nutrition-rules.json: iconManifest must be an object")
+        else:
+            if set(icon_manifest) != set(EXPECTED_NUTRITION_ICON_FALLBACKS):
+                errors.append("nutrition-rules.json: iconManifest must contain every semantic food icon key")
+            for icon_key, fallback in icon_manifest.items():
+                if icon_key not in EXPECTED_NUTRITION_ICON_FALLBACKS:
+                    errors.append(f"nutrition-rules.json: iconManifest contains unknown icon key {icon_key!r}")
+                elif fallback != EXPECTED_NUTRITION_ICON_FALLBACKS[icon_key]:
+                    errors.append(f"nutrition-rules.json: iconManifest.{icon_key} must use its verified system fallback")
+
     keyword_rules = rules.get("rules")
     if not isinstance(keyword_rules, list):
         return errors + ["nutrition-rules.json: rules must be an array"]
-    if keyword_rules != EXPECTED_NUTRITION_RULES:
+    expected_core_rules = [
+        {"keywords": rule["keywords"], "nutrients": rule["nutrients"]}
+        for rule in EXPECTED_NUTRITION_RULES
+    ]
+    actual_core_rules = [
+        rule
+        for rule in keyword_rules
+        if isinstance(rule, dict)
+    ]
+    actual_core_rules = [
+        {"keywords": rule.get("keywords"), "nutrients": rule.get("nutrients")}
+        for rule in actual_core_rules
+    ]
+    if actual_core_rules != expected_core_rules:
         errors.append("nutrition-rules.json: rules must preserve the ordered iOS keyword rules")
     nutrient_ids = set(nutrients) if isinstance(nutrients, dict) else set()
     for index, rule in enumerate(keyword_rules):
-        if not isinstance(rule, dict) or set(rule) != {"keywords", "nutrients"}:
-            errors.append(f"nutrition-rules.json: rules[{index}] must contain keywords and nutrients")
+        allowed_rule_keys = {
+            "keywords",
+            "nutrients",
+            "foodCategory",
+            "confidence",
+            "iconKey",
+            "representativeNutrientIDs",
+        }
+        if (
+            not isinstance(rule, dict)
+            or not {"keywords", "nutrients"}.issubset(rule)
+            or not set(rule).issubset(allowed_rule_keys)
+        ):
+            errors.append(f"nutrition-rules.json: rules[{index}] must contain keywords/nutrients and optional presentation fields")
             continue
         validate_unique_strings(rule["keywords"], f"nutrition-rules.json: rules[{index}].keywords", errors)
         if validate_unique_strings(rule["nutrients"], f"nutrition-rules.json: rules[{index}].nutrients", errors):
             unknown = set(rule["nutrients"]) - nutrient_ids
             if unknown:
                 errors.append(f"nutrition-rules.json: rules[{index}] references unknown nutrient IDs")
+        if "foodCategory" in rule:
+            if not isinstance(rule["foodCategory"], str) or rule["foodCategory"] not in {
+                "grain", "soup", "meat", "fish", "egg", "bean", "vegetable",
+                "fruit", "dairy", "noodle", "bread", "kimchi", "other",
+            }:
+                errors.append(f"nutrition-rules.json: rules[{index}].foodCategory must be a known category")
+        if "confidence" in rule:
+            if not isinstance(rule["confidence"], str) or rule["confidence"] not in {
+                "exact", "keyword", "fallback"
+            }:
+                errors.append(f"nutrition-rules.json: rules[{index}].confidence must be exact, keyword, or fallback")
+        if "iconKey" in rule:
+            if not isinstance(rule["iconKey"], str) or rule["iconKey"] not in EXPECTED_NUTRITION_ICON_FALLBACKS:
+                errors.append(f"nutrition-rules.json: rules[{index}].iconKey must be a known semantic icon key")
+        if "representativeNutrientIDs" in rule:
+            representative = rule["representativeNutrientIDs"]
+            if not representative:
+                errors.append(
+                    f"nutrition-rules.json: rules[{index}].representativeNutrientIDs must be non-empty"
+                )
+            elif validate_unique_strings(
+                representative,
+                f"nutrition-rules.json: rules[{index}].representativeNutrientIDs",
+                errors,
+            ):
+                unknown = set(representative) - nutrient_ids
+                if unknown:
+                    errors.append(
+                        f"nutrition-rules.json: rules[{index}].representativeNutrientIDs references unknown nutrient IDs"
+                    )
     return errors
 
 
@@ -597,7 +681,7 @@ def validate_meal_loop_fixtures(fixtures, rules, policy):
             rule_entries = rules.get("rules") if isinstance(rules, dict) else None
             can_estimate = isinstance(rule_entries, list) and all(
                 isinstance(rule, dict)
-                and set(rule) == {"keywords", "nutrients"}
+                and {"keywords", "nutrients"}.issubset(rule)
                 and isinstance(rule["keywords"], list)
                 and all(isinstance(keyword, str) for keyword in rule["keywords"])
                 and isinstance(rule["nutrients"], list)

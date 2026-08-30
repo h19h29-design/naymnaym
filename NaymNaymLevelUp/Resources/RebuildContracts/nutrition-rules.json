@@ -13,10 +13,29 @@
     "calcium": {"childName": "칼슘", "alternatives": ["우유", "멸치"]},
     "carbohydrate": {"childName": "탄수화물", "alternatives": ["밥", "고구마"]}
   },
+  "iconManifest": {
+    "food.grain": "fork.knife",
+    "food.soup": "cup.and.saucer.fill",
+    "food.meat": "fork.knife",
+    "food.fish": "fish.fill",
+    "food.egg": "oval.fill",
+    "food.bean": "leaf.fill",
+    "food.vegetable": "leaf.fill",
+    "food.fruit": "leaf.fill",
+    "food.dairy": "cup.and.saucer.fill",
+    "food.noodle": "fork.knife",
+    "food.bread": "fork.knife",
+    "food.kimchi": "leaf.fill",
+    "food.other": "fork.knife"
+  },
   "rules": [
     {
       "keywords": ["나물", "시금치", "콩나물", "채소", "샐러드", "오이", "상추", "깻잎", "브로콜리"],
-      "nutrients": ["fiber", "vitamin"]
+      "nutrients": ["fiber", "vitamin"],
+      "foodCategory": "vegetable",
+      "confidence": "keyword",
+      "iconKey": "food.vegetable",
+      "representativeNutrientIDs": ["fiber", "vitamin"]
     },
     {
       "keywords": ["닭", "돼지", "소", "고기", "생선", "계란", "달걀", "두부", "고등어", "멸치"],

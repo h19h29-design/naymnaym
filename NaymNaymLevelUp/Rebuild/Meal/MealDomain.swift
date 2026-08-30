@@ -14,6 +14,25 @@ struct RebuildMealItem: Codable, Equatable, Sendable {
     let sourceRawText: String
 }
 
+extension RebuildMealItem {
+    /// Presentation normalization never replaces `name` or `sourceRawText`.
+    var normalizedPresentationName: String {
+        name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(
+                of: #"\([0-9.,\s]+\)"#,
+                with: "",
+                options: .regularExpression
+            )
+            .replacingOccurrences(of: "*", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var allergyLabels: [String] {
+        allergyCodes.map(AllergyMap.label(for:))
+    }
+}
+
 struct RebuildNutritionInfo: Codable, Equatable, Sendable {
     let carbs: Double
     let protein: Double

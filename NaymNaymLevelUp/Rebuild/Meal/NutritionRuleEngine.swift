@@ -17,6 +17,38 @@ struct NutritionInsight: Equatable, Sendable {
     let nutrients: [Nutrient]
     let omissionCopy: String
     let educationNotice: String
+    let foodCategory: MealFoodCategory?
+    let confidence: NutritionMatchConfidence?
+    let iconKey: String?
+    let representativeNutrientIDs: [String]
+
+    init(
+        ruleVersion: Int,
+        nutrients: [Nutrient],
+        omissionCopy: String,
+        educationNotice: String,
+        foodCategory: MealFoodCategory? = nil,
+        confidence: NutritionMatchConfidence? = nil,
+        iconKey: String? = nil,
+        representativeNutrientIDs: [String] = []
+    ) {
+        self.ruleVersion = ruleVersion
+        self.nutrients = nutrients
+        self.omissionCopy = omissionCopy
+        self.educationNotice = educationNotice
+        self.foodCategory = foodCategory
+        self.confidence = confidence
+        self.iconKey = iconKey
+        self.representativeNutrientIDs = representativeNutrientIDs
+    }
+}
+
+struct NutritionRulePresentationMatch: Equatable, Sendable {
+    let confidence: NutritionMatchConfidence
+    let foodCategory: MealFoodCategory?
+    let iconKey: String?
+    let representativeNutrientIDs: [String]?
+    let nutrientIDs: [String]
 }
 
 struct NutritionRuleEngine {
@@ -54,6 +86,12 @@ struct NutritionRuleEngine {
             }
         }
         let nutrientIDs = rules.nutrientOrder.filter(seen.contains)
+        let presentationMatches = presentationMatches(menuName: menuName)
+        let presentationMatch = presentationMatches.first {
+            $0.confidence == .exact
+        } ?? presentationMatches.first {
+            $0.confidence == .keyword
+        }
 
         return NutritionInsight(
             ruleVersion: rules.version,
@@ -67,8 +105,60 @@ struct NutritionRuleEngine {
                 }
             },
             omissionCopy: rules.omissionCopy,
-            educationNotice: rules.educationNotice
+            educationNotice: rules.educationNotice,
+            foodCategory: presentationMatch?.foodCategory,
+            confidence: presentationMatch?.confidence,
+            iconKey: presentationMatch?.iconKey,
+            representativeNutrientIDs: presentationMatch?.representativeNutrientIDs ?? []
         )
+    }
+
+    func presentationMatches(menuName: String) -> [NutritionRulePresentationMatch] {
+        let comparableName = menuName.lowercased()
+        let compactName = compact(comparableName)
+        return rules.rules.compactMap { rule in
+            let exact = rule.keywords.contains {
+                compact($0.lowercased()) == compactName
+            }
+            let keyword = rule.keywords.contains {
+                comparableName.contains($0.lowercased())
+            }
+            guard exact || keyword else { return nil }
+            return NutritionRulePresentationMatch(
+                confidence: exact ? .exact : .keyword,
+                foodCategory: rule.foodCategory.flatMap(MealFoodCategory.init(rawValue:)),
+                iconKey: rule.iconKey,
+                representativeNutrientIDs: rule.representativeNutrientIDs,
+                nutrientIDs: rule.nutrients
+            )
+        }
+    }
+
+    func orderedKnownNutrientIDs(from values: [String]) -> [String] {
+        let aliases: [String: String] = [
+            "fiber": "fiber",
+            "식이섬유": "fiber",
+            "vitamin": "vitamin",
+            "비타민": "vitamin",
+            "protein": "protein",
+            "단백질": "protein",
+            "iron": "iron",
+            "철분": "iron",
+            "철": "iron",
+            "calcium": "calcium",
+            "칼슘": "calcium",
+            "carbohydrate": "carbohydrate",
+            "탄수화물": "carbohydrate",
+        ]
+        let known = Set(rules.nutrients.keys)
+        let selected = Set(values.compactMap { value in
+            aliases[value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
+        }).intersection(known)
+        return rules.nutrientOrder.filter(selected.contains)
+    }
+
+    private func compact(_ value: String) -> String {
+        value.filter { $0.isLetter || $0.isNumber }
     }
 
     private static func hasStrictIntegerVersion(_ data: Data) -> Bool {
@@ -92,6 +182,48 @@ private struct NutritionRulesDocument: Decodable {
     struct Rule: Decodable {
         let keywords: [String]
         let nutrients: [String]
+        let foodCategory: String?
+        let confidence: String?
+        let iconKey: String?
+        let representativeNutrientIDs: [String]?
+
+        private enum CodingKeys: String, CodingKey {
+            case keywords
+            case nutrients
+            case foodCategory
+            case confidence
+            case iconKey
+            case representativeNutrientIDs
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            keywords = try container.decode([String].self, forKey: .keywords)
+            nutrients = try container.decode([String].self, forKey: .nutrients)
+            if container.contains(.foodCategory) {
+                foodCategory = try container.decode(String.self, forKey: .foodCategory)
+            } else {
+                foodCategory = nil
+            }
+            if container.contains(.confidence) {
+                confidence = try container.decode(String.self, forKey: .confidence)
+            } else {
+                confidence = nil
+            }
+            if container.contains(.iconKey) {
+                iconKey = try container.decode(String.self, forKey: .iconKey)
+            } else {
+                iconKey = nil
+            }
+            if container.contains(.representativeNutrientIDs) {
+                representativeNutrientIDs = try container.decode(
+                    [String].self,
+                    forKey: .representativeNutrientIDs
+                )
+            } else {
+                representativeNutrientIDs = nil
+            }
+        }
     }
 
     let version: Int
@@ -102,6 +234,39 @@ private struct NutritionRulesDocument: Decodable {
     let nutrientOrder: [String]
     let nutrients: [String: Nutrient]
     let rules: [Rule]
+    let iconManifest: [String: String]?
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case matching
+        case deduplicateNutrientIds
+        case omissionCopy
+        case educationNotice
+        case nutrientOrder
+        case nutrients
+        case rules
+        case iconManifest
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        matching = try container.decode(String.self, forKey: .matching)
+        deduplicateNutrientIds = try container.decode(Bool.self, forKey: .deduplicateNutrientIds)
+        omissionCopy = try container.decode(String.self, forKey: .omissionCopy)
+        educationNotice = try container.decode(String.self, forKey: .educationNotice)
+        nutrientOrder = try container.decode([String].self, forKey: .nutrientOrder)
+        nutrients = try container.decode([String: Nutrient].self, forKey: .nutrients)
+        rules = try container.decode([Rule].self, forKey: .rules)
+        if container.contains(.iconManifest) {
+            iconManifest = try container.decode(
+                [String: String].self,
+                forKey: .iconManifest
+            )
+        } else {
+            iconManifest = nil
+        }
+    }
 
     var isValid: Bool {
         guard version == 1,
@@ -124,14 +289,52 @@ private struct NutritionRulesDocument: Decodable {
         }) else {
             return false
         }
-        return rules.allSatisfy { rule in
+        guard rules.allSatisfy({ rule in
             !rule.keywords.isEmpty
                 && Set(rule.keywords).count == rule.keywords.count
                 && rule.keywords.allSatisfy { !$0.isEmpty }
                 && !rule.nutrients.isEmpty
                 && Set(rule.nutrients).count == rule.nutrients.count
                 && rule.nutrients.allSatisfy(nutrients.keys.contains)
+        }) else {
+            return false
         }
+
+        guard rules.allSatisfy({ rule in
+            if let foodCategory = rule.foodCategory,
+               MealFoodCategory(rawValue: foodCategory) == nil {
+                return false
+            }
+            if let confidence = rule.confidence,
+               NutritionMatchConfidence(rawValue: confidence) == nil {
+                return false
+            }
+            if let iconKey = rule.iconKey,
+               MealVisualIconManifest.systemSymbol(for: iconKey) == nil {
+                return false
+            }
+            if let representativeNutrientIDs = rule.representativeNutrientIDs {
+                guard !representativeNutrientIDs.isEmpty,
+                      Set(representativeNutrientIDs).count == representativeNutrientIDs.count,
+                      representativeNutrientIDs.allSatisfy(nutrients.keys.contains)
+                else {
+                    return false
+                }
+            }
+            return true
+        }) else {
+            return false
+        }
+
+        if let iconManifest {
+            guard Set(iconManifest.keys) == MealVisualIconManifest.semanticKeys,
+                  iconManifest.allSatisfy({ key, value in
+                      MealVisualIconManifest.systemSymbol(for: key) == value
+                  }) else {
+                return false
+            }
+        }
+        return true
     }
 }
 

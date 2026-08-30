@@ -136,32 +136,63 @@ struct TodayForestView: View {
             }
 
             if let meal = viewModel.meal {
+                let totals = MealWholeMealTotals(meal: meal)
                 VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[1]) {
                     ForEach(Array(meal.menuItems.enumerated()), id: \.offset) {
                         _, item in
+                        let visual = MealVisualResolver.resolve(item: item)
                         HStack(alignment: .top, spacing: RebuildDesignTokens.spacing[2]) {
-                            Circle()
-                                .fill(
-                                    viewModel.isAllergyRisk(item)
-                                        ? RebuildDesignTokens.danger700
-                                        : RebuildDesignTokens.forest500
-                                )
-                                .frame(width: 7, height: 7)
-                                .padding(.top, 7)
-                                .accessibilityHidden(true)
-                            Text(item.name)
-                                .font(RebuildDesignTokens.bodyFont)
-                                .foregroundStyle(RebuildDesignTokens.ink900)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .accessibilityLabel(
-                                    viewModel.isAllergyRisk(item)
-                                        ? "\(item.name), 알레르기 주의 메뉴"
-                                        : item.name
-                                )
+                            Image(
+                                systemName: MealVisualIconManifest.systemSymbol(
+                                    for: visual.iconKey
+                                ) ?? "fork.knife"
+                            )
+                            .font(.headline)
+                            .foregroundStyle(
+                                viewModel.isAllergyRisk(item)
+                                    ? RebuildDesignTokens.danger700
+                                    : RebuildDesignTokens.forest700
+                            )
+                            .frame(width: 26, height: 26)
+                            .accessibilityLabel(visual.categoryLabel)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.name)
+                                    .font(RebuildDesignTokens.bodyFont.weight(.semibold))
+                                    .foregroundStyle(RebuildDesignTokens.ink900)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityLabel(
+                                        viewModel.isAllergyRisk(item)
+                                            ? "\(item.name), 알레르기 주의 메뉴"
+                                            : item.name
+                                    )
+                                HStack(spacing: 6) {
+                                    Text(visual.categoryLabel)
+                                    Text(visual.confidenceLabel)
+                                }
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(RebuildDesignTokens.forest700)
+                                Text(visual.representativeCopy)
+                                    .font(.caption)
+                                    .foregroundStyle(RebuildDesignTokens.muted600)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if !item.allergyLabels.isEmpty {
+                                    Text(
+                                        "알레르기: "
+                                            + item.allergyLabels.joined(separator: " · ")
+                                    )
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(Color.orange.opacity(0.9))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
                         }
                     }
                 }
-                Text(meal.calorie)
+                Text(totals.sourceLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.forest700)
+                Text(totals.calorie)
                     .font(.footnote)
                     .foregroundStyle(RebuildDesignTokens.muted600)
             } else if viewModel.isLoading {

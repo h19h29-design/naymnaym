@@ -104,6 +104,8 @@
 		C20000000000000000000095 /* CollectionProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000099 /* CollectionProgress.swift */; };
 		C20000000000000000000096 /* MealScheduleSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000100 /* MealScheduleSelectionTests.swift */; };
 		C20000000000000000000097 /* MealDayDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000101 /* MealDayDetailView.swift */; };
+		C20000000000000000000098 /* MealPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000102 /* MealPresentationTests.swift */; };
+		C20000000000000000000099 /* MealPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000103 /* MealPresentation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -218,6 +220,8 @@
 		C10000000000000000000099 /* CollectionProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Growth/CollectionProgress.swift; sourceTree = "<group>"; };
 		C10000000000000000000100 /* MealScheduleSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealScheduleSelectionTests.swift; sourceTree = "<group>"; };
 		C10000000000000000000101 /* MealDayDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Child/MealDayDetailView.swift; sourceTree = "<group>"; };
+		C10000000000000000000102 /* MealPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealPresentationTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000103 /* MealPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/MealPresentation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -311,6 +315,7 @@
 				C10000000000000000000097 /* MealScheduleView.swift */,
 				C10000000000000000000078 /* MealRecordingSheet.swift */,
 				C10000000000000000000079 /* TodayForestViewModel.swift */,
+				C10000000000000000000103 /* MealPresentation.swift */,
 				C10000000000000000000081 /* MascotRigModel.swift */,
 				C10000000000000000000082 /* MascotMotionController.swift */,
 				C10000000000000000000084 /* MascotRigView.swift */,
@@ -357,6 +362,7 @@
 				C10000000000000000000093 /* ForestSceneMotionTests.swift */,
 				C10000000000000000000098 /* CollectionProgressTests.swift */,
 				C10000000000000000000100 /* MealScheduleSelectionTests.swift */,
+				C10000000000000000000102 /* MealPresentationTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -547,6 +553,7 @@
 				C20000000000000000000093 /* MealScheduleView.swift in Sources */,
 				C20000000000000000000074 /* MealRecordingSheet.swift in Sources */,
 				C20000000000000000000075 /* TodayForestViewModel.swift in Sources */,
+				C20000000000000000000099 /* MealPresentation.swift in Sources */,
 				C20000000000000000000077 /* MascotRigModel.swift in Sources */,
 				C20000000000000000000078 /* MascotMotionController.swift in Sources */,
 				C20000000000000000000080 /* MascotRigView.swift in Sources */,
@@ -586,6 +593,7 @@
 				C20000000000000000000089 /* ForestSceneMotionTests.swift in Sources */,
 				C20000000000000000000094 /* CollectionProgressTests.swift in Sources */,
 				C20000000000000000000096 /* MealScheduleSelectionTests.swift in Sources */,
+				C20000000000000000000098 /* MealPresentationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

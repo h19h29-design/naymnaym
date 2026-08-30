@@ -286,6 +286,52 @@ class NativeRebuildContractTests(unittest.TestCase):
         self.assertEqual(rules["omissionCopy"], "영양소를 조금 놓칠 수 있어요.")
         self.assertIn("의학 진단이나 치료를 대신하지 않는", rules["educationNotice"])
 
+    def test_validator_accepts_optional_nutrition_presentation_fields(self):
+        nutrition_rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())
+        nutrition_rules["rules"][0].update({
+            "foodCategory": "vegetable",
+            "confidence": "keyword",
+            "iconKey": "food.vegetable",
+            "representativeNutrientIDs": ["fiber", "vitamin"],
+        })
+
+        result = self._run_validator_with(nutrition_rules=nutrition_rules)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_validator_rejects_unknown_nutrition_icon_key(self):
+        nutrition_rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())
+        nutrition_rules["rules"][0].update({
+            "foodCategory": "vegetable",
+            "confidence": "keyword",
+            "iconKey": "food.not-a-real-key",
+            "representativeNutrientIDs": ["fiber", "vitamin"],
+        })
+
+        result = self._run_validator_with(nutrition_rules=nutrition_rules)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("iconKey", result.stderr)
+
+    def test_validator_rejects_invalid_nutrition_presentation_fields(self):
+        invalid_fields = [
+            ("foodCategory", "not-a-category"),
+            ("confidence", "guess"),
+            ("iconKey", ""),
+            ("representativeNutrientIDs", []),
+            ("representativeNutrientIDs", ["not-a-nutrient"]),
+        ]
+
+        for field, value in invalid_fields:
+            with self.subTest(field=field, value=value):
+                nutrition_rules = json.loads((CONTRACTS / "nutrition-rules.json").read_text())
+                nutrition_rules["rules"][0][field] = value
+
+                result = self._run_validator_with(nutrition_rules=nutrition_rules)
+
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn(field, result.stderr)
+
     def test_validator_rejects_unsafe_or_ambiguous_meal_loop_contracts(self):
         policy = {
             "version": 1,
