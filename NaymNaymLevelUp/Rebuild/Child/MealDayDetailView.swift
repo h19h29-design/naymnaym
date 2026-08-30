@@ -11,7 +11,28 @@ final class MealDayDetailViewModel: ObservableObject {
 
     private let repository: any MealScheduleRepository
     private let school: RebuildSchool?
-    private var loadGeneration = 0
+
+    var shouldShowLoadingPlaceholder: Bool {
+        (!hasLoaded || isLoading) && meal == nil
+    }
+
+    var isRefreshingCachedMeal: Bool {
+        guard isLoading, meal != nil else { return false }
+        if case .refreshing = state {
+            return true
+        }
+        return false
+    }
+
+    var isMealSettledForRecording: Bool {
+        guard hasLoaded, !isLoading, meal != nil else { return false }
+        switch state {
+        case .cached, .live, .failed:
+            return true
+        case .refreshing, .empty:
+            return false
+        }
+    }
 
     init(
         route: MealDayRoute,
@@ -26,26 +47,17 @@ final class MealDayDetailViewModel: ObservableObject {
     func load() async {
         guard !isLoading else { return }
 
-        loadGeneration += 1
-        let generation = loadGeneration
         isLoading = true
         defer {
-            if generation == loadGeneration {
-                isLoading = false
-                hasLoaded = true
-            }
+            isLoading = false
+            hasLoaded = true
         }
 
-        let initialState = await repository.currentState(date: route.dateKey)
-        guard generation == loadGeneration else { return }
-        apply(initialState)
+        apply(await repository.currentState(date: route.dateKey))
         if let school {
             state = .refreshing(meal)
             await repository.refresh(date: route.dateKey, school: school)
-            guard generation == loadGeneration else { return }
-            let refreshedState = await repository.currentState(date: route.dateKey)
-            guard generation == loadGeneration else { return }
-            apply(refreshedState)
+            apply(await repository.currentState(date: route.dateKey))
         }
     }
 
@@ -164,7 +176,9 @@ struct MealDayDetailView: View {
     @ViewBuilder
     private var stateBadge: some View {
         Group {
-            if !viewModel.hasLoaded || viewModel.isLoading {
+            if viewModel.isRefreshingCachedMeal {
+                Label("저장된 급식 · 업데이트 중", systemImage: "arrow.triangle.2.circlepath")
+            } else if viewModel.shouldShowLoadingPlaceholder || viewModel.isLoading {
                 Label("급식을 확인하고 있어요", systemImage: "arrow.triangle.2.circlepath")
             } else {
                 switch viewModel.state {
@@ -190,7 +204,7 @@ struct MealDayDetailView: View {
 
     @ViewBuilder
     private var stateContent: some View {
-        if !viewModel.hasLoaded {
+        if viewModel.shouldShowLoadingPlaceholder {
             ProgressView("급식을 확인하고 있어요.")
                 .frame(maxWidth: .infinity, minHeight: 120)
         } else {
@@ -291,12 +305,14 @@ struct MealDayDetailView: View {
 
     private var canRecord: Bool {
         guard let recordingViewModel else { return false }
-        return recordingViewModel.dateKey == route.dateKey && viewModel.meal != nil
+        return recordingViewModel.dateKey == route.dateKey
+            && viewModel.isMealSettledForRecording
     }
 
     private var recordButton: some View {
         Button {
-            guard let recordingViewModel else { return }
+            guard let recordingViewModel,
+                  viewModel.isMealSettledForRecording else { return }
             recordingViewModel.synchronizeMeal(viewModel.meal, for: route)
             isShowingRecorder = true
         } label: {

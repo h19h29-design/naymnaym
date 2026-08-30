@@ -248,6 +248,49 @@ final class MealScheduleSelectionTests: XCTestCase {
         XCTAssertEqual(callCount, 1)
     }
 
+    func testExactCacheRemainsVisibleAndUnrecordableWhileRefreshIsInFlight() async {
+        let cachedMeal = RebuildMealDay.fixture(
+            date: "2026-08-12",
+            menuName: "저장된 선택 날짜"
+        )
+        let refreshedMeal = RebuildMealDay.fixture(
+            date: "2026-08-12",
+            menuName: "최신 선택 날짜"
+        )
+        let repository = BlockingRefreshMealScheduleRepository(
+            cached: cachedMeal,
+            refreshed: refreshedMeal
+        )
+        let school = RebuildSchool(
+            name: "냠냠초등학교",
+            officeCode: "B10",
+            schoolCode: "7010111"
+        )
+        let viewModel = MealDayDetailViewModel(
+            route: MealDayRoute(dateKey: "2026-08-12"),
+            repository: repository,
+            school: school
+        )
+
+        XCTAssertTrue(viewModel.shouldShowLoadingPlaceholder)
+
+        let loadTask = Task { await viewModel.load() }
+        await repository.waitForRefresh()
+
+        XCTAssertEqual(viewModel.meal, cachedMeal)
+        XCTAssertEqual(viewModel.state, .refreshing(cachedMeal))
+        XCTAssertFalse(viewModel.shouldShowLoadingPlaceholder)
+        XCTAssertTrue(viewModel.isRefreshingCachedMeal)
+        XCTAssertFalse(viewModel.isMealSettledForRecording)
+
+        await repository.releaseRefresh()
+        await loadTask.value
+
+        XCTAssertEqual(viewModel.meal, refreshedMeal)
+        XCTAssertEqual(viewModel.state, .live(refreshedMeal))
+        XCTAssertTrue(viewModel.isMealSettledForRecording)
+    }
+
     private func seoulDate(year: Int, month: Int, day: Int) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
@@ -318,6 +361,40 @@ private actor BlockingMealScheduleRepository: MealScheduleRepository {
     func release() {
         continuation?.resume()
         continuation = nil
+    }
+}
+
+private actor BlockingRefreshMealScheduleRepository: MealScheduleRepository {
+    private let cached: RebuildMealDay
+    private let refreshed: RebuildMealDay
+    private var refreshContinuation: CheckedContinuation<Void, Never>?
+    private var refreshStarted = false
+
+    init(cached: RebuildMealDay, refreshed: RebuildMealDay) {
+        self.cached = cached
+        self.refreshed = refreshed
+    }
+
+    func currentState(date: String) async -> MealLoadState {
+        refreshStarted ? .live(refreshed) : .cached(cached, refreshedAt: nil)
+    }
+
+    func refresh(date: String, school: RebuildSchool) async {
+        refreshStarted = true
+        await withCheckedContinuation { continuation in
+            refreshContinuation = continuation
+        }
+    }
+
+    func waitForRefresh() async {
+        while !refreshStarted {
+            await Task.yield()
+        }
+    }
+
+    func releaseRefresh() {
+        refreshContinuation?.resume()
+        refreshContinuation = nil
     }
 }
 
