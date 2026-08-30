@@ -1,5 +1,6 @@
 import CoreFoundation
 import CryptoKit
+import Darwin
 import Foundation
 
 struct NutrientImpactSnapshot: Codable, Hashable, Sendable {
@@ -47,6 +48,19 @@ struct NoopNutrientImpactSidecar: NutrientImpactSidecar, Sendable {
 }
 
 struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
+    private struct Envelope: Codable {
+        let envelopeVersion: Int
+        let revisionFingerprint: String
+        let snapshotDigest: String
+        let snapshot: NutrientImpactSnapshot
+    }
+
+    private static let supportedEnvelopeVersion = 1
+    private static let maximumSidecarBytes = 64 * 1_024
+    private static let maximumIdentifierBytes = 1_024
+    private static let maximumNutrientIdentifierBytes = 256
+    private static let maximumCopyBytes = 4_096
+    private static let maximumAggregateStringBytes = 20 * 1_024
     private static let filePrefix = "nutrient-impact-v1-"
     private static let fileExtension = "json"
 
@@ -54,6 +68,9 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     private let fileManager: FileManager
 
     init(directoryURL: URL, fileManager: FileManager = .default) {
+        // The injected parent chain is a trusted Application Support root.
+        // The final sidecar directory and every file within it are opened
+        // descriptor-relative with no-follow semantics.
         self.directoryURL = directoryURL
         self.fileManager = fileManager
     }
@@ -61,55 +78,81 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     func install(_ snapshot: NutrientImpactSnapshot) throws {
         try Self.validate(snapshot)
         try makeDirectoryIfNeeded()
+        let directoryDescriptor = try openDirectoryDescriptor()
+        defer { Darwin.close(directoryDescriptor) }
 
-        let destinationURL = try fileURL(for: snapshot)
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try acceptExistingRevision(at: destinationURL, matching: snapshot)
+        let destinationName = try fileName(for: snapshot)
+        let encoded = try Self.encodeEnvelope(snapshot)
+        let temporaryName = ".\(Self.filePrefix)\(UUID().uuidString).tmp"
+        let temporaryDescriptor = Self.openAt(
+            directoryDescriptor,
+            name: temporaryName,
+            flags: O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+            mode: mode_t(0o600)
+        )
+        guard temporaryDescriptor >= 0 else {
+            throw NutrientImpactSidecarError.writeFailed
+        }
+        var didPublish = false
+        var temporaryIsOpen = true
+        defer {
+            if temporaryIsOpen {
+                Darwin.close(temporaryDescriptor)
+            }
+            if !didPublish {
+                Self.unlinkAt(directoryDescriptor, name: temporaryName)
+            }
+        }
+
+        guard Darwin.fchmod(temporaryDescriptor, mode_t(0o600)) == 0,
+              Self.writeAll(encoded, to: temporaryDescriptor),
+              Darwin.fsync(temporaryDescriptor) == 0 else {
+            throw NutrientImpactSidecarError.writeFailed
+        }
+        guard Darwin.close(temporaryDescriptor) == 0 else {
+            temporaryIsOpen = false
+            throw NutrientImpactSidecarError.writeFailed
+        }
+        temporaryIsOpen = false
+
+        let publishResult = Self.renameExclusive(
+            directoryDescriptor,
+            from: temporaryName,
+            to: destinationName
+        )
+        let publishError = errno
+        if publishResult != 0 {
+            guard publishError == EEXIST else {
+                throw NutrientImpactSidecarError.writeFailed
+            }
+            try acceptExistingRevision(
+                directoryDescriptor: directoryDescriptor,
+                name: destinationName,
+                matching: snapshot
+            )
             return
         }
+        didPublish = true
 
-        let encoded = try Self.encode(snapshot)
-        let temporaryURL = directoryURL.appendingPathComponent(
-            ".\(Self.filePrefix)\(UUID().uuidString).tmp",
-            isDirectory: false
-        )
-        var didMove = false
-        defer {
-            if !didMove {
-                try? fileManager.removeItem(at: temporaryURL)
-            }
-        }
-
-        do {
-            try encoded.write(to: temporaryURL, options: [.atomic])
-        } catch {
-            throw NutrientImpactSidecarError.writeFailed
-        }
-
-        do {
-            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-            didMove = true
-        } catch {
-            // Another writer may have installed this exact revision between
-            // the existence check and the rename. It is safe to accept only a
-            // valid byte-equivalent snapshot; no existing file is replaced.
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try acceptExistingRevision(at: destinationURL, matching: snapshot)
-                return
-            }
-            throw NutrientImpactSidecarError.writeFailed
-        }
-
-        guard let readBack = readValidSnapshot(at: destinationURL), readBack == snapshot else {
+        guard let readBack = readValidSnapshot(
+            directoryDescriptor: directoryDescriptor,
+            name: destinationName
+        ), readBack == snapshot else {
             throw NutrientImpactSidecarError.readBackFailed
         }
     }
 
     func load(matching record: RebuildMealRecordRevision) throws -> NutrientImpactSnapshot? {
-        guard Self.validate(record), isRegularDirectory(directoryURL) else { return nil }
+        guard Self.validate(record), let directoryDescriptor = try? openDirectoryDescriptor() else {
+            return nil
+        }
+        defer { Darwin.close(directoryDescriptor) }
 
-        guard let destinationURL = try? fileURL(for: record),
-              let snapshot = readValidSnapshot(at: destinationURL),
+        guard let destinationName = try? fileName(for: record),
+              let snapshot = readValidSnapshot(
+                  directoryDescriptor: directoryDescriptor,
+                  name: destinationName
+              ),
               Self.matches(snapshot, record: record)
         else {
             return nil
@@ -122,33 +165,37 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             try fileManager.createDirectory(
                 at: directoryURL,
                 withIntermediateDirectories: true,
-                attributes: nil
+                attributes: [.posixPermissions: 0o700]
             )
         } catch {
             throw NutrientImpactSidecarError.directoryUnavailable
         }
-        guard isRegularDirectory(directoryURL) else {
+        guard (try? openDirectoryDescriptor()).map({ descriptor in
+            Darwin.close(descriptor)
+            return true
+        }) == true else {
             throw NutrientImpactSidecarError.directoryUnavailable
         }
     }
 
-    private func isRegularDirectory(_ url: URL) -> Bool {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-              let type = attributes[.type] as? FileAttributeType else {
-            return false
+    private func openDirectoryDescriptor() throws -> Int32 {
+        let descriptor = Darwin.open(
+            directoryURL.path,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        )
+        guard descriptor >= 0 else {
+            throw NutrientImpactSidecarError.directoryUnavailable
         }
-        return type == .typeDirectory
+        var info = stat()
+        guard Darwin.fstat(descriptor, &info) == 0,
+              (info.st_mode & S_IFMT) == S_IFDIR else {
+            Darwin.close(descriptor)
+            throw NutrientImpactSidecarError.directoryUnavailable
+        }
+        return descriptor
     }
 
-    private func isRegularFile(_ url: URL) -> Bool {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-              let type = attributes[.type] as? FileAttributeType else {
-            return false
-        }
-        return type == .typeRegular
-    }
-
-    private func fileURL(for snapshot: NutrientImpactSnapshot) throws -> URL {
+    private func fileName(for snapshot: NutrientImpactSnapshot) throws -> String {
         guard Self.isValid(snapshot) else {
             throw NutrientImpactSidecarError.invalidSnapshot
         }
@@ -159,13 +206,10 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             status: snapshot.status,
             updatedAt: snapshot.recordUpdatedAt
         )
-        return directoryURL.appendingPathComponent(
-            "\(Self.filePrefix)\(fingerprint).\(Self.fileExtension)",
-            isDirectory: false
-        )
+        return "\(Self.filePrefix)\(fingerprint).\(Self.fileExtension)"
     }
 
-    private func fileURL(for record: RebuildMealRecordRevision) throws -> URL {
+    private func fileName(for record: RebuildMealRecordRevision) throws -> String {
         guard Self.validate(record) else {
             throw NutrientImpactSidecarError.invalidRevision
         }
@@ -176,17 +220,18 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             status: record.status,
             updatedAt: record.updatedAt
         )
-        return directoryURL.appendingPathComponent(
-            "\(Self.filePrefix)\(fingerprint).\(Self.fileExtension)",
-            isDirectory: false
-        )
+        return "\(Self.filePrefix)\(fingerprint).\(Self.fileExtension)"
     }
 
     private func acceptExistingRevision(
-        at url: URL,
+        directoryDescriptor: Int32,
+        name: String,
         matching snapshot: NutrientImpactSnapshot
     ) throws {
-        guard let existing = readValidSnapshot(at: url) else {
+        guard let existing = readValidSnapshot(
+            directoryDescriptor: directoryDescriptor,
+            name: name
+        ) else {
             throw NutrientImpactSidecarError.conflictingRevision
         }
         guard existing == snapshot else {
@@ -194,26 +239,145 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         }
     }
 
-    private func readValidSnapshot(at url: URL) -> NutrientImpactSnapshot? {
-        guard isRegularFile(url),
-              let data = try? Data(contentsOf: url),
+    private func readValidSnapshot(
+        directoryDescriptor: Int32,
+        name: String
+    ) -> NutrientImpactSnapshot? {
+        guard let data = Self.readBoundedFile(
+            directoryDescriptor: directoryDescriptor,
+            name: name
+        ),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dictionary = object as? [String: Any],
-              Set(dictionary.keys) == Self.expectedJSONKeys,
-              Self.hasStrictInteger(dictionary["schemaVersion"]),
-              Self.hasStrictInteger(dictionary["ruleVersion"]),
-              let snapshot = try? JSONDecoder().decode(
-                  NutrientImpactSnapshot.self,
-                  from: data
-              ),
-              Self.isValid(snapshot)
+              Set(dictionary.keys) == Self.expectedEnvelopeJSONKeys,
+              Self.hasStrictInteger(dictionary["envelopeVersion"]),
+              let snapshotDictionary = dictionary["snapshot"] as? [String: Any],
+              Set(snapshotDictionary.keys) == Self.expectedSnapshotJSONKeys,
+              Self.hasStrictInteger(snapshotDictionary["schemaVersion"]),
+              Self.hasStrictInteger(snapshotDictionary["ruleVersion"]),
+              let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
+              envelope.envelopeVersion == Self.supportedEnvelopeVersion,
+              Self.isValid(envelope.snapshot),
+              envelope.revisionFingerprint == Self.fingerprint(for: envelope.snapshot),
+              envelope.snapshotDigest == Self.snapshotDigest(envelope.snapshot)
         else {
             return nil
         }
-        return snapshot
+        return envelope.snapshot
     }
 
-    private static let expectedJSONKeys: Set<String> = [
+    private static func openAt(
+        _ directoryDescriptor: Int32,
+        name: String,
+        flags: Int32,
+        mode: mode_t? = nil
+    ) -> Int32 {
+        name.withCString { pointer in
+            if let mode {
+                return Darwin.openat(directoryDescriptor, pointer, flags, mode)
+            }
+            return Darwin.openat(directoryDescriptor, pointer, flags)
+        }
+    }
+
+    private static func unlinkAt(_ directoryDescriptor: Int32, name: String) {
+        name.withCString { pointer in
+            _ = Darwin.unlinkat(directoryDescriptor, pointer, 0)
+        }
+    }
+
+    private static func renameExclusive(
+        _ directoryDescriptor: Int32,
+        from sourceName: String,
+        to destinationName: String
+    ) -> Int32 {
+        sourceName.withCString { sourcePointer in
+            destinationName.withCString { destinationPointer in
+                Darwin.renameatx_np(
+                    directoryDescriptor,
+                    sourcePointer,
+                    directoryDescriptor,
+                    destinationPointer,
+                    UInt32(RENAME_EXCL)
+                )
+            }
+        }
+    }
+
+    private static func writeAll(_ data: Data, to descriptor: Int32) -> Bool {
+        data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return data.isEmpty }
+            var written = 0
+            while written < rawBuffer.count {
+                let result = Darwin.write(
+                    descriptor,
+                    baseAddress.advanced(by: written),
+                    rawBuffer.count - written
+                )
+                if result > 0 {
+                    written += result
+                } else if result < 0 && errno == EINTR {
+                    continue
+                } else {
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
+    private static func readBoundedFile(
+        directoryDescriptor: Int32,
+        name: String
+    ) -> Data? {
+        let descriptor = openAt(
+            directoryDescriptor,
+            name: name,
+            flags: O_RDONLY | O_NOFOLLOW | O_CLOEXEC
+        )
+        guard descriptor >= 0 else { return nil }
+        defer { Darwin.close(descriptor) }
+
+        var info = stat()
+        guard Darwin.fstat(descriptor, &info) == 0,
+              (info.st_mode & S_IFMT) == S_IFREG,
+              info.st_size >= 0,
+              info.st_size <= off_t(maximumSidecarBytes) else {
+            return nil
+        }
+
+        var buffer = [UInt8](repeating: 0, count: maximumSidecarBytes + 1)
+        var total = 0
+        while total < buffer.count {
+            let result = buffer.withUnsafeMutableBytes { rawBuffer in
+                Darwin.read(
+                    descriptor,
+                    rawBuffer.baseAddress!.advanced(by: total),
+                    rawBuffer.count - total
+                )
+            }
+            if result > 0 {
+                total += result
+            } else if result == 0 {
+                break
+            } else if errno == EINTR {
+                continue
+            } else {
+                return nil
+            }
+        }
+        guard total <= maximumSidecarBytes else { return nil }
+        return Data(buffer.prefix(total))
+    }
+
+    private static let expectedEnvelopeJSONKeys: Set<String> = [
+        "envelopeVersion",
+        "revisionFingerprint",
+        "snapshotDigest",
+        "snapshot",
+    ]
+
+    private static let expectedSnapshotJSONKeys: Set<String> = [
         "schemaVersion",
         "ruleVersion",
         "recordID",
@@ -228,14 +392,47 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         "disclaimer",
     ]
 
-    private static func encode(_ snapshot: NutrientImpactSnapshot) throws -> Data {
+    private static func encodeEnvelope(_ snapshot: NutrientImpactSnapshot) throws -> Data {
+        let envelope = Envelope(
+            envelopeVersion: supportedEnvelopeVersion,
+            revisionFingerprint: fingerprint(for: snapshot),
+            snapshotDigest: snapshotDigest(snapshot),
+            snapshot: snapshot
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         do {
-            return try encoder.encode(snapshot)
+            let encoded = try encoder.encode(envelope)
+            guard encoded.count <= maximumSidecarBytes else {
+                throw NutrientImpactSidecarError.invalidSnapshot
+            }
+            return encoded
+        } catch let error as NutrientImpactSidecarError {
+            throw error
         } catch {
             throw NutrientImpactSidecarError.writeFailed
         }
+    }
+
+    private static func canonicalSnapshotBytes(_ snapshot: NutrientImpactSnapshot) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(snapshot)
+    }
+
+    private static func snapshotDigest(_ snapshot: NutrientImpactSnapshot) -> String {
+        guard let bytes = canonicalSnapshotBytes(snapshot) else { return "" }
+        return hexDigest(bytes)
+    }
+
+    private static func fingerprint(for snapshot: NutrientImpactSnapshot) -> String {
+        fingerprint(
+            recordID: snapshot.recordID,
+            date: snapshot.date,
+            normalizedMenuName: snapshot.normalizedMenuName,
+            status: snapshot.status,
+            updatedAt: snapshot.recordUpdatedAt
+        )
     }
 
     private static func validate(_ snapshot: NutrientImpactSnapshot) throws {
@@ -259,7 +456,8 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
               validateCopy(snapshot.explanation),
               snapshot.alternatives.count <= 8,
               snapshot.alternatives.allSatisfy(validateCopy),
-              validateCopy(snapshot.disclaimer) else {
+              validateCopy(snapshot.disclaimer),
+              hasBoundedAggregateStrings(snapshot) else {
             throw NutrientImpactSidecarError.invalidSnapshot
         }
     }
@@ -286,9 +484,9 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         updatedAt: Date
     ) -> Bool {
         _ = status
-        guard validIdentifier(recordID, maximumLength: 512),
+        guard validIdentifier(recordID, maximumBytes: maximumIdentifierBytes),
               validDate(date),
-              validIdentifier(normalizedMenuName, maximumLength: 512),
+              validIdentifier(normalizedMenuName, maximumBytes: maximumIdentifierBytes),
               updatedAt.timeIntervalSinceReferenceDate.isFinite else {
             return false
         }
@@ -296,15 +494,34 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     }
 
     private static func validateIdentifierList(_ values: [String]) -> Bool {
-        guard values.count <= 32, Set(values).count == values.count else {
+        guard values.count <= 32,
+              values.allSatisfy({ validIdentifier($0, maximumBytes: maximumNutrientIdentifierBytes) }),
+              Set(values).count == values.count else {
             return false
         }
-        return values.allSatisfy { validIdentifier($0, maximumLength: 128) && !containsForbiddenCopy($0) }
+        return values.allSatisfy { !containsForbiddenCopy($0) }
     }
 
-    private static func validIdentifier(_ value: String, maximumLength: Int) -> Bool {
+    private static func hasBoundedAggregateStrings(_ snapshot: NutrientImpactSnapshot) -> Bool {
+        var total = snapshot.recordID.utf8.count
+            + snapshot.date.utf8.count
+            + snapshot.normalizedMenuName.utf8.count
+            + snapshot.status.rawValue.utf8.count
+            + snapshot.headline.utf8.count
+            + snapshot.explanation.utf8.count
+            + snapshot.disclaimer.utf8.count
+        for value in snapshot.nutrients where total <= maximumAggregateStringBytes {
+            total += value.utf8.count
+        }
+        for value in snapshot.alternatives where total <= maximumAggregateStringBytes {
+            total += value.utf8.count
+        }
+        return total <= maximumAggregateStringBytes
+    }
+
+    private static func validIdentifier(_ value: String, maximumBytes: Int) -> Bool {
         guard !value.isEmpty,
-              value.count <= maximumLength,
+              value.utf8.count <= maximumBytes,
               !containsControlCharacter(value),
               !containsPathTraversal(value) else {
             return false
@@ -315,6 +532,7 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     private static func validateCopy(_ value: String) -> Bool {
         guard !value.isEmpty,
               value.count <= 1_000,
+              value.utf8.count <= maximumCopyBytes,
               !containsControlCharacter(value),
               !containsForbiddenCopy(value) else {
             return false
@@ -332,14 +550,14 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     }
 
     private static func containsPathTraversal(_ value: String) -> Bool {
-        guard !value.contains("/") && !value.contains("\\") else {
-            return true
-        }
-        return value == "." || value == ".."
+        value.split(
+            omittingEmptySubsequences: false,
+            whereSeparator: { $0 == "/" || $0 == "\\" }
+        ).contains { $0 == "." || $0 == ".." }
     }
 
     private static func containsForbiddenCopy(_ value: String) -> Bool {
-        let lowercased = value.lowercased()
+        let lowercased = value.precomposedStringWithCompatibilityMapping.lowercased()
         let secretPatterns = [
             #"(?:^|[^a-z0-9])api[ _-]?key(?:$|[^a-z0-9])"#,
             #"(?:^|[^a-z0-9])api[ _-]?token(?:$|[^a-z0-9])"#,
@@ -373,7 +591,7 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         // Remove only explicit educational disclaimers before scanning for
         // medical claims. The disclaimer itself is allowed, while a diagnosis
         // or treatment assertion elsewhere in the copy remains forbidden.
-        let normalizedForMedical = lowercased.replacingOccurrences(of: " ", with: "")
+        let normalizedForMedical = lowercased.filter { !$0.isWhitespace }
         let safeDisclaimerMarkers = [
             "진단이나치료를대신하지않습니다",
             "진단이나치료를대신하지않는",
@@ -395,6 +613,10 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             "의료적",
             "건강 악화",
             "악화",
+            "모자라",
+            "몸이나빠",
+            "건강이나빠",
+            "몸에해로",
             "빈혈",
             "고혈압",
             "당뇨",
@@ -403,23 +625,35 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
             return true
         }
 
-        let allergyReversalPhrases = [
-            "알레르기가 있어도",
+        let compact = lowercased.filter { !$0.isWhitespace }
+        let directAllergyReversalPhrases = [
+            "알레르기를무시",
+            "알레르기무시",
+            "먹어도괜찮",
+            "괜찮으니먹",
+            "피하지말고",
+            "피할필요없",
+        ]
+        if directAllergyReversalPhrases.contains(where: compact.contains) {
+            return true
+        }
+        let allergyConditionMarkers = [
+            "알레르기가있어도",
+            "알레르기가있더라도",
+            "알레르기있더라도",
             "알레르기여도",
             "알레르기라도",
-            "알레르기를 무시",
-            "알레르기 무시",
-            "알레르기인데 먹",
-            "먹어도 괜찮",
-            "괜찮으니 먹",
-            "피하지 말고",
-            "피할 필요 없",
+            "알레르기지만",
+            "알레르기인데도",
         ]
-        return allergyReversalPhrases.contains(where: lowercased.contains)
+        let retryOrEatMarkers = ["먹어", "먹기", "다시시도", "다시살펴", "재도전"]
+        return allergyConditionMarkers.contains(where: compact.contains)
+            && retryOrEatMarkers.contains(where: compact.contains)
     }
 
     private static func validDate(_ value: String) -> Bool {
-        guard value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
+        guard value.utf8.count == 10,
+              value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
             return false
         }
         let parts = value.split(separator: "-").compactMap { Int($0) }
@@ -484,14 +718,18 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         updatedAt: Date
     ) -> String {
         var canonical = Data("NutrientImpactRevision/v1".utf8)
-        appendComponent(recordID, to: &canonical)
-        appendComponent(date, to: &canonical)
-        appendComponent(normalizedMenuName, to: &canonical)
-        appendComponent(status.rawValue, to: &canonical)
+        appendComponent(recordID.precomposedStringWithCanonicalMapping, to: &canonical)
+        appendComponent(date.precomposedStringWithCanonicalMapping, to: &canonical)
+        appendComponent(normalizedMenuName.precomposedStringWithCanonicalMapping, to: &canonical)
+        appendComponent(status.rawValue.precomposedStringWithCanonicalMapping, to: &canonical)
         var timestampBits = updatedAt.timeIntervalSinceReferenceDate.bitPattern.bigEndian
         withUnsafeBytes(of: &timestampBits) { canonical.append(contentsOf: $0) }
 
-        return SHA256.hash(data: canonical)
+        return hexDigest(canonical)
+    }
+
+    private static func hexDigest(_ data: Data) -> String {
+        SHA256.hash(data: data)
             .map { String(format: "%02x", $0) }
             .joined()
     }

@@ -29,6 +29,12 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let snapshot = fixtureSnapshot(status: .oneBite, updatedAt: updatedAt)
 
         try store.install(snapshot)
+        let installedFile = try XCTUnwrap(singleJSONFile())
+        let permissions = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: installedFile.path)[.posixPermissions]
+                as? NSNumber
+        )
+        XCTAssertEqual(permissions.intValue & 0o777, 0o600)
 
         XCTAssertEqual(
             try store.load(matching: fixtureRevision(status: .oneBite, updatedAt: updatedAt)),
@@ -91,27 +97,50 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let original = fixtureSnapshot(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10))
         try store.install(original)
         let file = try XCTUnwrap(singleJSONFile())
+        let originalBytes = try Data(contentsOf: file)
         try Data("{not-json".utf8).write(to: file)
         XCTAssertNil(
             try store.load(matching: fixtureRevision(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10)))
         )
         XCTAssertThrowsError(try store.install(original))
 
-        try encode(original).write(to: file)
+        try originalBytes.write(to: file)
         let replacement = fixtureSnapshot(status: .finished, updatedAt: Date(timeIntervalSince1970: 20))
         try store.install(replacement)
         let replacementURL = try XCTUnwrap(
             try jsonFiles().first { url in
-                guard let data = try? Data(contentsOf: url),
-                      let decoded = try? JSONDecoder().decode(NutrientImpactSnapshot.self, from: data)
-                else { return false }
-                return decoded == replacement
+                (try? decodedSnapshot(at: url)) == replacement
             }
         )
-        try encode(original).write(to: replacementURL)
+        try originalBytes.write(to: replacementURL)
         XCTAssertNil(
             try store.load(matching: fixtureRevision(status: .finished, updatedAt: Date(timeIntervalSince1970: 20)))
         )
+    }
+
+    func testPayloadTamperingWithoutIntegrityMetadataReturnsNil() throws {
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let snapshot = fixtureSnapshot(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10))
+        let revision = fixtureRevision(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10))
+        try store.install(snapshot)
+        let file = try XCTUnwrap(singleJSONFile())
+        let originalBytes = try Data(contentsOf: file)
+
+        let tamperedValues: [(String, Any)] = [
+            ("headline", "변조된 교육 문장이에요."),
+            ("nutrients", ["protein"]),
+            ("alternatives", ["다른 반찬을 살펴봐요."]),
+        ]
+        for (key, value) in tamperedValues {
+            try originalBytes.write(to: file)
+            var object = try jsonObject(at: file)
+            var snapshotObject = try XCTUnwrap(object["snapshot"] as? [String: Any])
+            snapshotObject[key] = value
+            object["snapshot"] = snapshotObject
+            try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: file)
+
+            XCTAssertNil(try store.load(matching: revision), "Tampered key was accepted: \(key)")
+        }
     }
 
     func testSchemaRuleAndFingerprintMismatchReturnNil() throws {
@@ -119,45 +148,71 @@ final class NutrientImpactSidecarTests: XCTestCase {
         let snapshot = fixtureSnapshot(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10))
         try store.install(snapshot)
         let file = try XCTUnwrap(singleJSONFile())
+        let originalBytes = try Data(contentsOf: file)
 
         for (key, value) in [("schemaVersion", 2), ("ruleVersion", 99)] {
-            try encode(snapshot).write(to: file)
+            try originalBytes.write(to: file)
             var object = try jsonObject(at: file)
-            object[key] = value
+            var snapshotObject = try XCTUnwrap(object["snapshot"] as? [String: Any])
+            snapshotObject[key] = value
+            object["snapshot"] = snapshotObject
             try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: file)
             XCTAssertNil(
                 try store.load(matching: fixtureRevision(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10)))
             )
         }
 
-        try encode(snapshot).write(to: file)
+        try originalBytes.write(to: file)
         var object = try jsonObject(at: file)
-        object["recordID"] = "different-record"
+        var snapshotObject = try XCTUnwrap(object["snapshot"] as? [String: Any])
+        snapshotObject["recordID"] = "different-record"
+        object["snapshot"] = snapshotObject
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: file)
         XCTAssertNil(
             try store.load(matching: fixtureRevision(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10)))
         )
+
+        for mutation in [
+            { (object: inout [String: Any]) in object["envelopeVersion"] = 2 },
+            { (object: inout [String: Any]) in object["unexpected"] = true },
+            { (object: inout [String: Any]) in object["revisionFingerprint"] = String(repeating: "0", count: 64) },
+            { (object: inout [String: Any]) in object["snapshotDigest"] = String(repeating: "0", count: 64) },
+        ] {
+            try originalBytes.write(to: file)
+            var envelope = try jsonObject(at: file)
+            mutation(&envelope)
+            try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys]).write(to: file)
+            XCTAssertNil(
+                try store.load(matching: fixtureRevision(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10)))
+            )
+        }
     }
 
     func testInstallRejectsPathTraversalAndForbiddenQuantities() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
 
         assertInstallRejected(store, fixtureSnapshot(recordID: "../escape"))
-        assertInstallRejected(store, fixtureSnapshot(normalizedMenuName: "../../menu"))
+        assertInstallRejected(store, fixtureSnapshot(normalizedMenuName: "menu/../escape"))
+        assertInstallRejected(store, fixtureSnapshot(recordID: #"menu\..\escape"#))
         assertInstallRejected(store, fixtureSnapshot(recordID: "opaque\u{0000}id"))
         assertInstallRejected(store, fixtureSnapshot(headline: "단백질 12g을 먹었어요."))
         assertInstallRejected(store, fixtureSnapshot(explanation: "철분 4 mg을 섭취했어요."))
+        assertInstallRejected(store, fixtureSnapshot(explanation: "철분 12㎎을 섭취했어요."))
+        assertInstallRejected(store, fixtureSnapshot(explanation: "철분 １２ｍｇ을 섭취했어요."))
         assertInstallRejected(store, fixtureSnapshot(alternatives: ["이 메뉴는 230kcal예요."]))
         assertInstallRejected(store, fixtureSnapshot(headline: "철분이 부족하니 꼭 먹어야 해요."))
+        assertInstallRejected(store, fixtureSnapshot(headline: "영양소가 모자라면 몸이 나빠져요."))
         assertInstallRejected(store, fixtureSnapshot(headline: "의사 진단이 필요해요."))
         assertInstallRejected(store, fixtureSnapshot(explanation: "이 문장에는 API token이 들어 있어요."))
         assertInstallRejected(store, fixtureSnapshot(disclaimer: "알레르기가 있어도 먹어도 괜찮아요."))
+        assertInstallRejected(store, fixtureSnapshot(disclaimer: "알레르기가 있더라도 다시 먹어봐요."))
+        assertInstallRejected(store, fixtureSnapshot(disclaimer: "알레르기지만 조금은 먹어보세요."))
     }
 
     func testOpaqueIdentifiersAndOrdinaryKoreanEducationAreAllowed() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let snapshot = fixtureSnapshot(
-            recordID: "opaque|record:01.v1",
+            recordID: #"opaque/path\record:01.v1"#,
             normalizedMenuName: "현미밥·콩나물",
             headline: "한 입으로 곡물의 맛과 식감을 알아봤어요.",
             explanation: "여러 재료를 천천히 살펴보며 나에게 맞는 식사를 배워요.",
@@ -184,36 +239,88 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertNoThrow(try store.install(contractDisclaimer))
     }
 
+    func testUTF8ByteLimitsRejectCombiningPayloadAndOversizedFileReturnsNil() throws {
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let combiningPayload = String(
+            repeating: "e\u{301}\u{302}\u{303}\u{304}\u{305}",
+            count: 400
+        )
+        XCTAssertLessThan(combiningPayload.count, 1_000)
+        XCTAssertGreaterThan(combiningPayload.utf8.count, 4_096)
+        assertInstallRejected(store, fixtureSnapshot(headline: combiningPayload))
+        assertInstallRejected(store, fixtureSnapshot(recordID: String(repeating: "😀", count: 257)))
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(nutrients: (0..<33).map { "nutrient-\($0)" })
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(alternatives: (0..<9).map { "교육 문장 \($0)번을 살펴봐요." })
+        )
+        assertInstallRejected(
+            store,
+            fixtureSnapshot(alternatives: Array(repeating: String(repeating: "가", count: 1_000), count: 8))
+        )
+
+        let allowedMultibyte = fixtureSnapshot(
+            recordID: "multibyte-record",
+            headline: String(repeating: "가", count: 1_000)
+        )
+        XCTAssertNoThrow(try store.install(allowedMultibyte))
+
+        let file = try XCTUnwrap(singleJSONFile())
+        try Data(repeating: 0x41, count: 65_537).write(to: file)
+        XCTAssertNil(try store.load(matching: RebuildMealRecordRevision(
+            recordID: allowedMultibyte.recordID,
+            date: allowedMultibyte.date,
+            normalizedMenuName: allowedMultibyte.normalizedMenuName,
+            status: allowedMultibyte.status,
+            updatedAt: allowedMultibyte.recordUpdatedAt
+        )))
+    }
+
+    func testFingerprintNormalizesNFCWhileExactRevisionFieldsRemainExact() throws {
+        let nfcDirectory = temporaryDirectory.appendingPathComponent("nfc", isDirectory: true)
+        let nfdDirectory = temporaryDirectory.appendingPathComponent("nfd", isDirectory: true)
+        let nfc = "café"
+        let nfd = nfc.decomposedStringWithCanonicalMapping
+        XCTAssertNotEqual(Array(nfc.utf8), Array(nfd.utf8))
+
+        let nfcSnapshot = fixtureSnapshot(recordID: nfc, normalizedMenuName: nfc)
+        let nfdSnapshot = fixtureSnapshot(recordID: nfd, normalizedMenuName: nfd)
+        let nfcStore = FileNutrientImpactSidecar(directoryURL: nfcDirectory)
+        let nfdStore = FileNutrientImpactSidecar(directoryURL: nfdDirectory)
+        try nfcStore.install(nfcSnapshot)
+        try nfdStore.install(nfdSnapshot)
+
+        XCTAssertEqual(
+            try XCTUnwrap(try jsonFiles(in: nfcDirectory).first).lastPathComponent,
+            try XCTUnwrap(try jsonFiles(in: nfdDirectory).first).lastPathComponent
+        )
+        XCTAssertEqual(
+            try nfcStore.load(matching: fixtureRevision(recordID: nfc, normalizedMenuName: nfc)),
+            nfcSnapshot
+        )
+        let canonicallyEquivalentLoad = try XCTUnwrap(
+            try nfcStore.load(matching: fixtureRevision(recordID: nfd, normalizedMenuName: nfd))
+        )
+        XCTAssertEqual(Array(canonicallyEquivalentLoad.recordID.utf8), Array(nfc.utf8))
+        XCTAssertEqual(Array(canonicallyEquivalentLoad.normalizedMenuName.utf8), Array(nfc.utf8))
+    }
+
     func testConcurrentIdenticalInstallDoesNotCreateOrOverwriteRevision() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let snapshot = fixtureSnapshot(status: .oneBite, updatedAt: Date(timeIntervalSince1970: 10))
 
-        try store.install(snapshot)
-        let before = try XCTUnwrap(singleJSONFile())
-        let beforeBytes = try Data(contentsOf: before)
-        let group = DispatchGroup()
-        let resultLock = NSLock()
-        var installErrors: [Error] = []
-        for _ in 0..<8 {
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer { group.leave() }
-                do {
-                    try store.install(snapshot)
-                } catch {
-                    resultLock.lock()
-                    installErrors.append(error)
-                    resultLock.unlock()
-                }
-            }
-        }
-        group.wait()
-        resultLock.lock()
-        let concurrentErrors = installErrors
-        resultLock.unlock()
+        let concurrentErrors = concurrentInstall(
+            Array(repeating: snapshot, count: 8),
+            into: store
+        )
         XCTAssertTrue(concurrentErrors.isEmpty, "Concurrent identical installs failed: \(concurrentErrors)")
         XCTAssertEqual(try jsonFiles().count, 1)
-        XCTAssertEqual(try Data(contentsOf: before), beforeBytes)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
+        let before = try XCTUnwrap(singleJSONFile())
+        let beforeBytes = try Data(contentsOf: before)
 
         let conflicting = fixtureSnapshot(
             status: .oneBite,
@@ -222,6 +329,27 @@ final class NutrientImpactSidecarTests: XCTestCase {
         )
         XCTAssertThrowsError(try store.install(conflicting))
         XCTAssertEqual(try Data(contentsOf: before), beforeBytes)
+    }
+
+    func testConcurrentConflictingInstallsPublishExactlyOneImmutableWinner() throws {
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let candidates = (0..<8).map { index in
+            fixtureSnapshot(headline: "교육 문장 \(index)번을 살펴봐요.")
+        }
+
+        let errors = concurrentInstall(candidates, into: store)
+
+        XCTAssertEqual(errors.count, candidates.count - 1)
+        XCTAssertTrue(errors.allSatisfy { ($0 as? NutrientImpactSidecarError) == .conflictingRevision })
+        XCTAssertEqual(try jsonFiles().count, 1)
+        XCTAssertTrue(try temporaryArtifacts().isEmpty)
+        let winner = try XCTUnwrap(
+            try store.load(matching: fixtureRevision())
+        )
+        XCTAssertTrue(candidates.contains(winner))
+        let winnerBytes = try Data(contentsOf: try XCTUnwrap(singleJSONFile()))
+        XCTAssertThrowsError(try store.install(candidates.first { $0 != winner }!))
+        XCTAssertEqual(try Data(contentsOf: try XCTUnwrap(singleJSONFile())), winnerBytes)
     }
 
     func testRestartReadBackAndOrphanOrStaleRevisionReturnNil() throws {
@@ -363,15 +491,56 @@ final class NutrientImpactSidecarTests: XCTestCase {
         try XCTUnwrap(jsonFiles().count == 1 ? jsonFiles().first : nil)
     }
 
-    private func encode(_ snapshot: NutrientImpactSnapshot) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(snapshot)
+    private func temporaryArtifacts() throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(
+            at: temporaryDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix(".nutrient-impact-") }
+    }
+
+    private func concurrentInstall(
+        _ snapshots: [NutrientImpactSnapshot],
+        into store: FileNutrientImpactSidecar
+    ) -> [Error] {
+        let finished = DispatchGroup()
+        let startBarrierQueue = DispatchQueue(
+            label: "NutrientImpactSidecarTests.concurrentInstall",
+            qos: .userInitiated,
+            attributes: [.concurrent, .initiallyInactive]
+        )
+        let resultLock = NSLock()
+        var errors: [Error] = []
+
+        for snapshot in snapshots {
+            finished.enter()
+            startBarrierQueue.async {
+                defer { finished.leave() }
+                do {
+                    try store.install(snapshot)
+                } catch {
+                    resultLock.lock()
+                    errors.append(error)
+                    resultLock.unlock()
+                }
+            }
+        }
+        startBarrierQueue.activate()
+        finished.wait()
+        resultLock.lock()
+        defer { resultLock.unlock() }
+        return errors
     }
 
     private func jsonObject(at url: URL) throws -> [String: Any] {
         try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
         )
+    }
+
+    private func decodedSnapshot(at url: URL) throws -> NutrientImpactSnapshot {
+        let envelope = try jsonObject(at: url)
+        let snapshotObject = try XCTUnwrap(envelope["snapshot"] as? [String: Any])
+        let data = try JSONSerialization.data(withJSONObject: snapshotObject, options: [.sortedKeys])
+        return try JSONDecoder().decode(NutrientImpactSnapshot.self, from: data)
     }
 }
