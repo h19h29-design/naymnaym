@@ -7,13 +7,14 @@ struct TodayForestView: View {
     let isTabActive: Bool
     let isAppActive: Bool
     @State private var isShowingRecorder = false
+    @State private var isShowingMealDetail = false
 
     var body: some View {
         NavigationStack {
             ForestSceneView(
                 reduceMotion: reduceMotion,
                 activity: ForestSceneActivity(
-                    isSheetPresented: isShowingRecorder,
+                    isSheetPresented: isShowingRecorder || isShowingMealDetail,
                     isTabActive: isTabActive,
                     isAppActive: isAppActive
                 )
@@ -37,6 +38,14 @@ struct TodayForestView: View {
         }
         .sheet(isPresented: $isShowingRecorder) {
             MealRecordingSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $isShowingMealDetail) {
+            MealDayDetailView(
+                route: MealDayRoute(dateKey: viewModel.dateKey),
+                repository: viewModel.mealScheduleRepository,
+                school: viewModel.detailSchool,
+                recordingViewModel: viewModel
+            )
         }
     }
 
@@ -190,7 +199,7 @@ struct TodayForestView: View {
 
     private var primaryAction: some View {
         Button {
-            isShowingRecorder = true
+            isShowingMealDetail = true
         } label: {
             Text(viewModel.primaryActionTitle)
                 .font(RebuildDesignTokens.headlineFont)

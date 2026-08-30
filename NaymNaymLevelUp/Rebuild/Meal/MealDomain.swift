@@ -39,6 +39,12 @@ struct RebuildMealDay: Codable, Equatable, Sendable {
     let nutrition: RebuildNutritionInfo
 }
 
+struct MealDayRoute: Hashable, Identifiable, Sendable {
+    let dateKey: String
+
+    var id: String { dateKey }
+}
+
 enum MealLoadState: Equatable, Sendable {
     case cached(RebuildMealDay, refreshedAt: Date?)
     case refreshing(RebuildMealDay?)

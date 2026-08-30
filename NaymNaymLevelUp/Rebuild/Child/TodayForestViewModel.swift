@@ -23,6 +23,18 @@ protocol TodayProgressProvider: Sendable {
 
 extension RebuildMealRepository: TodayMealRepository {}
 
+struct TodayMealScheduleRepositoryAdapter: MealScheduleRepository {
+    let repository: any TodayMealRepository
+
+    func currentState(date: String) async -> MealLoadState {
+        await repository.currentState(date: date)
+    }
+
+    func refresh(date: String, school: RebuildSchool) async {
+        await repository.refresh(date: date, school: school)
+    }
+}
+
 struct LiveTodayMealRecorder: TodayMealRecorder {
     let useCase: RecordMealUseCase
 
@@ -162,6 +174,14 @@ final class TodayForestViewModel: ObservableObject {
     private let school: RebuildSchool?
     private let now: Clock
     private var progressRevision = 0
+
+    var mealScheduleRepository: any MealScheduleRepository {
+        TodayMealScheduleRepositoryAdapter(repository: repository)
+    }
+
+    var detailSchool: RebuildSchool? {
+        school
+    }
 
     init(
         repository: any TodayMealRepository,

@@ -193,47 +193,56 @@ enum MealScheduleCalendar {
     }
 
     static func weekDates(containing date: Date) -> [Date] {
-        let start = startOfWeek(containing: date)
-        return (0..<5).compactMap {
-            calendar.date(byAdding: .day, value: $0, to: start)
+        let start = startOfSchoolWeek(for: date)
+        return (0..<7).compactMap {
+            dateByAddingDays($0, to: start)
         }
     }
 
-    static func monthWeekdays(containing date: Date) -> [Date] {
+    static func schoolWeekDates(containing date: Date) -> [Date] {
+        weekDates(containing: date)
+    }
+
+    static func startOfSchoolWeek(for date: Date) -> Date {
+        let localNoon = noon(on: date)
+        let weekday = calendar.component(.weekday, from: localNoon)
+        let offsetFromMonday = (weekday + 5) % 7
+        return dateByAddingDays(-offsetFromMonday, to: localNoon)
+    }
+
+    static func endOfSchoolWeek(for date: Date) -> Date {
+        dateByAddingDays(6, to: startOfSchoolWeek(for: date))
+    }
+
+    static func shiftedSchoolWeek(_ date: Date, by offset: Int) -> Date {
+        dateByAddingDays(offset * 7, to: noon(on: date))
+    }
+
+    static func monthGridDates(containing date: Date) -> [Date] {
         let components = calendar.dateComponents([.year, .month], from: date)
         guard
-            let monthStart = calendar.date(from: components),
+            let monthStart = noon(from: components),
             let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart),
-            let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonth),
-            let endingFriday = calendar.date(
-                byAdding: .day,
-                value: 4,
-                to: startOfWeek(containing: monthEnd)
-            )
+            let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonth)
         else {
             return []
         }
 
-        let start = startOfWeek(containing: monthStart)
+        let start = startOfSchoolWeek(for: monthStart)
+        let end = endOfSchoolWeek(for: monthEnd)
         let dayCount = calendar.dateComponents(
             [.day],
             from: start,
-            to: endingFriday
+            to: end
         ).day ?? 0
 
         return (0...dayCount).compactMap { offset -> Date? in
-            guard
-                let day = calendar.date(
-                    byAdding: .day,
-                    value: offset,
-                    to: start
-                )
-            else {
-                return nil
-            }
-            let weekday = calendar.component(.weekday, from: day)
-            return (2...6).contains(weekday) ? day : nil
+            dateByAddingDays(offset, to: start)
         }
+    }
+
+    static func monthWeekdays(containing date: Date) -> [Date] {
+        monthGridDates(containing: date)
     }
 
     static func shifted(
@@ -248,28 +257,33 @@ enum MealScheduleCalendar {
             component = .day
             value = direction
         case .weekly:
-            component = .day
-            value = direction * 7
+            return shiftedSchoolWeek(date, by: direction)
         case .monthly:
             component = .month
             value = direction
         }
-        return calendar.date(byAdding: component, value: value, to: date) ?? date
+        return noon(on: calendar.date(byAdding: component, value: value, to: noon(on: date)) ?? date)
     }
 
     static func sameDay(_ lhs: Date, _ rhs: Date) -> Bool {
         calendar.isDate(lhs, inSameDayAs: rhs)
     }
 
-    private static func startOfWeek(containing date: Date) -> Date {
-        let start = calendar.startOfDay(for: date)
-        let weekday = calendar.component(.weekday, from: start)
-        let offsetFromMonday = (weekday + 5) % 7
-        return calendar.date(
-            byAdding: .day,
-            value: -offsetFromMonday,
-            to: start
-        ) ?? start
+    private static func noon(on date: Date) -> Date {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return noon(from: components) ?? date
+    }
+
+    private static func noon(from components: DateComponents) -> Date? {
+        var value = components
+        value.hour = 12
+        value.minute = 0
+        value.second = 0
+        return calendar.date(from: value)
+    }
+
+    private static func dateByAddingDays(_ days: Int, to date: Date) -> Date {
+        calendar.date(byAdding: .day, value: days, to: date) ?? date
     }
 }
 
@@ -312,8 +326,8 @@ final class MealScheduleViewModel: ObservableObject {
 
     let schoolName: String
 
-    private let repository: any MealScheduleRepository
-    private let school: RebuildSchool?
+    let repository: any MealScheduleRepository
+    let school: RebuildSchool?
 
     init(
         repository: any MealScheduleRepository,
@@ -329,13 +343,12 @@ final class MealScheduleViewModel: ObservableObject {
     }
 
     func load(dates: [Date]) async {
-        let requests = Array(
-            Dictionary(
-                uniqueKeysWithValues: dates.map {
-                    (MealScheduleCalendar.key(for: $0), $0)
-                }
-            )
-        )
+        var seenKeys = Set<String>()
+        let requests = dates.compactMap { date -> (String, Date)? in
+            let key = MealScheduleCalendar.key(for: date)
+            guard seenKeys.insert(key).inserted else { return nil }
+            return (key, date)
+        }
         guard !requests.isEmpty else { return }
 
         isLoading = true
@@ -362,8 +375,8 @@ final class MealScheduleViewModel: ObservableObject {
                         }
                         return MealScheduleLoadResult(
                             key: key,
-                            meal: Self.meal(from: state),
-                            failed: Self.isFailed(state)
+                            meal: Self.meal(from: state, expectedDate: key),
+                            failed: Self.isFailed(state, expectedDate: key)
                         )
                     }
                 }
@@ -387,23 +400,36 @@ final class MealScheduleViewModel: ObservableObject {
     }
 
     private nonisolated static func meal(
-        from state: MealLoadState
+        from state: MealLoadState,
+        expectedDate: String
     ) -> RebuildMealDay? {
+        let candidate: RebuildMealDay?
         switch state {
         case let .cached(meal, _), let .live(meal):
-            return meal
+            candidate = meal
         case let .refreshing(cached), let .failed(_, cached):
-            return cached
+            candidate = cached
         case .empty:
-            return nil
+            candidate = nil
         }
+        guard candidate?.date == expectedDate else { return nil }
+        return candidate
     }
 
-    private nonisolated static func isFailed(_ state: MealLoadState) -> Bool {
-        if case .failed = state {
+    private nonisolated static func isFailed(
+        _ state: MealLoadState,
+        expectedDate: String
+    ) -> Bool {
+        switch state {
+        case .failed:
             return true
+        case let .cached(meal, _), let .live(meal):
+            return meal.date != expectedDate
+        case let .refreshing(cached):
+            return cached?.date != nil && cached?.date != expectedDate
+        case .empty:
+            return false
         }
-        return false
     }
 }
 
@@ -412,6 +438,7 @@ struct MealScheduleView: View {
     @State private var mode: MealScheduleMode = .daily
     @State private var anchorDate = Date()
     @State private var selectedDate = Date()
+    @State private var selectedRoute: MealDayRoute?
 
     var body: some View {
         NavigationStack {
@@ -450,10 +477,7 @@ struct MealScheduleView: View {
                 }
                 .background(RebuildDesignTokens.cream50)
                 .onChange(of: mode) { _ in
-                    selectedDate = preferredSelectedDate(
-                        anchor: anchorDate,
-                        mode: mode
-                    )
+                    selectedDate = anchorDate
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo("meal_schedule_top", anchor: .top)
                     }
@@ -463,6 +487,13 @@ struct MealScheduleView: View {
         }
         .task(id: loadKey) {
             await viewModel.load(dates: visibleDates)
+        }
+        .sheet(item: $selectedRoute) { route in
+            MealDayDetailView(
+                route: route,
+                repository: viewModel.repository,
+                school: viewModel.school
+            )
         }
         .accessibilityIdentifier("meal_schedule_screen")
     }
@@ -585,7 +616,7 @@ struct MealScheduleView: View {
                 direction: direction
             )
             anchorDate = shifted
-            selectedDate = preferredSelectedDate(anchor: shifted, mode: mode)
+            selectedDate = shifted
         } label: {
             Image(systemName: systemImage)
                 .font(.headline.bold())
@@ -674,6 +705,19 @@ struct MealScheduleView: View {
                 .foregroundStyle(RebuildDesignTokens.forest500)
             nutritionSummary(meals: meal.map { [$0] } ?? [])
             allergySummary(meal: meal)
+
+            Button {
+                select(date: anchorDate)
+            } label: {
+                Label("급식 상세 보기", systemImage: "arrow.up.right.square")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(RebuildDesignTokens.forest700)
+            .accessibilityIdentifier(
+                "meal_schedule_day_detail_\(MealScheduleCalendar.key(for: anchorDate))"
+            )
         }
         .mealScheduleCard()
         .accessibilityIdentifier("meal_schedule_daily")
@@ -702,7 +746,7 @@ struct MealScheduleView: View {
                             selectedDate
                         )
                         Button {
-                            selectedDate = date
+                            select(date: date)
                         } label: {
                             VStack(spacing: 2) {
                                 Text(weekdayFormatter.string(from: date))
@@ -751,7 +795,7 @@ struct MealScheduleView: View {
                                 items: viewModel.meal(for: date)?.menuItems ?? []
                             )
                             Button {
-                                selectedDate = date
+                                select(date: date)
                             } label: {
                                 Text(slots.value(for: row))
                                     .font(.caption2.weight(selected ? .bold : .medium))
@@ -798,10 +842,10 @@ struct MealScheduleView: View {
     }
 
     private var monthlyContent: some View {
-        let dates = MealScheduleCalendar.monthWeekdays(containing: anchorDate)
+        let dates = MealScheduleCalendar.monthGridDates(containing: anchorDate)
         let columns = Array(
             repeating: GridItem(.flexible(), spacing: 0),
-            count: 5
+            count: 7
         )
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -815,7 +859,7 @@ struct MealScheduleView: View {
             }
 
             LazyVGrid(columns: columns, spacing: 0) {
-                ForEach(["월", "화", "수", "목", "금"], id: \.self) { day in
+                ForEach(["월", "화", "수", "목", "금", "토", "일"], id: \.self) { day in
                     Text(day)
                         .font(.caption.bold())
                         .foregroundStyle(RebuildDesignTokens.forest700)
@@ -831,7 +875,7 @@ struct MealScheduleView: View {
                         selectedDate
                     )
                     Button {
-                        selectedDate = date
+                        select(date: date)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(dayFormatter.string(from: date))
@@ -1043,7 +1087,7 @@ struct MealScheduleView: View {
         case .weekly:
             return MealScheduleCalendar.weekDates(containing: anchorDate)
         case .monthly:
-            return MealScheduleCalendar.monthWeekdays(containing: anchorDate)
+            return MealScheduleCalendar.monthGridDates(containing: anchorDate)
         }
     }
 
@@ -1057,9 +1101,10 @@ struct MealScheduleView: View {
             return fullDateFormatter.string(from: anchorDate)
         case .weekly:
             let dates = MealScheduleCalendar.weekDates(containing: anchorDate)
-            guard let first = dates.first, let last = dates.last else {
+            guard !dates.isEmpty, let last = dates.last else {
                 return ""
             }
+            let first = dates[0]
             return "\(monthDayFormatter.string(from: first)) – \(monthDayFormatter.string(from: last))"
         case .monthly:
             return monthFormatter.string(from: anchorDate)
@@ -1087,24 +1132,9 @@ struct MealScheduleView: View {
         return "\(fullDateFormatter.string(from: date)), \(menu)"
     }
 
-    private func preferredSelectedDate(
-        anchor: Date,
-        mode: MealScheduleMode
-    ) -> Date {
-        switch mode {
-        case .daily:
-            return anchor
-        case .weekly:
-            let dates = MealScheduleCalendar.weekDates(containing: anchor)
-            return dates.first(where: { MealScheduleCalendar.sameDay($0, anchor) })
-                ?? dates.first
-                ?? anchor
-        case .monthly:
-            let dates = MealScheduleCalendar.monthWeekdays(containing: anchor)
-            return dates.first(where: { MealScheduleCalendar.sameDay($0, anchor) })
-                ?? dates.first
-                ?? anchor
-        }
+    private func select(date: Date) {
+        selectedDate = date
+        selectedRoute = MealDayRoute(dateKey: MealScheduleCalendar.key(for: date))
     }
 
     private var fullDateFormatter: DateFormatter {
