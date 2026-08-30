@@ -27,6 +27,286 @@ struct NutrientImpactCopy: Equatable, Sendable {
     let disclaimer: String
 }
 
+struct SameMealAlternativeProvenance: Equatable, Sendable {
+    let mealDayDate: String
+    let mealDayFingerprint: String
+    let currentMenuName: String
+    let targetNutrientIDs: [String]
+
+    fileprivate init(
+        mealDayDate: String,
+        mealDayFingerprint: String,
+        currentMenuName: String,
+        targetNutrientIDs: [String]
+    ) {
+        self.mealDayDate = mealDayDate
+        self.mealDayFingerprint = mealDayFingerprint
+        self.currentMenuName = currentMenuName
+        self.targetNutrientIDs = targetNutrientIDs
+    }
+}
+
+struct SameMealAlternative: Equatable, Sendable {
+    let menuName: String
+    let nutrientIDs: [String]
+    let allergyCodes: [Int]
+    let provenance: SameMealAlternativeProvenance
+
+    fileprivate init(
+        menuName: String,
+        nutrientIDs: [String],
+        allergyCodes: [Int],
+        provenance: SameMealAlternativeProvenance
+    ) {
+        self.menuName = menuName
+        self.nutrientIDs = nutrientIDs
+        self.allergyCodes = allergyCodes
+        self.provenance = provenance
+    }
+}
+
+struct SameMealAlternativeSelection: Equatable, Sendable {
+    let alternatives: [SameMealAlternative]
+    let provenance: SameMealAlternativeProvenance
+
+    static let empty = SameMealAlternativeSelection(
+        alternatives: [],
+        provenance: SameMealAlternativeProvenance(
+            mealDayDate: "",
+            mealDayFingerprint: "",
+            currentMenuName: "",
+            targetNutrientIDs: []
+        )
+    )
+
+    var menuLabels: [String] {
+        alternatives.map(\.menuName)
+    }
+
+    fileprivate init(
+        alternatives: [SameMealAlternative],
+        provenance: SameMealAlternativeProvenance
+    ) {
+        self.alternatives = alternatives
+        self.provenance = provenance
+    }
+
+    fileprivate func isCanonical() -> Bool {
+        if alternatives.isEmpty {
+            return provenance.mealDayDate.isEmpty
+                && provenance.mealDayFingerprint.isEmpty
+                && provenance.currentMenuName.isEmpty
+                && provenance.targetNutrientIDs.isEmpty
+        }
+        guard alternatives.count <= 2,
+              !provenance.mealDayDate.isEmpty,
+              !provenance.mealDayFingerprint.isEmpty,
+              NutrientImpactCopyCatalog.validateMenuLabels([provenance.currentMenuName]),
+              let targetNutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(
+                  provenance.targetNutrientIDs
+              ),
+              !targetNutrients.isEmpty,
+              targetNutrients == provenance.targetNutrientIDs,
+              NutrientImpactCopyCatalog.validateMenuLabels(menuLabels),
+              Set(menuLabels).count == menuLabels.count
+        else {
+            return false
+        }
+
+        let targetSet = Set(targetNutrients)
+        return alternatives.allSatisfy { alternative in
+            guard alternative.provenance == provenance,
+                  let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(
+                      alternative.nutrientIDs
+                  ),
+                  nutrients == alternative.nutrientIDs,
+                  !nutrients.isEmpty,
+                  !Set(nutrients).intersection(targetSet).isEmpty,
+                  alternative.allergyCodes == Array(Set(alternative.allergyCodes).sorted()),
+                  NutrientImpactCopyCatalog.validateMenuLabels([alternative.menuName]),
+                  alternative.menuName != provenance.currentMenuName
+            else {
+                return false
+            }
+            return true
+        }
+    }
+
+    fileprivate func matches(
+        date: String,
+        menuName: String,
+        nutrientIDs: [String]
+    ) -> Bool {
+        guard isCanonical() else { return false }
+        guard !alternatives.isEmpty else { return true }
+        return exact(provenance.mealDayDate, date)
+            && exact(provenance.currentMenuName, menuName)
+            && provenance.targetNutrientIDs.count == nutrientIDs.count
+            && zip(provenance.targetNutrientIDs, nutrientIDs).allSatisfy { lhs, rhs in
+                exact(lhs, rhs)
+            }
+    }
+
+    private func exact(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.utf8.elementsEqual(rhs.utf8)
+    }
+}
+
+enum SameMealAlternativeSelector {
+    static func select(
+        from mealDay: RebuildMealDay,
+        currentItem: RebuildMealItem,
+        childAllergyCodes: [Int]
+    ) -> SameMealAlternativeSelection {
+        guard let currentIndex = mealDay.menuItems.firstIndex(of: currentItem) else {
+            return .empty
+        }
+        guard let currentMenuName = NutrientImpactCopyCatalog.canonicalMenuLabels([
+            currentItem.normalizedPresentationName
+        ])?.first else {
+            return .empty
+        }
+        return select(
+            from: mealDay,
+            currentIndex: currentIndex,
+            currentMenuName: currentMenuName,
+            targetNutrientIDs: currentItem.nutrients,
+            childAllergyCodes: childAllergyCodes
+        )
+    }
+
+    static func select(
+        from mealDay: RebuildMealDay,
+        currentMenuName: String,
+        targetNutrientIDs: [String],
+        childAllergyCodes: [Int]
+    ) -> SameMealAlternativeSelection {
+        guard let normalizedCurrentName = NutrientImpactCopyCatalog.canonicalMenuLabels([
+            currentMenuName
+        ])?.first,
+        let currentIndex = mealDay.menuItems.firstIndex(where: {
+            NutrientImpactCopyCatalog.canonicalMenuLabels([
+                $0.normalizedPresentationName
+            ])?.first == normalizedCurrentName
+        }) else {
+            return .empty
+        }
+        return select(
+            from: mealDay,
+            currentIndex: currentIndex,
+            currentMenuName: normalizedCurrentName,
+            targetNutrientIDs: targetNutrientIDs,
+            childAllergyCodes: childAllergyCodes
+        )
+    }
+
+    private static func select(
+        from mealDay: RebuildMealDay,
+        currentIndex: Int,
+        currentMenuName: String,
+        targetNutrientIDs: [String],
+        childAllergyCodes: [Int]
+    ) -> SameMealAlternativeSelection {
+        guard let targets = NutrientImpactCopyCatalog.normalizedNutrientIDs(targetNutrientIDs),
+              !targets.isEmpty,
+              !currentMenuName.isEmpty else {
+            return .empty
+        }
+
+        let provenance = SameMealAlternativeProvenance(
+            mealDayDate: mealDay.date,
+            mealDayFingerprint: mealDayFingerprint(for: mealDay),
+            currentMenuName: currentMenuName,
+            targetNutrientIDs: targets
+        )
+        let childAllergies = Set(childAllergyCodes)
+        let targetSet = Set(targets)
+        var candidates: [(index: Int, item: RebuildMealItem, label: String, nutrients: [String], shared: [String])] = []
+        var seenLabels = Set<String>()
+
+        for (index, item) in mealDay.menuItems.enumerated() where index != currentIndex {
+            guard let label = NutrientImpactCopyCatalog.canonicalMenuLabels([
+                item.normalizedPresentationName
+            ])?.first,
+                  label != currentMenuName,
+                  childAllergies.isDisjoint(with: item.allergyCodes),
+                  let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(item.nutrients),
+                  !nutrients.isEmpty else {
+                continue
+            }
+            let shared = targets.filter { targetSet.contains($0) && nutrients.contains($0) }
+            guard !shared.isEmpty, seenLabels.insert(label).inserted else { continue }
+            candidates.append((index, item, label, nutrients, shared))
+        }
+
+        candidates.sort { lhs, rhs in
+            if lhs.shared.count != rhs.shared.count {
+                return lhs.shared.count > rhs.shared.count
+            }
+            let lhsPriority = targets.firstIndex(where: lhs.shared.contains) ?? targets.count
+            let rhsPriority = targets.firstIndex(where: rhs.shared.contains) ?? targets.count
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            return lhs.index < rhs.index
+        }
+
+        let selected = candidates.prefix(2).map { candidate in
+            SameMealAlternative(
+                menuName: candidate.label,
+                nutrientIDs: candidate.nutrients,
+                allergyCodes: Array(Set(candidate.item.allergyCodes).sorted()),
+                provenance: provenance
+            )
+        }
+        guard !selected.isEmpty else { return .empty }
+        return SameMealAlternativeSelection(
+            alternatives: Array(selected),
+            provenance: provenance
+        )
+    }
+
+    private static func mealDayFingerprint(for mealDay: RebuildMealDay) -> String {
+        var data = Data()
+        append(mealDay.date, to: &data)
+        append(mealDay.calorie, to: &data)
+        for item in mealDay.menuItems {
+            append(item.name, to: &data)
+            append(item.allergyCodes.map(String.init), to: &data)
+            append(item.nutrients, to: &data)
+            append(item.tags, to: &data)
+            append(item.sourceRawText, to: &data)
+        }
+        append(String(mealDay.nutrition.carbs), to: &data)
+        append(String(mealDay.nutrition.protein), to: &data)
+        append(String(mealDay.nutrition.fat), to: &data)
+        append(String(mealDay.nutrition.calcium), to: &data)
+        append(String(mealDay.nutrition.iron), to: &data)
+        append(String(mealDay.nutrition.vitamin), to: &data)
+        append(mealDay.nutrition.sourceFields.map(\.rawValue).sorted(), to: &data)
+        append(
+            mealDay.nutrition.sourceUnits
+                .sorted { $0.key.rawValue < $1.key.rawValue }
+                .flatMap { [$0.key.rawValue, $0.value] },
+            to: &data
+        )
+        return SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private static func append(_ values: [String], to data: inout Data) {
+        append(String(values.count), to: &data)
+        for value in values {
+            append(value, to: &data)
+        }
+    }
+
+    private static func append(_ value: String, to data: inout Data) {
+        data.append(Data("\(value.utf8.count):\(value)".utf8))
+    }
+}
+
 /// The sidecar is a persistence boundary, so copy is an allow-list rather
 /// than a best-effort natural-language policy. Callers use this catalog to
 /// build every snapshot; the sidecar accepts only the exact resulting copy.
@@ -49,21 +329,6 @@ enum NutrientImpactCopyCatalog {
 
     private static let maximumMenuLabelBytes = 256
     private static let maximumMenuLabelCharacters = 80
-    private static let quantityUnits = [
-        "kcal", "mg", "g", "킬로칼로리", "밀리그램", "그램",
-    ]
-    private static let secretMarkers = [
-        "api key", "api token", "access token", "refresh token", "bearer",
-        "client secret", "private key", "password", "passwd", "secret",
-        "인증 토큰", "액세스 토큰", "개인키", "시크릿",
-    ]
-    private static let policyRoots = [
-        "알레르기", "진단", "치료", "처방", "결핍", "부족", "모자라",
-        "빈혈", "고혈압", "당뇨", "의학", "의료", "먹어", "먹기", "섭취",
-        "맛보", "시도", "삼키", "드셔", "드세", "피해", "피하", "피할",
-        "제외", "중단", "보호자",
-    ]
-
     static func normalizedNutrientIDs(_ values: [String]) -> [String]? {
         guard values.allSatisfy({ nutrientNames[$0] != nil }) else {
             return nil
@@ -74,34 +339,42 @@ enum NutrientImpactCopyCatalog {
 
     static func makeCopy(
         status: RebuildEatingStatus,
-        nutrientIDs: [String]
+        nutrientIDs: [String],
+        hasAlternatives: Bool = false
     ) -> NutrientImpactCopy? {
         guard let normalized = normalizedNutrientIDs(nutrientIDs) else {
             return nil
         }
-        let phrase = nutrientPhrase(for: normalized)
         let headline: String
         let explanation: String
 
         switch status {
         case .finished:
-            headline = "오늘 급식, 즐겁게 잘 마무리했어요!"
-            explanation = "\(commonNutritionSentence(for: phrase)) 오늘의 식사 경험을 멋지게 기록했어요."
+            headline = "이 메뉴를 즐겁게 잘 마무리했어요!"
+            explanation = "\(commonNutritionSentence(for: normalized)) 이 메뉴의 식사 경험을 멋지게 기록했어요."
         case .half:
             headline = "절반까지 차근차근 먹어 봤어요!"
-            explanation = "절반까지 시도한 경험을 잘 기록했어요. \(commonNutritionSentence(for: phrase))"
+            explanation = "절반까지 시도한 경험을 잘 기록했어요. \(commonNutritionSentence(for: normalized))"
         case .oneBite:
             headline = "한 입 도전, 멋지게 해냈어요!"
-            explanation = "한 입으로 새로운 맛과 식감을 살펴봤어요. \(commonNutritionSentence(for: phrase))"
+            explanation = "한 입으로 새로운 맛과 식감을 살펴봤어요. \(commonNutritionSentence(for: normalized))"
         case .smelledOnly:
             headline = "냄새와 느낌을 살펴본 것도 멋진 탐색이에요!"
-            explanation = "오늘은 냄새와 느낌을 천천히 알아봤어요. \(commonNutritionSentence(for: phrase))"
+            explanation = "오늘은 냄새와 느낌을 천천히 알아봤어요. \(commonNutritionSentence(for: normalized))"
         case .difficultToday:
             headline = "오늘은 이 메뉴의 대표 영양소를 덜 섭취했을 수 있어요."
-            explanation = "\(commonNutritionSentence(for: phrase)) 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요."
+            explanation = "\(commonNutritionSentence(for: normalized)) 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요."
         case .allergyAvoided:
             headline = "알레르기 안전을 먼저 챙긴 선택이에요!"
-            explanation = "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴에서도 \(phrase) 같은 대표 영양소를 살펴볼 수 있어요."
+            if hasAlternatives {
+                if let phrase = nutrientPhrase(for: normalized) {
+                    explanation = "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴에서도 \(phrase) 같은 대표 영양소를 살펴볼 수 있어요."
+                } else {
+                    explanation = "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴의 영양 정보도 함께 살펴볼 수 있어요."
+                }
+            } else {
+                explanation = "보호자와 학교 안내를 먼저 확인해요."
+            }
         }
 
         return NutrientImpactCopy(
@@ -116,9 +389,14 @@ enum NutrientImpactCopyCatalog {
         nutrientIDs: [String],
         headline: String,
         explanation: String,
-        disclaimer: String
+        disclaimer: String,
+        hasAlternatives: Bool = false
     ) -> Bool {
-        guard let copy = makeCopy(status: status, nutrientIDs: nutrientIDs) else {
+        guard let copy = makeCopy(
+            status: status,
+            nutrientIDs: nutrientIDs,
+            hasAlternatives: hasAlternatives
+        ) else {
             return false
         }
         guard nutrientIDs == normalizedNutrientIDs(nutrientIDs) else {
@@ -131,7 +409,10 @@ enum NutrientImpactCopyCatalog {
 
     static func validateMenuLabels(_ values: [String]) -> Bool {
         guard let canonical = canonicalMenuLabels(values) else { return false }
-        return canonical == values
+        guard canonical.count == values.count else { return false }
+        return zip(canonical, values).allSatisfy { expected, actual in
+            expected.utf8.elementsEqual(actual.utf8)
+        }
     }
 
     /// Canonicalize menu labels at the factory boundary. The sidecar itself
@@ -151,9 +432,9 @@ enum NutrientImpactCopyCatalog {
         return canonical
     }
 
-    private static func nutrientPhrase(for nutrientIDs: [String]) -> String {
+    private static func nutrientPhrase(for nutrientIDs: [String]) -> String? {
         let names = nutrientIDs.compactMap { nutrientNames[$0] }
-        guard !names.isEmpty else { return "대표 영양소" }
+        guard !names.isEmpty else { return nil }
         guard names.count > 1 else { return names[0] }
         return names.joined(separator: " · ")
     }
@@ -162,8 +443,11 @@ enum NutrientImpactCopyCatalog {
         expected.utf8.elementsEqual(actual.utf8)
     }
 
-    private static func commonNutritionSentence(for phrase: String) -> String {
-        "이 메뉴에서는 보통 \(phrase) 같은 대표 영양소를 만날 수 있어요."
+    private static func commonNutritionSentence(for nutrientIDs: [String]) -> String {
+        guard let phrase = nutrientPhrase(for: nutrientIDs) else {
+            return "이 메뉴의 대표 영양소 정보는 아직 자세히 확인하지 못했어요."
+        }
+        return "이 메뉴에서는 보통 \(phrase) 같은 대표 영양소를 만날 수 있어요."
     }
 
     private static func canonicalMenuLabel(_ value: String) -> String? {
@@ -192,15 +476,8 @@ enum NutrientImpactCopyCatalog {
             result.unicodeScalars.append(scalar)
         }
 
-        let endsWithSentencePunctuation = result.unicodeScalars.last.map {
-            ".!?。！？".unicodeScalars.contains($0)
-        } ?? false
         guard !result.isEmpty,
-              !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !endsWithSentencePunctuation,
-              !containsQuantityMarker(result),
-              !containsSecretMarker(result),
-              !containsPolicyRoot(result)
+              !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
             return nil
         }
@@ -228,85 +505,6 @@ enum NutrientImpactCopyCatalog {
         }
     }
 
-    private static func containsQuantityMarker(_ value: String) -> Bool {
-        let compatible = value.precomposedStringWithCompatibilityMapping.lowercased()
-        let scalars = Array(compatible.unicodeScalars)
-        var index = 0
-
-        while index < scalars.count {
-            guard isASCIIDigit(scalars[index]) else {
-                index += 1
-                continue
-            }
-
-            var cursor = index
-            while cursor < scalars.count, isASCIIDigit(scalars[cursor]) {
-                cursor += 1
-            }
-            if cursor < scalars.count, scalars[cursor].value == 0x2E || scalars[cursor].value == 0x2C {
-                cursor += 1
-                while cursor < scalars.count, isASCIIDigit(scalars[cursor]) {
-                    cursor += 1
-                }
-            }
-            while cursor < scalars.count,
-                  scalars[cursor].properties.generalCategory == .spaceSeparator {
-                cursor += 1
-            }
-            for unit in quantityUnits {
-                let unitScalars = Array(
-                    unit.precomposedStringWithCompatibilityMapping.lowercased().unicodeScalars
-                )
-                guard cursor + unitScalars.count <= scalars.count else { continue }
-                guard Array(scalars[cursor..<(cursor + unitScalars.count)]) == unitScalars else {
-                    continue
-                }
-                let afterUnit = cursor + unitScalars.count
-                if afterUnit == scalars.count || !isAlphaNumeric(scalars[afterUnit]) {
-                    return true
-                }
-            }
-            index = cursor
-        }
-        return false
-    }
-
-    private static func containsSecretMarker(_ value: String) -> Bool {
-        let normalized = policyTokens(for: value).joined(separator: " ")
-        return secretMarkers.contains(where: normalized.contains)
-            || value.precomposedStringWithCompatibilityMapping.lowercased().contains("sk-")
-    }
-
-    private static func containsPolicyRoot(_ value: String) -> Bool {
-        let normalized = policyTokens(for: value).joined(separator: " ")
-        return policyRoots.contains(where: normalized.contains)
-    }
-
-    private static func policyTokens(for value: String) -> [String] {
-        let compatible = value.precomposedStringWithCompatibilityMapping.lowercased()
-        var tokens: [String] = []
-        var token = String()
-        for scalar in compatible.unicodeScalars {
-            if scalar.properties.isAlphabetic || scalar.properties.numericType != nil {
-                token.unicodeScalars.append(scalar)
-            } else if !token.isEmpty {
-                tokens.append(token)
-                token.removeAll(keepingCapacity: true)
-            }
-        }
-        if !token.isEmpty {
-            tokens.append(token)
-        }
-        return tokens
-    }
-
-    private static func isASCIIDigit(_ scalar: Unicode.Scalar) -> Bool {
-        (0x30...0x39).contains(scalar.value)
-    }
-
-    private static func isAlphaNumeric(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.properties.isAlphabetic || scalar.properties.numericType != nil
-    }
 }
 
 enum NutrientImpactSnapshotFactory {
@@ -319,16 +517,21 @@ enum NutrientImpactSnapshotFactory {
         status: RebuildEatingStatus,
         recordUpdatedAt: Date,
         nutrientIDs: [String],
-        alternativeMenuLabels: [String]
+        alternativeSelection: SameMealAlternativeSelection = .empty
     ) -> NutrientImpactSnapshot? {
         guard schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion,
               ruleVersion == NutrientImpactSnapshot.supportedRuleVersion,
               let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(nutrientIDs),
               let copy = NutrientImpactCopyCatalog.makeCopy(
                   status: status,
-                  nutrientIDs: nutrients
+                  nutrientIDs: nutrients,
+                  hasAlternatives: !alternativeSelection.alternatives.isEmpty
               ),
-              let alternatives = NutrientImpactCopyCatalog.canonicalMenuLabels(alternativeMenuLabels)
+              alternativeSelection.matches(
+                  date: date,
+                  menuName: normalizedMenuName,
+                  nutrientIDs: nutrients
+              )
         else {
             return nil
         }
@@ -343,7 +546,7 @@ enum NutrientImpactSnapshotFactory {
             nutrients: nutrients,
             headline: copy.headline,
             explanation: copy.explanation,
-            alternatives: alternatives,
+            alternatives: alternativeSelection.menuLabels,
             disclaimer: copy.disclaimer
         )
     }
@@ -801,7 +1004,8 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
                   nutrientIDs: snapshot.nutrients,
                   headline: snapshot.headline,
                   explanation: snapshot.explanation,
-                  disclaimer: snapshot.disclaimer
+                  disclaimer: snapshot.disclaimer,
+                  hasAlternatives: !snapshot.alternatives.isEmpty
               ),
               NutrientImpactCopyCatalog.validateMenuLabels(snapshot.alternatives),
               hasBoundedAggregateStrings(snapshot) else {

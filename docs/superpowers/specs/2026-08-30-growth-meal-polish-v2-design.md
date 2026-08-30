@@ -218,7 +218,9 @@ struct RebuildMealRecordRevision: Equatable, Sendable {
 
 `recordID + date + normalizedMenuName + status + recordUpdatedAt`로 안전한 결정적 fingerprint/file name을 만들고, 임시 파일 → 원자 rename → 즉시 read-back 검증 순서를 사용한다. Core Data record/event 저장이 실패하면 새 파일은 orphan으로 남아도 읽히지 않으며 기존 matching snapshot은 덮어쓰지 않는다. 상태 변경은 이전 파일을 수정하지 않고 새 revision 파일을 만든다. reader는 현재 활성 Core Data 행의 date/menu/status/updatedAt 및 recordID가 모두 일치할 때만 당시 snapshot으로 인정한다. 일치 파일이 없거나 손상·schema/rule/fingerprint가 다르면 snapshot을 무시하고 “현재 기준 안내”로 명시한다. orphan을 이번 범위에서 적극 삭제하지 않는다.
 
-sidecar에는 `NutrientImpactCopyCatalog`가 생성한 canonical 교육 문구와 같은 급식의 메뉴 라벨·식별자만 저장하며 메뉴·학교·프로필·부모 연결을 복제하지 않는다. `headline`, `explanation`, `disclaimer`는 상태와 정규화·정렬·중복 제거된 known nutrient ID를 입력으로 한 canonical 결과와 정확히 일치해야 한다. `NutrientImpactSnapshotFactory`가 이 문구를 생성하므로 호출자는 안전 문장을 수동 조립하지 않는다. 자연어 정규식/NLU 추측으로 허용·거부하지 않고 canonical exact match로 fail-closed한다. 대체 메뉴는 factory에서 NFC와 Unicode space-separator를 정규화하고 ASCII 공백을 하나로 축약한 뒤 최대 2개의 UTF-8 bounded label로 만든다. sidecar 직접 입력은 이 canonical 고유 배열과 정확히 같아야 하며 제어·format 문자, 경로 구분자, 중복, 문장형 종결 부호, 수량 단위·secret marker·명백한 의료/알레르기/행동 지시 root는 제한된 label data grammar로 거부한다. 기존 `parentShareEnabled`가 true인 record만 기존 공유 정책의 대상이며 새 권한·Supabase schema는 만들지 않는다.
+sidecar에는 `NutrientImpactCopyCatalog`가 생성한 canonical 교육 문구와 같은 급식의 메뉴 라벨·식별자만 저장하며 메뉴·학교·프로필·부모 연결을 복제하지 않는다. `headline`, `explanation`, `disclaimer`는 상태와 정규화·정렬·중복 제거된 known nutrient ID를 입력으로 한 canonical 결과와 정확히 일치해야 한다. `NutrientImpactSnapshotFactory`가 이 문구를 생성하므로 호출자는 안전 문장을 수동 조립하지 않는다. 자연어 정규식/NLU 추측으로 허용·거부하지 않고 canonical exact match로 fail-closed한다.
+
+대체 메뉴는 raw 문자열을 factory에 넘기지 않는다. `SameMealAlternativeSelector`가 동일한 `RebuildMealDay`에서만 `SameMealAlternativeSelection`을 만들며, 선택에는 급식일 fingerprint·현재 메뉴·정규화된 대상 nutrient ID가 provenance로 묶인다. selector는 현재 메뉴를 제외하고, 아동 알레르기 코드와 겹치는 항목을 제외하며, 대상 nutrient와 구조적으로 하나 이상 일치하는 후보만 shared-nutrient 개수·대상 순서·원래 메뉴 순서로 결정적으로 정렬해 최대 2개를 선택한다. canonical label이 중복된 후보는 후보 확정 후 한 번만 사용한다. factory는 selection이 요청된 date/menu/nutrient ID와 정확히 일치할 때만 snapshot을 만들고, 대체 항목이 없으면 `.empty` 선택과 안전 안내만 사용한다. sidecar 직접 입력은 snapshot의 기존 `[String]` labels가 NFC·Unicode space-separator 정규화, ASCII 공백 축약, 최대 2개·길이 제한, 제어/format 문자 및 `/`·`\\` 경로 구분자 제거를 거친 canonical 고유 배열과 정확히 일치하는지만 검사한다. 메뉴 라벨의 자연어 의미·수량·secret·의료/행동 문구를 추측하는 deny-list는 두지 않는다. 기존 `parentShareEnabled`가 true인 record만 기존 공유 정책의 대상이며 새 권한·Supabase schema는 만들지 않는다.
 
 저장 순서는 다음과 같다.
 
@@ -520,7 +522,7 @@ legacy AppColors의 검증된 값을 참고해 RebuildDesignTokens 안에 의미
 - sidecar 설치 실패·Core Data 저장 실패·재시작 경계에서 record/event와 sidecar가 서로 거짓으로 결합되지 않는지
 - 상태 변경은 immutable 새 revision 파일을 만들고 이전 파일을 덮어쓰지 않는지
 - 현재 record의 recordID/date/normalizedMenuName/status/updatedAt과 정확히 맞는 sidecar만 당시 안내로 읽는지
-- 손상 JSON, fingerprint 불일치, path traversal, 금지 문구·정량값은 무시하고 “현재 기준 안내”로 내리는지
+- 손상 JSON, fingerprint 불일치, path traversal, canonical copy 불일치·구조적으로 유효하지 않은 메뉴 라벨은 무시하고 “현재 기준 안내”로 내리는지
 - 공개 v1 `RebuildManagedModel` attribute 집합·optional 집합·unique constraint와 `RebuildMigrationState` version/digest가 그대로인지
 - 새 optional Core Data column, model migration, v2 migration backfill이 존재하지 않는지
 

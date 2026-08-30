@@ -97,6 +97,30 @@ No secrets were printed or stored. No upload, submission, browser, or external c
 - The known non-failing `_LottieStub.o` x86_64 architecture warning remains unrelated to Task 5.
 - No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.
 
+## Review fix round 7 — typed same-meal alternatives
+
+### Scope
+
+- Replaced raw alternative-label input at the snapshot factory boundary with `SameMealAlternativeSelection`, `SameMealAlternative`, and provenance produced only by `SameMealAlternativeSelector` from one `RebuildMealDay`. Selection provenance carries the meal-day fingerprint, date, current menu, and canonical target nutrient IDs.
+- The selector excludes the current menu and child-allergy-overlapping items, requires structured nutrient overlap, deduplicates canonical labels after candidate qualification, deterministically prioritizes shared nutrient coverage and target order, and caps the result at two alternatives. The factory rejects stale selection reuse when date, current menu, or target nutrient IDs do not exactly match the requested snapshot.
+- Removed menu-label natural-language, quantity, secret, medical, allergy, and action deny-lists. The snapshot keeps its existing `[String]` field, but direct sidecar input now checks only bounded structural invariants: NFC/Unicode space-separator canonicalization, exact canonical representation, controls/format characters/path separators, duplicate labels, and the two-label limit. Ordinary menu labels remain opaque data.
+- Made the empty-nutrient fallback neutral, made `finished` copy menu-scoped, and made `allergyAvoided` copy branch on whether typed alternatives exist; when none exist, the suggestion is omitted. The exact disclaimer remains the educational string from `nutrition-rules.json`.
+- Tightened `.empty` so only the empty provenance sentinel is canonical. Existing atomic publication, `EEXIST` no-overwrite, fsync, no-follow, digest, NFC fingerprint, size, and concurrency behavior remain unchanged; Task 6 record flow and the Core Data model are untouched.
+
+### TDD and verification
+
+- RED — typed selector/factory tests initially failed to compile because the production API still accepted raw alternative labels and had no provenance-bearing selection type.
+- GREEN — focused sidecar + persistent schema suite: 44/44 passed, 0 failures, 0 skips (`build/verification/task-5-7-focused-rerun/Results.xcresult`) on `Codex Task5 iPhone 17 Pro Fresh` (iPhone 17 Pro, iOS 26.5, `DCAC5291-31BF-4515-B31B-1667CD8EB1E3`). This includes exact six-status copy rows, structural-label rejection/acceptance, same-day selector priority/filtering, duplicate-label handling, and three factory provenance-mismatch cases.
+- GREEN — native rebuild Python contracts: 32/32 passed (`python3 -m unittest discover -s scripts/tests -p 'test_native_rebuild_contracts.py'`).
+- Full iOS rerun at the current shared HEAD executed 448 tests: 447 passed and one pre-existing `RebuildRecordMealUseCaseTests.testLegacyHalfAndMismatchedCanonicalIdentityAreRejectedWithoutWrites()` expectation failed because the half status is now active. The focused sidecar and persistent suites remained green; the unrelated stale half test is being corrected separately before the parent task's final full-suite rerun.
+- `git diff --check`: passed before commit.
+
+### Warnings
+
+- The full-suite half-status failure is outside the files in this round and does not exercise `NutrientImpactSidecar`; no sidecar assertion failed. A full-suite rerun is required after the separate half-contract test correction.
+- The known non-failing `_LottieStub.o` x86_64 architecture warning remains unrelated to Task 5.
+- No Task 6/UI/assets/release/Android change, upload, submission, browser action, or secret handling occurred.
+
 ## Review fix round 3
 
 ### Scope

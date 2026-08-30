@@ -188,7 +188,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
         }
     }
 
-    func testInstallRejectsPathTraversalAndForbiddenQuantities() throws {
+    func testInstallRejectsPathAndCopyMutations() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
 
         assertInstallRejected(store, fixtureSnapshot(recordID: "../escape"))
@@ -216,35 +216,31 @@ final class NutrientImpactSidecarTests: XCTestCase {
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-5", alternatives: ["이 메뉴는 230kcal예요."])
+            fixtureSnapshot(recordID: "forbidden-copy-5", headline: "철분이 부족하니 꼭 먹어야 해요.")
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-6", headline: "철분이 부족하니 꼭 먹어야 해요.")
+            fixtureSnapshot(recordID: "forbidden-copy-6", headline: "영양소가 모자라면 몸이 나빠져요.")
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-7", headline: "영양소가 모자라면 몸이 나빠져요.")
+            fixtureSnapshot(recordID: "forbidden-copy-7", headline: "의사 진단이 필요해요.")
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-8", headline: "의사 진단이 필요해요.")
+            fixtureSnapshot(recordID: "forbidden-copy-8", explanation: "이 문장에는 API token이 들어 있어요.")
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-9", explanation: "이 문장에는 API token이 들어 있어요.")
+            fixtureSnapshot(recordID: "forbidden-copy-9", disclaimer: "알레르기가 있어도 먹어도 괜찮아요.")
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-10", disclaimer: "알레르기가 있어도 먹어도 괜찮아요.")
+            fixtureSnapshot(recordID: "forbidden-copy-10", disclaimer: "알레르기가 있더라도 다시 먹어봐요.")
         )
         assertInstallRejected(
             store,
-            fixtureSnapshot(recordID: "forbidden-copy-11", disclaimer: "알레르기가 있더라도 다시 먹어봐요.")
-        )
-        assertInstallRejected(
-            store,
-            fixtureSnapshot(recordID: "forbidden-copy-12", disclaimer: "알레르기지만 조금은 먹어보세요.")
+            fixtureSnapshot(recordID: "forbidden-copy-11", disclaimer: "알레르기지만 조금은 먹어보세요.")
         )
     }
 
@@ -257,8 +253,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 normalizedMenuName: "현미밥·콩나물",
                 status: .oneBite,
                 recordUpdatedAt: Date(timeIntervalSince1970: 10),
-                nutrientIDs: ["carbohydrate"],
-                alternativeMenuLabels: ["두부"]
+                nutrientIDs: ["carbohydrate"]
             )
         )
 
@@ -607,8 +602,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                     normalizedMenuName: "현미밥",
                     status: status,
                     recordUpdatedAt: Date(timeIntervalSince1970: TimeInterval(index + 10)),
-                    nutrientIDs: sourceNutrients,
-                    alternativeMenuLabels: ["두부", "사과"]
+                    nutrientIDs: sourceNutrients
                 )
             )
 
@@ -628,8 +622,8 @@ final class NutrientImpactSidecarTests: XCTestCase {
             (
                 .finished,
                 NutrientImpactCopy(
-                    headline: "오늘 급식, 즐겁게 잘 마무리했어요!",
-                    explanation: "이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요. 오늘의 식사 경험을 멋지게 기록했어요.",
+                    headline: "이 메뉴를 즐겁게 잘 마무리했어요!",
+                    explanation: "이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요. 이 메뉴의 식사 경험을 멋지게 기록했어요.",
                     disclaimer: NutrientImpactCopyCatalog.educationNotice
                 )
             ),
@@ -669,7 +663,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 .allergyAvoided,
                 NutrientImpactCopy(
                     headline: "알레르기 안전을 먼저 챙긴 선택이에요!",
-                    explanation: "보호자와 학교 안내를 먼저 확인해요. 안전한 다른 메뉴에서도 철분 같은 대표 영양소를 살펴볼 수 있어요.",
+                    explanation: "보호자와 학교 안내를 먼저 확인해요.",
                     disclaimer: NutrientImpactCopyCatalog.educationNotice
                 )
             ),
@@ -690,8 +684,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                     normalizedMenuName: "현미밥",
                     status: status,
                     recordUpdatedAt: Date(timeIntervalSince1970: TimeInterval(index + 10)),
-                    nutrientIDs: ["iron"],
-                    alternativeMenuLabels: ["두부"]
+                    nutrientIDs: ["iron"]
                 )
             )
             XCTAssertEqual(snapshot.headline, expected.headline)
@@ -712,56 +705,218 @@ final class NutrientImpactSidecarTests: XCTestCase {
         }
     }
 
-    func testMenuLabelCanonicalizationRejectsPolicyDataAndPreservesRealLabels() throws {
-        let valid = NutrientImpactSnapshotFactory.make(
-            recordID: "menu-label-canonical",
-            date: "2026-08-30",
-            normalizedMenuName: "현미밥",
-            status: .finished,
-            recordUpdatedAt: Date(timeIntervalSince1970: 10),
-            nutrientIDs: ["carbohydrate"],
-            alternativeMenuLabels: ["\u{00A0}김치\u{00A0} ·  두부\u{00A0}", "고구마 (찐 것)"]
+    func testSameMealSelectorUsesProvenanceAndSharedNutrientPriority() throws {
+        let current = mealItem(
+            name: "현미밥",
+            nutrients: ["protein", "iron"]
         )
-        XCTAssertEqual(valid?.alternatives, ["김치 · 두부", "고구마 (찐 것)"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "철분메뉴", nutrients: ["iron"]),
+            mealItem(name: "단백질메뉴", nutrients: ["protein"]),
+            mealItem(name: "복합메뉴", nutrients: ["protein", "iron"]),
+            mealItem(name: "알레르기메뉴", allergyCodes: [3], nutrients: ["protein", "iron"]),
+            mealItem(name: "무관메뉴", nutrients: ["carbohydrate"]),
+        ])
 
-        let ordinaryKoreanLabels = NutrientImpactSnapshotFactory.make(
-            recordID: "menu-label-ordinary",
-            date: "2026-08-30",
-            normalizedMenuName: "현미밥",
-            status: .finished,
-            recordUpdatedAt: Date(timeIntervalSince1970: 11),
-            nutrientIDs: ["carbohydrate"],
-            alternativeMenuLabels: ["2026년산 고구마", "12 garlic noodles"]
+        let selection = SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: [3]
         )
-        XCTAssertNotNil(ordinaryKoreanLabels)
 
-        let rejectedFactoryLabels = [
-            "알레르기가 있어도 한 입 먹어도 괜찮아요",
-            "철분 12mg",
-            "fake secret marker: API token",
-            "/tmp/file",
-            "\u{200B}두부",
-        ]
-        for (index, label) in rejectedFactoryLabels.enumerated() {
-            XCTAssertNil(
-                NutrientImpactSnapshotFactory.make(
-                    recordID: "menu-label-factory-rejected-\(index)",
-                    date: "2026-08-30",
-                    normalizedMenuName: "현미밥",
-                    status: .finished,
-                    recordUpdatedAt: Date(timeIntervalSince1970: TimeInterval(index + 20)),
-                    nutrientIDs: ["carbohydrate"],
-                    alternativeMenuLabels: [label]
-                ),
-                "Factory accepted policy-bearing label at index \(index)"
+        XCTAssertEqual(selection.menuLabels, ["복합메뉴", "단백질메뉴"])
+        XCTAssertEqual(selection.provenance.mealDayDate, mealDay.date)
+        XCTAssertEqual(selection.provenance.currentMenuName, "현미밥")
+        XCTAssertEqual(selection.provenance.targetNutrientIDs, ["protein", "iron"])
+        XCTAssertTrue(selection.alternatives.allSatisfy { $0.provenance == selection.provenance })
+        XCTAssertTrue(selection.alternatives.allSatisfy { !$0.nutrientIDs.isEmpty })
+        XCTAssertFalse(selection.menuLabels.contains("현미밥"))
+        XCTAssertEqual(selection.alternatives.count, 2)
+    }
+
+    func testSameMealSelectorReturnsNoAlternativesWithoutExactStructuredMatch() throws {
+        let current = mealItem(name: "현미밥", nutrients: ["protein"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "이름만비슷한메뉴", nutrients: []),
+            mealItem(name: "무관메뉴", nutrients: ["carbohydrate"]),
+            mealItem(name: "알레르기메뉴", allergyCodes: [7], nutrients: ["protein"]),
+        ])
+
+        let selection = SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentMenuName: "현미밥",
+            targetNutrientIDs: ["protein"],
+            childAllergyCodes: [7]
+        )
+
+        XCTAssertTrue(selection.alternatives.isEmpty)
+        XCTAssertTrue(selection.menuLabels.isEmpty)
+    }
+
+    func testFactoryUsesTypedSameMealSelectionAndAllergyCopyDependsOnAlternatives() throws {
+        let current = mealItem(name: "두부조림", nutrients: ["protein"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "달걀찜", nutrients: ["protein"]),
+        ])
+        let selection = SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        )
+        let withAlternative = try XCTUnwrap(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "typed-alternative-with-copy",
+                date: mealDay.date,
+                normalizedMenuName: current.normalizedPresentationName,
+                status: .allergyAvoided,
+                recordUpdatedAt: Date(timeIntervalSince1970: 10),
+                nutrientIDs: current.nutrients,
+                alternativeSelection: selection
             )
-        }
+        )
+        let withoutAlternative = try XCTUnwrap(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "typed-alternative-without-copy",
+                date: mealDay.date,
+                normalizedMenuName: current.normalizedPresentationName,
+                status: .allergyAvoided,
+                recordUpdatedAt: Date(timeIntervalSince1970: 11),
+                nutrientIDs: current.nutrients,
+                alternativeSelection: .empty
+            )
+        )
 
+        XCTAssertEqual(withAlternative.alternatives, ["달걀찜"])
+        XCTAssertTrue(withAlternative.explanation.contains("안전한 다른 메뉴에서도"))
+        XCTAssertEqual(withoutAlternative.alternatives, [])
+        XCTAssertFalse(withoutAlternative.explanation.contains("안전한 다른 메뉴에서도"))
+        XCTAssertEqual(
+            NutrientImpactCopyCatalog.makeCopy(
+                status: .allergyAvoided,
+                nutrientIDs: ["protein"],
+                hasAlternatives: false
+            )?.explanation,
+            "보호자와 학교 안내를 먼저 확인해요."
+        )
+
+        XCTAssertNil(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "typed-alternative-wrong-date",
+                date: "2026-08-31",
+                normalizedMenuName: current.normalizedPresentationName,
+                status: .allergyAvoided,
+                recordUpdatedAt: Date(timeIntervalSince1970: 12),
+                nutrientIDs: current.nutrients,
+                alternativeSelection: selection
+            )
+        )
+        XCTAssertNil(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "typed-alternative-wrong-menu",
+                date: mealDay.date,
+                normalizedMenuName: "다른메뉴",
+                status: .allergyAvoided,
+                recordUpdatedAt: Date(timeIntervalSince1970: 13),
+                nutrientIDs: current.nutrients,
+                alternativeSelection: selection
+            )
+        )
+        XCTAssertNil(
+            NutrientImpactSnapshotFactory.make(
+                recordID: "typed-alternative-wrong-nutrients",
+                date: mealDay.date,
+                normalizedMenuName: current.normalizedPresentationName,
+                status: .allergyAvoided,
+                recordUpdatedAt: Date(timeIntervalSince1970: 14),
+                nutrientIDs: ["iron"],
+                alternativeSelection: selection
+            )
+        )
+    }
+
+    func testEmptyNutrientCopyUsesNeutralFallbackWithoutDuplicatePhrase() throws {
+        for status in RebuildEatingStatus.allCases {
+            let copy = try XCTUnwrap(
+                NutrientImpactCopyCatalog.makeCopy(status: status, nutrientIDs: [])
+            )
+            XCTAssertFalse(copy.headline.contains("대표 영양소 같은 대표 영양소"))
+            XCTAssertFalse(copy.explanation.contains("대표 영양소 같은 대표 영양소"))
+        }
+    }
+
+    func testFinishedCopyIsMenuScoped() throws {
+        let copy = try XCTUnwrap(
+            NutrientImpactCopyCatalog.makeCopy(status: .finished, nutrientIDs: ["iron"])
+        )
+        XCTAssertTrue(copy.headline.contains("이 메뉴"))
+        XCTAssertTrue(copy.explanation.contains("이 메뉴"))
+    }
+
+    func testSidecarTreatsAlternativeLabelsAsOpaqueStructuredData() throws {
+        let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
+        let snapshot = fixtureSnapshot(
+            recordID: "opaque-alternative-labels",
+            status: .oneBite,
+            alternatives: ["철분 12mg", "fake secret marker: API token"]
+        )
+
+        XCTAssertNoThrow(try store.install(snapshot))
+        XCTAssertEqual(try store.load(matching: fixtureRevision(
+            recordID: snapshot.recordID,
+            status: snapshot.status,
+            updatedAt: snapshot.recordUpdatedAt
+        )), snapshot)
+    }
+
+    func testSameMealSelectorCanonicalizesRealLabelsAndExcludesCurrentMenu() throws {
+        let current = mealItem(name: "현미밥", nutrients: ["carbohydrate"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(
+                name: "\u{00A0}김치\u{00A0} ·  두부\u{00A0}",
+                nutrients: ["carbohydrate"]
+            ),
+            mealItem(name: "고구마 (찐 것)", nutrients: ["carbohydrate"]),
+            mealItem(name: "2026년산 고구마", nutrients: ["carbohydrate"]),
+        ])
+
+        let selection = SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        )
+
+        XCTAssertEqual(
+            selection.menuLabels,
+            ["김치 · 두부", "고구마 (찐 것)"]
+        )
+        XCTAssertFalse(selection.menuLabels.contains("현미밥"))
+    }
+
+    func testSameMealSelectorDeduplicatesAfterCandidateQualification() throws {
+        let current = mealItem(name: "현미밥", nutrients: ["protein"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: " 두부 ", nutrients: ["protein"]),
+            mealItem(name: "두부", nutrients: ["protein"]),
+            mealItem(name: "김치", nutrients: ["protein"]),
+        ])
+
+        let selection = SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        )
+
+        XCTAssertEqual(selection.menuLabels, ["두부", "김치"])
+    }
+
+    func testSidecarRejectsOnlyNonCanonicalStructuralLabels() throws {
         let store = FileNutrientImpactSidecar(directoryURL: temporaryDirectory)
         let rejectedDirectLabels: [[String]] = [
-            ["알레르기가 있어도 한 입 먹어도 괜찮아요"],
-            ["철분 12mg"],
-            ["fake secret marker: API token"],
             ["/tmp/file"],
             [" 두부 "],
             ["두부", " 두부 "],
@@ -790,8 +945,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 normalizedMenuName: "현미밥",
                 status: .oneBite,
                 recordUpdatedAt: Date(timeIntervalSince1970: 10),
-                nutrientIDs: ["iron"],
-                alternativeMenuLabels: ["두부"]
+                nutrientIDs: ["iron"]
             )
         )
 
@@ -834,27 +988,52 @@ final class NutrientImpactSidecarTests: XCTestCase {
     }
 
     func testFactoryTreatsAlternativesAsMenuLabelsNotCopy() throws {
-        let valid = NutrientImpactSnapshotFactory.make(
+        let current = mealItem(name: "현미밥", nutrients: ["carbohydrate"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "김치·두부", nutrients: ["carbohydrate"]),
+            mealItem(name: "고구마 (찐 것)", nutrients: ["carbohydrate"]),
+        ])
+        let selection = SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        )
+
+        let snapshot = NutrientImpactSnapshotFactory.make(
             recordID: "menu-labels",
-            date: "2026-08-30",
-            normalizedMenuName: "현미밥",
+            date: mealDay.date,
+            normalizedMenuName: current.normalizedPresentationName,
             status: .finished,
             recordUpdatedAt: Date(timeIntervalSince1970: 10),
-            nutrientIDs: ["carbohydrate"],
-            alternativeMenuLabels: ["김치·두부", "고구마 (찐 것)"]
+            nutrientIDs: current.nutrients,
+            alternativeSelection: selection
         )
-        XCTAssertNotNil(valid)
+        XCTAssertEqual(snapshot?.alternatives, ["김치·두부", "고구마 (찐 것)"])
+    }
 
-        XCTAssertNil(
-            NutrientImpactSnapshotFactory.make(
-                recordID: "sentence-alternative",
-                date: "2026-08-30",
-                normalizedMenuName: "현미밥",
-                status: .finished,
-                recordUpdatedAt: Date(timeIntervalSince1970: 11),
-                nutrientIDs: ["carbohydrate"],
-                alternativeMenuLabels: ["다음에는 익숙한 반찬과 함께 살펴봐요."]
-            )
+    private func mealItem(
+        name: String,
+        allergyCodes: [Int] = [],
+        nutrients: [String],
+        tags: [String] = [],
+        sourceRawText: String? = nil
+    ) -> RebuildMealItem {
+        RebuildMealItem(
+            name: name,
+            allergyCodes: allergyCodes,
+            nutrients: nutrients,
+            tags: tags,
+            sourceRawText: sourceRawText ?? name
+        )
+    }
+
+    private func fixtureMealDay(items: [RebuildMealItem]) -> RebuildMealDay {
+        RebuildMealDay(
+            date: "2026-08-30",
+            menuItems: items,
+            calorie: "600 kcal",
+            nutrition: .empty
         )
     }
 
@@ -872,9 +1051,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
         alternatives: [String]? = nil,
         disclaimer: String? = nil
     ) -> NutrientImpactSnapshot {
+        let persistedAlternatives = alternatives ?? ["두부"]
         let canonicalCopy = NutrientImpactCopyCatalog.makeCopy(
             status: status,
-            nutrientIDs: nutrients
+            nutrientIDs: nutrients,
+            hasAlternatives: !persistedAlternatives.isEmpty
         )
         return NutrientImpactSnapshot(
             schemaVersion: schemaVersion,
@@ -887,7 +1068,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
             nutrients: nutrients,
             headline: headline ?? canonicalCopy?.headline ?? "invalid headline",
             explanation: explanation ?? canonicalCopy?.explanation ?? "invalid explanation",
-            alternatives: alternatives ?? ["두부"],
+            alternatives: persistedAlternatives,
             disclaimer: disclaimer ?? canonicalCopy?.disclaimer ?? NutrientImpactCopyCatalog.educationNotice
         )
     }
