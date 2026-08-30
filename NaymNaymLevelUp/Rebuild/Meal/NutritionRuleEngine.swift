@@ -145,26 +145,7 @@ struct NutritionRuleEngine {
     }
 
     func orderedKnownNutrientIDs(from values: [String]) -> [String] {
-        let aliases: [String: String] = [
-            "fiber": "fiber",
-            "식이섬유": "fiber",
-            "vitamin": "vitamin",
-            "비타민": "vitamin",
-            "protein": "protein",
-            "단백질": "protein",
-            "iron": "iron",
-            "철분": "iron",
-            "철": "iron",
-            "calcium": "calcium",
-            "칼슘": "calcium",
-            "carbohydrate": "carbohydrate",
-            "탄수화물": "carbohydrate",
-        ]
-        let known = Set(rules.nutrients.keys)
-        let selected = Set(values.compactMap { value in
-            aliases[value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
-        }).intersection(known)
-        return rules.nutrientOrder.filter(selected.contains)
+        MealNutrientCanonicalizer.orderedKnownIDs(from: values)
     }
 
     var ruleVersion: Int {
@@ -307,6 +288,7 @@ private struct NutritionRulesDocument: Decodable {
               educationNotice
                 == "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요.",
               !nutrientOrder.isEmpty,
+              nutrientOrder == MealNutrientCanonicalizer.orderedIDs,
               Set(nutrientOrder).count == nutrientOrder.count,
               Set(nutrientOrder) == Set(nutrients.keys),
               !rules.isEmpty else {

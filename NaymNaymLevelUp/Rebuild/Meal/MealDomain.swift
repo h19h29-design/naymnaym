@@ -1,5 +1,63 @@
 import Foundation
 
+enum MealRecordIdentityNormalizer {
+    static func normalizedMenuName(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+}
+
+enum MealNutrientCanonicalizer {
+    static let orderedIDs = [
+        "fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate",
+    ]
+
+    private static let aliases: [String: String] = [
+        "fiber": "fiber",
+        "식이섬유": "fiber",
+        "vitamin": "vitamin",
+        "비타민": "vitamin",
+        "protein": "protein",
+        "단백질": "protein",
+        "iron": "iron",
+        "철분": "iron",
+        "철": "iron",
+        "calcium": "calcium",
+        "칼슘": "calcium",
+        "carbohydrate": "carbohydrate",
+        "탄수화물": "carbohydrate",
+    ]
+
+    static func canonicalID(for value: String) -> String? {
+        aliases[
+            value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+        ]
+    }
+
+    static func orderedKnownIDs(from values: [String]) -> [String] {
+        let selected = Set(values.compactMap(canonicalID(for:)))
+        return orderedIDs.filter(selected.contains)
+    }
+
+    static func canonicalizedIfAllKnown(_ values: [String]) -> [String]? {
+        guard values.allSatisfy({ canonicalID(for: $0) != nil }) else {
+            return nil
+        }
+        return orderedKnownIDs(from: values)
+    }
+
+    static func validatedCanonicalIDs(_ values: [String]) -> [String]? {
+        guard values.allSatisfy({ aliases[$0] == $0 }),
+              values == orderedKnownIDs(from: values) else {
+            return nil
+        }
+        return values
+    }
+}
+
 struct RebuildSchool: Codable, Equatable, Sendable {
     let name: String
     let officeCode: String

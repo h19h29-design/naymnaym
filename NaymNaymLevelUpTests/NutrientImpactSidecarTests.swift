@@ -719,11 +719,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
             mealItem(name: "무관메뉴", nutrients: ["carbohydrate"]),
         ])
 
-        let selection = SameMealAlternativeSelector.select(
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
             from: mealDay,
             currentItem: current,
             childAllergyCodes: [3]
-        )
+        ))
 
         XCTAssertEqual(selection.menuLabels, ["복합메뉴", "단백질메뉴"])
         XCTAssertEqual(selection.provenance.mealDayDate, mealDay.date)
@@ -735,24 +735,150 @@ final class NutrientImpactSidecarTests: XCTestCase {
         XCTAssertEqual(selection.alternatives.count, 2)
     }
 
-    func testSameMealSelectorReturnsNoAlternativesWithoutExactStructuredMatch() throws {
-        let current = mealItem(name: "현미밥", nutrients: ["protein"])
+    func testSameMealSelectorReturnsProvenanceWhenNoAlternativeMatches() throws {
+        let current = mealItem(name: " BBQ Chicken ", nutrients: ["단백질"])
         let mealDay = fixtureMealDay(items: [
             current,
             mealItem(name: "이름만비슷한메뉴", nutrients: []),
-            mealItem(name: "무관메뉴", nutrients: ["carbohydrate"]),
-            mealItem(name: "알레르기메뉴", allergyCodes: [7], nutrients: ["protein"]),
+            mealItem(name: "무관메뉴", nutrients: ["탄수화물"]),
+            mealItem(name: "알레르기메뉴", allergyCodes: [7], nutrients: ["단백질"]),
         ])
 
-        let selection = SameMealAlternativeSelector.select(
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
             from: mealDay,
-            currentMenuName: "현미밥",
-            targetNutrientIDs: ["protein"],
+            currentItem: current,
             childAllergyCodes: [7]
-        )
+        ))
 
         XCTAssertTrue(selection.alternatives.isEmpty)
         XCTAssertTrue(selection.menuLabels.isEmpty)
+        XCTAssertEqual(selection.provenance.currentMenuName, "bbq chicken")
+        XCTAssertEqual(selection.provenance.targetNutrientIDs, ["protein"])
+
+        XCTAssertNotNil(NutrientImpactSnapshotFactory.make(
+            recordID: "empty-selection-canonical",
+            date: mealDay.date,
+            normalizedMenuName: "bbq chicken",
+            status: .allergyAvoided,
+            recordUpdatedAt: Date(timeIntervalSince1970: 1),
+            nutrientIDs: ["단백질"],
+            alternativeSelection: selection
+        ))
+        XCTAssertNil(NutrientImpactSnapshotFactory.make(
+            recordID: "empty-selection-wrong-date",
+            date: "2026-08-31",
+            normalizedMenuName: "bbq chicken",
+            status: .allergyAvoided,
+            recordUpdatedAt: Date(timeIntervalSince1970: 2),
+            nutrientIDs: ["단백질"],
+            alternativeSelection: selection
+        ))
+        XCTAssertNil(NutrientImpactSnapshotFactory.make(
+            recordID: "empty-selection-wrong-menu",
+            date: mealDay.date,
+            normalizedMenuName: "BBQ Chicken",
+            status: .allergyAvoided,
+            recordUpdatedAt: Date(timeIntervalSince1970: 3),
+            nutrientIDs: ["단백질"],
+            alternativeSelection: selection
+        ))
+        XCTAssertNil(NutrientImpactSnapshotFactory.make(
+            recordID: "empty-selection-wrong-nutrients",
+            date: mealDay.date,
+            normalizedMenuName: "bbq chicken",
+            status: .allergyAvoided,
+            recordUpdatedAt: Date(timeIntervalSince1970: 4),
+            nutrientIDs: ["철분"],
+            alternativeSelection: selection
+        ))
+    }
+
+    func testNutrientCanonicalizerSharesRealParserAliasesAndStableOrder() {
+        XCTAssertEqual(
+            MealNutrientCanonicalizer.orderedKnownIDs(
+                from: [" 탄수화물 ", "Protein", "식이섬유", "철", "칼슘", "비타민", "단백질"]
+            ),
+            ["fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate"]
+        )
+        XCTAssertEqual(
+            NutrientImpactCopyCatalog.canonicalNutrientIDs(
+                fromRawValues: ["단백질", "철분", "protein"]
+            ),
+            ["protein", "iron"]
+        )
+        XCTAssertNil(
+            NutrientImpactCopyCatalog.validatedCanonicalNutrientIDs(["단백질"])
+        )
+        XCTAssertEqual(
+            NutrientImpactCopyCatalog.validatedCanonicalNutrientIDs(["protein", "iron"]),
+            ["protein", "iron"]
+        )
+    }
+
+    func testSameMealSelectorDerivesKoreanAndVisualNutrientsFromActualMembers() throws {
+        let current = mealItem(name: " 닭갈비 ", nutrients: [])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "두부조림", nutrients: ["단백질"]),
+            mealItem(name: "소고기볶음", nutrients: ["철"]),
+            mealItem(name: "현미밥", nutrients: ["탄수화물"]),
+        ])
+
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        ))
+
+        XCTAssertEqual(selection.provenance.currentMenuName, "닭갈비")
+        XCTAssertEqual(selection.provenance.targetNutrientIDs, ["protein", "iron"])
+        XCTAssertEqual(selection.menuLabels, ["두부조림", "소고기볶음"])
+        XCTAssertEqual(selection.alternatives.map(\.nutrientIDs), [["protein"], ["iron"]])
+    }
+
+    func testSameMealSelectorRejectsCurrentItemThatIsNotAMealDayMember() {
+        let stored = mealItem(
+            name: "BBQ 닭구이",
+            nutrients: ["단백질"],
+            sourceRawText: "BBQ 닭구이"
+        )
+        let detached = mealItem(
+            name: "BBQ 닭구이",
+            nutrients: ["단백질"],
+            sourceRawText: "detached"
+        )
+        let mealDay = fixtureMealDay(items: [stored])
+
+        XCTAssertNil(SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: detached,
+            childAllergyCodes: []
+        ))
+    }
+
+    func testMealRecordIdentityNormalizerMatchesMixedCaseSelectorProvenance() throws {
+        let current = mealItem(name: "  BBQ 닭구이  ", nutrients: ["단백질"])
+        let mealDay = fixtureMealDay(items: [
+            current,
+            mealItem(name: "두부조림", nutrients: ["protein"]),
+        ])
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
+            from: mealDay,
+            currentItem: current,
+            childAllergyCodes: []
+        ))
+
+        XCTAssertEqual(MealRecordIdentityNormalizer.normalizedMenuName(current.name), "bbq 닭구이")
+        XCTAssertEqual(selection.provenance.currentMenuName, "bbq 닭구이")
+        XCTAssertNotNil(NutrientImpactSnapshotFactory.make(
+            recordID: "mixed-case-bbq",
+            date: mealDay.date,
+            normalizedMenuName: "bbq 닭구이",
+            status: .oneBite,
+            recordUpdatedAt: Date(timeIntervalSince1970: 5),
+            nutrientIDs: ["단백질"],
+            alternativeSelection: selection
+        ))
     }
 
     func testFactoryUsesTypedSameMealSelectionAndAllergyCopyDependsOnAlternatives() throws {
@@ -761,11 +887,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
             current,
             mealItem(name: "달걀찜", nutrients: ["protein"]),
         ])
-        let selection = SameMealAlternativeSelector.select(
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
             from: mealDay,
             currentItem: current,
             childAllergyCodes: []
-        )
+        ))
         let withAlternative = try XCTUnwrap(
             NutrientImpactSnapshotFactory.make(
                 recordID: "typed-alternative-with-copy",
@@ -784,8 +910,7 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 normalizedMenuName: current.normalizedPresentationName,
                 status: .allergyAvoided,
                 recordUpdatedAt: Date(timeIntervalSince1970: 11),
-                nutrientIDs: current.nutrients,
-                alternativeSelection: .empty
+                nutrientIDs: current.nutrients
             )
         )
 
@@ -883,11 +1008,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
             mealItem(name: "2026년산 고구마", nutrients: ["carbohydrate"]),
         ])
 
-        let selection = SameMealAlternativeSelector.select(
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
             from: mealDay,
             currentItem: current,
             childAllergyCodes: []
-        )
+        ))
 
         XCTAssertEqual(
             selection.menuLabels,
@@ -905,11 +1030,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
             mealItem(name: "김치", nutrients: ["protein"]),
         ])
 
-        let selection = SameMealAlternativeSelector.select(
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
             from: mealDay,
             currentItem: current,
             childAllergyCodes: []
-        )
+        ))
 
         XCTAssertEqual(selection.menuLabels, ["두부", "김치"])
     }
@@ -994,11 +1119,11 @@ final class NutrientImpactSidecarTests: XCTestCase {
             mealItem(name: "김치·두부", nutrients: ["carbohydrate"]),
             mealItem(name: "고구마 (찐 것)", nutrients: ["carbohydrate"]),
         ])
-        let selection = SameMealAlternativeSelector.select(
+        let selection = try XCTUnwrap(SameMealAlternativeSelector.select(
             from: mealDay,
             currentItem: current,
             childAllergyCodes: []
-        )
+        ))
 
         let snapshot = NutrientImpactSnapshotFactory.make(
             recordID: "menu-labels",

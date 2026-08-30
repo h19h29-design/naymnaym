@@ -1,5 +1,14 @@
 # Task 5 report — immutable nutrition sidecar
 
+## Task 5.8 — Real-meal nutrient provenance hardening
+
+- Added one shared nutrient canonicalizer for the real MealParser/NutritionEstimator Korean and English aliases. `NutritionRuleEngine`, the copy catalog, and same-meal selector now use the same ordered canonical IDs; sidecar validation remains exact-canonical while factory raw inputs are canonicalized separately.
+- Removed the selector API that accepted arbitrary menu names and nutrient IDs. The selector now requires an actual `RebuildMealDay.menuItems` member, derives structured nutrients itself, and uses only non-fallback `MealVisualResolver` nutrients when structured metadata is absent.
+- Shared trim+lowercase record-menu identity with selector provenance, including mixed-case `BBQ` coverage. Empty candidate results retain provenance and must still match factory date/menu/nutrients; a separate overload handles an intentional provenance-free no-alternative snapshot.
+- RED: the new alias/identity/membership tests failed to compile before the shared helpers and constrained selector API existed (`build/verification/task-5-8-red/Results.xcresult`).
+- GREEN: app target build succeeded for the fresh simulator (`build/verification/task-5-8-app-build/DerivedData`). Focused sidecar + meal presentation tests passed 69/69 with 0 failures (`build/verification/task-5-8-focused-final/Results.xcresult`, simulator `DCAC5291-31BF-4515-B31B-1667CD8EB1E3`).
+- Core Data schema and persisted `NutrientImpactSnapshot.alternatives: [String]` remain unchanged. The meal-day fingerprint field was removed because the factory could not independently verify it; the verifiable date/menu/nutrient provenance is strict instead.
+
 ## Commit
 
 - Base: `5cb270e9923562937a305159840ddc4ec3caad7c` (reviewed Task 4 head)

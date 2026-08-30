@@ -29,18 +29,15 @@ struct NutrientImpactCopy: Equatable, Sendable {
 
 struct SameMealAlternativeProvenance: Equatable, Sendable {
     let mealDayDate: String
-    let mealDayFingerprint: String
     let currentMenuName: String
     let targetNutrientIDs: [String]
 
     fileprivate init(
         mealDayDate: String,
-        mealDayFingerprint: String,
         currentMenuName: String,
         targetNutrientIDs: [String]
     ) {
         self.mealDayDate = mealDayDate
-        self.mealDayFingerprint = mealDayFingerprint
         self.currentMenuName = currentMenuName
         self.targetNutrientIDs = targetNutrientIDs
     }
@@ -69,16 +66,6 @@ struct SameMealAlternativeSelection: Equatable, Sendable {
     let alternatives: [SameMealAlternative]
     let provenance: SameMealAlternativeProvenance
 
-    static let empty = SameMealAlternativeSelection(
-        alternatives: [],
-        provenance: SameMealAlternativeProvenance(
-            mealDayDate: "",
-            mealDayFingerprint: "",
-            currentMenuName: "",
-            targetNutrientIDs: []
-        )
-    )
-
     var menuLabels: [String] {
         alternatives.map(\.menuName)
     }
@@ -92,21 +79,17 @@ struct SameMealAlternativeSelection: Equatable, Sendable {
     }
 
     fileprivate func isCanonical() -> Bool {
-        if alternatives.isEmpty {
-            return provenance.mealDayDate.isEmpty
-                && provenance.mealDayFingerprint.isEmpty
-                && provenance.currentMenuName.isEmpty
-                && provenance.targetNutrientIDs.isEmpty
-        }
         guard alternatives.count <= 2,
               !provenance.mealDayDate.isEmpty,
-              !provenance.mealDayFingerprint.isEmpty,
-              NutrientImpactCopyCatalog.validateMenuLabels([provenance.currentMenuName]),
-              let targetNutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(
+              !provenance.currentMenuName.isEmpty,
+              !provenance.currentMenuName.contains("|"),
+              MealRecordIdentityNormalizer.normalizedMenuName(
+                  provenance.currentMenuName
+              ) == provenance.currentMenuName,
+              let targetNutrients = NutrientImpactCopyCatalog.validatedCanonicalNutrientIDs(
                   provenance.targetNutrientIDs
               ),
               !targetNutrients.isEmpty,
-              targetNutrients == provenance.targetNutrientIDs,
               NutrientImpactCopyCatalog.validateMenuLabels(menuLabels),
               Set(menuLabels).count == menuLabels.count
         else {
@@ -116,15 +99,16 @@ struct SameMealAlternativeSelection: Equatable, Sendable {
         let targetSet = Set(targetNutrients)
         return alternatives.allSatisfy { alternative in
             guard alternative.provenance == provenance,
-                  let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(
+                  let nutrients = NutrientImpactCopyCatalog.validatedCanonicalNutrientIDs(
                       alternative.nutrientIDs
                   ),
-                  nutrients == alternative.nutrientIDs,
                   !nutrients.isEmpty,
                   !Set(nutrients).intersection(targetSet).isEmpty,
                   alternative.allergyCodes == Array(Set(alternative.allergyCodes).sorted()),
                   NutrientImpactCopyCatalog.validateMenuLabels([alternative.menuName]),
-                  alternative.menuName != provenance.currentMenuName
+                  MealRecordIdentityNormalizer.normalizedMenuName(
+                      alternative.menuName
+                  ) != provenance.currentMenuName
             else {
                 return false
             }
@@ -138,7 +122,6 @@ struct SameMealAlternativeSelection: Equatable, Sendable {
         nutrientIDs: [String]
     ) -> Bool {
         guard isCanonical() else { return false }
-        guard !alternatives.isEmpty else { return true }
         return exact(provenance.mealDayDate, date)
             && exact(provenance.currentMenuName, menuName)
             && provenance.targetNutrientIDs.count == nutrientIDs.count
@@ -157,66 +140,50 @@ enum SameMealAlternativeSelector {
         from mealDay: RebuildMealDay,
         currentItem: RebuildMealItem,
         childAllergyCodes: [Int]
-    ) -> SameMealAlternativeSelection {
+    ) -> SameMealAlternativeSelection? {
         guard let currentIndex = mealDay.menuItems.firstIndex(of: currentItem) else {
-            return .empty
+            return nil
         }
-        guard let currentMenuName = NutrientImpactCopyCatalog.canonicalMenuLabels([
-            currentItem.normalizedPresentationName
-        ])?.first else {
-            return .empty
+        let currentIdentity = MealRecordIdentityNormalizer.normalizedMenuName(
+            currentItem.name
+        )
+        guard !currentIdentity.isEmpty,
+              !currentIdentity.contains("|"),
+              let currentDisplayLabel = NutrientImpactCopyCatalog.canonicalMenuLabels([
+                  currentItem.normalizedPresentationName
+              ])?.first else {
+            return nil
         }
-        return select(
+        let targets = resolvedNutrientIDs(for: currentItem)
+        guard !targets.isEmpty else {
+            return nil
+        }
+
+        return buildSelection(
             from: mealDay,
             currentIndex: currentIndex,
-            currentMenuName: currentMenuName,
-            targetNutrientIDs: currentItem.nutrients,
+            currentIdentity: currentIdentity,
+            currentDisplayLabel: currentDisplayLabel,
+            targets: targets,
             childAllergyCodes: childAllergyCodes
         )
     }
 
-    static func select(
-        from mealDay: RebuildMealDay,
-        currentMenuName: String,
-        targetNutrientIDs: [String],
-        childAllergyCodes: [Int]
-    ) -> SameMealAlternativeSelection {
-        guard let normalizedCurrentName = NutrientImpactCopyCatalog.canonicalMenuLabels([
-            currentMenuName
-        ])?.first,
-        let currentIndex = mealDay.menuItems.firstIndex(where: {
-            NutrientImpactCopyCatalog.canonicalMenuLabels([
-                $0.normalizedPresentationName
-            ])?.first == normalizedCurrentName
-        }) else {
-            return .empty
-        }
-        return select(
-            from: mealDay,
-            currentIndex: currentIndex,
-            currentMenuName: normalizedCurrentName,
-            targetNutrientIDs: targetNutrientIDs,
-            childAllergyCodes: childAllergyCodes
-        )
-    }
-
-    private static func select(
+    private static func buildSelection(
         from mealDay: RebuildMealDay,
         currentIndex: Int,
-        currentMenuName: String,
-        targetNutrientIDs: [String],
+        currentIdentity: String,
+        currentDisplayLabel: String,
+        targets: [String],
         childAllergyCodes: [Int]
     ) -> SameMealAlternativeSelection {
-        guard let targets = NutrientImpactCopyCatalog.normalizedNutrientIDs(targetNutrientIDs),
-              !targets.isEmpty,
-              !currentMenuName.isEmpty else {
-            return .empty
-        }
-
+        precondition(
+            !targets.isEmpty,
+            "A same-meal selection requires canonical target nutrients."
+        )
         let provenance = SameMealAlternativeProvenance(
             mealDayDate: mealDay.date,
-            mealDayFingerprint: mealDayFingerprint(for: mealDay),
-            currentMenuName: currentMenuName,
+            currentMenuName: currentIdentity,
             targetNutrientIDs: targets
         )
         let childAllergies = Set(childAllergyCodes)
@@ -225,15 +192,19 @@ enum SameMealAlternativeSelector {
         var seenLabels = Set<String>()
 
         for (index, item) in mealDay.menuItems.enumerated() where index != currentIndex {
-            guard let label = NutrientImpactCopyCatalog.canonicalMenuLabels([
-                item.normalizedPresentationName
-            ])?.first,
-                  label != currentMenuName,
-                  childAllergies.isDisjoint(with: item.allergyCodes),
-                  let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(item.nutrients),
-                  !nutrients.isEmpty else {
+            let itemIdentity = MealRecordIdentityNormalizer.normalizedMenuName(item.name)
+            guard !itemIdentity.isEmpty,
+                  !itemIdentity.contains("|"),
+                  itemIdentity != currentIdentity,
+                  let label = NutrientImpactCopyCatalog.canonicalMenuLabels([
+                      item.normalizedPresentationName
+                  ])?.first,
+                  label != currentDisplayLabel,
+                  childAllergies.isDisjoint(with: item.allergyCodes) else {
                 continue
             }
+            let nutrients = resolvedNutrientIDs(for: item)
+            guard !nutrients.isEmpty else { continue }
             let shared = targets.filter { targetSet.contains($0) && nutrients.contains($0) }
             guard !shared.isEmpty, seenLabels.insert(label).inserted else { continue }
             candidates.append((index, item, label, nutrients, shared))
@@ -259,51 +230,25 @@ enum SameMealAlternativeSelector {
                 provenance: provenance
             )
         }
-        guard !selected.isEmpty else { return .empty }
         return SameMealAlternativeSelection(
             alternatives: Array(selected),
             provenance: provenance
         )
     }
 
-    private static func mealDayFingerprint(for mealDay: RebuildMealDay) -> String {
-        var data = Data()
-        append(mealDay.date, to: &data)
-        append(mealDay.calorie, to: &data)
-        for item in mealDay.menuItems {
-            append(item.name, to: &data)
-            append(item.allergyCodes.map(String.init), to: &data)
-            append(item.nutrients, to: &data)
-            append(item.tags, to: &data)
-            append(item.sourceRawText, to: &data)
-        }
-        append(String(mealDay.nutrition.carbs), to: &data)
-        append(String(mealDay.nutrition.protein), to: &data)
-        append(String(mealDay.nutrition.fat), to: &data)
-        append(String(mealDay.nutrition.calcium), to: &data)
-        append(String(mealDay.nutrition.iron), to: &data)
-        append(String(mealDay.nutrition.vitamin), to: &data)
-        append(mealDay.nutrition.sourceFields.map(\.rawValue).sorted(), to: &data)
-        append(
-            mealDay.nutrition.sourceUnits
-                .sorted { $0.key.rawValue < $1.key.rawValue }
-                .flatMap { [$0.key.rawValue, $0.value] },
-            to: &data
+    private static func resolvedNutrientIDs(
+        for item: RebuildMealItem
+    ) -> [String] {
+        let structured = MealNutrientCanonicalizer.orderedKnownIDs(
+            from: item.nutrients
         )
-        return SHA256.hash(data: data)
-            .map { String(format: "%02x", $0) }
-            .joined()
-    }
+        guard structured.isEmpty else { return structured }
 
-    private static func append(_ values: [String], to data: inout Data) {
-        append(String(values.count), to: &data)
-        for value in values {
-            append(value, to: &data)
-        }
-    }
-
-    private static func append(_ value: String, to data: inout Data) {
-        data.append(Data("\(value.utf8.count):\(value)".utf8))
+        let visual = MealVisualResolver.resolve(item: item)
+        guard visual.confidence != .fallback else { return [] }
+        return MealNutrientCanonicalizer.orderedKnownIDs(
+            from: visual.representativeNutrientIDs
+        )
     }
 }
 
@@ -314,9 +259,7 @@ enum NutrientImpactCopyCatalog {
     static let educationNotice =
         "영양소 정보는 의학 진단이나 치료를 대신하지 않는 교육용 참고 정보예요."
 
-    static let nutrientOrder = [
-        "fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate",
-    ]
+    static let nutrientOrder = MealNutrientCanonicalizer.orderedIDs
 
     private static let nutrientNames: [String: String] = [
         "fiber": "식이섬유",
@@ -329,12 +272,17 @@ enum NutrientImpactCopyCatalog {
 
     private static let maximumMenuLabelBytes = 256
     private static let maximumMenuLabelCharacters = 80
-    static func normalizedNutrientIDs(_ values: [String]) -> [String]? {
-        guard values.allSatisfy({ nutrientNames[$0] != nil }) else {
-            return nil
-        }
-        let selected = Set(values)
-        return nutrientOrder.filter(selected.contains)
+
+    static func canonicalNutrientIDs(
+        fromRawValues values: [String]
+    ) -> [String]? {
+        MealNutrientCanonicalizer.canonicalizedIfAllKnown(values)
+    }
+
+    static func validatedCanonicalNutrientIDs(
+        _ values: [String]
+    ) -> [String]? {
+        MealNutrientCanonicalizer.validatedCanonicalIDs(values)
     }
 
     static func makeCopy(
@@ -342,7 +290,7 @@ enum NutrientImpactCopyCatalog {
         nutrientIDs: [String],
         hasAlternatives: Bool = false
     ) -> NutrientImpactCopy? {
-        guard let normalized = normalizedNutrientIDs(nutrientIDs) else {
+        guard let normalized = validatedCanonicalNutrientIDs(nutrientIDs) else {
             return nil
         }
         let headline: String
@@ -397,9 +345,6 @@ enum NutrientImpactCopyCatalog {
             nutrientIDs: nutrientIDs,
             hasAlternatives: hasAlternatives
         ) else {
-            return false
-        }
-        guard nutrientIDs == normalizedNutrientIDs(nutrientIDs) else {
             return false
         }
         return exact(copy.headline, headline)
@@ -516,23 +461,83 @@ enum NutrientImpactSnapshotFactory {
         normalizedMenuName: String,
         status: RebuildEatingStatus,
         recordUpdatedAt: Date,
-        nutrientIDs: [String],
-        alternativeSelection: SameMealAlternativeSelection = .empty
+        nutrientIDs: [String]
     ) -> NutrientImpactSnapshot? {
         guard schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion,
-              ruleVersion == NutrientImpactSnapshot.supportedRuleVersion,
-              let nutrients = NutrientImpactCopyCatalog.normalizedNutrientIDs(nutrientIDs),
-              let copy = NutrientImpactCopyCatalog.makeCopy(
-                  status: status,
-                  nutrientIDs: nutrients,
-                  hasAlternatives: !alternativeSelection.alternatives.isEmpty
-              ),
+              ruleVersion == NutrientImpactSnapshot.supportedRuleVersion else {
+            return nil
+        }
+        guard let nutrients = NutrientImpactCopyCatalog.canonicalNutrientIDs(
+            fromRawValues: nutrientIDs
+        ) else { return nil }
+        return makeSnapshot(
+            schemaVersion: schemaVersion,
+            ruleVersion: ruleVersion,
+            recordID: recordID,
+            date: date,
+            normalizedMenuName: normalizedMenuName,
+            status: status,
+            recordUpdatedAt: recordUpdatedAt,
+            nutrients: nutrients,
+            alternatives: []
+        )
+    }
+
+    static func make(
+        schemaVersion: Int = NutrientImpactSnapshot.supportedSchemaVersion,
+        ruleVersion: Int = NutrientImpactSnapshot.supportedRuleVersion,
+        recordID: String,
+        date: String,
+        normalizedMenuName: String,
+        status: RebuildEatingStatus,
+        recordUpdatedAt: Date,
+        nutrientIDs: [String],
+        alternativeSelection: SameMealAlternativeSelection
+    ) -> NutrientImpactSnapshot? {
+        guard schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion,
+              ruleVersion == NutrientImpactSnapshot.supportedRuleVersion else {
+            return nil
+        }
+        guard let nutrients = NutrientImpactCopyCatalog.canonicalNutrientIDs(
+            fromRawValues: nutrientIDs
+        ), !nutrients.isEmpty,
               alternativeSelection.matches(
                   date: date,
                   menuName: normalizedMenuName,
                   nutrientIDs: nutrients
               )
         else {
+            return nil
+        }
+        return makeSnapshot(
+            schemaVersion: schemaVersion,
+            ruleVersion: ruleVersion,
+            recordID: recordID,
+            date: date,
+            normalizedMenuName: normalizedMenuName,
+            status: status,
+            recordUpdatedAt: recordUpdatedAt,
+            nutrients: nutrients,
+            alternatives: alternativeSelection.menuLabels
+        )
+    }
+
+    private static func makeSnapshot(
+        schemaVersion: Int,
+        ruleVersion: Int,
+        recordID: String,
+        date: String,
+        normalizedMenuName: String,
+        status: RebuildEatingStatus,
+        recordUpdatedAt: Date,
+        nutrients: [String],
+        alternatives: [String]
+    ) -> NutrientImpactSnapshot? {
+        guard let copy = NutrientImpactCopyCatalog.makeCopy(
+            status: status,
+            nutrientIDs: nutrients,
+            hasAlternatives: !alternatives.isEmpty
+        ) else {
             return nil
         }
         return NutrientImpactSnapshot(
@@ -546,7 +551,7 @@ enum NutrientImpactSnapshotFactory {
             nutrients: nutrients,
             headline: copy.headline,
             explanation: copy.explanation,
-            alternatives: alternativeSelection.menuLabels,
+            alternatives: alternatives,
             disclaimer: copy.disclaimer
         )
     }
@@ -1047,7 +1052,7 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     private static func validateIdentifierList(_ values: [String]) -> Bool {
         guard values.count <= 32,
               values.allSatisfy({ validIdentifier($0, maximumBytes: maximumNutrientIdentifierBytes) }),
-              values == NutrientImpactCopyCatalog.normalizedNutrientIDs(values) else {
+              NutrientImpactCopyCatalog.validatedCanonicalNutrientIDs(values) != nil else {
             return false
         }
         return true
