@@ -123,6 +123,113 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(nutrition.sourceUnits, [:])
     }
 
+    func testCurrentNutritionSourceUnitArrayDecodesAlternatingKeyAndUnitStrings() throws {
+        let data = try XCTUnwrap(
+            """
+            {
+              "carbs": 0,
+              "protein": 21.5,
+              "fat": 0,
+              "calcium": 0,
+              "iron": 0,
+              "vitamin": 0,
+              "sourceFields": ["protein"],
+              "sourceUnits": ["protein", "g"]
+            }
+            """.data(using: .utf8)
+        )
+
+        let nutrition = try JSONDecoder().decode(
+            RebuildNutritionInfo.self,
+            from: data
+        )
+
+        XCTAssertEqual(nutrition.sourceUnits, [.protein: "g"])
+    }
+
+    func testLegacyNutritionSourceUnitObjectAcceptsKnownStringEntries() throws {
+        let data = try XCTUnwrap(
+            """
+            {
+              "carbs": 0,
+              "protein": 21.5,
+              "fat": 0,
+              "calcium": 0,
+              "iron": 0,
+              "vitamin": 0,
+              "sourceFields": ["protein"],
+              "sourceUnits": {
+                "protein": "g",
+                "unknown": "mg",
+                "fat": 12
+              }
+            }
+            """.data(using: .utf8)
+        )
+
+        let nutrition = try JSONDecoder().decode(
+            RebuildNutritionInfo.self,
+            from: data
+        )
+
+        XCTAssertEqual(nutrition.sourceUnits, [.protein: "g"])
+    }
+
+    func testMalformedOrUnknownNutritionSourceUnitArrayDowngradesToEmptyMap() throws {
+        let invalidArrays: [[Any]] = [
+            ["protein"],
+            ["protein", 3],
+            ["unknown", "mg"],
+        ]
+
+        for sourceUnits in invalidArrays {
+            let object: [String: Any] = [
+                "carbs": 0,
+                "protein": 21.5,
+                "fat": 0,
+                "calcium": 0,
+                "iron": 0,
+                "vitamin": 0,
+                "sourceFields": ["protein"],
+                "sourceUnits": sourceUnits,
+            ]
+            let data = try JSONSerialization.data(
+                withJSONObject: object
+            )
+
+            let nutrition = try JSONDecoder().decode(
+                RebuildNutritionInfo.self,
+                from: data
+            )
+
+            XCTAssertEqual(nutrition.sourceUnits, [:])
+        }
+    }
+
+    func testDuplicateNutritionSourceUnitArrayDowngradesToEmptyMap() throws {
+        let data = try XCTUnwrap(
+            """
+            {
+              "carbs": 0,
+              "protein": 21.5,
+              "fat": 0,
+              "calcium": 0,
+              "iron": 0,
+              "vitamin": 0,
+              "sourceFields": ["protein"],
+              "sourceUnits": ["protein", "g", "protein", "mg"]
+            }
+            """.data(using: .utf8)
+        )
+
+        let nutrition = try JSONDecoder().decode(
+            RebuildNutritionInfo.self,
+            from: data
+        )
+
+        XCTAssertEqual(nutrition.sourceUnits, [:])
+    }
+
     func testWholeMealTotalsOmitMissingZerosPreserveDecimalsAndKeepVitaminUnitNeutral() {
         let nutrition = RebuildNutritionInfo(
             carbs: 84.25,
@@ -257,12 +364,32 @@ final class MealPresentationTests: XCTestCase {
         let missingUnitSummary = MealScheduleNutritionSummary(
             meals: [first, missingUnit]
         )
-        XCTAssertEqual(missingUnitSummary.tiles[1].value, "0.2")
+        XCTAssertNil(
+            missingUnitSummary.tiles.first(where: { $0.title == "단백질" })
+        )
 
         let mixedUnitSummary = MealScheduleNutritionSummary(
             meals: [first, differentUnit]
         )
-        XCTAssertEqual(mixedUnitSummary.tiles[1].value, "0.2")
+        XCTAssertNil(
+            mixedUnitSummary.tiles.first(where: { $0.title == "단백질" })
+        )
+
+        let allUnitlessSummary = MealScheduleNutritionSummary(
+            meals: [
+                missingUnit,
+                meal(
+                    date: "2026-08-30",
+                    calorie: "770.5 Kcal",
+                    protein: 0.5,
+                    unit: nil
+                ),
+            ]
+        )
+        XCTAssertEqual(
+            allUnitlessSummary.tiles.first(where: { $0.title == "단백질" })?.value,
+            "0.4"
+        )
     }
 
     func testNutritionInsightExposesOptionalPresentationMetadata() throws {
@@ -548,6 +675,24 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertEqual(
             descriptor.readingOrder,
             ["시금치나물", "알레르기 정보", "전체 급식 영양", "급식 상세 보기"]
+        )
+    }
+
+    func testRecordingActionDescriptorNamesMenuPromptAndControls() {
+        let descriptor = MealRecordingActionDescriptor(menuName: "시금치나물")
+
+        XCTAssertEqual(descriptor.prompt, "시금치나물은 어떻게 만났나요?")
+        XCTAssertEqual(
+            descriptor.controlLabel(for: "다 먹었어요"),
+            "시금치나물, 다 먹었어요"
+        )
+        XCTAssertTrue(
+            descriptor.statusHint(for: .finished, enabled: true)
+                .contains("시금치나물")
+        )
+        XCTAssertTrue(
+            descriptor.statusHint(for: .finished, enabled: false)
+                .contains("시금치나물")
         )
     }
 

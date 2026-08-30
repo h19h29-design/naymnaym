@@ -1367,10 +1367,13 @@ struct MealScheduleNutritionSummary {
                 in: .whitespacesAndNewlines
             ).nilIfEmpty
         }
-        let unit = units.count == sourceMeals.count && Set(units).count == 1
-            ? units.first
-            : nil
-        return (average, unit)
+        if units.isEmpty {
+            return (average, nil)
+        }
+        guard units.count == sourceMeals.count, Set(units).count == 1 else {
+            return nil
+        }
+        return (average, units.first)
     }
 
     private static func value(

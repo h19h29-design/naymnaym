@@ -219,14 +219,17 @@ struct MealRecordingSheet: View {
         index: Int
     ) -> some View {
         let isRisk = viewModel.isAllergyRisk(item)
+        let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[3]) {
             if isRisk {
                 allergySafetyActions(for: item)
             }
 
-            Text("어떻게 만났나요?")
+            Text(actionDescriptor.prompt)
                 .font(RebuildDesignTokens.headlineFont)
                 .foregroundStyle(RebuildDesignTokens.ink900)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("meal_action_prompt_\(index)")
 
             LazyVGrid(
                 columns: dynamicTypeSize.isAccessibilitySize
@@ -266,7 +269,8 @@ struct MealRecordingSheet: View {
     private func allergySafetyActions(
         for item: RebuildMealItem
     ) -> some View {
-        VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
+        let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
+        return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
             Label(
                 "알레르기 안전을 먼저 확인해 주세요",
                 systemImage: "exclamationmark.shield.fill"
@@ -285,7 +289,8 @@ struct MealRecordingSheet: View {
                 foreground: .white,
                 background: RebuildDesignTokens.danger700,
                 enabled: !isSaving,
-                accessibilityHint: "알레르기 회피로 안전하게 기록합니다"
+                accessibilityLabel: actionDescriptor.allergyAvoidanceLabel,
+                accessibilityHint: actionDescriptor.allergyAvoidanceHint
             ) {
                 save(item: item, status: .allergyAvoided)
             }
@@ -294,7 +299,8 @@ struct MealRecordingSheet: View {
                 foreground: RebuildDesignTokens.danger700,
                 background: RebuildDesignTokens.danger700.opacity(0.10),
                 enabled: true,
-                accessibilityHint: "보호자 확인 안내를 엽니다"
+                accessibilityLabel: actionDescriptor.guardianConfirmationLabel,
+                accessibilityHint: actionDescriptor.guardianConfirmationHint
             ) {
                 guardianItem = item
             }
@@ -314,6 +320,7 @@ struct MealRecordingSheet: View {
         item: RebuildMealItem
     ) -> some View {
         let enabled = viewModel.isStatusEnabled(status, for: item) && !isSaving
+        let actionDescriptor = MealRecordingActionDescriptor(menuName: item.name)
         return actionButton(
             title: status.childTitle,
             foreground: enabled
@@ -323,9 +330,13 @@ struct MealRecordingSheet: View {
                 ? RebuildDesignTokens.leaf300.opacity(0.34)
                 : RebuildDesignTokens.cream100,
             enabled: enabled,
-            accessibilityHint: enabled
-                ? "\(item.name)을 \(status.childTitle) 상태로 기록합니다"
-                : "알레르기 주의 메뉴에서는 안전하게 피하기만 기록할 수 있습니다"
+            accessibilityLabel: actionDescriptor.controlLabel(
+                for: status.childTitle
+            ),
+            accessibilityHint: actionDescriptor.statusHint(
+                for: status,
+                enabled: enabled
+            )
         ) {
             if status == .difficultToday {
                 difficultItem = item
@@ -455,6 +466,7 @@ struct MealRecordingSheet: View {
         foreground: Color,
         background: Color,
         enabled: Bool,
+        accessibilityLabel: String? = nil,
         accessibilityHint: String,
         action: @escaping () -> Void
     ) -> some View {
@@ -478,7 +490,7 @@ struct MealRecordingSheet: View {
             )
         )
         .disabled(!enabled)
-        .accessibilityLabel(title)
+        .accessibilityLabel(accessibilityLabel ?? title)
         .accessibilityHint(accessibilityHint)
     }
 
@@ -521,7 +533,7 @@ struct MealRecordingSheet: View {
     }
 }
 
-private extension RebuildEatingStatus {
+extension RebuildEatingStatus {
     var childTitle: String {
         switch self {
         case .finished: return "다 먹었어요"

@@ -164,7 +164,8 @@ struct RebuildNutritionInfo: Codable, Equatable, Sendable {
                 var decoded: [SourceField: String] = [:]
                 for key in keyed.allKeys {
                     guard let field = SourceField(rawValue: key.stringValue),
-                          let unit = try? keyed.decode(String.self, forKey: key)
+                          let unit = try? keyed.decode(String.self, forKey: key),
+                          !unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     else {
                         continue
                     }
@@ -174,9 +175,24 @@ struct RebuildNutritionInfo: Codable, Equatable, Sendable {
                 return
             }
 
-            values = try decoder.singleValueContainer().decode(
-                [SourceField: String].self
-            )
+            guard var unkeyed = try? decoder.unkeyedContainer() else {
+                values = [:]
+                return
+            }
+
+            var decoded: [SourceField: String] = [:]
+            while !unkeyed.isAtEnd {
+                guard let rawField = try? unkeyed.decode(String.self),
+                      let field = SourceField(rawValue: rawField),
+                      let unit = try? unkeyed.decode(String.self),
+                      !unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      decoded.updateValue(unit, forKey: field) == nil
+                else {
+                    values = [:]
+                    return
+                }
+            }
+            values = decoded
         }
     }
 
