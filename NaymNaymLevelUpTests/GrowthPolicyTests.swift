@@ -246,6 +246,93 @@ final class GrowthPolicyTests: XCTestCase {
         XCTAssertEqual(store.read()?.highestUnlockedStageID, 9)
     }
 
+    func testConcurrentOutOfOrderWritesCannotLowerHighestStage() throws {
+        let suiteName = "GrowthPolicyTests.\(UUID().uuidString)"
+        suiteNames.append(suiteName)
+        let defaults = try XCTUnwrap(
+            InterleavingUserDefaults(suiteName: suiteName)
+        )
+        defaults.removePersistentDomain(forName: suiteName)
+        let store = UserDefaultsGrowthStageStateStore(defaults: defaults)
+        let writes = DispatchGroup()
+
+        writes.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            store.writeMonotonic(
+                GrowthStageStateV2(
+                    version: GrowthStageStateV2.currentVersion,
+                    highestUnlockedStageID: 9,
+                    selectedStageID: 9
+                )
+            )
+            writes.leave()
+        }
+
+        XCTAssertEqual(
+            defaults.firstReadStarted.wait(timeout: .now() + 2),
+            .success
+        )
+
+        writes.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            store.writeMonotonic(
+                GrowthStageStateV2(
+                    version: GrowthStageStateV2.currentVersion,
+                    highestUnlockedStageID: 12,
+                    selectedStageID: 12
+                )
+            )
+            writes.leave()
+        }
+
+        XCTAssertEqual(writes.wait(timeout: .now() + 5), .success)
+        XCTAssertEqual(store.read()?.highestUnlockedStageID, 12)
+    }
+
+    func testMalformedStoredHighestRejectsItsSelection() throws {
+        let result = GrowthEntitlementResolver.resolve(
+            policy: try policy,
+            totalXP: 0,
+            legacy: LegacyGrowthRights(
+                level: 7,
+                currentSkinID: "skin-7",
+                badges: []
+            ),
+            stored: GrowthStageStateV2(
+                version: GrowthStageStateV2.currentVersion,
+                highestUnlockedStageID: 0,
+                selectedStageID: 1
+            )
+        )
+
+        XCTAssertEqual(result.highestUnlockedStageID, 7)
+        XCTAssertEqual(result.selectedStageID, 7)
+    }
+
+    func testGrowthProgressPresentationUsesSameEntitlementStageAsProgressCard() throws {
+        let preservedRights = GrowthEntitlementProgressPresentation.resolve(
+            policy: try policy,
+            totalXP: 0,
+            highestUnlockedStageID: 7
+        )
+
+        XCTAssertEqual(preservedRights.level, 7)
+        XCTAssertEqual(preservedRights.currentThreshold, 1_000)
+        XCTAssertEqual(preservedRights.nextThreshold, 1_300)
+        XCTAssertEqual(preservedRights.remainingXP, 1_300)
+        XCTAssertEqual(preservedRights.progress, 0, accuracy: 0.0001)
+
+        let progressingRights = GrowthEntitlementProgressPresentation.resolve(
+            policy: try policy,
+            totalXP: 1_100,
+            highestUnlockedStageID: 7
+        )
+
+        XCTAssertEqual(progressingRights.level, 7)
+        XCTAssertEqual(progressingRights.progress, 1.0 / 3.0, accuracy: 0.0001)
+        XCTAssertEqual(progressingRights.remainingXP, 200)
+    }
+
     func testMalformedAndPartialV2PayloadCannotLowerLegacyRights() throws {
         let defaults = makeDefaults()
         let payloads = [
@@ -394,5 +481,30 @@ final class GrowthPolicyTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
+    }
+}
+
+private final class InterleavingUserDefaults: UserDefaults, @unchecked Sendable {
+    let firstReadStarted = DispatchSemaphore(value: 0)
+
+    private let readLock = NSLock()
+    private var readCount = 0
+
+    override func data(forKey defaultName: String) -> Data? {
+        let value = super.data(forKey: defaultName)
+        guard defaultName == GrowthStageStateV2.key else {
+            return value
+        }
+
+        readLock.lock()
+        readCount += 1
+        let isFirstRead = readCount == 1
+        readLock.unlock()
+
+        if isFirstRead {
+            firstReadStarted.signal()
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return value
     }
 }

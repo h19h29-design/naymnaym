@@ -131,6 +131,47 @@ struct GrowthEntitlement: Equatable, Sendable {
     let legacyBadgeIDs: [String]
 }
 
+struct GrowthEntitlementProgressPresentation: Equatable, Sendable {
+    let level: Int
+    let currentThreshold: Int
+    let nextThreshold: Int?
+    let progress: Double
+    let remainingXP: Int?
+
+    static func resolve(
+        policy: GrowthPolicy,
+        totalXP: Int,
+        highestUnlockedStageID: Int
+    ) -> GrowthEntitlementProgressPresentation {
+        let level = min(
+            max(highestUnlockedStageID, 1),
+            policy.thresholds.count
+        )
+        let safeXP = max(totalXP, 0)
+        let currentThreshold = policy.thresholds[level - 1]
+        guard level < policy.thresholds.count else {
+            return GrowthEntitlementProgressPresentation(
+                level: level,
+                currentThreshold: currentThreshold,
+                nextThreshold: nil,
+                progress: 1,
+                remainingXP: nil
+            )
+        }
+
+        let nextThreshold = policy.thresholds[level]
+        let fraction = Double(safeXP - currentThreshold)
+            / Double(nextThreshold - currentThreshold)
+        return GrowthEntitlementProgressPresentation(
+            level: level,
+            currentThreshold: currentThreshold,
+            nextThreshold: nextThreshold,
+            progress: min(max(fraction, 0), 1),
+            remainingXP: max(nextThreshold - safeXP, 0)
+        )
+    }
+}
+
 protocol GrowthStageStateStore: Sendable {
     func read() -> GrowthStageStateV2?
     func writeMonotonic(_ state: GrowthStageStateV2)
@@ -138,6 +179,7 @@ protocol GrowthStageStateStore: Sendable {
 
 struct UserDefaultsGrowthStageStateStore: GrowthStageStateStore, @unchecked Sendable {
     private let defaults: UserDefaults
+    private static let writeLock = NSLock()
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -184,6 +226,8 @@ struct UserDefaultsGrowthStageStateStore: GrowthStageStateStore, @unchecked Send
         guard state.version == GrowthStageStateV2.currentVersion else {
             return
         }
+        Self.writeLock.lock()
+        defer { Self.writeLock.unlock() }
         let existing = read()
         let existingHighest = existing?.highestUnlockedStageID ?? 1
         let candidateHighest = Self.clampStage(state.highestUnlockedStageID)
@@ -230,13 +274,20 @@ enum GrowthEntitlementResolver {
         let xpStage = clampStage(policy.level(totalXP: totalXP))
         let legacyLevel = validStage(legacy.level)
         let legacySkinStage = legacySkinStage(for: legacy.currentSkinID)
-        let storedHighest: Int? = {
+        let validStored: GrowthStageStateV2? = {
             guard let stored,
-                  stored.version == GrowthStageStateV2.currentVersion
+                  stored.version == GrowthStageStateV2.currentVersion,
+                  validStage(stored.highestUnlockedStageID) != nil
             else {
                 return nil
             }
-            return validStage(stored.highestUnlockedStageID)
+            return stored
+        }()
+        let storedHighest: Int? = {
+            guard let validStored else {
+                return nil
+            }
+            return validStage(validStored.highestUnlockedStageID)
         }()
 
         let highest = [
@@ -249,9 +300,7 @@ enum GrowthEntitlementResolver {
         .max() ?? 1
 
         let selected = validSelectedStage(
-            stored?.version == GrowthStageStateV2.currentVersion
-                ? stored?.selectedStageID
-                : nil,
+            validStored?.selectedStageID,
             highest: highest
         )
             ?? legacySkinStage.flatMap { $0 <= highest ? $0 : nil }

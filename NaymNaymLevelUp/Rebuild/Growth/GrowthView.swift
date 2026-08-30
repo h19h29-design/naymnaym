@@ -57,9 +57,11 @@ struct GrowthView: View {
             ?? fallbackLevel
         let selectedStageID = entitlement?.selectedStageID
             ?? highestUnlockedStageID
-        let nextThreshold = highestUnlockedStageID < policy.thresholds.count
-            ? policy.thresholds[highestUnlockedStageID]
-            : nil
+        let progressPresentation = GrowthEntitlementProgressPresentation.resolve(
+            policy: policy,
+            totalXP: snapshot.totalXP,
+            highestUnlockedStageID: highestUnlockedStageID
+        )
 
         return ScrollView {
             LazyVStack(
@@ -69,12 +71,11 @@ struct GrowthView: View {
                 currentCharacter(level: selectedStageID)
                 progressCard(
                     snapshot: snapshot,
-                    level: highestUnlockedStageID,
-                    nextThreshold: nextThreshold
+                    presentation: progressPresentation
                 )
                 nextUnlock(
-                    level: highestUnlockedStageID,
-                    nextThreshold: nextThreshold
+                    level: progressPresentation.level,
+                    nextThreshold: progressPresentation.nextThreshold
                 )
                 recentEvents(snapshot.recentEvents)
                 Text("성장은 천천히, 매일의 한 입으로")
@@ -143,12 +144,11 @@ struct GrowthView: View {
 
     private func progressCard(
         snapshot: GrowthSnapshot,
-        level: Int,
-        nextThreshold: Int?
+        presentation: GrowthEntitlementProgressPresentation
     ) -> some View {
         VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
             HStack {
-                Text("레벨 \(level)")
+                Text("레벨 \(presentation.level)")
                     .font(RebuildDesignTokens.headlineFont)
                     .foregroundStyle(RebuildDesignTokens.ink900)
                 Spacer()
@@ -157,13 +157,13 @@ struct GrowthView: View {
                     .foregroundStyle(RebuildDesignTokens.forest700)
             }
 
-            ProgressView(value: policy.progress(totalXP: snapshot.totalXP))
+            ProgressView(value: presentation.progress)
                 .tint(RebuildDesignTokens.forest500)
                 .scaleEffect(x: 1, y: 1.6, anchor: .center)
 
             Text(
-                nextThreshold.map {
-                    "다음 성장까지 \(max($0 - snapshot.totalXP, 0)) XP"
+                presentation.nextThreshold.map { _ in
+                    "다음 성장까지 \(presentation.remainingXP ?? 0) XP"
                 } ?? "모든 성장 단계를 열었어요!"
             )
             .font(.footnote)
