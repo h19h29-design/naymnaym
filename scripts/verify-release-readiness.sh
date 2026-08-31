@@ -4,11 +4,17 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-29}"
-RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${RELEASE_BUILD_NUMBER}-signed-upload.log}"
-RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${RELEASE_BUILD_NUMBER}Signed}"
+EXPECTED_MARKETING_VERSION="${EXPECTED_MARKETING_VERSION:-1.2}"
+EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-33}"
+RELEASE_UPLOAD_REQUIRED="${RELEASE_UPLOAD_REQUIRED:-0}"
+LOCAL_DEBUG_APP_PATH="${LOCAL_DEBUG_APP_PATH:-build/verification/growth-meal-polish-v2/DerivedData/Build/Products/Debug-iphonesimulator/NaymNaymLevelUp.app}"
+LOCAL_RELEASE_APP_PATH="${LOCAL_RELEASE_APP_PATH:-build/verification/growth-meal-polish-v2/ReleaseDerivedData/Build/Products/Release-iphoneos/NaymNaymLevelUp.app}"
+RELEASE_ARCHIVE_PATH="${RELEASE_ARCHIVE_PATH:-build/NaymNaymLevelUp-build${EXPECTED_BUILD_NUMBER}-signed.xcarchive}"
+RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${EXPECTED_BUILD_NUMBER}-signed-upload.log}"
+RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${EXPECTED_BUILD_NUMBER}Signed}"
+RELEASE_EXPORT_OPTIONS_PATH="${RELEASE_EXPORT_OPTIONS_PATH:-build/ExportOptions-Build${EXPECTED_BUILD_NUMBER}-Signed.plist}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
-export RELEASE_BUILD_NUMBER
+export EXPECTED_MARKETING_VERSION EXPECTED_BUILD_NUMBER
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -18,6 +24,19 @@ fail() {
 pass() {
   printf 'PASS: %s\n' "$1"
 }
+
+printf '%s\n' "$EXPECTED_MARKETING_VERSION" | grep -Eq '^[0-9]+(\.[0-9]+)*$' \
+  || fail "EXPECTED_MARKETING_VERSION must be a dotted numeric version"
+
+case "$EXPECTED_BUILD_NUMBER" in
+  ''|*[!0-9]*) fail "EXPECTED_BUILD_NUMBER must be a positive integer" ;;
+esac
+[ "$EXPECTED_BUILD_NUMBER" -gt 0 ] || fail "EXPECTED_BUILD_NUMBER must be greater than zero"
+
+case "$RELEASE_UPLOAD_REQUIRED" in
+  0|1) ;;
+  *) fail "RELEASE_UPLOAD_REQUIRED must be 0 or 1" ;;
+esac
 
 require_file() {
   [ -f "$1" ] || fail "Missing required file: $1"
@@ -153,6 +172,24 @@ require_pattern() {
   pass "$description"
 }
 
+require_literal() {
+  file="$1"
+  literal="$2"
+  description="$3"
+  grep -Fq -- "$literal" "$file" || fail "$description"
+  pass "$description"
+}
+
+require_literal_count() {
+  file="$1"
+  literal="$2"
+  expected_count="$3"
+  description="$4"
+  count="$(grep -Fc -- "$literal" "$file" || true)"
+  [ "$count" = "$expected_count" ] || fail "$description (found $count, expected $expected_count)"
+  pass "$description"
+}
+
 require_absent_pattern() {
   scope="$1"
   pattern="$2"
@@ -197,7 +234,8 @@ require_url_absent_pattern() {
 
 check_uploaded_ipa() {
   ipa="$1"
-  expected_build="$2"
+  expected_version="$2"
+  expected_build="$3"
   require_file "$ipa"
   require_not_tracked "$ipa"
 
@@ -208,7 +246,7 @@ check_uploaded_ipa() {
   [ -n "$app_dir" ] || fail "$ipa does not contain an app bundle"
 
   require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
-  require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "1.0"
+  require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "$expected_version"
   require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "$expected_build"
   require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "급식레벨업"
 
@@ -228,7 +266,18 @@ check_uploaded_ipa() {
   require_signed_entitlement "$entitlements_file" "aps-environment" "production" "$ipa signed APS entitlement"
 
   rm -rf "$tmp_dir"
-  pass "$ipa contains build 1.0 ($expected_build)"
+  pass "$ipa contains candidate $expected_version ($expected_build)"
+}
+
+check_local_app() {
+  app_dir="$1"
+  configuration="$2"
+  require_file "$app_dir/Info.plist"
+  require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
+  require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "$EXPECTED_MARKETING_VERSION"
+  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "$EXPECTED_BUILD_NUMBER"
+  require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "급식레벨업"
+  pass "$configuration app matches the expected candidate"
 }
 
 git diff --check
@@ -273,11 +322,42 @@ require_pattern "scripts/check-app-store-build-status.sh" "ASC_EXPECTED_BETA_GRO
 require_pattern "scripts/check-app-store-build-status.sh" "filter\\[builds\\]" "App Store Connect script checks build beta group linkage"
 ruby -rjson -e '
   data = JSON.parse(File.read(ARGV.fetch(0)))
+  abort "wrong app name" unless data.dig("appInfo", "appName") == "급식레벨업"
   abort "wrong bundle id" unless data.dig("appInfo", "bundleId") == "com.h19h29.naymnaymlevelup"
-  abort "wrong version" unless data.dig("appInfo", "version") == "1.0"
-  abort "wrong build" unless data.dig("appInfo", "build") == ENV.fetch("RELEASE_BUILD_NUMBER", "15")
+  abort "wrong version" unless data.dig("appInfo", "version") == ENV.fetch("EXPECTED_MARKETING_VERSION")
+  abort "wrong build" unless data.dig("appInfo", "build") == ENV.fetch("EXPECTED_BUILD_NUMBER")
   abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://nyam.h19h19.com/privacy.html"
+
+  release_messages = [
+    "캐릭터 성장 단계가 12단계로 늘어났어요.",
+    "일간·주간·월간 급식표에서 선택한 날짜의 메뉴·알레르기·영양 상세를 확인할 수 있어요.",
+    "메뉴별 대표 영양소를 부담 없는 교육용 안내로 확인할 수 있어요.",
+    "음식 아이콘과 화면 디자인을 더 알아보기 쉽게 개선했어요."
+  ]
+  whats_new = data.dig("listing", "whatsNew") || ""
+  release_messages.each do |message|
+    abort "missing release message: #{message}" unless whats_new.include?(message)
+  end
+
+  description = data.dig("listing", "description") || ""
+  [
+    "기존 1–7단계를 보존한 12단계 캐릭터 성장",
+    "오늘 급식과 일간·주간·월간 급식표, 선택한 날짜의 상세 확인",
+    "메뉴별 대표 영양소를 부담 없이 살펴보는 교육용 안내",
+    "메뉴를 알아보기 쉬운 음식 아이콘과 화면 디자인",
+    "샘플 급식은 사용자가 체험 모드를 직접 선택한 경우에만 표시됩니다.",
+    "샘플로 대체하지 않고 정확한 안내를 보여줍니다.",
+    "학교 안내와 보호자 판단이 항상 우선입니다.",
+    "급식판 사진 기록은 기기 내부에만 저장",
+    "광고, 인앱결제, 분석 SDK, 추적 SDK 없음"
+  ].each do |statement|
+    abort "missing listing statement: #{statement}" unless description.include?(statement)
+  end
+
   data_types = data.dig("appPrivacy", "dataTypes") || []
+  abort "tracking must be false" unless data.dig("appPrivacy", "tracking") == false
+  abort "third-party advertising must be false" unless data.dig("appPrivacy", "thirdPartyAdvertising") == false
+  abort "analytics SDK must be false" unless data.dig("appPrivacy", "analyticsSdk") == false
   required = ["Other User Content", "Health and Fitness", "User ID"]
   required.each do |name|
     row = data_types.find { |item| item["name"] == name }
@@ -344,18 +424,20 @@ require_missing_plist_key "NaymNaymLevelUp/App/Info.plist" "NSLocationAlwaysAndW
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-container-identifiers:0" "iCloud.com.h19h29.naymnaymlevelup"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "com.apple.developer.icloud-services:0" "CloudKit"
 require_plist_value "NaymNaymLevelUp/NaymNaymLevelUp.entitlements" "aps-environment" "\$(APS_ENVIRONMENT)"
-require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = 1\\.0;" "App marketing version is 1.0"
-require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = ${RELEASE_BUILD_NUMBER};" "App build number is ${RELEASE_BUILD_NUMBER}"
-require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = \"com\\.h19h29\\.naymnaymlevelup\";" "Bundle ID is com.h19h29.naymnaymlevelup"
+require_literal_count "NaymNaymLevelUp.xcodeproj/project.pbxproj" "MARKETING_VERSION = ${EXPECTED_MARKETING_VERSION};" 2 "Debug and Release marketing versions are ${EXPECTED_MARKETING_VERSION}"
+require_literal_count "NaymNaymLevelUp.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = ${EXPECTED_BUILD_NUMBER};" 2 "Debug and Release build numbers are ${EXPECTED_BUILD_NUMBER}"
+require_literal_count "NaymNaymLevelUp.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.h19h29.naymnaymlevelup";' 2 "Debug and Release bundle IDs are com.h19h29.naymnaymlevelup"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "TARGETED_DEVICE_FAMILY = 1;" "App target is iPhone only for App Store screenshot set"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "com\\.apple\\.Push" "Push Notifications capability is enabled"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "APS_ENVIRONMENT = production;" "Release APS environment is production"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "https://github\\.com/airbnb/lottie-spm\\.git" "lottie-spm Swift package URL is configured"
 require_pattern "NaymNaymLevelUp.xcodeproj/project.pbxproj" "minimumVersion = 4\\.6\\.1;" "lottie-spm package minimum version is 4.6.1"
-require_pattern "docs/APP_STORE_METADATA.md" "^- 버전: 1\\.0$" "App Store metadata version is 1.0"
-require_pattern "docs/APP_STORE_METADATA.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "App Store metadata build is ${RELEASE_BUILD_NUMBER}"
-require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 버전: 1\\.0$" "ko-KR metadata version is 1.0"
-require_pattern "release/AppStoreMetadata/ko-KR.md" "^- 빌드: ${RELEASE_BUILD_NUMBER}$" "ko-KR metadata build is ${RELEASE_BUILD_NUMBER}"
+check_local_app "$LOCAL_DEBUG_APP_PATH" "Debug"
+check_local_app "$LOCAL_RELEASE_APP_PATH" "Release"
+require_literal "docs/APP_STORE_METADATA.md" "- 버전: ${EXPECTED_MARKETING_VERSION}" "App Store metadata version is ${EXPECTED_MARKETING_VERSION}"
+require_literal "docs/APP_STORE_METADATA.md" "- 빌드: ${EXPECTED_BUILD_NUMBER}" "App Store metadata build is ${EXPECTED_BUILD_NUMBER}"
+require_literal "release/AppStoreMetadata/ko-KR.md" "- 버전: ${EXPECTED_MARKETING_VERSION}" "ko-KR metadata version is ${EXPECTED_MARKETING_VERSION}"
+require_literal "release/AppStoreMetadata/ko-KR.md" "- 빌드: ${EXPECTED_BUILD_NUMBER}" "ko-KR metadata build is ${EXPECTED_BUILD_NUMBER}"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "App Store Connect 입력 매트릭스" "App Privacy draft includes input matrix"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Other User Content \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers other user content"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집 안 함" "App Privacy draft keeps local-only photos out of collected data"
@@ -373,8 +455,41 @@ require_pattern "THIRD_PARTY_NOTICES.md" "lottie-ios" "Third-party notices inclu
 require_pattern "THIRD_PARTY_NOTICES.md" "Apache License 2\\.0" "Third-party notices include lottie-ios license"
 require_pattern "THIRD_PARTY_NOTICES.md" "first-party Lottie JSON" "Third-party notices identify bundled mascot JSON as first-party"
 require_pattern "NaymNaymLevelUp/Resources/Animations/README.md" "mascot_idle_loop\\.json" "Animation README documents idle loop JSON"
-require_pattern "android/app/build.gradle" "versionCode 7" "Android versionCode is bumped for Play test upload"
-require_pattern "android/app/build.gradle" "versionName \"1\\.0-android-test7\"" "Android versionName is updated for Play test upload"
+
+for metadata_file in \
+  release/AppStoreMetadata/ko-KR.md \
+  release/AppStoreMetadata/submission-notes.md \
+  release/AppStoreMetadata/console-runbook.md \
+  docs/APP_STORE_METADATA.md \
+  README.md
+do
+  require_literal "$metadata_file" "급식레벨업" "$metadata_file uses the release app name"
+  require_literal "$metadata_file" "com.h19h29.naymnaymlevelup" "$metadata_file uses the release bundle ID"
+  for release_message in \
+    "캐릭터 성장 단계가 12단계로 늘어났어요." \
+    "일간·주간·월간 급식표에서 선택한 날짜의 메뉴·알레르기·영양 상세를 확인할 수 있어요." \
+    "메뉴별 대표 영양소를 부담 없는 교육용 안내로 확인할 수 있어요." \
+    "음식 아이콘과 화면 디자인을 더 알아보기 쉽게 개선했어요."
+  do
+    require_literal "$metadata_file" "$release_message" "$metadata_file includes an approved 1.2 release message"
+  done
+done
+
+require_literal "release/AppStoreMetadata/submission-notes.md" "- 마케팅 버전: \`${EXPECTED_MARKETING_VERSION}\`" "Submission notes version is ${EXPECTED_MARKETING_VERSION}"
+require_literal "release/AppStoreMetadata/submission-notes.md" "- 빌드: \`${EXPECTED_BUILD_NUMBER}\`" "Submission notes build is ${EXPECTED_BUILD_NUMBER}"
+require_literal "release/AppStoreMetadata/console-runbook.md" "- 버전: \`${EXPECTED_MARKETING_VERSION}\`" "Console runbook version is ${EXPECTED_MARKETING_VERSION}"
+require_literal "release/AppStoreMetadata/console-runbook.md" "- 빌드: \`${EXPECTED_BUILD_NUMBER}\`" "Console runbook build is ${EXPECTED_BUILD_NUMBER}"
+require_literal "README.md" "버전 \`${EXPECTED_MARKETING_VERSION}\`, 빌드 \`${EXPECTED_BUILD_NUMBER}\`" "README candidate version and build are aligned"
+require_literal "release/AppStoreMetadata/ko-KR.md" "사용자가 체험 모드를 직접 선택한 경우에만 표시됩니다" "Metadata requires explicit sample opt-in"
+require_literal "release/AppStoreMetadata/ko-KR.md" "샘플로 대체하지 않고 정확한 안내를 보여줍니다" "Metadata forbids automatic sample fallback"
+require_literal "release/AppStoreMetadata/ko-KR.md" "학교 안내와 보호자 판단이 항상 우선입니다" "Metadata keeps the allergy disclaimer"
+require_literal "release/AppStoreMetadata/ko-KR.md" "급식판 사진은 기기 내부에만 저장" "Metadata keeps photos local only"
+require_literal "release/AppStoreMetadata/ko-KR.md" "광고, 인앱결제, 분석 SDK, 추적 SDK 없음" "Metadata keeps verified no-ad and no-tracking claims"
+require_literal "release/AppStoreMetadata/submission-notes.md" "App Store Connect 업로드나 App Review 제출을 수행하지 않았다" "Submission notes record the no-upload boundary"
+require_literal "release/AppStoreMetadata/console-runbook.md" "App Store Connect 업로드나 App Review 제출을 수행하지 않는다" "Console runbook records the no-upload boundary"
+
+require_pattern "android/app/build.gradle" "versionCode 13" "Android versionCode matches the current Play candidate"
+require_pattern "android/app/build.gradle" "versionName \"1\\.11\"" "Android versionName matches the current Play candidate"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "개인정보 · 지원 · 데이터 관리" "Android app exposes privacy, support, and data management"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" 'disabledButton\("한입도전 잠금"\)' "Android allergy items lock one-bite challenge"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "sharePhotos\", false" "Android parent sharing excludes photos"
@@ -449,12 +564,18 @@ require_pattern "supabase/functions/parent-sync/index.ts" "apns_not_configured" 
 require_pattern "supabase/functions/parent-sync/index.ts" "photo_ids: \\[\\]" "Parent sync strips photo ids from uploaded meal records"
 require_pattern "supabase/migrations/20260702_parent_notifications.sql" "nyam_parent_devices" "Parent notification device table migration exists"
 
-require_file "$RELEASE_UPLOAD_LOG"
-require_file "${RELEASE_EXPORT_DIR}/ExportOptions.plist"
-require_pattern "$RELEASE_UPLOAD_LOG" "Uploaded NaymNaymLevelUp" "build ${RELEASE_BUILD_NUMBER} upload log has app upload marker"
-require_pattern "$RELEASE_UPLOAD_LOG" "EXPORT SUCCEEDED" "build ${RELEASE_BUILD_NUMBER} upload command succeeded"
-require_not_tracked "$RELEASE_UPLOAD_LOG"
-check_uploaded_ipa "$RELEASE_IPA_PATH" "$RELEASE_BUILD_NUMBER"
+if [ "$RELEASE_UPLOAD_REQUIRED" = "1" ]; then
+  require_file "$RELEASE_ARCHIVE_PATH/Info.plist"
+  require_file "$RELEASE_ARCHIVE_PATH/Products/Applications/NaymNaymLevelUp.app/Info.plist"
+  require_file "$RELEASE_EXPORT_OPTIONS_PATH"
+  require_file "$RELEASE_UPLOAD_LOG"
+  require_pattern "$RELEASE_UPLOAD_LOG" "Uploaded NaymNaymLevelUp" "build ${EXPECTED_BUILD_NUMBER} upload log has app upload marker"
+  require_pattern "$RELEASE_UPLOAD_LOG" "EXPORT SUCCEEDED" "build ${EXPECTED_BUILD_NUMBER} upload command succeeded"
+  require_not_tracked "$RELEASE_UPLOAD_LOG"
+  check_uploaded_ipa "$RELEASE_IPA_PATH" "$EXPECTED_MARKETING_VERSION" "$EXPECTED_BUILD_NUMBER"
+else
+  pass "Signed archive, export IPA, and upload-log checks skipped because RELEASE_UPLOAD_REQUIRED=0"
+fi
 
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60

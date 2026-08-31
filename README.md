@@ -2,11 +2,14 @@
 
 급식레벨업은 학교 급식 데이터를 기반으로 아이가 안 먹는 반찬을 혼내지 않고, 먹은 정도와 한 입 도전 기록으로 식습관을 바꾸도록 돕는 무료 iPhone 앱입니다.
 
-## 1.0 출시 범위
+## 1.2 출시 후보 범위
+- 앱 이름 `급식레벨업`, Bundle ID `com.h19h29.naymnaymlevelup`, 버전 `1.2`, 빌드 `33`
 - 실제 NEIS 학교 검색 및 급식식단정보 조회
 - 초등학생, 중학생, 고등학생, 부모 모드
 - 모드별 테마와 캐릭터 성장
-- 오늘 급식, 주간/월간 식단, 칼로리/영양 안내
+- 기존 1–7단계와 누적 XP를 보존하는 12단계 캐릭터 성장
+- 오늘 급식, 일간·주간·월간 식단, 선택한 날짜의 메뉴·알레르기·영양 상세
+- 음식 아이콘과 메뉴별 대표 영양소 교육 안내
 - 안 먹음, 한 입 도전, 잘 먹음 기반 식사 기록
 - 어려운 이유 선택과 한 입 도전 경험치
 - 알레르기 번호 안내 및 도전 잠금
@@ -24,17 +27,24 @@
 - 체험 모드에는 체험 모드 배지와 샘플 데이터 안내를 함께 표시합니다.
 
 ## 식단 캘린더
-- 식단 탭은 주간 보기를 기본값으로 사용합니다.
-- 상단 segmented picker로 주간/월간 보기를 전환합니다.
-- 주간 보기에는 7일 식단, 오늘 강조, 대표 메뉴 2~3개, 데이터 상태 배지를 표시합니다.
-- 월간 보기에는 메뉴를 2줄까지만 보여주고 나머지는 `+N개`로 축약합니다.
-- 날짜를 누르면 상세 sheet에서 날짜, 메뉴, 칼로리, 영양정보, 알레르기 경고, 한 입 도전/먹은 정도/사진 기록 안내를 확인합니다.
-- 상태 배지는 `실제 데이터`, `체험 모드`, `급식 없음`, `설정 확인`으로 구분합니다.
+- 식단 탭은 일간 보기를 기본값으로 사용합니다.
+- 상단 선택기로 일간·주간·월간 보기를 전환합니다.
+- 주간 보기에는 7일 식단, 오늘 강조, 대표 메뉴와 데이터 상태를 표시합니다.
+- 월간 보기에는 대표 음식 아이콘과 추가 메뉴 개수를 간결하게 표시합니다.
+- 날짜를 누르면 해당 날짜와 정확히 일치하는 상세 sheet에서 메뉴, 전체 영양정보, 알레르기 안내와 기록 동작을 확인합니다.
+- 상태는 최신 급식, 저장된 급식, 갱신 중, 급식 없음, 불러오기 실패로 구분합니다.
+
+## 1.2 새 기능
+- 캐릭터 성장 단계가 12단계로 늘어났어요.
+- 일간·주간·월간 급식표에서 선택한 날짜의 메뉴·알레르기·영양 상세를 확인할 수 있어요.
+- 메뉴별 대표 영양소를 부담 없는 교육용 안내로 확인할 수 있어요.
+- 음식 아이콘과 화면 디자인을 더 알아보기 쉽게 개선했어요.
 
 ## 개인정보 원칙
 - 회원가입 없음
 - 이름, 이메일, 전화번호, 위치정보 수집 없음
 - 광고 없음
+- 분석 SDK와 추적 SDK 없음
 - 인앱결제 없음
 - 별명, 학교, 알레르기, 먹은 정도, 사진 메타데이터는 기본적으로 기기 내부에 저장
 - 급식판 사진은 기본적으로 기기 내부 저장
@@ -101,11 +111,11 @@ NEIS_API_KEY = 발급받은_키
 2. iPhone 시뮬레이터를 선택합니다.
 3. Build & Run을 실행합니다.
 
-## Native rebuild 기반 단계 (로컬 검증 전용)
+## Native rebuild 출시 경로
 
-Native rebuild는 아직 출시 또는 배포 활성화 대상이 아닙니다. 기본 경로와
-커밋된 feature flag는 모두 비활성 상태입니다. 로컬 디버그 확인 절차와 저장소,
-마이그레이션의 정확한 경계는
+Release 구성은 Native rebuild 경로를 활성화합니다. Debug 구성에서는 명시적인
+로컬 실행 인자로만 같은 경로를 확인할 수 있습니다. 저장소와 마이그레이션의
+정확한 경계는
 [`docs/architecture/native-rebuild-foundation.md`](docs/architecture/native-rebuild-foundation.md)에
 기록되어 있습니다.
 
@@ -141,12 +151,11 @@ Native rebuild는 아직 출시 또는 배포 활성화 대상이 아닙니다. 
 5. 라이선스 정보를 `THIRD_PARTY_NOTICES.md`에 추가합니다.
 
 ## 출시 전 체크
-- `scripts/verify-release-readiness.sh`로 plist, 버전/빌드, 아이콘, 스크린샷, 공개 URL 상태 확인
+- `EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=33 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh`로 로컬 Debug/Release 산출물, plist, 버전/빌드, 메타데이터, 아이콘, 스크린샷, 공개 URL 상태 확인
 - `scripts/smoke-neis-live.sh`로 실제 NEIS 학교 검색과 급식식단정보 응답 확인
   - 기본 검증: 등촌고등학교, 2026년 6월 중식
   - 다른 학교/월 검증: `NEIS_SMOKE_SCHOOL_NAME=학교명 NEIS_SMOKE_MEAL_MONTH=YYYYMM scripts/smoke-neis-live.sh`
-- 현재 릴리스 후보 상태 보고서: `release/ReleaseStatus/build-15-readiness.json`
-- App Store Connect API 키가 있으면 `scripts/check-app-store-build-status.sh`로 최신 TestFlight build 처리 상태 확인
+- 별도로 승인된 App Store Connect 확인 작업에서는 `scripts/check-app-store-build-status.sh` 사용
   - TestFlight 그룹 연결까지 강제 확인: `ASC_REQUIRE_BETA_GROUPS=1 ASC_EXPECTED_BETA_GROUP_NAME='패밀리' scripts/check-app-store-build-status.sh`
 - 실제 학교 검색으로 officeCode, schoolCode 저장 확인
 - `mealServiceDietInfo` 호출 로그 확인
@@ -162,12 +171,12 @@ Native rebuild는 아직 출시 또는 배포 활성화 대상이 아닙니다. 
 - 급식판 사진이 부모 화면과 서버 동기화에 노출되지 않는지 확인
 - 부모 기기 알림 권한 허용 후 아이가 급식 결과를 올리면 부모에게 알림이 가는지 확인
 - 실제 학교/API 실패/급식 없음 상태에서 샘플 데이터가 자동 표시되지 않는지 확인
+- 현재 Task 10 검증에서는 App Store Connect 업로드나 App Review 제출을 수행하지 않음
 
 ## App Store 제출 자료
 - App Store 메타데이터 초안: `release/AppStoreMetadata/ko-KR.md`
 - App Store Connect 구조 입력값: `release/AppStoreMetadata/app-store-connect-values.json`
-- 이전 build 15 릴리스 상태 보고서: `release/ReleaseStatus/build-15-readiness.json`
 - 사진 기록 출시 증거: `docs/PHOTO_RECORD_RELEASE_EVIDENCE.md`
 - App Privacy 답변 초안: `release/AppStoreMetadata/app-privacy-draft.md`
 - 제출 전 대기 메모: `release/AppStoreMetadata/submission-notes.md`
-- 정적 출시 사이트: `marketing-site/dist/`, `https://h19h29-design.github.io/naymnaym/`
+- 정적 출시 사이트: `marketing-site/dist/`, `https://nyam.h19h19.com/`
