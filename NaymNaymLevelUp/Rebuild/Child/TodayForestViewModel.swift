@@ -159,6 +159,13 @@ enum TodayForestError: Error, Equatable {
     case stalePreparedRecord
 }
 
+struct TodayMealDetailPresentation: Identifiable {
+    let route: MealDayRoute
+    let recordingViewModel: TodayForestViewModel
+
+    var id: String { route.id }
+}
+
 @MainActor
 final class TodayForestViewModel: ObservableObject {
     typealias Clock = @Sendable () -> Date
@@ -244,7 +251,7 @@ final class TodayForestViewModel: ObservableObject {
         self.allergyCodes = Array(Set(allergyCodes)).sorted()
         self.now = now
 
-        var localizedCalendar = calendar
+        var localizedCalendar = Calendar(identifier: .gregorian)
         localizedCalendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
         self.calendar = localizedCalendar
         let datePresentation = Self.datePresentation(
@@ -282,8 +289,29 @@ final class TodayForestViewModel: ObservableObject {
         )
     }
 
+    func makeMealDetailPresentation() -> TodayMealDetailPresentation? {
+        let route = MealDayRoute(dateKey: dateKey)
+        guard let recordingViewModel = recordingViewModel(for: route) else {
+            return nil
+        }
+        return TodayMealDetailPresentation(
+            route: route,
+            recordingViewModel: recordingViewModel
+        )
+    }
+
     func load() async {
         await load(dateKey: dateKey)
+    }
+
+    func loadCurrentDayAndReconcileDate() async {
+        let didChangeDay = await refreshCurrentDayIfNeeded()
+        guard !Task.isCancelled else { return }
+        if !didChangeDay {
+            await load()
+        }
+        guard !Task.isCancelled else { return }
+        _ = await refreshCurrentDayIfNeeded()
     }
 
     @discardableResult
@@ -309,6 +337,13 @@ final class TodayForestViewModel: ObservableObject {
 
     func nanosecondsUntilNextCalendarDay() -> UInt64 {
         let currentDate = now()
+        let currentDateKey = Self.datePresentation(
+            for: currentDate,
+            calendar: calendar
+        ).key
+        guard currentDateKey == dateKey else {
+            return 1_000_000
+        }
         let startOfDay = calendar.startOfDay(for: currentDate)
         guard let nextDay = calendar.date(
             byAdding: .day,

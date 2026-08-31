@@ -1,19 +1,13 @@
 import SwiftUI
 
 struct TodayForestView: View {
-    private enum PresentedSheet: String, Identifiable {
-        case mealDetail
-
-        var id: String { rawValue }
-    }
-
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var viewModel: TodayForestViewModel
     let growthPolicy: GrowthPolicy
     let isTabActive: Bool
     let isAppActive: Bool
-    @State private var presentedSheet: PresentedSheet?
+    @State private var presentedMealDetail: TodayMealDetailPresentation?
 
     var body: some View {
         NavigationStack {
@@ -41,10 +35,7 @@ struct TodayForestView: View {
         }
         .task(id: isCurrentDayRefreshActive) {
             guard isCurrentDayRefreshActive else { return }
-            let didChangeDay = await viewModel.refreshCurrentDayIfNeeded()
-            if !didChangeDay {
-                await viewModel.load()
-            }
+            await viewModel.loadCurrentDayAndReconcileDate()
 
             while !Task.isCancelled {
                 let delay = viewModel.nanosecondsUntilNextCalendarDay()
@@ -57,13 +48,13 @@ struct TodayForestView: View {
                 _ = await viewModel.refreshCurrentDayIfNeeded()
             }
         }
-        .sheet(item: $presentedSheet) { _ in
+        .sheet(item: $presentedMealDetail) { presentation in
             MealDayDetailView(
-                route: MealDayRoute(dateKey: viewModel.dateKey),
+                route: presentation.route,
                 repository: viewModel.mealScheduleRepository,
                 school: viewModel.detailSchool,
                 isDemoMode: viewModel.isDemoMode,
-                recordingViewModel: viewModel
+                recordingViewModel: presentation.recordingViewModel
             )
         }
     }
@@ -305,7 +296,7 @@ struct TodayForestView: View {
 
     private var primaryAction: some View {
         Button {
-            presentedSheet = .mealDetail
+            presentedMealDetail = viewModel.makeMealDetailPresentation()
         } label: {
             Text(viewModel.primaryActionTitle)
                 .font(RebuildDesignTokens.headlineFont)
@@ -341,7 +332,7 @@ struct TodayForestView: View {
     }
 
     private var isShowingMealDetail: Bool {
-        presentedSheet != nil
+        presentedMealDetail != nil
     }
 
     private var isCurrentDayRefreshActive: Bool {

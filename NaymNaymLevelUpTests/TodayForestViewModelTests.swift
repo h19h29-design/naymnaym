@@ -267,6 +267,162 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertEqual(requests, ["2026-07-26"])
     }
 
+    func testInjectedNonGregorianCalendarIsNormalizedToSeoulGregorian() {
+        let date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 12,
+            minute: 0,
+            second: 0
+        )
+        var deviceCalendar = Calendar(identifier: .buddhist)
+        deviceCalendar.timeZone = TimeZone(
+            identifier: "America/Los_Angeles"
+        )!
+
+        let viewModel = TodayForestViewModel(
+            repository: TodayMealRepositoryStub(states: [.empty]),
+            recorder: TodayMealRecorderSpy(),
+            school: nil,
+            allergyCodes: [],
+            date: date,
+            calendar: deviceCalendar,
+            now: { date }
+        )
+
+        XCTAssertEqual(viewModel.dateKey, "2026-07-25")
+        XCTAssertEqual(viewModel.dateText, "7월 25일 토요일")
+    }
+
+    func testInitialLoadReconcilesDateWhenAwaitCrossesSeoulMidnight() async {
+        let beforeMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )
+        let clock = MutableTodayClock(beforeMidnight)
+        let repository = PerDateSuspendedTodayMealRepository()
+        let viewModel = makeViewModel(
+            repository: repository,
+            date: beforeMidnight,
+            now: { clock.now() }
+        )
+        let oldMeal = RebuildMealDay.todayFixture(date: "2026-07-25")
+        let newMeal = RebuildMealDay.todayFixture(date: "2026-07-26")
+
+        let initialLoad = Task {
+            await viewModel.loadCurrentDayAndReconcileDate()
+        }
+        await repository.waitUntilCurrentStateRequested(
+            date: "2026-07-25"
+        )
+
+        clock.date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 26,
+            hour: 0,
+            minute: 0,
+            second: 1
+        )
+        let resumedOld = await repository.resumeCurrentState(
+            date: "2026-07-25",
+            with: .live(oldMeal)
+        )
+        XCTAssertTrue(resumedOld)
+        await repository.waitUntilCurrentStateRequested(
+            date: "2026-07-26"
+        )
+        let resumedNew = await repository.resumeCurrentState(
+            date: "2026-07-26",
+            with: .live(newMeal)
+        )
+        XCTAssertTrue(resumedNew)
+        await initialLoad.value
+
+        XCTAssertEqual(viewModel.dateKey, "2026-07-26")
+        XCTAssertEqual(viewModel.meal, newMeal)
+        XCTAssertFalse(viewModel.isLoading)
+        let requestedDates = await repository.currentStateRequests
+        XCTAssertEqual(requestedDates, ["2026-07-25", "2026-07-26"])
+    }
+
+    func testMidnightDelayIsImmediateWhenDayChangesBeforeScheduling() {
+        let beforeMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )
+        let clock = MutableTodayClock(beforeMidnight)
+        let viewModel = makeViewModel(
+            date: beforeMidnight,
+            now: { clock.now() }
+        )
+
+        clock.date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 26,
+            hour: 0,
+            minute: 0,
+            second: 1
+        )
+
+        XCTAssertEqual(
+            viewModel.nanosecondsUntilNextCalendarDay(),
+            1_000_000
+        )
+    }
+
+    func testMealDetailPresentationPinsRouteAndRecorderAcrossRollover() async throws {
+        let beforeMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )
+        let clock = MutableTodayClock(beforeMidnight)
+        let newMeal = RebuildMealDay.todayFixture(date: "2026-07-26")
+        let repository = DateTrackingTodayMealRepository(
+            statesByDate: ["2026-07-26": .live(newMeal)]
+        )
+        let viewModel = makeViewModel(
+            repository: repository,
+            date: beforeMidnight,
+            now: { clock.now() }
+        )
+        let presentation = try XCTUnwrap(
+            viewModel.makeMealDetailPresentation()
+        )
+
+        clock.date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 26,
+            hour: 0,
+            minute: 0,
+            second: 1
+        )
+        let didRefresh = await viewModel.refreshCurrentDayIfNeeded()
+        XCTAssertTrue(didRefresh)
+
+        XCTAssertEqual(viewModel.dateKey, "2026-07-26")
+        XCTAssertEqual(presentation.route.dateKey, "2026-07-25")
+        XCTAssertEqual(
+            presentation.recordingViewModel.dateKey,
+            "2026-07-25"
+        )
+    }
+
     func testCurrentDayRefreshClearsYesterdayBeforeAwaitingNewMeal() async {
         let beforeMidnight = seoulDate(
             year: 2026,
