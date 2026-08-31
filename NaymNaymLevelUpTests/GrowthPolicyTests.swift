@@ -465,6 +465,53 @@ final class GrowthPolicyTests: XCTestCase {
         XCTAssertTrue(detail.accessibilityLabel.contains("그림 준비 중"))
     }
 
+    func testStageDetailsProvideStoryAndUserRewardForEveryPolicyStage() throws {
+        let policy = try policy
+        let details = policy.thresholds.indices.map { index in
+            GrowthStageRoadmapPresentation.detail(
+                policy: policy,
+                stageID: index + 1,
+                highestUnlockedStageID: policy.thresholds.count
+            )
+        }
+
+        XCTAssertEqual(details.count, policy.thresholds.count)
+        XCTAssertTrue(
+            details.allSatisfy { !$0.story.isEmpty },
+            "every stage needs story copy"
+        )
+        XCTAssertTrue(
+            details.allSatisfy { !$0.reward.isEmpty },
+            "every stage needs reward copy"
+        )
+        XCTAssertEqual(details[0].story, "밝게 시작하는 공통 마스코트")
+        XCTAssertEqual(details[0].reward, "새싹과 작은 잎")
+        XCTAssertEqual(
+            details[7].story,
+            "별빛이 켜진 저녁 숲에서 새로운 맛을 천천히 만나 봐요."
+        )
+        XCTAssertEqual(details[7].reward, "별빛 모자와 저녁 숲")
+        XCTAssertTrue(
+            details[7].accessibilityLabel.contains(details[7].story),
+            "detail accessibility label omitted story"
+        )
+        XCTAssertTrue(
+            details[7].accessibilityLabel.contains("보상 \(details[7].reward)"),
+            "detail accessibility label omitted reward"
+        )
+    }
+
+    func testVerifiedStageDetailAccessibilityDoesNotAnnouncePendingArt() throws {
+        let detail = GrowthStageRoadmapPresentation.detail(
+            policy: try policy,
+            stageID: 7,
+            highestUnlockedStageID: 7
+        )
+
+        XCTAssertFalse(detail.usesNeutralFallback)
+        XCTAssertFalse(detail.accessibilityLabel.contains("그림 준비 중"))
+    }
+
     func testNeutralFallbackAccessibilityLabelIsStageSpecific() {
         XCTAssertEqual(
             MascotNeutralFallbackView.accessibilityLabel(stageID: 8),

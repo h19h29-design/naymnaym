@@ -204,6 +204,69 @@ struct GrowthStageRoadmapItem: Equatable, Identifiable, Sendable {
     }
 }
 
+struct GrowthStageStoryReward: Equatable, Sendable {
+    let story: String
+    let reward: String
+}
+
+enum GrowthStageStoryRewardCatalog {
+    private static let entries: [GrowthStageStoryReward] = [
+        GrowthStageStoryReward(
+            story: "밝게 시작하는 공통 마스코트",
+            reward: "새싹과 작은 잎"
+        ),
+        GrowthStageStoryReward(
+            story: "낯선 반찬을 살펴보는 탐험가",
+            reward: "탐험 손수건"
+        ),
+        GrowthStageStoryReward(
+            story: "한 입 도전을 이어가는 용사",
+            reward: "작은 용기 배지"
+        ),
+        GrowthStageStoryReward(
+            story: "어려운 메뉴를 차분히 마주하는 캐릭터",
+            reward: "방패와 몬스터 발자국"
+        ),
+        GrowthStageStoryReward(
+            story: "꾸준한 기록으로 성장한 히어로",
+            reward: "히어로 망토"
+        ),
+        GrowthStageStoryReward(
+            story: "영양 균형을 이해하는 마스터",
+            reward: "영양 별 장식"
+        ),
+        GrowthStageStoryReward(
+            story: "자기만의 속도로 성장한 레전드",
+            reward: "공개 1.1 레전드 모습"
+        ),
+        GrowthStageStoryReward(
+            story: "별빛이 켜진 저녁 숲에서 새로운 맛을 천천히 만나 봐요.",
+            reward: "별빛 모자와 저녁 숲"
+        ),
+        GrowthStageStoryReward(
+            story: "여러 맛을 살피며 한 끼의 균형을 찾아가요.",
+            reward: "균형 식판 문양"
+        ),
+        GrowthStageStoryReward(
+            story: "깊은 숲을 지키며 영양을 알아가는 길을 걸어요.",
+            reward: "잎 방패와 깊은 숲"
+        ),
+        GrowthStageStoryReward(
+            story: "작은 한입을 이어 황금빛 도전을 완성해요.",
+            reward: "황금 도토리·한입 메달"
+        ),
+        GrowthStageStoryReward(
+            story: "지금까지의 한입을 모아 축제 숲의 전설이 돼요.",
+            reward: "완성 왕관과 축제 숲"
+        ),
+    ]
+
+    static func copy(for stageID: Int) -> GrowthStageStoryReward {
+        let boundedStageID = min(max(stageID, 1), entries.count)
+        return entries[boundedStageID - 1]
+    }
+}
+
 struct GrowthStageDetailPresentation: Equatable, Sendable {
     let stageID: Int
     let title: String
@@ -211,6 +274,8 @@ struct GrowthStageDetailPresentation: Equatable, Sendable {
     let isSelected: Bool
     let isUnlocked: Bool
     let usesNeutralFallback: Bool
+    let story: String
+    let reward: String
 
     var unlockStateText: String {
         isUnlocked ? "해금 완료" : "\(threshold) XP에 해금"
@@ -222,6 +287,8 @@ struct GrowthStageDetailPresentation: Equatable, Sendable {
             title,
             "\(threshold) XP",
             unlockStateText,
+            "이야기 \(story)",
+            "보상 \(reward)",
         ]
         if isSelected {
             components.append("선택됨")
@@ -275,6 +342,9 @@ enum GrowthStageRoadmapPresentation {
             count: policy.thresholds.count
         )
         let art = GrowthStageArtResolver.resolve(stageID: safeStageID)
+        let storyReward = GrowthStageStoryRewardCatalog.copy(
+            for: safeStageID
+        )
         return GrowthStageDetailPresentation(
             stageID: safeStageID,
             title: policy.title(for: safeStageID),
@@ -283,7 +353,9 @@ enum GrowthStageRoadmapPresentation {
                 clamp($0, count: policy.thresholds.count) == safeStageID
             } ?? true,
             isUnlocked: safeStageID <= highestUnlocked,
-            usesNeutralFallback: art.usesNeutralFallback
+            usesNeutralFallback: art.usesNeutralFallback,
+            story: storyReward.story,
+            reward: storyReward.reward
         )
     }
 

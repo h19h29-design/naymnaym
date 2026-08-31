@@ -313,6 +313,7 @@ struct GrowthView: View {
                 Text("레벨 \(detail.stageID)")
                     .font(RebuildDesignTokens.headlineFont)
                     .foregroundStyle(RebuildDesignTokens.ink900)
+                    .accessibilityHidden(true)
                 Text(detail.title)
                     .font(RebuildDesignTokens.bodyFont.weight(.semibold))
                     .foregroundStyle(RebuildDesignTokens.forest700)
@@ -324,10 +325,19 @@ struct GrowthView: View {
                             ? RebuildDesignTokens.forest700
                             : GrowthLockedPalette.textColor
                     )
+                Text("이야기: \(detail.story)")
+                    .font(.footnote)
+                    .foregroundStyle(RebuildDesignTokens.ink900)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("보상: \(detail.reward)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.forest700)
+                    .fixedSize(horizontal: false, vertical: true)
                 if detail.usesNeutralFallback {
                     Text(MascotArtAccessibility.pendingArtText)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(RebuildDesignTokens.muted600)
+                        .accessibilityHidden(true)
                 }
             }
             Spacer(minLength: 0)
@@ -340,7 +350,6 @@ struct GrowthView: View {
             style: .continuous
         ))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(detail.accessibilityLabel)
         .accessibilityIdentifier("growth_stage_roadmap_detail")
     }
 
