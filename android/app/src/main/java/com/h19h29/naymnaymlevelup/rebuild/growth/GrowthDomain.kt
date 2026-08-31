@@ -212,11 +212,11 @@ data class GrowthEventPresentation(
         private val dateFormatter = DateTimeFormatter.ofPattern("M월 d일")
         private val statusLabels = mapOf(
             "finished" to "다 먹었어요",
-            "half" to "반 정도 먹었어요",
+            "half" to "절반 먹었어요",
             "oneBite" to "한 입 도전",
-            "smelledOnly" to "냄새만 맡았어요",
-            "difficultToday" to "오늘은 안 먹어요",
-            "allergyAvoided" to "알레르기로 피했어요",
+            "smelledOnly" to "냄새 맡기",
+            "difficultToday" to "오늘은 어려웠어요",
+            "allergyAvoided" to "알레르기 안전 기록",
         )
 
         fun from(event: ProgressEventEntity): GrowthEventPresentation {
@@ -239,9 +239,9 @@ data class GrowthEventPresentation(
 
         private fun canonicalMealTitle(id: String): String? {
             val components = id.removePrefix("meal:").split('|')
-            if (components.size !in 2..3) return null
-            val date = components[0]
-            val menu = components[1]
+            if (components.size != 3) return null
+            val (date, menu, status) = components
+            val statusLabel = statusLabels[status] ?: return null
             val normalizedMenu = menu.trim().lowercase(Locale.ROOT)
             if (
                 !isCanonicalDate(date) ||
@@ -249,11 +249,6 @@ data class GrowthEventPresentation(
                 menu != normalizedMenu
             ) {
                 return null
-            }
-            val statusLabel = if (components.size == 2) {
-                "급식 기록"
-            } else {
-                statusLabels[components[2]] ?: return null
             }
             return "$normalizedMenu · $statusLabel"
         }

@@ -8,7 +8,6 @@ import com.h19h29.naymnaymlevelup.rebuild.meal.MealDay
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealItem
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealLoadState
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealRepository
-import com.h19h29.naymnaymlevelup.rebuild.meal.MealSafetyPolicy
 import com.h19h29.naymnaymlevelup.rebuild.meal.MotionState
 import com.h19h29.naymnaymlevelup.rebuild.meal.RecordMealCommand
 import com.h19h29.naymnaymlevelup.rebuild.meal.RecordMealResult
@@ -95,7 +94,7 @@ enum class TodaySafetyAction {
 
 enum class TodayForestError {
     MealUnavailable,
-    AllergySafetyRequired,
+    AllergyOneBiteDisabled,
 }
 
 class TodayForestException(
@@ -161,10 +160,7 @@ class TodayForestViewModel(
         item.allergyCodes.any(allergyCodes::contains)
 
     fun isStatusEnabled(status: EatingStatus, item: MealItem): Boolean =
-        status in MealSafetyPolicy.allowedStatuses(
-            childAllergyCodes = allergyCodes.toSet(),
-            itemAllergyCodes = item.allergyCodes.toSet(),
-        )
+        !(status == EatingStatus.OneBite && isAllergyRisk(item))
 
     fun prioritizedSafetyActions(item: MealItem): List<TodaySafetyAction> =
         if (isAllergyRisk(item)) {
@@ -186,7 +182,7 @@ class TodayForestViewModel(
             throw TodayForestException(TodayForestError.MealUnavailable)
         }
         if (!isStatusEnabled(status, item)) {
-            throw TodayForestException(TodayForestError.AllergySafetyRequired)
+            throw TodayForestException(TodayForestError.AllergyOneBiteDisabled)
         }
         val normalizedName = item.name.trim().lowercase(Locale.ROOT)
         val photoIDs = photoMetadataStore.photoIDs(dateKey, normalizedName)
@@ -195,21 +191,19 @@ class TodayForestViewModel(
         } else {
             emptyList()
         }
-        val childAllergyCodes = allergyCodes.toSet().sorted()
-        val itemAllergyCodes = item.allergyCodes.toSet().sorted()
-        val matchedAllergies = childAllergyCodes
-            .intersect(itemAllergyCodes.toSet())
-            .sorted()
+        val matchedAllergies = if (status == EatingStatus.AllergyAvoided) {
+            item.allergyCodes.intersect(allergyCodes.toSet()).sorted()
+        } else {
+            emptyList()
+        }
         val result = recorder.execute(
             RecordMealCommand(
-                recordID = "$dateKey|$normalizedName",
+                recordID = "$dateKey|$normalizedName|${status.wireValue}",
                 date = dateKey,
                 menuName = item.name,
                 status = status,
                 difficultyReasons = reasons,
                 allergyCodes = matchedAllergies,
-                childAllergyCodes = childAllergyCodes,
-                itemAllergyCodes = itemAllergyCodes,
                 photoIDs = photoIDs,
                 parentShareEnabled = parentShareEnabled,
                 occurredAt = now(),
@@ -279,7 +273,6 @@ class TodayForestViewModel(
     companion object {
         val activeStatuses = listOf(
             EatingStatus.Finished,
-            EatingStatus.Half,
             EatingStatus.OneBite,
             EatingStatus.SmelledOnly,
             EatingStatus.DifficultToday,
