@@ -302,9 +302,9 @@ struct GrowthStageDetailPresentation: Equatable, Sendable {
 
 /// The semantic values spoken by the selected-stage detail's combined tree.
 ///
-/// The parent intentionally has no fixed label. The art child owns its label
-/// so a runtime loader failure can replace verified art with the stage-specific
-/// pending state without being masked by the detail container.
+/// The parent intentionally has no fixed label. The runtime detail view applies
+/// this merged label from the art child's loader state, so loading and failure
+/// remain stage-specific without exposing parent and child as duplicate elements.
 struct GrowthStageDetailAccessibilitySemantics: Equatable, Sendable {
     let identifier: String
     let parentLabel: String?

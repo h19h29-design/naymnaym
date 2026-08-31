@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UIKit
 import XCTest
 @testable import NaymNaymLevelUp
 
@@ -566,6 +568,107 @@ final class GrowthPolicyTests: XCTestCase {
         XCTAssertTrue(neutralFallback.spokenLabel.contains("그림 준비 중"))
     }
 
+    @MainActor
+    func testGrowthStageDetailAccessibilityUsesRuntimeLoaderState() async throws {
+        let detail = GrowthStageRoadmapPresentation.detail(
+            policy: try policy,
+            stageID: 7,
+            highestUnlockedStageID: 7
+        )
+        let image = UIGraphicsImageRenderer(
+            size: CGSize(width: 1, height: 1)
+        ).image { context in
+            UIColor.green.setFill()
+            context.fill(CGRect(origin: .zero, size: context.format.bounds.size))
+        }
+        let gate = AccessibilityLoaderGate()
+        let loader = MascotRestArtLoader(
+            loadImage: { _, _ in
+                await gate.wait()
+                return image
+            }
+        )
+        let loadingLabel = "레벨 7 캐릭터를 불러오는 중, 선택한 단계, 레전드 냠냠러, "
+            + "1000 XP · 해금 완료, "
+            + "이야기: 자기만의 속도로 성장한 레전드, "
+            + "보상: 황금빛 레전드 모습"
+        var appliedLabels: [String] = []
+        let loadingHost = makeHost(
+            GrowthStageDetailView(
+                detail: detail,
+                restArtLoader: loader,
+                onAccessibilityLabelChange: { label in
+                    appliedLabels.append(label)
+                }
+            )
+        )
+        defer { tearDownHost(loadingHost) }
+
+        try await waitUntil {
+            loader.isLoading
+        }
+
+        XCTAssertEqual(
+            appliedLabels.last,
+            loadingLabel
+        )
+
+        gate.open()
+        try await waitUntil {
+            loader.renderedImage(for: detail.stageID) != nil
+        }
+        await settleMainQueue()
+
+        let verifiedLabel = "레벨 7 해금 캐릭터, 선택한 단계, 레전드 냠냠러, "
+            + "1000 XP · 해금 완료, "
+            + "이야기: 자기만의 속도로 성장한 레전드, "
+            + "보상: 황금빛 레전드 모습"
+        XCTAssertEqual(
+            appliedLabels.last,
+            verifiedLabel
+        )
+
+        tearDownHost(loadingHost)
+
+        let failedLoader = MascotRestArtLoader(
+            loadImage: { _, _ in
+                throw MascotRigAssetError.missingAsset("composite-rest")
+            }
+        )
+        var failureLabels: [String] = []
+        let failureHost = makeHost(
+            GrowthStageDetailView(
+                detail: detail,
+                restArtLoader: failedLoader,
+                onAccessibilityLabelChange: { label in
+                    failureLabels.append(label)
+                }
+            )
+        )
+        defer { tearDownHost(failureHost) }
+
+        let failureLabel = "레벨 7, 그림 준비 중, 선택한 단계, 레전드 냠냠러, "
+            + "1000 XP · 해금 완료, "
+            + "이야기: 자기만의 속도로 성장한 레전드, "
+            + "보상: 황금빛 레전드 모습"
+        try await waitUntil {
+            failedLoader.canRetry(for: detail.stageID)
+                && failureLabels.last == failureLabel
+        }
+        await settleMainQueue()
+
+        XCTAssertEqual(
+            failureLabels.last,
+            failureLabel
+        )
+        XCTAssertEqual(
+            failureLabels.last.map {
+                $0.components(separatedBy: "그림 준비 중").count - 1
+            } ?? 0,
+            1
+        )
+    }
+
     func testMalformedOrMissingPolicyNeverSilentlyFallsBack() {
         XCTAssertThrowsError(
             try GrowthPolicy(
@@ -621,6 +724,87 @@ final class GrowthPolicyTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
+    }
+
+    @MainActor
+    private func makeHost<Content: View>(
+        _ content: Content
+    ) -> (window: UIWindow, controller: UIHostingController<AnyView>) {
+        let controller = UIHostingController(rootView: AnyView(content))
+        let container = UIViewController()
+        container.addChild(controller)
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        container.view.addSubview(controller.view)
+        NSLayoutConstraint.activate([
+            controller.view.leadingAnchor.constraint(equalTo: container.view.leadingAnchor),
+            controller.view.trailingAnchor.constraint(equalTo: container.view.trailingAnchor),
+            controller.view.topAnchor.constraint(equalTo: container.view.topAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: container.view.bottomAnchor),
+        ])
+        controller.didMove(toParent: container)
+
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: UIScreen.main.bounds)
+        }
+        window.rootViewController = container
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        return (window, controller)
+    }
+
+    @MainActor
+    private func tearDownHost(
+        _ host: (window: UIWindow, controller: UIHostingController<AnyView>)
+    ) {
+        guard host.window.rootViewController != nil || !host.window.isHidden else {
+            return
+        }
+        host.window.isHidden = true
+        host.window.rootViewController = nil
+        host.window.resignKey()
+    }
+
+    @MainActor
+    private func waitUntil(
+        _ condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        for _ in 0..<100 {
+            if condition() { return }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for SwiftUI loader state")
+    }
+
+    @MainActor
+    private func settleMainQueue() async {
+        for _ in 0..<5 {
+            await Task.yield()
+        }
+    }
+}
+
+@MainActor
+private final class AccessibilityLoaderGate {
+    private var isOpen = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        let waiters = continuations
+        continuations.removeAll()
+        waiters.forEach { $0.resume() }
     }
 }
 

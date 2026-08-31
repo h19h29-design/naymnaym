@@ -285,11 +285,35 @@ struct GrowthView: View {
     private func growthStageDetail(
         _ detail: GrowthStageDetailPresentation
     ) -> some View {
+        GrowthStageDetailView(detail: detail)
+    }
+}
+
+struct GrowthStageDetailView: View {
+    let detail: GrowthStageDetailPresentation
+    private let restArtLoader: MascotRestArtLoader?
+    private let onAccessibilityLabelChange: ((String) -> Void)?
+
+    @State private var artState: MascotArtAccessibilityState
+
+    init(
+        detail: GrowthStageDetailPresentation,
+        restArtLoader: MascotRestArtLoader? = nil,
+        onAccessibilityLabelChange: ((String) -> Void)? = nil
+    ) {
+        self.detail = detail
+        self.restArtLoader = restArtLoader
+        self.onAccessibilityLabelChange = onAccessibilityLabelChange
+        let usesNeutralFallback = GrowthStageArtResolver.resolve(
+            stageID: detail.stageID
+        ).usesNeutralFallback
+        _artState = State(
+            initialValue: usesNeutralFallback ? .pending : .loading
+        )
+    }
+
+    var body: some View {
         let art = GrowthStageArtResolver.resolve(stageID: detail.stageID)
-        let artState: MascotArtAccessibilityState =
-            art.usesNeutralFallback
-                ? .pending
-                : .verified(unlocked: detail.isUnlocked)
         let accessibility = GrowthStageDetailAccessibilitySemantics.make(
             detail: detail,
             artState: artState
@@ -307,7 +331,11 @@ struct GrowthView: View {
                     level: art.artStageID,
                     silhouetteColor: detail.isUnlocked
                         ? nil
-                        : GrowthLockedPalette.silhouetteColor
+                        : GrowthLockedPalette.silhouetteColor,
+                    loader: restArtLoader,
+                    onAccessibilityStateChange: { state in
+                        artState = state
+                    }
                 )
                 .frame(width: 96, height: 96)
             }
@@ -358,10 +386,46 @@ struct GrowthView: View {
             cornerRadius: RebuildDesignTokens.radii[1],
             style: .continuous
         ))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(accessibility.identifier)
+        .modifier(
+            GrowthStageDetailAccessibilityModifier(
+                semantics: accessibility,
+                onLabelChange: onAccessibilityLabelChange
+            )
+        )
+        .onChange(of: detail.stageID) { _ in
+            artState = GrowthStageArtResolver.resolve(
+                stageID: detail.stageID
+            ).usesNeutralFallback ? .pending : .loading
+        }
     }
+}
 
+/// Applies the selected-stage contract to the actual SwiftUI detail element.
+///
+/// The optional callback is an internal observation seam for the runtime
+/// regression test. It is invoked by this modifier, alongside the real
+/// accessibility modifiers, so the test cannot pass by exercising only the
+/// pure semantic helper.
+struct GrowthStageDetailAccessibilityModifier: ViewModifier {
+    let semantics: GrowthStageDetailAccessibilitySemantics
+    let onLabelChange: ((String) -> Void)?
+
+    func body(content: Content) -> some View {
+        let label = semantics.parentLabel ?? semantics.spokenLabel
+        return content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(semantics.identifier)
+            .onAppear {
+                onLabelChange?(label)
+            }
+            .onChange(of: label) { updatedLabel in
+                onLabelChange?(updatedLabel)
+            }
+    }
+}
+
+extension GrowthView {
     private func recentEvents(
         _ events: [RebuildProgressEvent]
     ) -> some View {
@@ -576,16 +640,23 @@ enum GrowthLockedPalette {
 struct MascotRestArtView: View {
     let level: Int
     let silhouetteColor: Color?
+    private let onAccessibilityStateChange:
+        (MascotArtAccessibilityState) -> Void
     @StateObject private var loader: MascotRestArtLoader
 
     init(
         level: Int,
-        silhouetteColor: Color?
+        silhouetteColor: Color?,
+        loader: MascotRestArtLoader? = nil,
+        onAccessibilityStateChange: @escaping (
+            MascotArtAccessibilityState
+        ) -> Void = { _ in }
     ) {
         self.level = level
         self.silhouetteColor = silhouetteColor
+        self.onAccessibilityStateChange = onAccessibilityStateChange
         _loader = StateObject(
-            wrappedValue: MascotRestArtLoader()
+            wrappedValue: loader ?? MascotRestArtLoader()
         )
     }
 
@@ -612,6 +683,12 @@ struct MascotRestArtView: View {
                 state: accessibilityState
             )
         )
+        .onAppear {
+            onAccessibilityStateChange(accessibilityState)
+        }
+        .onChange(of: accessibilityState) { state in
+            onAccessibilityStateChange(state)
+        }
         .task(id: level) {
             guard !usesNeutralFallback else { return }
             await loader.load(level: level)
