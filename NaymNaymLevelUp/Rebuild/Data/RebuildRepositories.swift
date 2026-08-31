@@ -64,23 +64,62 @@ final class RebuildProgressLedgerSerializer: @unchecked Sendable {
     }
 }
 
+struct RebuildProfileWriteScope: Hashable, @unchecked Sendable {
+    private let identity: ObjectIdentifier
+
+    init(context: NSManagedObjectContext) {
+        let owner: AnyObject = context.persistentStoreCoordinator ?? context
+        identity = ObjectIdentifier(owner)
+    }
+}
+
 final class RebuildProfileWriteSerializer: @unchecked Sendable {
     static let shared = RebuildProfileWriteSerializer()
 
     private let lock = NSRecursiveLock()
+    private var generations: [RebuildProfileWriteScope: UInt64] = [:]
+    private let didEnter: (() -> Void)?
+
+    init(didEnter: (() -> Void)? = nil) {
+        self.didEnter = didEnter
+    }
 
     func serialize<Result>(
         _ operation: () throws -> Result
     ) rethrows -> Result {
         lock.lock()
         defer { lock.unlock() }
+        didEnter?()
         return try operation()
+    }
+
+    func serialize<Result>(
+        scope: RebuildProfileWriteScope,
+        _ operation: () throws -> Result
+    ) rethrows -> Result {
+        try serialize(operation)
+    }
+
+    func generation(for scope: RebuildProfileWriteScope) -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return generations[scope, default: 0]
+    }
+
+    @discardableResult
+    func advanceGeneration(for scope: RebuildProfileWriteScope) -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        let next = generations[scope, default: 0] &+ 1
+        generations[scope] = next
+        return next
     }
 }
 
 final class RebuildProfileRepository {
     private let context: NSManagedObjectContext
     private let profileWriteSerializer: RebuildProfileWriteSerializer
+    private let profileWriteScope: RebuildProfileWriteScope
 
     init(
         context: NSManagedObjectContext,
@@ -88,11 +127,13 @@ final class RebuildProfileRepository {
     ) {
         self.context = context
         self.profileWriteSerializer = profileWriteSerializer
+        profileWriteScope = RebuildProfileWriteScope(context: context)
     }
 
     func save(_ profile: RebuildProfile) throws {
-        try profileWriteSerializer.serialize {
+        try profileWriteSerializer.serialize(scope: profileWriteScope) {
             try context.performAndWait {
+                refreshRegisteredProfiles()
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
                 )
@@ -119,27 +160,42 @@ final class RebuildProfileRepository {
                 if context.hasChanges {
                     try context.save()
                 }
+                profileWriteSerializer.advanceGeneration(for: profileWriteScope)
             }
         }
     }
 
     func load() throws -> RebuildProfile? {
-        try context.performAndWait {
-            let request = NSFetchRequest<RebuildProfileManagedObject>(
-                entityName: RebuildEntityName.profile
-            )
-            request.sortDescriptors = [NSSortDescriptor(key: "id", ascending: true)]
-            request.fetchLimit = 1
-            return try context.fetch(request).first.map {
-                RebuildProfile(
-                    id: $0.id,
-                    role: $0.role,
-                    nickname: $0.nickname,
-                    officeCode: $0.officeCode,
-                    schoolCode: $0.schoolCode,
-                    allergyCodesJSON: $0.allergyCodesJSON
+        try profileWriteSerializer.serialize(scope: profileWriteScope) {
+            try context.performAndWait {
+                refreshRegisteredProfiles()
+                let request = NSFetchRequest<RebuildProfileManagedObject>(
+                    entityName: RebuildEntityName.profile
                 )
+                request.sortDescriptors = [NSSortDescriptor(key: "id", ascending: true)]
+                request.fetchLimit = 1
+                return try context.fetch(request).first.map {
+                    RebuildProfile(
+                        id: $0.id,
+                        role: $0.role,
+                        nickname: $0.nickname,
+                        officeCode: $0.officeCode,
+                        schoolCode: $0.schoolCode,
+                        allergyCodesJSON: $0.allergyCodesJSON
+                    )
+                }
             }
+        }
+    }
+
+    private func refreshRegisteredProfiles() {
+        let registeredProfiles = context.registeredObjects.compactMap {
+            $0 as? RebuildProfileManagedObject
+        }
+        for profile in registeredProfiles
+            where !profile.objectID.isTemporaryID && !profile.isDeleted
+        {
+            context.refresh(profile, mergeChanges: false)
         }
     }
 }

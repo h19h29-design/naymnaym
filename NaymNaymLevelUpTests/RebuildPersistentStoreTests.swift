@@ -205,6 +205,49 @@ final class RebuildPersistentStoreTests: XCTestCase {
         XCTAssertEqual(try count(entity: RebuildEntityName.profile, in: container.viewContext), 1)
     }
 
+    func testProfileRepositoryPreservesUnrelatedPendingContextChanges() throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let context = container.viewContext
+        let repository = RebuildProfileRepository(context: context)
+
+        try context.performAndWait {
+            let day = RebuildMealDayManagedObject(
+                entity: try XCTUnwrap(
+                    container.managedObjectModel.entitiesByName[
+                        RebuildEntityName.mealDay
+                    ]
+                ),
+                insertInto: context
+            )
+            day.date = "2026-08-31"
+            day.payloadJSON = "{\"meal\":\"pending\"}"
+            day.fetchedAt = Date(timeIntervalSince1970: 1_756_640_000)
+            day.source = "caller"
+        }
+
+        try repository.save(
+            RebuildProfile(
+                id: "profile-with-pending-day",
+                role: "parent",
+                nickname: "보호자",
+                officeCode: nil,
+                schoolCode: nil,
+                allergyCodesJSON: "[]"
+            )
+        )
+
+        let reloadedContext = container.newBackgroundContext()
+        let pendingDay = try reloadedContext.performAndWait {
+            let request = NSFetchRequest<RebuildMealDayManagedObject>(
+                entityName: RebuildEntityName.mealDay
+            )
+            request.predicate = NSPredicate(format: "date == %@", "2026-08-31")
+            return try reloadedContext.fetch(request).first
+        }
+        XCTAssertEqual(pendingDay?.payloadJSON, "{\"meal\":\"pending\"}")
+        XCTAssertEqual(pendingDay?.source, "caller")
+    }
+
     func testProgressEventIdentityIsIdempotentAndSourceRecordIsPreserved() throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let repository = RebuildProgressRepository(context: container.viewContext)

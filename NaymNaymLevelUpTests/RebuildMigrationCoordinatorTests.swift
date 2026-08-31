@@ -710,6 +710,7 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
             description: "migration owns ledger serializer"
         )
         let releaseMigration = DispatchSemaphore(value: 0)
+        let migrationGateResult = MigrationLockedBox<DispatchTimeoutResult?>(nil)
         let serializer = RebuildProgressLedgerSerializer {
             var shouldBlock = false
             firstEntry.withValue {
@@ -718,7 +719,9 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
             }
             if shouldBlock {
                 serializerEntered.fulfill()
-                _ = releaseMigration.wait(timeout: .now() + 2)
+                migrationGateResult.withValue {
+                    $0 = releaseMigration.wait(timeout: .now() + 2)
+                }
             }
         }
         let coordinator = RebuildMigrationCoordinator(
@@ -797,6 +800,51 @@ final class RebuildMigrationCoordinatorTests: XCTestCase {
                 motion: .mealSuccess
             )
         )
+        XCTAssertEqual(migrationGateResult.value, .success)
+    }
+
+    func testMigrationWaitsForProfileSerializerBeforeMutatingContext() throws {
+        let (defaults, domainName) = makeDefaultsWithDomain()
+        UserProfileStore(defaults: defaults).save(makeProfile())
+        let container = try RebuildPersistentStore.makeInMemory()
+        let profileSerializerEntered = expectation(
+            description: "migration owns profile serializer"
+        )
+        let releaseProfileTransaction = DispatchSemaphore(value: 0)
+        let profileGateResult = MigrationLockedBox<DispatchTimeoutResult?>(nil)
+        let profileSerializer = RebuildProfileWriteSerializer {
+            profileSerializerEntered.fulfill()
+            profileGateResult.withValue {
+                $0 = releaseProfileTransaction.wait(timeout: .now() + 3)
+            }
+        }
+        let coordinator = RebuildMigrationCoordinator(
+            defaults: defaults,
+            legacyDefaultsDomainName: domainName,
+            container: container,
+            profileWriteSerializer: profileSerializer
+        )
+        let outcome = MigrationLockedBox<Result<MigrationOutcome, Error>?>(nil)
+        let completed = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            outcome.withValue {
+                $0 = Result { try coordinator.runIfNeeded(targetVersion: 1) }
+            }
+            completed.signal()
+        }
+
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [profileSerializerEntered], timeout: 2),
+            .completed
+        )
+        XCTAssertEqual(
+            try count(RebuildEntityName.profile, in: container.viewContext),
+            0
+        )
+        releaseProfileTransaction.signal()
+        XCTAssertEqual(completed.wait(timeout: .now() + 5), .success)
+        XCTAssertEqual(profileGateResult.value, .success)
+        XCTAssertEqual(try XCTUnwrap(outcome.value).get(), .migrated)
     }
 
     func testCorruptPresentLegacyPayloadThrowsAndWritesNothing() throws {

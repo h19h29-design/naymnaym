@@ -149,6 +149,8 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
 
     func testDuplicateCompletionTapStartsOnlyOneSave() async throws {
         let store = ControlledOnboardingProfileStore()
+        let saveStarted = expectation(description: "first save started")
+        store.onSaveStarted = { saveStarted.fulfill() }
         let viewModel = RebuildOnboardingViewModel(
             profileStore: store,
             schoolSearchClient: SchoolSearchClientStub()
@@ -157,7 +159,7 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         viewModel.setNickname("보호자")
 
         let first = Task { try await viewModel.complete() }
-        await store.waitUntilSaveStarts()
+        await fulfillment(of: [saveStarted], timeout: 2)
         XCTAssertTrue(viewModel.isCompleting)
 
         await XCTAssertThrowsErrorAsync(try await viewModel.complete()) { error in
@@ -175,6 +177,8 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
 
     func testCancelDuringSaveNeverPublishesCompletion() async {
         let store = ControlledOnboardingProfileStore()
+        let saveStarted = expectation(description: "save started")
+        store.onSaveStarted = { saveStarted.fulfill() }
         let viewModel = RebuildOnboardingViewModel(
             profileStore: store,
             schoolSearchClient: SchoolSearchClientStub()
@@ -183,7 +187,7 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         viewModel.setNickname("보호자")
 
         let completion = Task { try await viewModel.complete() }
-        await store.waitUntilSaveStarts()
+        await fulfillment(of: [saveStarted], timeout: 2)
         viewModel.cancel()
         store.finishSave()
 
@@ -212,6 +216,30 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
             isDemoMode: true
         )
         let store = RapidCancellationProfileStore(seed: previous)
+        let firstSaveStarted = expectation(description: "first rapid save started")
+        let firstRemovalStarted = expectation(description: "first rapid removal started")
+        let secondSaveStarted = expectation(description: "second rapid save started")
+        let secondRemovalStarted = expectation(description: "second rapid removal started")
+        store.onSaveStarted = { count in
+            switch count {
+            case 1:
+                firstSaveStarted.fulfill()
+            case 2:
+                secondSaveStarted.fulfill()
+            default:
+                XCTFail("Unexpected save count: \(count)")
+            }
+        }
+        store.onRemovalStarted = { count in
+            switch count {
+            case 1:
+                firstRemovalStarted.fulfill()
+            case 2:
+                secondRemovalStarted.fulfill()
+            default:
+                XCTFail("Unexpected removal count: \(count)")
+            }
+        }
         let viewModel = RebuildOnboardingViewModel(
             profileStore: store,
             schoolSearchClient: SchoolSearchClientStub()
@@ -220,51 +248,37 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         viewModel.selectRole(.parent)
         viewModel.setNickname("첫 번째")
         let first = Task { try await viewModel.complete() }
-        await store.waitUntilSaveStarts(count: 1)
+        await fulfillment(of: [firstSaveStarted], timeout: 2)
         viewModel.cancel()
         XCTAssertTrue(viewModel.isCompleting)
         store.finishSave()
-        await store.waitUntilRemovalStarts(count: 1)
+        await fulfillment(of: [firstRemovalStarted], timeout: 2)
 
         viewModel.selectRole(.parent)
         viewModel.setNickname("두 번째")
-        let rapidSecond = Task<Result<RebuildUserProfile, Error>, Never> {
-            do {
-                return .success(try await viewModel.complete())
-            } catch {
-                return .failure(error)
-            }
-        }
-        try await Task.sleep(nanoseconds: 100_000_000)
-        store.finishSave()
-        store.finishRemoval()
-        let rapidSecondResult = await rapidSecond.value
-        switch rapidSecondResult {
-        case .success:
-            XCTFail("A second completion must stay blocked until cleanup ends")
-        case .failure(let error):
+        await XCTAssertThrowsErrorAsync(try await viewModel.complete()) { error in
             XCTAssertEqual(
                 error as? RebuildOnboardingError,
                 .completionInProgress
             )
         }
+        store.finishRemoval()
         await XCTAssertThrowsErrorAsync(try await first.value) { error in
             XCTAssertEqual(
                 error as? RebuildOnboardingError,
                 .completionCancelled
             )
         }
-        guard case .failure = rapidSecondResult else { return }
         XCTAssertFalse(viewModel.isCompleting)
         let restoredAfterFirst = try await store.load()
         XCTAssertEqual(restoredAfterFirst, previous)
 
         let second = Task { try await viewModel.complete() }
-        await store.waitUntilSaveStarts(count: 2)
+        await fulfillment(of: [secondSaveStarted], timeout: 2)
         viewModel.cancel()
         XCTAssertTrue(viewModel.isCompleting)
         store.finishSave()
-        await store.waitUntilRemovalStarts(count: 2)
+        await fulfillment(of: [secondRemovalStarted], timeout: 2)
         XCTAssertTrue(viewModel.isCompleting)
         store.finishRemoval()
 
@@ -356,6 +370,10 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
 
     func testCancelledSaveCleanupNeverDeletesLaterProfile() async throws {
         let store = RacingOnboardingProfileStore()
+        let firstSaveStarted = expectation(description: "first save started")
+        let removalStarted = expectation(description: "removal started")
+        store.onFirstSaveStarted = { firstSaveStarted.fulfill() }
+        store.onRemovalStarted = { removalStarted.fulfill() }
         let viewModel = RebuildOnboardingViewModel(
             profileStore: store,
             schoolSearchClient: SchoolSearchClientStub()
@@ -364,10 +382,10 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         viewModel.setNickname("취소할 보호자")
 
         let cancelled = Task { try await viewModel.complete() }
-        await store.waitUntilFirstSaveStarts()
+        await fulfillment(of: [firstSaveStarted], timeout: 2)
         viewModel.cancel()
         store.finishFirstSave()
-        await store.waitUntilRemovalStarts()
+        await fulfillment(of: [removalStarted], timeout: 2)
 
         XCTAssertTrue(viewModel.isCompleting)
         let latest = RebuildUserProfile.fixture(role: .parent, id: "final-parent")
@@ -676,28 +694,15 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(loaded, later)
     }
 
-    func testSeparateProfileCoordinatorRollbackCannotOverwriteLaterRepositorySave() async throws {
+    func testSeparateProfileCoordinatorRollbackSkipsCompletedLaterRepositorySave() async throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let suiteName = "RebuildSeparateProfileWriterRace-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
-        let rollbackSaveStarted = expectation(description: "rollback save started")
-        let allowRollbackSave = DispatchSemaphore(value: 0)
-        var saveCount = 0
-        defer { allowRollbackSave.signal() }
-
         let coordinator = RebuildOnboardingProfileTransactionCoordinator(
             container: container,
-            metadataStore: metadata,
-            saveContext: { context in
-                saveCount += 1
-                if saveCount == 3 {
-                    rollbackSaveStarted.fulfill()
-                    allowRollbackSave.wait()
-                }
-                try context.save()
-            }
+            metadataStore: metadata
         )
         let store = RebuildCoreDataOnboardingProfileStore(coordinator: coordinator)
         let first = RebuildUserProfile.fixture(
@@ -708,8 +713,9 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         let capturedToken = try await store.saveAndCaptureRollback(first)
         let token = try XCTUnwrap(capturedToken)
 
-        let repositoryContext = container.newBackgroundContext()
-        let repository = RebuildProfileRepository(context: repositoryContext)
+        let repository = RebuildProfileRepository(
+            context: container.newBackgroundContext()
+        )
         let later = RebuildProfile(
             id: first.id,
             role: first.role.rawValue,
@@ -718,33 +724,135 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
             schoolCode: first.school?.schoolCode,
             allergyCodesJSON: "[1,5]"
         )
-        let laterSaveReached = DispatchSemaphore(value: 0)
-        let observer = NotificationCenter.default.addObserver(
-            forName: .NSManagedObjectContextDidSave,
-            object: repositoryContext,
-            queue: nil
-        ) { _ in
-            laterSaveReached.signal()
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        let rollback = Task {
-            try await store.rollback(token)
-        }
-        await fulfillment(of: [rollbackSaveStarted], timeout: 2)
-
-        let laterSave = Task {
-            try repository.save(later)
-        }
-        _ = waitForSemaphore(laterSaveReached, timeout: 1)
-        allowRollbackSave.signal()
-
-        try await rollback.value
-        try await laterSave.value
+        try repository.save(later)
+        try await store.rollback(token)
 
         let loaded = try await store.load()
         XCTAssertEqual(loaded?.id, first.id)
         XCTAssertEqual(loaded?.nickname, later.nickname)
+    }
+
+    func testIdenticalLaterCoordinatorWriteInvalidatesRollbackMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildIdenticalMetadataWriter-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let firstStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        let previous = RebuildUserProfile(
+            id: "identical-metadata-profile",
+            role: .child,
+            nickname: "같은 Core Data",
+            school: RebuildOnboardingSchool(
+                name: "이전 학교명",
+                officeCode: "B10",
+                schoolCode: "7010111"
+            ),
+            allergyCodes: [1, 5],
+            destination: .today
+        )
+        let replacement = RebuildUserProfile(
+            id: previous.id,
+            role: previous.role,
+            nickname: previous.nickname,
+            school: RebuildOnboardingSchool(
+                name: "교체 학교명",
+                officeCode: previous.school!.officeCode,
+                schoolCode: previous.school!.schoolCode
+            ),
+            allergyCodes: previous.allergyCodes,
+            destination: previous.destination
+        )
+        let later = RebuildUserProfile(
+            id: previous.id,
+            role: previous.role,
+            nickname: previous.nickname,
+            school: RebuildOnboardingSchool(
+                name: "나중 학교명",
+                officeCode: previous.school!.officeCode,
+                schoolCode: previous.school!.schoolCode
+            ),
+            allergyCodes: previous.allergyCodes,
+            destination: previous.destination
+        )
+
+        try await firstStore.save(previous)
+        let capturedToken = try await firstStore.saveAndCaptureRollback(replacement)
+        let token = try XCTUnwrap(capturedToken)
+        let secondStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        try await secondStore.save(later)
+
+        try await firstStore.rollback(token)
+
+        XCTAssertEqual(
+            metadata.name(
+                profileID: later.id,
+                officeCode: later.school!.officeCode,
+                schoolCode: later.school!.schoolCode
+            ),
+            later.school!.name
+        )
+        let loaded = try await firstStore.load()
+        XCTAssertEqual(loaded, later)
+    }
+
+    func testProfileRollbackGenerationIsScopedToPersistentContainer() async throws {
+        let firstContainer = try RebuildPersistentStore.makeInMemory()
+        let secondContainer = try RebuildPersistentStore.makeInMemory()
+        let firstSuite = "RebuildProfileGenerationFirst-\(UUID().uuidString)"
+        let secondSuite = "RebuildProfileGenerationSecond-\(UUID().uuidString)"
+        let firstDefaults = UserDefaults(suiteName: firstSuite)!
+        let secondDefaults = UserDefaults(suiteName: secondSuite)!
+        defer {
+            firstDefaults.removePersistentDomain(forName: firstSuite)
+            secondDefaults.removePersistentDomain(forName: secondSuite)
+        }
+        let firstStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: firstContainer,
+                metadataStore: RebuildSchoolNameMetadataStore(defaults: firstDefaults)
+            )
+        )
+        let secondStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: secondContainer,
+                metadataStore: RebuildSchoolNameMetadataStore(defaults: secondDefaults)
+            )
+        )
+        let previous = RebuildUserProfile.fixture(
+            role: .child,
+            id: "container-scoped-profile"
+        )
+        let replacement = RebuildUserProfile(
+            id: previous.id,
+            role: previous.role,
+            nickname: "교체 사용자",
+            school: previous.school,
+            allergyCodes: previous.allergyCodes,
+            destination: previous.destination
+        )
+
+        try await firstStore.save(previous)
+        let capturedToken = try await firstStore.saveAndCaptureRollback(replacement)
+        let token = try XCTUnwrap(capturedToken)
+        try await secondStore.save(
+            RebuildUserProfile.fixture(role: .parent, id: "other-container")
+        )
+
+        try await firstStore.rollback(token)
+
+        let loaded = try await firstStore.load()
+        XCTAssertEqual(loaded, previous)
     }
 
     func testFailedReplacementRestoresDivergentProfileAndFallbackSchoolMetadata() async throws {
@@ -1481,6 +1589,7 @@ private final class OnboardingProfileStoreSpy: RebuildOnboardingProfileStore {
 private final class ControlledOnboardingProfileStore:
     RebuildOnboardingProfileStore {
     private(set) var saveCount = 0
+    var onSaveStarted: (() -> Void)?
     private var persistedProfile: RebuildUserProfile?
     private var saveContinuation: CheckedContinuation<Void, Error>?
 
@@ -1490,6 +1599,7 @@ private final class ControlledOnboardingProfileStore:
 
     func save(_ profile: RebuildUserProfile) async throws {
         saveCount += 1
+        onSaveStarted?()
         try await withCheckedThrowingContinuation { continuation in
             saveContinuation = continuation
         }
@@ -1499,12 +1609,6 @@ private final class ControlledOnboardingProfileStore:
     func removeIfCurrent(id: String) async throws {
         if persistedProfile?.id == id {
             persistedProfile = nil
-        }
-    }
-
-    func waitUntilSaveStarts() async {
-        while saveContinuation == nil {
-            await Task.yield()
         }
     }
 
@@ -1521,6 +1625,8 @@ private final class RapidCancellationProfileStore:
     private var previousProfiles: [String: RebuildUserProfile?] = [:]
     private var saveContinuations: [CheckedContinuation<Void, Never>] = []
     private var removalContinuation: CheckedContinuation<Void, Never>?
+    var onSaveStarted: ((Int) -> Void)?
+    var onRemovalStarted: ((Int) -> Void)?
     private(set) var saveCount = 0
     private(set) var removalCount = 0
 
@@ -1534,6 +1640,7 @@ private final class RapidCancellationProfileStore:
 
     func save(_ profile: RebuildUserProfile) async throws {
         saveCount += 1
+        onSaveStarted?(saveCount)
         await withCheckedContinuation { continuation in
             saveContinuations.append(continuation)
         }
@@ -1543,6 +1650,7 @@ private final class RapidCancellationProfileStore:
 
     func removeIfCurrent(id: String) async throws {
         removalCount += 1
+        onRemovalStarted?(removalCount)
         await withCheckedContinuation { continuation in
             removalContinuation = continuation
         }
@@ -1551,21 +1659,9 @@ private final class RapidCancellationProfileStore:
         }
     }
 
-    func waitUntilSaveStarts(count: Int) async {
-        while saveCount < count {
-            await Task.yield()
-        }
-    }
-
     func finishSave() {
         guard !saveContinuations.isEmpty else { return }
         saveContinuations.removeFirst().resume()
-    }
-
-    func waitUntilRemovalStarts(count: Int) async {
-        while removalCount < count {
-            await Task.yield()
-        }
     }
 
     func finishRemoval() {
@@ -1581,7 +1677,8 @@ private final class RacingOnboardingProfileStore:
     private var saveCount = 0
     private var firstSaveContinuation: CheckedContinuation<Void, Never>?
     private var removalContinuation: CheckedContinuation<Void, Never>?
-    private var removalStarted = false
+    var onFirstSaveStarted: (() -> Void)?
+    var onRemovalStarted: (() -> Void)?
 
     func load() async throws -> RebuildUserProfile? {
         persistedProfile
@@ -1590,6 +1687,7 @@ private final class RacingOnboardingProfileStore:
     func save(_ profile: RebuildUserProfile) async throws {
         saveCount += 1
         if saveCount == 1 {
+            onFirstSaveStarted?()
             await withCheckedContinuation { continuation in
                 firstSaveContinuation = continuation
             }
@@ -1598,7 +1696,7 @@ private final class RacingOnboardingProfileStore:
     }
 
     func removeIfCurrent(id: String) async throws {
-        removalStarted = true
+        onRemovalStarted?()
         await withCheckedContinuation { continuation in
             removalContinuation = continuation
         }
@@ -1607,21 +1705,9 @@ private final class RacingOnboardingProfileStore:
         }
     }
 
-    func waitUntilFirstSaveStarts() async {
-        while firstSaveContinuation == nil {
-            await Task.yield()
-        }
-    }
-
     func finishFirstSave() {
         firstSaveContinuation?.resume()
         firstSaveContinuation = nil
-    }
-
-    func waitUntilRemovalStarts() async {
-        while !removalStarted {
-            await Task.yield()
-        }
     }
 
     func finishRemoval() {
@@ -1728,11 +1814,4 @@ private func XCTAssertThrowsErrorAsync<T>(
     } catch {
         errorHandler(error)
     }
-}
-
-private func waitForSemaphore(
-    _ semaphore: DispatchSemaphore,
-    timeout: TimeInterval
-) -> DispatchTimeoutResult {
-    semaphore.wait(timeout: .now() + timeout)
 }

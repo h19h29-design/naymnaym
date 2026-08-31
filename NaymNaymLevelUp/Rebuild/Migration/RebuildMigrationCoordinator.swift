@@ -154,46 +154,54 @@ final class RebuildMigrationCoordinator {
         try validateSourceIdentities(snapshot)
         let sourceDigest = try reader.sourceDigest(for: snapshot)
         var attemptWarnings: [MigrationWarning] = []
+        let profileWriteScope = RebuildProfileWriteScope(context: context)
 
-        let outcome: MigrationOutcome = try context.performAndWait {
+        let outcome: MigrationOutcome = try profileWriteSerializer.serialize(
+            scope: profileWriteScope
+        ) {
             try ledgerSerializer.serialize {
-                do {
-                    let mappedProfile = try insertProfile(from: snapshot, into: context)
-                    let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
-                    try insertParentLinks(from: snapshot, into: context)
-                    try insertPhotos(
-                        snapshot.mealPhotoRecords,
-                        mealRecords: mappedMeals,
-                        into: context,
-                        warnings: &attemptWarnings
-                    )
-                    try insertProgressEvents(
-                        from: snapshot,
-                        mealRecords: mappedMeals,
-                        into: context
-                    )
-
-                    let expectedXP = try expectedXP(from: snapshot)
-                    let verification = try verifyInsertedRows(
-                        expectedProfileCount: mappedProfile == nil ? 0 : 1,
-                        expectedMealCount: snapshot.mealRecords.count,
-                        expectedPhotoCount: snapshot.mealPhotoRecords.count,
-                        expectedXP: expectedXP,
-                        in: context
-                    )
-                    try verify(verification)
-                    try insertMigrationState(
-                        version: targetVersion,
-                        sourceDigest: sourceDigest,
-                        into: context
-                    )
-                    try profileWriteSerializer.serialize {
-                        try save(context)
+                try context.performAndWait {
+                    context.reset()
+                    guard try completedVersionInContext(context) < targetVersion else {
+                        return .alreadyCompleted
                     }
-                    return .migrated
-                } catch {
-                    context.rollback()
-                    throw error
+                    do {
+                        let mappedProfile = try insertProfile(from: snapshot, into: context)
+                        let mappedMeals = try insertMealRecords(snapshot.mealRecords, into: context)
+                        try insertParentLinks(from: snapshot, into: context)
+                        try insertPhotos(
+                            snapshot.mealPhotoRecords,
+                            mealRecords: mappedMeals,
+                            into: context,
+                            warnings: &attemptWarnings
+                        )
+                        try insertProgressEvents(
+                            from: snapshot,
+                            mealRecords: mappedMeals,
+                            into: context
+                        )
+
+                        let expectedXP = try expectedXP(from: snapshot)
+                        let verification = try verifyInsertedRows(
+                            expectedProfileCount: mappedProfile == nil ? 0 : 1,
+                            expectedMealCount: snapshot.mealRecords.count,
+                            expectedPhotoCount: snapshot.mealPhotoRecords.count,
+                            expectedXP: expectedXP,
+                            in: context
+                        )
+                        try verify(verification)
+                        try insertMigrationState(
+                            version: targetVersion,
+                            sourceDigest: sourceDigest,
+                            into: context
+                        )
+                        try save(context)
+                        profileWriteSerializer.advanceGeneration(for: profileWriteScope)
+                        return .migrated
+                    } catch {
+                        context.rollback()
+                        throw error
+                    }
                 }
             }
         }
@@ -203,16 +211,22 @@ final class RebuildMigrationCoordinator {
 
     private func completedVersion(in context: NSManagedObjectContext) throws -> Int {
         try context.performAndWait {
-            let request = NSFetchRequest<RebuildMigrationStateManagedObject>(
-                entityName: RebuildEntityName.migrationState
-            )
-            request.predicate = NSPredicate(
-                format: "id == %@",
-                RebuildMigrationStateRepository.stateID
-            )
-            request.fetchLimit = 1
-            return try context.fetch(request).first.map { Int($0.version) } ?? 0
+            try completedVersionInContext(context)
         }
+    }
+
+    private func completedVersionInContext(
+        _ context: NSManagedObjectContext
+    ) throws -> Int {
+        let request = NSFetchRequest<RebuildMigrationStateManagedObject>(
+            entityName: RebuildEntityName.migrationState
+        )
+        request.predicate = NSPredicate(
+            format: "id == %@",
+            RebuildMigrationStateRepository.stateID
+        )
+        request.fetchLimit = 1
+        return try context.fetch(request).first.map { Int($0.version) } ?? 0
     }
 
     private func validateSourceIdentities(_ snapshot: LegacySnapshot) throws {

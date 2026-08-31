@@ -501,6 +501,7 @@ actor RebuildOnboardingProfileTransactionCoordinator {
         let savedState: ManagedProfileState
         let previousState: ManagedProfileState?
         let metadataSnapshot: RebuildSchoolNameMetadataStore.Snapshot
+        let profileWriteGeneration: UInt64
     }
 
     private let context: NSManagedObjectContext
@@ -508,6 +509,7 @@ actor RebuildOnboardingProfileTransactionCoordinator {
     private let beforeRemove: (() -> Void)?
     private let saveContext: (NSManagedObjectContext) throws -> Void
     private let profileWriteSerializer: RebuildProfileWriteSerializer
+    private let profileWriteScope: RebuildProfileWriteScope
     private var activeRollbackTokenID: UUID?
     private var rollbackRecords: [UUID: RollbackRecord] = [:]
 
@@ -520,8 +522,10 @@ actor RebuildOnboardingProfileTransactionCoordinator {
         },
         profileWriteSerializer: RebuildProfileWriteSerializer = .shared
     ) {
-        context = container.newBackgroundContext()
-        context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        let transactionContext = container.newBackgroundContext()
+        transactionContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        context = transactionContext
+        profileWriteScope = RebuildProfileWriteScope(context: transactionContext)
         self.metadataStore = metadataStore
         self.beforeRemove = beforeRemove
         self.saveContext = saveContext
@@ -529,53 +533,56 @@ actor RebuildOnboardingProfileTransactionCoordinator {
     }
 
     func load() throws -> RebuildUserProfile? {
-        try context.performAndWait {
-            let request = NSFetchRequest<RebuildProfileManagedObject>(
-                entityName: RebuildEntityName.profile
-            )
-            request.sortDescriptors = [
-                NSSortDescriptor(key: "id", ascending: true)
-            ]
-            request.fetchLimit = 1
-            guard let object = try context.fetch(request).first else {
-                return nil
-            }
-            guard let role = RebuildOnboardingRole(rawValue: object.role) else {
-                throw RebuildOnboardingError.persistenceUnavailable
-            }
-            let allergyCodes = try JSONDecoder().decode(
-                [Int].self,
-                from: Data(object.allergyCodesJSON.utf8)
-            )
-            let school: RebuildOnboardingSchool?
-            if
-                role == .child,
-                let officeCode = object.officeCode,
-                let schoolCode = object.schoolCode,
-                !officeCode.isEmpty,
-                !schoolCode.isEmpty
-            {
-                school = RebuildOnboardingSchool(
-                    name: metadataStore.name(
-                        profileID: object.id,
+        try profileWriteSerializer.serialize(scope: profileWriteScope) {
+            try context.performAndWait {
+                context.reset()
+                let request = NSFetchRequest<RebuildProfileManagedObject>(
+                    entityName: RebuildEntityName.profile
+                )
+                request.sortDescriptors = [
+                    NSSortDescriptor(key: "id", ascending: true)
+                ]
+                request.fetchLimit = 1
+                guard let object = try context.fetch(request).first else {
+                    return nil
+                }
+                guard let role = RebuildOnboardingRole(rawValue: object.role) else {
+                    throw RebuildOnboardingError.persistenceUnavailable
+                }
+                let allergyCodes = try JSONDecoder().decode(
+                    [Int].self,
+                    from: Data(object.allergyCodesJSON.utf8)
+                )
+                let school: RebuildOnboardingSchool?
+                if
+                    role == .child,
+                    let officeCode = object.officeCode,
+                    let schoolCode = object.schoolCode,
+                    !officeCode.isEmpty,
+                    !schoolCode.isEmpty
+                {
+                    school = RebuildOnboardingSchool(
+                        name: metadataStore.name(
+                            profileID: object.id,
+                            officeCode: officeCode,
+                            schoolCode: schoolCode
+                        ) ?? "등록한 학교",
                         officeCode: officeCode,
                         schoolCode: schoolCode
-                    ) ?? "등록한 학교",
-                    officeCode: officeCode,
-                    schoolCode: schoolCode
+                    )
+                } else {
+                    school = nil
+                }
+                return RebuildUserProfile(
+                    id: object.id,
+                    role: role,
+                    nickname: object.nickname,
+                    school: school,
+                    allergyCodes: Array(Set(allergyCodes)).sorted(),
+                    destination: role == .child ? .today : .parentConnection,
+                    isDemoMode: metadataStore.isDemoMode(profileID: object.id)
                 )
-            } else {
-                school = nil
             }
-            return RebuildUserProfile(
-                id: object.id,
-                role: role,
-                nickname: object.nickname,
-                school: school,
-                allergyCodes: Array(Set(allergyCodes)).sorted(),
-                destination: role == .child ? .today : .parentConnection,
-                isDemoMode: metadataStore.isDemoMode(profileID: object.id)
-            )
         }
     }
 
@@ -600,8 +607,11 @@ actor RebuildOnboardingProfileTransactionCoordinator {
         let token = capturesRollback
             ? RebuildOnboardingProfileSaveToken()
             : nil
-        let rollbackRecord: RollbackRecord? = try profileWriteSerializer.serialize {
+        let rollbackRecord: RollbackRecord? = try profileWriteSerializer.serialize(
+            scope: profileWriteScope
+        ) {
             try context.performAndWait {
+                context.reset()
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
                 )
@@ -635,11 +645,14 @@ actor RebuildOnboardingProfileTransactionCoordinator {
                     }
                     savedState.apply(to: object)
                     try saveContext(context)
+                    let profileWriteGeneration =
+                        profileWriteSerializer.advanceGeneration(for: profileWriteScope)
                     guard token != nil else { return nil }
                     return RollbackRecord(
                         savedState: savedState,
                         previousState: previousState,
-                        metadataSnapshot: metadataSnapshot
+                        metadataSnapshot: metadataSnapshot,
+                        profileWriteGeneration: profileWriteGeneration
                     )
                 } catch {
                     context.rollback()
@@ -665,8 +678,16 @@ actor RebuildOnboardingProfileTransactionCoordinator {
             rollbackRecords.removeValue(forKey: token.id)
             return
         }
-        let didRollback = try profileWriteSerializer.serialize {
+        let didRollback = try profileWriteSerializer.serialize(
+            scope: profileWriteScope
+        ) {
             try context.performAndWait {
+                context.reset()
+                guard profileWriteSerializer.generation(for: profileWriteScope)
+                    == rollbackRecord.profileWriteGeneration
+                else {
+                    return false
+                }
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
                 )
@@ -696,6 +717,7 @@ actor RebuildOnboardingProfileTransactionCoordinator {
                         try saveContext(context)
                     }
                     metadataStore.restore(rollbackRecord.metadataSnapshot)
+                    profileWriteSerializer.advanceGeneration(for: profileWriteScope)
                     return true
                 } catch {
                     context.rollback()
@@ -711,9 +733,10 @@ actor RebuildOnboardingProfileTransactionCoordinator {
     }
 
     func removeIfCurrent(id: String) throws {
-        let removed = try profileWriteSerializer.serialize {
+        let removed = try profileWriteSerializer.serialize(scope: profileWriteScope) {
             beforeRemove?()
             return try context.performAndWait {
+                context.reset()
                 let request = NSFetchRequest<RebuildProfileManagedObject>(
                     entityName: RebuildEntityName.profile
                 )
@@ -738,6 +761,7 @@ actor RebuildOnboardingProfileTransactionCoordinator {
                     fallbackSchoolCode: fallbackSchoolCode,
                     allowLegacyCodeOnly: true
                 )
+                profileWriteSerializer.advanceGeneration(for: profileWriteScope)
                 return !objects.isEmpty
             }
         }
