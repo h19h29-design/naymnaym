@@ -17,9 +17,9 @@ App Store Connect에는 아래 폴더의 최신 디자인 JPG만 업로드한다
 | 2 | `02-today-meal-icons.jpg` | 오늘 급식 | 음식 아이콘, 오늘 메뉴, 숲 배경과 캐릭터 |
 | 3 | `03-weekly-meal.jpg` | 주간 급식표 | 7일 급식, 오늘 강조, 대표 메뉴 미리보기 |
 | 4 | `04-monthly-meal.jpg` | 월간 급식표 | 월간 날짜 격자, 음식 아이콘, 메뉴 개수 |
-| 5 | `05-selected-day-detail.jpg` | 선택 날짜 상세 | 주간·월간에서 고른 날짜의 메뉴·알레르기·영양 상세 |
-| 6 | `06-eating-status-picker.jpg` | 섭취 상태 기록 | 메뉴별 먹은 정도와 어려운 이유 선택 |
-| 7 | `07-allergy-safe-choice.jpg` | 알레르기 주의 | 알레르기 메뉴 한 입 도전 잠금과 학교 안내/보호자 판단 |
+| 5 | `05-selected-day-detail.jpg` | 선택 날짜 상세 | 고른 급식의 메뉴·알레르기·전체 영양 요약과 기록 버튼 |
+| 6 | `06-eating-status-picker.jpg` | 섭취 상태 기록 | 메뉴별 여섯 가지 먹은 정도 선택 |
+| 7 | `07-allergy-safe-choice.jpg` | 알레르기 주의 | 알레르기로 피한 선택과 학교 안내/보호자 판단 우선 안내 |
 | 8 | `08-growth-stage-roadmap.jpg` | 성장 로드맵 | 12단계 성장 단계, 현재 단계와 해금 기준 |
 | 9 | `09-growth-next-unlock.jpg` | 다음 해금 | 다음 캐릭터·보상과 필요한 XP |
 | 10 | `10-parent-growth-summary.jpg` | 부모 요약 | 아이별 성장·급식 기록과 선택 공유 상태 |

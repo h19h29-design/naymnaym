@@ -54,7 +54,7 @@ On iPhone SE, an accessibility-element coordinate tap missed after the monthly g
 ## Automated verification
 
 - Focused XcodeBuildMCP simulator run: `MealScheduleSelectionTests`, `MealPresentationTests`, and `AssetManifestTests` — **65 passed, 0 failed, 0 skipped** in 42.5 seconds.
-- Parent verification on the same revision: complete XCTest result — **587 passed, 0 failed, 0 skipped**; Python suite — **75 passed**; generic Release build — exit 0.
+- Parent verification on the same revision: complete Debug XCTest result — **587 passed, 0 failed, 0 skipped**; Python suite — **75 passed**; generic Release build — exit 0. The source contains 588 `test…` declarations, but `RebuildFeatureGateTests` has mutually exclusive `#if DEBUG` and `#else` cases, so exactly 587 compile in a Debug run. The result bundle includes `testLateOlderSaveInSamePinnedRecorderCannotOverwriteFeedback` from revision `1d458bf`.
 
 ## Capture integrity
 
