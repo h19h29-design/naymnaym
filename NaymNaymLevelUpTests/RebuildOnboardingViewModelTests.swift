@@ -205,6 +205,81 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(recreatedRoot.state, .onboarding)
     }
 
+    func testCancelledReplacementRestoresSeededExistingProfileAndMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildSeededCancellation-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let seedStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        let previous = RebuildUserProfile.fixture(
+            role: .child,
+            id: "seeded-demo",
+            isDemoMode: true
+        )
+        try await seedStore.save(previous)
+
+        let saveStarted = expectation(description: "replacement save started")
+        let allowSave = DispatchSemaphore(value: 0)
+        var didSignalSaveStart = false
+        let store = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata,
+                saveContext: { context in
+                    if !didSignalSaveStart {
+                        didSignalSaveStart = true
+                        saveStarted.fulfill()
+                        allowSave.wait()
+                    }
+                    try context.save()
+                }
+            )
+        )
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: store,
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+        viewModel.selectRole(.child)
+        viewModel.setNickname("새 사용자")
+        viewModel.selectSchool(
+            RebuildOnboardingSchool(
+                name: "새 학교",
+                officeCode: "C10",
+                schoolCode: "1234567"
+            )
+        )
+        viewModel.setAllergies([])
+
+        let completion = Task { try await viewModel.complete() }
+        await fulfillment(of: [saveStarted], timeout: 2)
+        viewModel.cancel()
+        allowSave.signal()
+
+        await XCTAssertThrowsErrorAsync(try await completion.value) { error in
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionCancelled
+            )
+        }
+        let restored = try await store.load()
+        XCTAssertEqual(restored, previous)
+        XCTAssertTrue(metadata.isDemoMode(profileID: previous.id))
+        XCTAssertEqual(
+            metadata.name(
+                profileID: previous.id,
+                officeCode: previous.school!.officeCode,
+                schoolCode: previous.school!.schoolCode
+            ),
+            previous.school!.name
+        )
+    }
+
     func testCancelledSaveCleanupNeverDeletesLaterProfile() async throws {
         let store = RacingOnboardingProfileStore()
         let viewModel = RebuildOnboardingViewModel(
@@ -527,6 +602,63 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(loaded, later)
     }
 
+    func testCancelledCleanupCannotRemoveLaterWinnerThatReusesProfileID() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildRollbackCompareAndSwap-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let store = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        let cancelled = RebuildUserProfile(
+            id: "reused-profile-id",
+            role: .child,
+            nickname: "취소될 저장",
+            school: RebuildOnboardingSchool(
+                name: "첫 번째 학교",
+                officeCode: "B10",
+                schoolCode: "7010111"
+            ),
+            allergyCodes: [1],
+            destination: .today,
+            isDemoMode: true
+        )
+        let later = RebuildUserProfile(
+            id: cancelled.id,
+            role: .child,
+            nickname: "나중 저장",
+            school: RebuildOnboardingSchool(
+                name: "나중 학교",
+                officeCode: "C10",
+                schoolCode: "1234567"
+            ),
+            allergyCodes: [5],
+            destination: .today,
+            isDemoMode: false
+        )
+
+        let transaction = try await store.saveAndCaptureRollback(cancelled)
+        XCTAssertNotNil(transaction)
+        try await store.save(later)
+        if let transaction {
+            try await store.rollback(transaction)
+        }
+
+        let loaded = try await store.load()
+        XCTAssertEqual(loaded, later)
+        XCTAssertTrue(metadata.hasProfileMetadata(id: later.id))
+        XCTAssertFalse(
+            metadata.hasSchoolMetadata(
+                officeCode: cancelled.school!.officeCode,
+                schoolCode: cancelled.school!.schoolCode
+            )
+        )
+    }
+
     func testConcurrentRealCoreDataSavesLeaveExactlyOneCurrentProfile() async throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let suiteName = "RebuildMetadataConcurrent-\(UUID().uuidString)"
@@ -643,6 +775,132 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertFalse(metadata.isDemoMode(profileID: current.id))
         let loaded = try await store.load()
         XCTAssertEqual(loaded, current)
+    }
+
+    func testReplacingLegacyCoreDataProfileRemovesLegacyCodeKeyedMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildLegacyReplacement-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let legacyOfficeCode = "B10"
+        let legacySchoolCode = "7010111"
+        let legacyKey =
+            "rebuild.school-name.codes.\(legacyOfficeCode).\(legacySchoolCode)"
+        defaults.set("이전 레거시 학교", forKey: legacyKey)
+        try container.viewContext.performAndWait {
+            guard let entity = NSEntityDescription.entity(
+                forEntityName: RebuildEntityName.profile,
+                in: container.viewContext
+            ) else {
+                throw RebuildOnboardingError.persistenceUnavailable
+            }
+            let object = RebuildProfileManagedObject(
+                entity: entity,
+                insertInto: container.viewContext
+            )
+            object.id = "legacy-b901"
+            object.role = RebuildOnboardingRole.child.rawValue
+            object.nickname = "레거시"
+            object.officeCode = legacyOfficeCode
+            object.schoolCode = legacySchoolCode
+            object.allergyCodesJSON = "[1]"
+            try container.viewContext.save()
+        }
+        let store = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        let current = RebuildUserProfile(
+            id: "current-after-legacy",
+            role: .child,
+            nickname: "현재",
+            school: RebuildOnboardingSchool(
+                name: "현재 학교",
+                officeCode: "C10",
+                schoolCode: "1234567"
+            ),
+            allergyCodes: [],
+            destination: .today
+        )
+
+        try await store.save(current)
+
+        XCTAssertNil(defaults.string(forKey: legacyKey))
+        XCTAssertEqual(
+            metadata.name(
+                profileID: current.id,
+                officeCode: current.school!.officeCode,
+                schoolCode: current.school!.schoolCode
+            ),
+            current.school!.name
+        )
+    }
+
+    func testFailedLegacyReplacementRestoresLegacyCodeKeyedMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildLegacyReplacementFailure-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let legacyOfficeCode = "B10"
+        let legacySchoolCode = "7010111"
+        let legacyName = "이전 레거시 학교"
+        let legacyKey =
+            "rebuild.school-name.codes.\(legacyOfficeCode).\(legacySchoolCode)"
+        defaults.set(legacyName, forKey: legacyKey)
+        try container.viewContext.performAndWait {
+            guard let entity = NSEntityDescription.entity(
+                forEntityName: RebuildEntityName.profile,
+                in: container.viewContext
+            ) else {
+                throw RebuildOnboardingError.persistenceUnavailable
+            }
+            let object = RebuildProfileManagedObject(
+                entity: entity,
+                insertInto: container.viewContext
+            )
+            object.id = "legacy-b901-failure"
+            object.role = RebuildOnboardingRole.child.rawValue
+            object.nickname = "레거시"
+            object.officeCode = legacyOfficeCode
+            object.schoolCode = legacySchoolCode
+            object.allergyCodesJSON = "[]"
+            try container.viewContext.save()
+        }
+        var wasLegacyKeyRemovedDuringAttempt = false
+        let store = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata,
+                saveContext: { _ in
+                    wasLegacyKeyRemovedDuringAttempt =
+                        defaults.string(forKey: legacyKey) == nil
+                    throw TestError.saveFailed
+                }
+            )
+        )
+        let current = RebuildUserProfile(
+            id: "current-after-legacy-failure",
+            role: .child,
+            nickname: "현재",
+            school: RebuildOnboardingSchool(
+                name: "현재 학교",
+                officeCode: "C10",
+                schoolCode: "1234567"
+            ),
+            allergyCodes: [],
+            destination: .today
+        )
+
+        await XCTAssertThrowsErrorAsync(try await store.save(current))
+
+        XCTAssertTrue(wasLegacyKeyRemovedDuringAttempt)
+        XCTAssertEqual(defaults.string(forKey: legacyKey), legacyName)
+        let loaded = try await store.load()
+        XCTAssertEqual(loaded?.id, "legacy-b901-failure")
     }
 
     func testRealStoreWithoutSchoolNameMetadataUsesBackwardsFallback() async throws {

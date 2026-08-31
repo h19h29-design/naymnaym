@@ -134,9 +134,13 @@ final class RebuildOnboardingViewModel: ObservableObject {
                 isCompleting = false
             }
         }
-        try await profileStore.save(profile)
+        let saveToken = try await profileStore.saveAndCaptureRollback(profile)
         guard generation == completionGeneration else {
-            try await profileStore.removeIfCurrent(id: profile.id)
+            if let saveToken {
+                try await profileStore.rollback(saveToken)
+            } else {
+                try await profileStore.removeIfCurrent(id: profile.id)
+            }
             throw RebuildOnboardingError.completionCancelled
         }
         completedProfile = profile
