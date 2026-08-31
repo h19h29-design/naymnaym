@@ -14,7 +14,7 @@ RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${EXPECTED_BUILD_NUMBER}-si
 RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${EXPECTED_BUILD_NUMBER}Signed}"
 RELEASE_EXPORT_OPTIONS_PATH="${RELEASE_EXPORT_OPTIONS_PATH:-build/ExportOptions-Build${EXPECTED_BUILD_NUMBER}-Signed.plist}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
-APP_STORE_SCREENSHOT_DIR="docs/app-store-screenshots/iphone-6-9-upload"
+APP_STORE_SCREENSHOT_DIR="${APP_STORE_SCREENSHOT_DIR:-docs/app-store-screenshots/iphone-6-9-upload}"
 APP_STORE_SCREENSHOT_MANIFEST='
 01-onboarding-demo.jpg
 02-today-meal-icons.jpg
@@ -28,7 +28,7 @@ APP_STORE_SCREENSHOT_MANIFEST='
 10-parent-growth-summary.jpg
 '
 APP_STORE_SCREENSHOT_COUNT=10
-export EXPECTED_MARKETING_VERSION EXPECTED_BUILD_NUMBER
+export EXPECTED_MARKETING_VERSION EXPECTED_BUILD_NUMBER RELEASE_UPLOAD_REQUIRED
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -284,44 +284,7 @@ check_uploaded_ipa() {
 }
 
 check_local_app() {
-  app_dir="$1"
-  configuration="$2"
-  case "$configuration" in
-    Debug) expected_platform="iphonesimulator" ;;
-    Release) expected_platform="iphoneos" ;;
-    *) fail "Unsupported local app configuration: $configuration" ;;
-  esac
-
-  require_file "$app_dir/Info.plist"
-  require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
-  require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "$EXPECTED_MARKETING_VERSION"
-  require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "$EXPECTED_BUILD_NUMBER"
-  require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "급식레벨업"
-  require_plist_value "$app_dir/Info.plist" "DTPlatformName" "$expected_platform"
-  pass "$configuration app matches the expected candidate"
-}
-
-check_app_store_screenshot_manifest() {
-  directory="$1"
-  expected_count="$2"
-  manifest="$3"
-
-  [ -d "$directory" ] || fail "Missing App Store screenshot directory: $directory"
-
-  count="$(find "$directory" -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')"
-  [ "$count" = "$expected_count" ] || fail "App Store screenshot count is $count, expected exactly $expected_count"
-  pass "App Store screenshot count is $count"
-
-  actual_files="$(find "$directory" -maxdepth 1 -type f -print | sed 's#^.*/##' | sort)"
-  while IFS= read -r actual_file; do
-    [ -n "$actual_file" ] || continue
-    if ! printf '%s\n' "$manifest" | grep -Fxq -- "$actual_file"; then
-      fail "Unmanifested App Store screenshot file: $directory/$actual_file"
-    fi
-  done <<EOF
-$actual_files
-EOF
-  pass "App Store screenshot directory contains only the current manifest"
+  sh scripts/check-local-app.sh "$1" "$2"
 }
 
 check_release_upload() {
@@ -335,27 +298,9 @@ check_release_upload() {
     require_not_tracked "$RELEASE_UPLOAD_LOG"
     check_uploaded_ipa "$RELEASE_IPA_PATH" "$EXPECTED_MARKETING_VERSION" "$EXPECTED_BUILD_NUMBER"
   else
-    pass "Signed archive, export IPA, and upload-log checks skipped because RELEASE_UPLOAD_REQUIRED=0"
+    sh scripts/check-release-upload-disabled.sh
   fi
 }
-
-case "${1:-}" in
-  --check-screenshot-manifest)
-    [ "$#" -eq 3 ] || fail "Usage: $0 --check-screenshot-manifest DIRECTORY EXPECTED_JPG_COUNT < manifest"
-    check_app_store_screenshot_manifest "$2" "$3" "$(cat)"
-    exit 0
-    ;;
-  --check-local-app)
-    [ "$#" -eq 3 ] || fail "Usage: $0 --check-local-app APP_DIRECTORY CONFIGURATION"
-    check_local_app "$2" "$3"
-    exit 0
-    ;;
-  --check-release-upload)
-    [ "$#" -eq 1 ] || fail "Usage: $0 --check-release-upload"
-    check_release_upload
-    exit 0
-    ;;
-esac
 
 git diff --check
 pass "git diff --check"
@@ -370,6 +315,9 @@ require_file "docs/APP_STORE_SCREENSHOTS.md"
 require_file "release/GooglePlayMetadata/closed-testing-plan.md"
 require_file "release/CloudKit/schema-contract.json"
 require_file "scripts/check-app-store-build-status.sh"
+require_file "scripts/check-app-store-screenshot-manifest.sh"
+require_file "scripts/check-local-app.sh"
+require_file "scripts/check-release-upload-disabled.sh"
 require_file "supabase/functions/parent-sync/index.ts"
 require_file "supabase/migrations/20260702_parent_notifications.sql"
 require_file "THIRD_PARTY_NOTICES.md"
@@ -395,6 +343,12 @@ do
 done
 sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
+sh -n scripts/check-app-store-screenshot-manifest.sh
+pass "App Store screenshot manifest script syntax"
+sh -n scripts/check-local-app.sh
+pass "Local app identity script syntax"
+sh -n scripts/check-release-upload-disabled.sh
+pass "Upload-disabled gate script syntax"
 require_pattern "scripts/check-app-store-build-status.sh" "ASC_REQUIRE_BETA_GROUPS" "App Store Connect script can require TestFlight beta group linkage"
 require_pattern "scripts/check-app-store-build-status.sh" "ASC_EXPECTED_BETA_GROUP_NAME" "App Store Connect script can check the expected TestFlight group"
 require_pattern "scripts/check-app-store-build-status.sh" "filter\\[builds\\]" "App Store Connect script checks build beta group linkage"
@@ -671,15 +625,16 @@ check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIco
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60@3x.png" 180 180
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" 1024 1024
 
+sh scripts/check-app-store-screenshot-manifest.sh \
+  "$APP_STORE_SCREENSHOT_DIR" \
+  "$APP_STORE_SCREENSHOT_COUNT" <<EOF
+$APP_STORE_SCREENSHOT_MANIFEST
+EOF
+
 for screenshot in $APP_STORE_SCREENSHOT_MANIFEST; do
   check_screenshot "$APP_STORE_SCREENSHOT_DIR/$screenshot"
   require_literal "docs/APP_STORE_SCREENSHOTS.md" "$screenshot" "Screenshot manifest documents $screenshot"
 done
-
-check_app_store_screenshot_manifest \
-  "$APP_STORE_SCREENSHOT_DIR" \
-  "$APP_STORE_SCREENSHOT_COUNT" \
-  "$APP_STORE_SCREENSHOT_MANIFEST"
 
 for url in \
   "https://nyam.h19h19.com/" \

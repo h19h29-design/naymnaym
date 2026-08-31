@@ -3,6 +3,7 @@ import os
 import pathlib
 import plistlib
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +11,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 READINESS = ROOT / "scripts/verify-release-readiness.sh"
+SCREENSHOT_CHECKER = ROOT / "scripts/check-app-store-screenshot-manifest.sh"
+LOCAL_APP_CHECKER = ROOT / "scripts/check-local-app.sh"
+RELEASE_UPLOAD_CHECKER = ROOT / "scripts/check-release-upload-disabled.sh"
 SCREENSHOTS = ROOT / "docs/APP_STORE_SCREENSHOTS.md"
 PLAY_METADATA = ROOT / "release/GooglePlayMetadata/play-console-values.md"
 IOS_METADATA = ROOT / "docs/APP_STORE_METADATA.md"
@@ -47,6 +51,23 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn("App Store screenshot count is 1", result.stdout)
         self.assertIn("contains only the current manifest", result.stdout)
 
+    def test_screenshot_manifest_checker_rejects_missing_manifest_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = pathlib.Path(temporary_directory)
+            (directory / "other.jpg").touch()
+
+            result = self._run_screenshot_manifest_checker(
+                directory,
+                expected_count=1,
+                manifest=["01-screen.jpg"],
+            )
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            f"Missing App Store screenshot file: {directory}/01-screen.jpg",
+            result.stderr,
+        )
+
     def test_screenshot_manifest_checker_rejects_option_like_extra_files(self):
         for extra_file in ("-V", "--version"):
             with self.subTest(extra_file=extra_file), tempfile.TemporaryDirectory() as temporary_directory:
@@ -62,9 +83,27 @@ class ReleaseReadinessContractTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1, result.stdout)
             self.assertIn(
-                f"Unmanifested App Store screenshot file: {directory}/{extra_file}",
+                "App Store screenshot file count is 2, expected exactly 1",
                 result.stderr,
             )
+
+    def test_screenshot_manifest_checker_rejects_a_single_newline_named_extra_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = pathlib.Path(temporary_directory)
+            (directory / "01-screen.jpg").touch()
+            (directory / "\n").touch()
+
+            result = self._run_screenshot_manifest_checker(
+                directory,
+                expected_count=1,
+                manifest=["01-screen.jpg"],
+            )
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            "App Store screenshot file count is 2, expected exactly 1",
+            result.stderr,
+        )
 
     def test_local_app_checker_rejects_debug_bundle_as_release(self):
         if not pathlib.Path("/usr/libexec/PlistBuddy").is_file():
@@ -111,6 +150,64 @@ class ReleaseReadinessContractTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_release_upload_checker_refuses_when_upload_is_required(self):
+        environment = self._readiness_environment()
+        environment["RELEASE_UPLOAD_REQUIRED"] = "1"
+        result = subprocess.run(
+            ["sh", str(RELEASE_UPLOAD_CHECKER)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            "check-release-upload-disabled.sh requires RELEASE_UPLOAD_REQUIRED=0",
+            result.stderr,
+        )
+
+    def test_normal_flow_with_upload_disabled_reaches_post_upload_screenshot_gate(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture = self._make_readiness_fixture(
+                pathlib.Path(temporary_directory),
+                screenshot_source=ROOT
+                / "NaymNaymLevelUp/Resources/Assets.xcassets/"
+                "AppIcon.appiconset/AppIcon-20@2x.png",
+            )
+
+            result = self._run_readiness(fixture)
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("PASS: Debug app matches the expected candidate", result.stdout)
+        self.assertIn("PASS: Release app matches the expected candidate", result.stdout)
+        skip_marker = (
+            "Signed archive, export IPA, and upload-log checks skipped because "
+            "RELEASE_UPLOAD_REQUIRED=0"
+        )
+        screenshot_marker = (
+            f"PASS: Found {fixture['screenshot_directory']}/"
+            f"{CURRENT_IOS_SCREENSHOT_MANIFEST[0]}"
+        )
+        self.assertIn(skip_marker, result.stdout)
+        self.assertIn(screenshot_marker, result.stdout)
+        self.assertLess(result.stdout.index(skip_marker), result.stdout.index(screenshot_marker))
+        self.assertIn(
+            f"{fixture['screenshot_directory']}/{CURRENT_IOS_SCREENSHOT_MANIFEST[0]} "
+            "width is 40, expected 1320",
+            result.stderr,
+        )
+
+    def test_local_app_gate_requires_debug_and_release_platform_identity(self):
+        source = LOCAL_APP_CHECKER.read_text(encoding="utf-8")
+
+        self.assertIn('require_plist_value "$app_dir/Info.plist" "DTPlatformName" "$expected_platform"', source)
+        self.assertRegex(
+            source,
+            r'Debug\).*expected_platform="iphonesimulator"',
+        )
+        self.assertRegex(source, r'Release\).*expected_platform="iphoneos"')
+
     def test_current_ios_screenshot_manifest_is_explicit_and_mirrored(self):
         readiness = READINESS.read_text(encoding="utf-8")
         match = re.search(
@@ -136,17 +233,6 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn("1.2", docs)
         self.assertIn("정확히 10장", docs)
 
-    def test_local_app_gate_requires_debug_and_release_platform_identity(self):
-        source = READINESS.read_text(encoding="utf-8")
-        function = source.split("check_local_app() {", 1)[1].split("\ngit diff --check", 1)[0]
-
-        self.assertIn('require_plist_value "$app_dir/Info.plist" "DTPlatformName" "$expected_platform"', function)
-        self.assertRegex(
-            function,
-            r'Debug\).*expected_platform="iphonesimulator"',
-        )
-        self.assertRegex(function, r'Release\).*expected_platform="iphoneos"')
-
     def test_android_play_metadata_matches_authoritative_gradle_candidate(self):
         gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
         version_code = re.search(r"^\s*versionCode\s+(\d+)", gradle, re.MULTILINE)
@@ -170,19 +256,35 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn("https://nyam.h19h19.com/privacy.html", text)
         self.assertNotIn("https://h19h29-design.github.io/naymnaym/privacy.html", text)
 
+    def _run_readiness(self, fixture):
+        environment = self._readiness_environment()
+        environment.update(
+            {
+                "APP_STORE_SCREENSHOT_DIR": str(fixture["screenshot_directory"]),
+                "LOCAL_DEBUG_APP_PATH": str(fixture["debug_app"]),
+                "LOCAL_RELEASE_APP_PATH": str(fixture["release_app"]),
+            }
+        )
+        return subprocess.run(
+            [str(READINESS)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
     def _run_screenshot_manifest_checker(self, directory, expected_count, manifest):
         return subprocess.run(
-            [str(READINESS), "--check-screenshot-manifest", str(directory), str(expected_count)],
+            ["sh", str(SCREENSHOT_CHECKER), str(directory), str(expected_count)],
             cwd=ROOT,
             input="\n".join(manifest) + "\n",
             capture_output=True,
             text=True,
-            env=self._readiness_environment(),
         )
 
     def _run_local_app_checker(self, app_directory, configuration):
         return subprocess.run(
-            [str(READINESS), "--check-local-app", str(app_directory), configuration],
+            ["sh", str(LOCAL_APP_CHECKER), str(app_directory), configuration],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -191,7 +293,7 @@ class ReleaseReadinessContractTests(unittest.TestCase):
 
     def _run_release_upload_checker(self):
         return subprocess.run(
-            [str(READINESS), "--check-release-upload"],
+            ["sh", str(RELEASE_UPLOAD_CHECKER)],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -208,6 +310,31 @@ class ReleaseReadinessContractTests(unittest.TestCase):
             }
         )
         return environment
+
+    def _make_readiness_fixture(
+        self,
+        temporary_directory,
+        *,
+        release_platform="iphoneos",
+        screenshot_source=None,
+    ):
+        screenshot_source = screenshot_source or (
+            ROOT / "docs/app-store-screenshots/iphone-6-9-upload/01-today-forest.jpg"
+        )
+        screenshot_directory = temporary_directory / "screenshots"
+        screenshot_directory.mkdir()
+        for name in CURRENT_IOS_SCREENSHOT_MANIFEST:
+            shutil.copyfile(screenshot_source, screenshot_directory / name)
+
+        debug_app = temporary_directory / "Debug/NaymNaymLevelUp.app"
+        release_app = temporary_directory / "Release/NaymNaymLevelUp.app"
+        self._write_local_app_fixture(debug_app, "iphonesimulator")
+        self._write_local_app_fixture(release_app, release_platform)
+        return {
+            "screenshot_directory": screenshot_directory,
+            "debug_app": debug_app,
+            "release_app": release_app,
+        }
 
     def _write_local_app_fixture(self, app_directory, platform):
         app_directory.mkdir(parents=True)
