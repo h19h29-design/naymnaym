@@ -14,7 +14,7 @@ RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${EXPECTED_BUILD_NUMBER}-si
 RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${EXPECTED_BUILD_NUMBER}Signed}"
 RELEASE_EXPORT_OPTIONS_PATH="${RELEASE_EXPORT_OPTIONS_PATH:-build/ExportOptions-Build${EXPECTED_BUILD_NUMBER}-Signed.plist}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
-APP_STORE_SCREENSHOT_DIR="${APP_STORE_SCREENSHOT_DIR:-docs/app-store-screenshots/iphone-6-9-upload}"
+APP_STORE_SCREENSHOT_DIR="docs/app-store-screenshots/iphone-6-9-upload"
 APP_STORE_SCREENSHOT_MANIFEST='
 01-onboarding-demo.jpg
 02-today-meal-icons.jpg
@@ -316,6 +316,7 @@ require_file "release/GooglePlayMetadata/closed-testing-plan.md"
 require_file "release/CloudKit/schema-contract.json"
 require_file "scripts/check-app-store-build-status.sh"
 require_file "scripts/check-app-store-screenshot-manifest.sh"
+require_file "scripts/check-app-store-screenshot-manifest.py"
 require_file "scripts/check-local-app.sh"
 require_file "scripts/check-release-upload-disabled.sh"
 require_file "supabase/functions/parent-sync/index.ts"
@@ -345,6 +346,9 @@ sh -n scripts/check-app-store-build-status.sh
 pass "App Store Connect build status script syntax"
 sh -n scripts/check-app-store-screenshot-manifest.sh
 pass "App Store screenshot manifest script syntax"
+command -v python3 >/dev/null 2>&1 \
+  || fail "Python 3 is required for the App Store screenshot manifest check"
+pass "Python 3 is available for the App Store screenshot manifest check"
 sh -n scripts/check-local-app.sh
 pass "Local app identity script syntax"
 sh -n scripts/check-release-upload-disabled.sh
@@ -625,11 +629,9 @@ check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIco
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60@3x.png" 180 180
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" 1024 1024
 
-sh scripts/check-app-store-screenshot-manifest.sh \
+printf '%s\000' $APP_STORE_SCREENSHOT_MANIFEST | sh scripts/check-app-store-screenshot-manifest.sh \
   "$APP_STORE_SCREENSHOT_DIR" \
-  "$APP_STORE_SCREENSHOT_COUNT" <<EOF
-$APP_STORE_SCREENSHOT_MANIFEST
-EOF
+  "$APP_STORE_SCREENSHOT_COUNT"
 
 for screenshot in $APP_STORE_SCREENSHOT_MANIFEST; do
   check_screenshot "$APP_STORE_SCREENSHOT_DIR/$screenshot"
