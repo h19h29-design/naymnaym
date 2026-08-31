@@ -207,12 +207,15 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
                 profileDemoModeKey(retiredProfile.id),
                 legacyProfileNameKey(retiredProfile.id)
             ]
-            if let officeCode = retiredProfile.officeCode,
-                let schoolCode = retiredProfile.schoolCode {
+            for pair in schoolCodePairsForRemoval(
+                profileID: retiredProfile.id,
+                fallbackOfficeCode: retiredProfile.officeCode,
+                fallbackSchoolCode: retiredProfile.schoolCode
+            ) {
                 affectedKeys += [
-                    schoolNameKey(officeCode, schoolCode),
-                    schoolOwnerKey(officeCode, schoolCode),
-                    legacySchoolNameKey(officeCode, schoolCode)
+                    schoolNameKey(pair.officeCode, pair.schoolCode),
+                    schoolOwnerKey(pair.officeCode, pair.schoolCode),
+                    legacySchoolNameKey(pair.officeCode, pair.schoolCode)
                 ]
             }
         }
@@ -376,6 +379,42 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         defaults.removeObject(forKey: legacyNameKey)
     }
 
+    private func schoolCodePairsForRemoval(
+        profileID: String,
+        fallbackOfficeCode: String?,
+        fallbackSchoolCode: String?
+    ) -> Set<SchoolCodePair> {
+        var officeCodes = Set<String>()
+        var schoolCodes = Set<String>()
+        if let officeCode = defaults.string(forKey: profileOfficeKey(profileID)) {
+            officeCodes.insert(officeCode)
+        }
+        if let fallbackOfficeCode {
+            officeCodes.insert(fallbackOfficeCode)
+        }
+        if let schoolCode = defaults.string(forKey: profileSchoolKey(profileID)) {
+            schoolCodes.insert(schoolCode)
+        }
+        if let fallbackSchoolCode {
+            schoolCodes.insert(fallbackSchoolCode)
+        }
+        return Set(
+            officeCodes.flatMap { officeCode in
+                schoolCodes.map { schoolCode in
+                    SchoolCodePair(
+                        officeCode: officeCode,
+                        schoolCode: schoolCode
+                    )
+                }
+            }
+        )
+    }
+
+    private struct SchoolCodePair: Hashable {
+        let officeCode: String
+        let schoolCode: String
+    }
+
     private func profileNameKey(_ id: String) -> String {
         "rebuild.school-name.profile.\(id).name"
     }
@@ -468,6 +507,7 @@ actor RebuildOnboardingProfileTransactionCoordinator {
     private let metadataStore: RebuildSchoolNameMetadataStore
     private let beforeRemove: (() -> Void)?
     private let saveContext: (NSManagedObjectContext) throws -> Void
+    private let profileWriteSerializer: RebuildProfileWriteSerializer
     private var activeRollbackTokenID: UUID?
     private var rollbackRecords: [UUID: RollbackRecord] = [:]
 
@@ -477,13 +517,15 @@ actor RebuildOnboardingProfileTransactionCoordinator {
         beforeRemove: (() -> Void)? = nil,
         saveContext: @escaping (NSManagedObjectContext) throws -> Void = {
             try $0.save()
-        }
+        },
+        profileWriteSerializer: RebuildProfileWriteSerializer = .shared
     ) {
         context = container.newBackgroundContext()
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         self.metadataStore = metadataStore
         self.beforeRemove = beforeRemove
         self.saveContext = saveContext
+        self.profileWriteSerializer = profileWriteSerializer
     }
 
     func load() throws -> RebuildUserProfile? {
@@ -558,50 +600,52 @@ actor RebuildOnboardingProfileTransactionCoordinator {
         let token = capturesRollback
             ? RebuildOnboardingProfileSaveToken()
             : nil
-        let rollbackRecord: RollbackRecord? = try context.performAndWait {
-            let request = NSFetchRequest<RebuildProfileManagedObject>(
-                entityName: RebuildEntityName.profile
-            )
-            request.sortDescriptors = [
-                NSSortDescriptor(key: "id", ascending: true)
-            ]
-            let existingProfiles = try context.fetch(request)
-            let previousState = existingProfiles.first.map(ManagedProfileState.init)
-            let metadataSnapshot = metadataStore.write(
-                profile,
-                replacingProfiles: existingProfiles.map {
-                    RebuildPersistedProfileIdentity(
-                        id: $0.id,
-                        officeCode: $0.officeCode,
-                        schoolCode: $0.schoolCode
-                    )
-                }
-            )
-            do {
-                let object: RebuildProfileManagedObject
-                if let existing = existingProfiles.first {
-                    object = existing
-                } else {
-                    object = RebuildProfileManagedObject(
-                        entity: try Self.profileEntity(in: context),
-                        insertInto: context
-                    )
-                }
-                for duplicate in existingProfiles.dropFirst() {
-                    context.delete(duplicate)
-                }
-                savedState.apply(to: object)
-                try saveContext(context)
-                guard token != nil else { return nil }
-                return RollbackRecord(
-                    savedState: savedState,
-                    previousState: previousState,
-                    metadataSnapshot: metadataSnapshot
+        let rollbackRecord: RollbackRecord? = try profileWriteSerializer.serialize {
+            try context.performAndWait {
+                let request = NSFetchRequest<RebuildProfileManagedObject>(
+                    entityName: RebuildEntityName.profile
                 )
-            } catch {
-                context.rollback()
-                metadataStore.restore(metadataSnapshot)
-                throw error
+                request.sortDescriptors = [
+                    NSSortDescriptor(key: "id", ascending: true)
+                ]
+                let existingProfiles = try context.fetch(request)
+                let previousState = existingProfiles.first.map(ManagedProfileState.init)
+                let metadataSnapshot = metadataStore.write(
+                    profile,
+                    replacingProfiles: existingProfiles.map {
+                        RebuildPersistedProfileIdentity(
+                            id: $0.id,
+                            officeCode: $0.officeCode,
+                            schoolCode: $0.schoolCode
+                        )
+                    }
+                )
+                do {
+                    let object: RebuildProfileManagedObject
+                    if let existing = existingProfiles.first {
+                        object = existing
+                    } else {
+                        object = RebuildProfileManagedObject(
+                            entity: try Self.profileEntity(in: context),
+                            insertInto: context
+                        )
+                    }
+                    for duplicate in existingProfiles.dropFirst() {
+                        context.delete(duplicate)
+                    }
+                    savedState.apply(to: object)
+                    try saveContext(context)
+                    guard token != nil else { return nil }
+                    return RollbackRecord(
+                        savedState: savedState,
+                        previousState: previousState,
+                        metadataSnapshot: metadataSnapshot
+                    )
+                } catch {
+                    context.rollback()
+                    metadataStore.restore(metadataSnapshot)
+                    throw error
+                }
             }
         }
         guard let token, let rollbackRecord else {
@@ -621,40 +665,42 @@ actor RebuildOnboardingProfileTransactionCoordinator {
             rollbackRecords.removeValue(forKey: token.id)
             return
         }
-        let didRollback = try context.performAndWait {
-            let request = NSFetchRequest<RebuildProfileManagedObject>(
-                entityName: RebuildEntityName.profile
-            )
-            request.sortDescriptors = [
-                NSSortDescriptor(key: "id", ascending: true)
-            ]
-            let currentProfiles = try context.fetch(request)
-            guard currentProfiles.count == 1,
-                let current = currentProfiles.first,
-                ManagedProfileState(object: current)
-                    == rollbackRecord.savedState
-            else {
-                return false
-            }
-            do {
-                if let previousState = rollbackRecord.previousState {
-                    previousState.apply(to: current)
-                    for duplicate in currentProfiles.dropFirst() {
-                        context.delete(duplicate)
-                    }
-                } else {
-                    for object in currentProfiles {
-                        context.delete(object)
-                    }
+        let didRollback = try profileWriteSerializer.serialize {
+            try context.performAndWait {
+                let request = NSFetchRequest<RebuildProfileManagedObject>(
+                    entityName: RebuildEntityName.profile
+                )
+                request.sortDescriptors = [
+                    NSSortDescriptor(key: "id", ascending: true)
+                ]
+                let currentProfiles = try context.fetch(request)
+                guard currentProfiles.count == 1,
+                    let current = currentProfiles.first,
+                    ManagedProfileState(object: current)
+                        == rollbackRecord.savedState
+                else {
+                    return false
                 }
-                if context.hasChanges {
-                    try saveContext(context)
+                do {
+                    if let previousState = rollbackRecord.previousState {
+                        previousState.apply(to: current)
+                        for duplicate in currentProfiles.dropFirst() {
+                            context.delete(duplicate)
+                        }
+                    } else {
+                        for object in currentProfiles {
+                            context.delete(object)
+                        }
+                    }
+                    if context.hasChanges {
+                        try saveContext(context)
+                    }
+                    metadataStore.restore(rollbackRecord.metadataSnapshot)
+                    return true
+                } catch {
+                    context.rollback()
+                    throw error
                 }
-                metadataStore.restore(rollbackRecord.metadataSnapshot)
-                return true
-            } catch {
-                context.rollback()
-                throw error
             }
         }
         rollbackRecords.removeValue(forKey: token.id)
@@ -665,33 +711,35 @@ actor RebuildOnboardingProfileTransactionCoordinator {
     }
 
     func removeIfCurrent(id: String) throws {
-        beforeRemove?()
-        let removed = try context.performAndWait {
-            let request = NSFetchRequest<RebuildProfileManagedObject>(
-                entityName: RebuildEntityName.profile
-            )
-            request.predicate = NSPredicate(format: "id == %@", id)
-            let objects = try context.fetch(request)
-            let fallbackOfficeCode = objects.first?.officeCode
-            let fallbackSchoolCode = objects.first?.schoolCode
-            for object in objects {
-                context.delete(object)
-            }
-            if context.hasChanges {
-                do {
-                    try saveContext(context)
-                } catch {
-                    context.rollback()
-                    throw error
+        let removed = try profileWriteSerializer.serialize {
+            beforeRemove?()
+            return try context.performAndWait {
+                let request = NSFetchRequest<RebuildProfileManagedObject>(
+                    entityName: RebuildEntityName.profile
+                )
+                request.predicate = NSPredicate(format: "id == %@", id)
+                let objects = try context.fetch(request)
+                let fallbackOfficeCode = objects.first?.officeCode
+                let fallbackSchoolCode = objects.first?.schoolCode
+                for object in objects {
+                    context.delete(object)
                 }
+                if context.hasChanges {
+                    do {
+                        try saveContext(context)
+                    } catch {
+                        context.rollback()
+                        throw error
+                    }
+                }
+                metadataStore.removeIfOwned(
+                    profileID: id,
+                    fallbackOfficeCode: fallbackOfficeCode,
+                    fallbackSchoolCode: fallbackSchoolCode,
+                    allowLegacyCodeOnly: true
+                )
+                return !objects.isEmpty
             }
-            metadataStore.removeIfOwned(
-                profileID: id,
-                fallbackOfficeCode: fallbackOfficeCode,
-                fallbackSchoolCode: fallbackSchoolCode,
-                allowLegacyCodeOnly: true
-            )
-            return !objects.isEmpty
         }
         if removed {
             rollbackRecords.removeAll()

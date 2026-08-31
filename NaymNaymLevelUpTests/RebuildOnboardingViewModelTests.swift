@@ -205,6 +205,80 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(recreatedRoot.state, .onboarding)
     }
 
+    func testTwoRapidCancelledCompletionsRestoreSeededProfileAfterEachCleanup() async throws {
+        let previous = RebuildUserProfile.fixture(
+            role: .child,
+            id: "rapid-cancellation-seed",
+            isDemoMode: true
+        )
+        let store = RapidCancellationProfileStore(seed: previous)
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: store,
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+
+        viewModel.selectRole(.parent)
+        viewModel.setNickname("첫 번째")
+        let first = Task { try await viewModel.complete() }
+        await store.waitUntilSaveStarts(count: 1)
+        viewModel.cancel()
+        XCTAssertTrue(viewModel.isCompleting)
+        store.finishSave()
+        await store.waitUntilRemovalStarts(count: 1)
+
+        viewModel.selectRole(.parent)
+        viewModel.setNickname("두 번째")
+        let rapidSecond = Task<Result<RebuildUserProfile, Error>, Never> {
+            do {
+                return .success(try await viewModel.complete())
+            } catch {
+                return .failure(error)
+            }
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        store.finishSave()
+        store.finishRemoval()
+        let rapidSecondResult = await rapidSecond.value
+        switch rapidSecondResult {
+        case .success:
+            XCTFail("A second completion must stay blocked until cleanup ends")
+        case .failure(let error):
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionInProgress
+            )
+        }
+        await XCTAssertThrowsErrorAsync(try await first.value) { error in
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionCancelled
+            )
+        }
+        guard case .failure = rapidSecondResult else { return }
+        XCTAssertFalse(viewModel.isCompleting)
+        let restoredAfterFirst = try await store.load()
+        XCTAssertEqual(restoredAfterFirst, previous)
+
+        let second = Task { try await viewModel.complete() }
+        await store.waitUntilSaveStarts(count: 2)
+        viewModel.cancel()
+        XCTAssertTrue(viewModel.isCompleting)
+        store.finishSave()
+        await store.waitUntilRemovalStarts(count: 2)
+        XCTAssertTrue(viewModel.isCompleting)
+        store.finishRemoval()
+
+        await XCTAssertThrowsErrorAsync(try await second.value) { error in
+            XCTAssertEqual(
+                error as? RebuildOnboardingError,
+                .completionCancelled
+            )
+        }
+        XCTAssertFalse(viewModel.isCompleting)
+        let restoredAfterSecond = try await store.load()
+        XCTAssertEqual(restoredAfterSecond, previous)
+    }
+
     func testCancelledReplacementRestoresSeededExistingProfileAndMetadata() async throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let suiteName = "RebuildSeededCancellation-\(UUID().uuidString)"
@@ -295,9 +369,9 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         store.finishFirstSave()
         await store.waitUntilRemovalStarts()
 
-        viewModel.selectRole(.parent)
-        viewModel.setNickname("최종 보호자")
-        let latest = try await viewModel.complete()
+        XCTAssertTrue(viewModel.isCompleting)
+        let latest = RebuildUserProfile.fixture(role: .parent, id: "final-parent")
+        try await store.save(latest)
         store.finishRemoval()
 
         await XCTAssertThrowsErrorAsync(try await cancelled.value) { error in
@@ -600,6 +674,248 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
 
         let loaded = try await store.load()
         XCTAssertEqual(loaded, later)
+    }
+
+    func testSeparateProfileCoordinatorRollbackCannotOverwriteLaterRepositorySave() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildSeparateProfileWriterRace-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let rollbackSaveStarted = expectation(description: "rollback save started")
+        let allowRollbackSave = DispatchSemaphore(value: 0)
+        var saveCount = 0
+        defer { allowRollbackSave.signal() }
+
+        let coordinator = RebuildOnboardingProfileTransactionCoordinator(
+            container: container,
+            metadataStore: metadata,
+            saveContext: { context in
+                saveCount += 1
+                if saveCount == 3 {
+                    rollbackSaveStarted.fulfill()
+                    allowRollbackSave.wait()
+                }
+                try context.save()
+            }
+        )
+        let store = RebuildCoreDataOnboardingProfileStore(coordinator: coordinator)
+        let first = RebuildUserProfile.fixture(
+            role: .child,
+            id: "separate-writer-profile"
+        )
+        try await store.save(first)
+        let capturedToken = try await store.saveAndCaptureRollback(first)
+        let token = try XCTUnwrap(capturedToken)
+
+        let repositoryContext = container.newBackgroundContext()
+        let repository = RebuildProfileRepository(context: repositoryContext)
+        let later = RebuildProfile(
+            id: first.id,
+            role: first.role.rawValue,
+            nickname: "나중 저장",
+            officeCode: first.school?.officeCode,
+            schoolCode: first.school?.schoolCode,
+            allergyCodesJSON: "[1,5]"
+        )
+        let laterSaveReached = DispatchSemaphore(value: 0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: .NSManagedObjectContextDidSave,
+            object: repositoryContext,
+            queue: nil
+        ) { _ in
+            laterSaveReached.signal()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let rollback = Task {
+            try await store.rollback(token)
+        }
+        await fulfillment(of: [rollbackSaveStarted], timeout: 2)
+
+        let laterSave = Task {
+            try repository.save(later)
+        }
+        _ = waitForSemaphore(laterSaveReached, timeout: 1)
+        allowRollbackSave.signal()
+
+        try await rollback.value
+        try await laterSave.value
+
+        let loaded = try await store.load()
+        XCTAssertEqual(loaded?.id, first.id)
+        XCTAssertEqual(loaded?.nickname, later.nickname)
+    }
+
+    func testFailedReplacementRestoresDivergentProfileAndFallbackSchoolMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildDivergentSchoolMetadataFailure-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let previous = RebuildUserProfile.fixture(
+            role: .child,
+            id: "divergent-metadata-profile"
+        )
+        let seedStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        try await seedStore.save(previous)
+
+        let scopedOffice = "C10"
+        let scopedSchool = "1234567"
+        let fallbackOffice = previous.school!.officeCode
+        let fallbackSchool = previous.school!.schoolCode
+        defaults.set(
+            scopedOffice,
+            forKey: "rebuild.school-name.profile.\(previous.id).office"
+        )
+        defaults.set(
+            scopedSchool,
+            forKey: "rebuild.school-name.profile.\(previous.id).school"
+        )
+        let originalNames = [
+            (scopedOffice, scopedSchool, "프로필 코드 학교"),
+            (scopedOffice, fallbackSchool, "혼합 코드 학교"),
+            (fallbackOffice, scopedSchool, "반대 혼합 코드 학교"),
+            (fallbackOffice, fallbackSchool, "Core Data 코드 학교"),
+        ]
+        for (office, school, name) in originalNames {
+            defaults.set(
+                name,
+                forKey: "rebuild.school-name.codes.\(office).\(school).name"
+            )
+            defaults.set(
+                previous.id,
+                forKey: "rebuild.school-name.codes.\(office).\(school).owner"
+            )
+            defaults.set(
+                "legacy-\(name)",
+                forKey: "rebuild.school-name.codes.\(office).\(school)"
+            )
+        }
+
+        let store = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata,
+                saveContext: { _ in throw TestError.saveFailed }
+            )
+        )
+        let replacement = RebuildUserProfile.fixture(
+            role: .child,
+            id: "replacement-after-divergent-metadata"
+        )
+
+        await XCTAssertThrowsErrorAsync(try await store.save(replacement)) { error in
+            XCTAssertEqual(error as? TestError, .saveFailed)
+        }
+
+        for (office, school, name) in originalNames {
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: "rebuild.school-name.codes.\(office).\(school).name"
+                ),
+                name
+            )
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: "rebuild.school-name.codes.\(office).\(school).owner"
+                ),
+                previous.id
+            )
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: "rebuild.school-name.codes.\(office).\(school)"
+                ),
+                "legacy-\(name)"
+            )
+        }
+    }
+
+    func testRollbackRestoresDivergentProfileAndFallbackSchoolMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildDivergentSchoolMetadataRollback-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let previous = RebuildUserProfile.fixture(
+            role: .child,
+            id: "divergent-rollback-profile"
+        )
+        let seedStore = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        try await seedStore.save(previous)
+
+        let scopedOffice = "C10"
+        let scopedSchool = "1234567"
+        let fallbackOffice = previous.school!.officeCode
+        let fallbackSchool = previous.school!.schoolCode
+        defaults.set(
+            scopedOffice,
+            forKey: "rebuild.school-name.profile.\(previous.id).office"
+        )
+        defaults.set(
+            scopedSchool,
+            forKey: "rebuild.school-name.profile.\(previous.id).school"
+        )
+        let originalNames = [
+            (scopedOffice, scopedSchool, "프로필 코드 학교"),
+            (scopedOffice, fallbackSchool, "혼합 코드 학교"),
+            (fallbackOffice, scopedSchool, "반대 혼합 코드 학교"),
+            (fallbackOffice, fallbackSchool, "Core Data 코드 학교"),
+        ]
+        for (office, school, name) in originalNames {
+            defaults.set(
+                name,
+                forKey: "rebuild.school-name.codes.\(office).\(school).name"
+            )
+            defaults.set(
+                previous.id,
+                forKey: "rebuild.school-name.codes.\(office).\(school).owner"
+            )
+            defaults.set(
+                "legacy-\(name)",
+                forKey: "rebuild.school-name.codes.\(office).\(school)"
+            )
+        }
+
+        let replacement = RebuildUserProfile.fixture(
+            role: .child,
+            id: "replacement-before-divergent-rollback"
+        )
+        let token = try await seedStore.saveAndCaptureRollback(replacement)
+        try await seedStore.rollback(try XCTUnwrap(token))
+
+        for (office, school, name) in originalNames {
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: "rebuild.school-name.codes.\(office).\(school).name"
+                ),
+                name
+            )
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: "rebuild.school-name.codes.\(office).\(school).owner"
+                ),
+                previous.id
+            )
+            XCTAssertEqual(
+                defaults.string(
+                    forKey: "rebuild.school-name.codes.\(office).\(school)"
+                ),
+                "legacy-\(name)"
+            )
+        }
+        let restored = try await seedStore.load()
+        XCTAssertEqual(restored, previous)
     }
 
     func testCancelledCleanupCannotRemoveLaterWinnerThatReusesProfileID() async throws {
@@ -1199,6 +1515,66 @@ private final class ControlledOnboardingProfileStore:
 }
 
 @MainActor
+private final class RapidCancellationProfileStore:
+    RebuildOnboardingProfileStore {
+    private var persistedProfile: RebuildUserProfile?
+    private var previousProfiles: [String: RebuildUserProfile?] = [:]
+    private var saveContinuations: [CheckedContinuation<Void, Never>] = []
+    private var removalContinuation: CheckedContinuation<Void, Never>?
+    private(set) var saveCount = 0
+    private(set) var removalCount = 0
+
+    init(seed: RebuildUserProfile) {
+        persistedProfile = seed
+    }
+
+    func load() async throws -> RebuildUserProfile? {
+        persistedProfile
+    }
+
+    func save(_ profile: RebuildUserProfile) async throws {
+        saveCount += 1
+        await withCheckedContinuation { continuation in
+            saveContinuations.append(continuation)
+        }
+        previousProfiles[profile.id] = persistedProfile
+        persistedProfile = profile
+    }
+
+    func removeIfCurrent(id: String) async throws {
+        removalCount += 1
+        await withCheckedContinuation { continuation in
+            removalContinuation = continuation
+        }
+        if persistedProfile?.id == id {
+            persistedProfile = previousProfiles[id] ?? nil
+        }
+    }
+
+    func waitUntilSaveStarts(count: Int) async {
+        while saveCount < count {
+            await Task.yield()
+        }
+    }
+
+    func finishSave() {
+        guard !saveContinuations.isEmpty else { return }
+        saveContinuations.removeFirst().resume()
+    }
+
+    func waitUntilRemovalStarts(count: Int) async {
+        while removalCount < count {
+            await Task.yield()
+        }
+    }
+
+    func finishRemoval() {
+        removalContinuation?.resume()
+        removalContinuation = nil
+    }
+}
+
+@MainActor
 private final class RacingOnboardingProfileStore:
     RebuildOnboardingProfileStore {
     private var persistedProfile: RebuildUserProfile?
@@ -1352,4 +1728,11 @@ private func XCTAssertThrowsErrorAsync<T>(
     } catch {
         errorHandler(error)
     }
+}
+
+private func waitForSemaphore(
+    _ semaphore: DispatchSemaphore,
+    timeout: TimeInterval
+) -> DispatchTimeoutResult {
+    semaphore.wait(timeout: .now() + timeout)
 }

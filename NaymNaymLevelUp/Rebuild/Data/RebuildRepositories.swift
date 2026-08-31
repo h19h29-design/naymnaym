@@ -64,40 +64,61 @@ final class RebuildProgressLedgerSerializer: @unchecked Sendable {
     }
 }
 
+final class RebuildProfileWriteSerializer: @unchecked Sendable {
+    static let shared = RebuildProfileWriteSerializer()
+
+    private let lock = NSRecursiveLock()
+
+    func serialize<Result>(
+        _ operation: () throws -> Result
+    ) rethrows -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return try operation()
+    }
+}
+
 final class RebuildProfileRepository {
     private let context: NSManagedObjectContext
+    private let profileWriteSerializer: RebuildProfileWriteSerializer
 
-    init(context: NSManagedObjectContext) {
+    init(
+        context: NSManagedObjectContext,
+        profileWriteSerializer: RebuildProfileWriteSerializer = .shared
+    ) {
         self.context = context
+        self.profileWriteSerializer = profileWriteSerializer
     }
 
     func save(_ profile: RebuildProfile) throws {
-        try context.performAndWait {
-            let request = NSFetchRequest<RebuildProfileManagedObject>(
-                entityName: RebuildEntityName.profile
-            )
-            request.predicate = NSPredicate(format: "id == %@", profile.id)
-            request.fetchLimit = 1
-
-            let object: RebuildProfileManagedObject
-            if let existing = try context.fetch(request).first {
-                object = existing
-            } else {
-                object = try insertManagedObject(
-                    RebuildProfileManagedObject.self,
-                    entityName: RebuildEntityName.profile,
-                    in: context
+        try profileWriteSerializer.serialize {
+            try context.performAndWait {
+                let request = NSFetchRequest<RebuildProfileManagedObject>(
+                    entityName: RebuildEntityName.profile
                 )
-            }
+                request.predicate = NSPredicate(format: "id == %@", profile.id)
+                request.fetchLimit = 1
 
-            object.id = profile.id
-            object.role = profile.role
-            object.nickname = profile.nickname
-            object.officeCode = profile.officeCode
-            object.schoolCode = profile.schoolCode
-            object.allergyCodesJSON = profile.allergyCodesJSON
-            if context.hasChanges {
-                try context.save()
+                let object: RebuildProfileManagedObject
+                if let existing = try context.fetch(request).first {
+                    object = existing
+                } else {
+                    object = try insertManagedObject(
+                        RebuildProfileManagedObject.self,
+                        entityName: RebuildEntityName.profile,
+                        in: context
+                    )
+                }
+
+                object.id = profile.id
+                object.role = profile.role
+                object.nickname = profile.nickname
+                object.officeCode = profile.officeCode
+                object.schoolCode = profile.schoolCode
+                object.allergyCodesJSON = profile.allergyCodesJSON
+                if context.hasChanges {
+                    try context.save()
+                }
             }
         }
     }

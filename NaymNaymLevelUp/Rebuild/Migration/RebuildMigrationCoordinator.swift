@@ -60,6 +60,7 @@ final class RebuildMigrationCoordinator {
     private let reader: LegacyDefaultsReader?
     private let container: NSPersistentContainer
     private let ledgerSerializer: RebuildProgressLedgerSerializer
+    private let profileWriteSerializer: RebuildProfileWriteSerializer
     private let legacyPhotoDirectory: URL
     private let rebuildPhotoDirectory: URL
     private let now: () -> Date
@@ -81,6 +82,7 @@ final class RebuildMigrationCoordinator {
         legacyDefaultsDomainName: String? = nil,
         container: NSPersistentContainer,
         ledgerSerializer: RebuildProgressLedgerSerializer = .shared,
+        profileWriteSerializer: RebuildProfileWriteSerializer = .shared,
         legacyPhotoDirectory: URL? = nil,
         rebuildPhotoDirectory: URL? = nil,
         fileManager: FileManager = .default,
@@ -97,6 +99,7 @@ final class RebuildMigrationCoordinator {
         }
         self.container = container
         self.ledgerSerializer = ledgerSerializer
+        self.profileWriteSerializer = profileWriteSerializer
         let documents = fileManager.urls(
             for: .documentDirectory,
             in: .userDomainMask
@@ -184,7 +187,9 @@ final class RebuildMigrationCoordinator {
                         sourceDigest: sourceDigest,
                         into: context
                     )
-                    try save(context)
+                    try profileWriteSerializer.serialize {
+                        try save(context)
+                    }
                     return .migrated
                 } catch {
                     context.rollback()

@@ -130,9 +130,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
         let generation = completionGeneration
         isCompleting = true
         defer {
-            if generation == completionGeneration {
-                isCompleting = false
-            }
+            isCompleting = false
         }
         let saveToken = try await profileStore.saveAndCaptureRollback(profile)
         guard generation == completionGeneration else {
@@ -150,7 +148,6 @@ final class RebuildOnboardingViewModel: ObservableObject {
     func cancel() {
         searchGeneration += 1
         completionGeneration += 1
-        isCompleting = false
         draft = OnboardingDraft()
         step = .role
         validationMessage = nil
