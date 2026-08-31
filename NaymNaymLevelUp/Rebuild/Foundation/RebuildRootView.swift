@@ -63,11 +63,26 @@ enum RebuildLegacyProfileBridgeState: Equatable {
     case ready(RebuildUserProfile)
 }
 
+struct RebuildChildNavigationIdentity: Hashable {
+    let profileID: String
+    let isDemoMode: Bool
+
+    init(profile: RebuildUserProfile) {
+        self.init(profileID: profile.id, isDemoMode: profile.isDemoMode)
+    }
+
+    init(profileID: String, isDemoMode: Bool) {
+        self.profileID = profileID
+        self.isDemoMode = isDemoMode
+    }
+}
+
 @MainActor
 final class RebuildLegacyProfileBridge: ObservableObject {
     @Published private(set) var state: RebuildLegacyProfileBridgeState = .pending
 
     func prepare(_ profile: RebuildUserProfile, appState: AppState) {
+        state = .pending
         appState.applyRebuildProfile(profile)
         guard isApplied(profile, to: appState) else { return }
         state = .ready(profile)
@@ -109,12 +124,13 @@ private struct RebuildBridgedDestinationView: View {
                         profile: readyProfile,
                         container: RebuildOnboardingAppStore.shared?.container
                     )
+                    .id(RebuildChildNavigationIdentity(profile: readyProfile))
                 case .parentConnection:
                     ParentSummaryView()
                 }
             }
         }
-        .task(id: profile.id) {
+        .task(id: RebuildChildNavigationIdentity(profile: profile)) {
             bridge.prepare(profile, appState: appState)
         }
     }

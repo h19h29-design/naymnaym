@@ -550,6 +550,62 @@ final class RebuildDemoIsolationTests: XCTestCase {
         XCTAssertNil(session.legacyRights)
     }
 
+    func testChildCompositionUsesOneContainerAcrossTodayScheduleGrowthAndCollection() async throws {
+        let liveContainer = try RebuildPersistentStore.makeInMemory()
+        let composition = RebuildChildComposition(
+            profile: .demoFixture,
+            persistentContainer: liveContainer
+        )
+        let demoContainer = try XCTUnwrap(composition.session.container)
+        let progressRepository = RebuildProgressRepository(
+            context: demoContainer.viewContext
+        )
+        XCTAssertTrue(try progressRepository.appendIfAbsent(
+            RebuildProgressEvent(
+                id: "composition:shared",
+                amount: 42,
+                occurredAt: Date(timeIntervalSince1970: 10),
+                sourceRecordID: "composition:shared"
+            )
+        ))
+
+        let growth = try await composition.growthProvider.load(limit: 10)
+        let collection = try await composition.collectionProvider.loadCollection()
+        await composition.todayViewModel.load()
+
+        XCTAssertTrue(composition.session.container === demoContainer)
+        XCTAssertEqual(growth.totalXP, 42)
+        XCTAssertEqual(collection.totalXP, 42)
+        XCTAssertEqual(composition.todayViewModel.totalXP, 42)
+
+        let date = Date()
+        await composition.mealScheduleViewModel.load(dates: [date])
+        XCTAssertEqual(
+            try CoreDataRebuildMealDayStore(context: demoContainer.viewContext)
+                .load(date: MealScheduleCalendar.key(for: date))?.source,
+            "demo"
+        )
+    }
+
+    func testChildNavigationIdentityChangesForProfileAndDemoModeSwitches() {
+        let live = RebuildChildNavigationIdentity(
+            profileID: "same-profile",
+            isDemoMode: false
+        )
+        let demo = RebuildChildNavigationIdentity(
+            profileID: "same-profile",
+            isDemoMode: true
+        )
+        let otherProfile = RebuildChildNavigationIdentity(
+            profileID: "other-profile",
+            isDemoMode: false
+        )
+
+        XCTAssertNotEqual(live, demo)
+        XCTAssertNotEqual(live, otherProfile)
+        XCTAssertNotEqual(demo, otherProfile)
+    }
+
     func testDemoCacheAndRecordXPStayOutOfLiveContainer() async throws {
         let liveContainer = try RebuildPersistentStore.makeInMemory()
         let liveStore = CoreDataRebuildMealDayStore(
@@ -575,7 +631,7 @@ final class RebuildDemoIsolationTests: XCTestCase {
             source: "neis"
         )
         let liveUseCase = try RecordMealUseCase(container: liveContainer)
-        try liveUseCase.execute(
+        let liveRecordResult = try liveUseCase.execute(
             RecordMealCommand(
                 recordID: "2026-08-30|실제 급식",
                 date: "2026-08-30",
@@ -590,6 +646,8 @@ final class RebuildDemoIsolationTests: XCTestCase {
                 occurredAt: Date(timeIntervalSince1970: 1_753_401_601)
             )
         )
+        XCTAssertEqual(liveRecordResult.xpGranted, 18)
+        XCTAssertEqual(liveRecordResult.totalXP, 18)
 
         let session = RebuildChildSessionStore(
             profile: .demoFixture,

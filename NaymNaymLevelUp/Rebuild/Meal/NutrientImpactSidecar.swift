@@ -644,9 +644,7 @@ final class InMemoryNutrientImpactSidecar:
     private var snapshots: [RevisionKey: NutrientImpactSnapshot] = [:]
 
     func install(_ snapshot: NutrientImpactSnapshot) throws {
-        guard (try? FileNutrientImpactSidecar.validate(snapshot)) != nil else {
-            throw NutrientImpactSidecarError.invalidSnapshot
-        }
+        try FileNutrientImpactSidecar.validate(snapshot)
         let key = RevisionKey(snapshot: snapshot)
         lock.lock()
         defer { lock.unlock() }

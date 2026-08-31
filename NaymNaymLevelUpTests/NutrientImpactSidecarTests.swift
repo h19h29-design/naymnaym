@@ -626,6 +626,58 @@ final class NutrientImpactSidecarTests: XCTestCase {
         )
     }
 
+    func testInMemorySidecarPreservesSharedValidatorErrors() throws {
+        let sidecar = InMemoryNutrientImpactSidecar()
+        let cases: [(NutrientImpactSnapshot, NutrientImpactSidecarError)] = [
+            (
+                fixtureSnapshot(schemaVersion: 99),
+                .unsupportedSchemaVersion
+            ),
+            (
+                fixtureSnapshot(ruleVersion: 99),
+                .unsupportedRuleVersion
+            ),
+            (
+                fixtureSnapshot(headline: "변조된 교육 문장이에요."),
+                .invalidSnapshot
+            ),
+        ]
+
+        for (snapshot, expectedError) in cases {
+            XCTAssertThrowsError(try FileNutrientImpactSidecar.validate(snapshot)) { error in
+                XCTAssertEqual(error as? NutrientImpactSidecarError, expectedError)
+            }
+            XCTAssertThrowsError(try sidecar.install(snapshot)) { error in
+                XCTAssertEqual(error as? NutrientImpactSidecarError, expectedError)
+            }
+        }
+    }
+
+    func testInMemorySidecarRejectsConflictingRevisionLikeFileSidecar() throws {
+        let sidecar = InMemoryNutrientImpactSidecar()
+        let first = fixtureSnapshot(
+            updatedAt: Date(timeIntervalSince1970: 10),
+            nutrients: ["carbohydrate"]
+        )
+        let conflicting = fixtureSnapshot(
+            updatedAt: Date(timeIntervalSince1970: 10),
+            nutrients: ["protein"]
+        )
+
+        try sidecar.install(first)
+        XCTAssertEqual(
+            try sidecar.load(matching: fixtureRevision(updatedAt: Date(timeIntervalSince1970: 10))),
+            first
+        )
+        XCTAssertThrowsError(try sidecar.install(conflicting)) { error in
+            XCTAssertEqual(error as? NutrientImpactSidecarError, .conflictingRevision)
+        }
+        XCTAssertEqual(
+            try sidecar.load(matching: fixtureRevision(updatedAt: Date(timeIntervalSince1970: 10))),
+            first
+        )
+    }
+
     func testSidecarDoesNotChangeManagedModelSchema() throws {
         let model = RebuildManagedModel.make()
         XCTAssertEqual(model.entitiesByName.count, 8)

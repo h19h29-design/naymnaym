@@ -60,30 +60,31 @@ final class RebuildChildSessionStore: ObservableObject {
     }
 }
 
-struct ChildNavigationView: View {
-    @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var childSession: RebuildChildSessionStore
-    @StateObject private var todayViewModel: TodayForestViewModel
-    @StateObject private var mealScheduleViewModel: MealScheduleViewModel
-    @State private var selection: RebuildChildTab = .today
-    private let growthPolicy: GrowthPolicy
-    private let growthProvider: any GrowthSnapshotProviding
-    private let collectionProvider: any CollectionSnapshotProviding
+@MainActor
+final class RebuildChildComposition: ObservableObject {
+    let session: RebuildChildSessionStore
+    let growthPolicy: GrowthPolicy
+    let growthProvider: any GrowthSnapshotProviding
+    let collectionProvider: any CollectionSnapshotProviding
+    let todayViewModel: TodayForestViewModel
+    let mealScheduleViewModel: MealScheduleViewModel
 
     init(
         profile: RebuildUserProfile,
-        container: NSPersistentContainer?
+        persistentContainer: NSPersistentContainer?
     ) {
         let session = RebuildChildSessionStore(
             profile: profile,
-            persistentContainer: container
+            persistentContainer: persistentContainer
         )
-        _childSession = StateObject(wrappedValue: session)
+        self.session = session
+
         do {
             growthPolicy = try GrowthPolicy.bundled()
         } catch {
             fatalError("Validated growth policy is missing or invalid: \(error)")
         }
+
         if let container = session.container {
             growthProvider = CoreDataGrowthSnapshotProvider(
                 container: container
@@ -95,95 +96,18 @@ struct ChildNavigationView: View {
             growthProvider = UnavailableGrowthSnapshotProvider()
             collectionProvider = UnavailableCollectionSnapshotProvider()
         }
-        _todayViewModel = StateObject(
-            wrappedValue: Self.makeTodayViewModel(
-                profile: profile,
-                container: session.container,
-                session: session
-            )
+
+        todayViewModel = Self.makeTodayViewModel(
+            profile: profile,
+            container: session.container,
+            session: session
         )
-        _mealScheduleViewModel = StateObject(
-            wrappedValue: Self.makeMealScheduleViewModel(
-                profile: profile,
-                container: session.container
-            )
+        mealScheduleViewModel = Self.makeMealScheduleViewModel(
+            profile: profile,
+            container: session.container
         )
     }
 
-    var body: some View {
-        TabView(selection: $selection) {
-            TodayForestView(
-                viewModel: todayViewModel,
-                growthPolicy: growthPolicy,
-                isTabActive: selection == .today,
-                isAppActive: scenePhase == .active
-            )
-                .tabItem {
-                    Label(
-                        RebuildChildTab.today.title,
-                        systemImage: RebuildChildTab.today.systemImage
-                    )
-                }
-                .tag(RebuildChildTab.today)
-
-            MealScheduleView(
-                viewModel: mealScheduleViewModel,
-                recordingViewModelFactory: { route in
-                    todayViewModel.recordingViewModel(for: route)
-                }
-            )
-                .tabItem {
-                    Label(
-                        RebuildChildTab.meals.title,
-                        systemImage: RebuildChildTab.meals.systemImage
-                    )
-                }
-                .tag(RebuildChildTab.meals)
-
-            GrowthView(
-                provider: growthProvider,
-                policy: growthPolicy,
-                isActive: selection == .growth,
-                stateStore: childSession.growthStageStateStore,
-                legacyRights: childSession.legacyRights
-            )
-                .tabItem {
-                    Label(
-                        RebuildChildTab.growth.title,
-                        systemImage: RebuildChildTab.growth.systemImage
-                    )
-                }
-                .tag(RebuildChildTab.growth)
-
-            CollectionView(
-                provider: collectionProvider,
-                policy: growthPolicy,
-                isActive: selection == .collection,
-                stateStore: childSession.growthStageStateStore,
-                legacyRights: childSession.legacyRights
-            )
-                .tabItem {
-                    Label(
-                        RebuildChildTab.collection.title,
-                        systemImage: RebuildChildTab.collection.systemImage
-                    )
-                }
-                .tag(RebuildChildTab.collection)
-
-            SettingsView()
-                .tabItem {
-                    Label(
-                        RebuildChildTab.settings.title,
-                        systemImage: RebuildChildTab.settings.systemImage
-                    )
-                }
-                .tag(RebuildChildTab.settings)
-        }
-        .tint(RebuildDesignTokens.forest700)
-        .accessibilityIdentifier("child_navigation")
-    }
-
-    @MainActor
     private static func makeTodayViewModel(
         profile: RebuildUserProfile,
         container: NSPersistentContainer?,
@@ -266,7 +190,6 @@ struct ChildNavigationView: View {
         )
     }
 
-    @MainActor
     private static func makeMealScheduleViewModel(
         profile: RebuildUserProfile,
         container: NSPersistentContainer?
@@ -302,6 +225,96 @@ struct ChildNavigationView: View {
             officeCode: school.officeCode,
             schoolCode: school.schoolCode
         )
+    }
+}
+
+struct ChildNavigationView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var composition: RebuildChildComposition
+    @State private var selection: RebuildChildTab = .today
+
+    init(
+        profile: RebuildUserProfile,
+        container: NSPersistentContainer?
+    ) {
+        let composition = RebuildChildComposition(
+            profile: profile,
+            persistentContainer: container
+        )
+        _composition = StateObject(wrappedValue: composition)
+    }
+
+    var body: some View {
+        TabView(selection: $selection) {
+            TodayForestView(
+                viewModel: composition.todayViewModel,
+                growthPolicy: composition.growthPolicy,
+                isTabActive: selection == .today,
+                isAppActive: scenePhase == .active
+            )
+                .tabItem {
+                    Label(
+                        RebuildChildTab.today.title,
+                        systemImage: RebuildChildTab.today.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.today)
+
+            MealScheduleView(
+                viewModel: composition.mealScheduleViewModel,
+                recordingViewModelFactory: { route in
+                    composition.todayViewModel.recordingViewModel(for: route)
+                }
+            )
+                .tabItem {
+                    Label(
+                        RebuildChildTab.meals.title,
+                        systemImage: RebuildChildTab.meals.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.meals)
+
+            GrowthView(
+                provider: composition.growthProvider,
+                policy: composition.growthPolicy,
+                isActive: selection == .growth,
+                stateStore: composition.session.growthStageStateStore,
+                legacyRights: composition.session.legacyRights
+            )
+                .tabItem {
+                    Label(
+                        RebuildChildTab.growth.title,
+                        systemImage: RebuildChildTab.growth.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.growth)
+
+            CollectionView(
+                provider: composition.collectionProvider,
+                policy: composition.growthPolicy,
+                isActive: selection == .collection,
+                stateStore: composition.session.growthStageStateStore,
+                legacyRights: composition.session.legacyRights
+            )
+                .tabItem {
+                    Label(
+                        RebuildChildTab.collection.title,
+                        systemImage: RebuildChildTab.collection.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.collection)
+
+            SettingsView()
+                .tabItem {
+                    Label(
+                        RebuildChildTab.settings.title,
+                        systemImage: RebuildChildTab.settings.systemImage
+                    )
+                }
+                .tag(RebuildChildTab.settings)
+        }
+        .tint(RebuildDesignTokens.forest700)
+        .accessibilityIdentifier("child_navigation")
     }
 }
 
