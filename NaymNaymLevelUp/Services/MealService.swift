@@ -52,15 +52,8 @@ struct MealService {
             return MealFetchResult(meals: [], status: .error, message: "날짜 범위를 만들 수 없어 급식 정보를 조회하지 못했어요.")
         }
 
-        if isSampleSchool(school) {
-            if allowsDemo {
-                return demoMeals(monthDate: start)
-            }
-            return MealFetchResult(
-                meals: [],
-                status: .sampleSchool,
-                message: "샘플 학교가 선택되어 있어요. 실제 급식을 보려면 설정에서 실제 학교를 다시 선택해 주세요."
-            )
+        if allowsDemo {
+            return demoMeals(monthDate: start)
         }
 
         do {
@@ -158,11 +151,6 @@ struct MealService {
         )
     }
 
-    private func isSampleSchool(_ school: School) -> Bool {
-        sampleProvider.sampleSchools.contains {
-            $0.officeCode == school.officeCode && $0.schoolCode == school.schoolCode
-        }
-    }
 }
 
 private struct MealInfoResponse: Decodable {

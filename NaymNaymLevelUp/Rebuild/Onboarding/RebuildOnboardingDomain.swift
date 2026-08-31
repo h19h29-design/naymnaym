@@ -136,7 +136,15 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         defaults.string(forKey: profileDemoModeKey(profileID)) == "true"
     }
 
-    func write(_ profile: RebuildUserProfile) -> Snapshot {
+    /// Writes current metadata and retires metadata belonging to profiles
+    /// replaced by the singleton Core Data profile row.
+    ///
+    /// The snapshot includes both current and retired keys so a failed Core
+    /// Data save can restore the complete prior state.
+    func write(
+        _ profile: RebuildUserProfile,
+        replacingProfileIDs: [String] = []
+    ) -> Snapshot {
         let idNameKey = profileNameKey(profile.id)
         let idOfficeKey = profileOfficeKey(profile.id)
         let idSchoolKey = profileSchoolKey(profile.id)
@@ -144,6 +152,7 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         let legacyIDKey = legacyProfileNameKey(profile.id)
         let previousOfficeCode = defaults.string(forKey: idOfficeKey)
         let previousSchoolCode = defaults.string(forKey: idSchoolKey)
+        let retiredProfileIDs = Set(replacingProfileIDs).subtracting([profile.id])
         var affectedKeys = [
             idNameKey,
             idOfficeKey,
@@ -158,6 +167,26 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
                 legacySchoolNameKey(previousOfficeCode, previousSchoolCode)
             ]
         }
+        for retiredProfileID in retiredProfileIDs {
+            affectedKeys += [
+                profileNameKey(retiredProfileID),
+                profileOfficeKey(retiredProfileID),
+                profileSchoolKey(retiredProfileID),
+                profileDemoModeKey(retiredProfileID),
+                legacyProfileNameKey(retiredProfileID)
+            ]
+            if let officeCode = defaults.string(
+                forKey: profileOfficeKey(retiredProfileID)
+            ), let schoolCode = defaults.string(
+                forKey: profileSchoolKey(retiredProfileID)
+            ) {
+                affectedKeys += [
+                    schoolNameKey(officeCode, schoolCode),
+                    schoolOwnerKey(officeCode, schoolCode),
+                    legacySchoolNameKey(officeCode, schoolCode)
+                ]
+            }
+        }
         if let school = profile.school {
             affectedKeys += [
                 schoolNameKey(school.officeCode, school.schoolCode),
@@ -170,6 +199,9 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
                 Entry(key: $0, value: defaults.string(forKey: $0))
             }
         )
+        for retiredProfileID in retiredProfileIDs {
+            removeIfOwned(profileID: retiredProfileID)
+        }
         removeOwnedSchoolMetadata(
             profileID: profile.id,
             profileName: defaults.string(forKey: idNameKey)
@@ -413,15 +445,18 @@ actor RebuildOnboardingProfileTransactionCoordinator {
 
     func save(_ profile: RebuildUserProfile) throws {
         try context.performAndWait {
-            let metadataSnapshot = metadataStore.write(profile)
+            let request = NSFetchRequest<RebuildProfileManagedObject>(
+                entityName: RebuildEntityName.profile
+            )
+            request.sortDescriptors = [
+                NSSortDescriptor(key: "id", ascending: true)
+            ]
+            let existingProfiles = try context.fetch(request)
+            let metadataSnapshot = metadataStore.write(
+                profile,
+                replacingProfileIDs: existingProfiles.map(\.id)
+            )
             do {
-                let request = NSFetchRequest<RebuildProfileManagedObject>(
-                    entityName: RebuildEntityName.profile
-                )
-                request.sortDescriptors = [
-                    NSSortDescriptor(key: "id", ascending: true)
-                ]
-                let existingProfiles = try context.fetch(request)
                 let object: RebuildProfileManagedObject
                 if let existing = existingProfiles.first {
                     object = existing

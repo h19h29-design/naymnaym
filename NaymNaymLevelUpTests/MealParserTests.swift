@@ -219,16 +219,29 @@ final class MealServiceTests: XCTestCase {
         XCTAssertFalse(result.usedSample)
     }
 
-    func testSampleSchoolRequiresExplicitDemoMode() async {
-        let service = MealService(client: NEISClient(apiKey: "test-key"))
+    func testSampleIdentifiersUseNEISUnlessDemoModeIsExplicitlyEnabled() async throws {
+        let service = try makeService(responseJSON: """
+        {
+          "mealServiceDietInfo": [
+            {"row": [
+              {
+                "MLSV_YMD": "20260618",
+                "DDISH_NM": "현미밥<br/>닭갈비 (5.6.13.15)",
+                "CAL_INFO": "770.7 Kcal",
+                "NTR_INFO": "단백질(g) : 42.3"
+              }
+            ]}
+          ]
+        }
+        """)
         let sampleSchool = SampleDataProvider().sampleSchools[0]
 
-        let blocked = await service.fetchMonthlyMeals(school: sampleSchool, year: 2026, month: 6, allowsDemo: false)
+        let live = await service.fetchMonthlyMeals(school: sampleSchool, year: 2026, month: 6, allowsDemo: false)
         let demo = await service.fetchMonthlyMeals(school: sampleSchool, year: 2026, month: 6, allowsDemo: true)
 
-        XCTAssertEqual(blocked.status, .sampleSchool)
-        XCTAssertTrue(blocked.meals.isEmpty)
-        XCTAssertFalse(blocked.usedSample)
+        XCTAssertEqual(live.status, .live)
+        XCTAssertEqual(live.meals.map(\.date), ["20260618"])
+        XCTAssertFalse(live.meals.first?.isSample ?? true)
         XCTAssertEqual(demo.status, .demo)
         XCTAssertFalse(demo.meals.isEmpty)
         XCTAssertTrue(demo.usedSample)

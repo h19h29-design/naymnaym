@@ -601,6 +601,50 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(bootstrap.state, .destination(reloaded!))
     }
 
+    func testReplacingPersistedProfileRemovesPreviousDemoMetadataButKeepsCurrentMetadata() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let suiteName = "RebuildMetadataReplacement-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let metadata = RebuildSchoolNameMetadataStore(defaults: defaults)
+        let store = RebuildCoreDataOnboardingProfileStore(
+            coordinator: RebuildOnboardingProfileTransactionCoordinator(
+                container: container,
+                metadataStore: metadata
+            )
+        )
+        let previous = RebuildUserProfile.fixture(
+            role: .child,
+            id: "profile-a",
+            isDemoMode: true
+        )
+        let current = RebuildUserProfile(
+            id: "profile-b",
+            role: .child,
+            nickname: "최종",
+            school: RebuildOnboardingSchool(
+                name: "새 학교",
+                officeCode: "C10",
+                schoolCode: "1234567"
+            ),
+            allergyCodes: [],
+            destination: .today,
+            isDemoMode: false
+        )
+
+        try await store.save(previous)
+        XCTAssertTrue(metadata.isDemoMode(profileID: previous.id))
+
+        try await store.save(current)
+
+        XCTAssertFalse(metadata.hasProfileMetadata(id: previous.id))
+        XCTAssertFalse(metadata.isDemoMode(profileID: previous.id))
+        XCTAssertTrue(metadata.hasProfileMetadata(id: current.id))
+        XCTAssertFalse(metadata.isDemoMode(profileID: current.id))
+        let loaded = try await store.load()
+        XCTAssertEqual(loaded, current)
+    }
+
     func testRealStoreWithoutSchoolNameMetadataUsesBackwardsFallback() async throws {
         let container = try RebuildPersistentStore.makeInMemory()
         let suiteName = "RebuildMetadataFallback-\(UUID().uuidString)"
@@ -659,7 +703,8 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
                 schoolCode: "7010111"
             ),
             allergyCodes: [1],
-            destination: .today
+            destination: .today,
+            isDemoMode: true
         )
         try await store.save(cancelled)
 
@@ -782,7 +827,8 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
                 schoolCode: "7010111"
             ),
             allergyCodes: [],
-            destination: .today
+            destination: .today,
+            isDemoMode: true
         )
 
         await XCTAssertThrowsErrorAsync(try await store.save(profile))
@@ -1021,7 +1067,8 @@ private extension RebuildOnboardingSchool {
 private extension RebuildUserProfile {
     static func fixture(
         role: RebuildOnboardingRole,
-        id: String = "current"
+        id: String = "current",
+        isDemoMode: Bool = false
     ) -> RebuildUserProfile {
         RebuildUserProfile(
             id: id,
@@ -1029,7 +1076,8 @@ private extension RebuildUserProfile {
             nickname: role == .child ? "냠냠이" : "보호자",
             school: role == .child ? .fixture : nil,
             allergyCodes: role == .child ? [1, 5] : [],
-            destination: role == .child ? .today : .parentConnection
+            destination: role == .child ? .today : .parentConnection,
+            isDemoMode: isDemoMode
         )
     }
 }
