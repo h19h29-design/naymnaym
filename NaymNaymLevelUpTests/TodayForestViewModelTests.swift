@@ -517,6 +517,66 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.message)
     }
 
+    func testLateOlderPinnedRecorderCannotOverwriteNewerFeedback() async throws {
+        let date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 12,
+            minute: 0,
+            second: 0
+        )
+        let recorder = SequencedTodayMealRecorder(
+            results: [
+                RecordMealResult(
+                    xpGranted: 12,
+                    totalXP: 50,
+                    motion: .mealSuccess
+                ),
+                RecordMealResult(
+                    xpGranted: 3,
+                    totalXP: 23,
+                    motion: .comfort
+                ),
+            ]
+        )
+        let meal = RebuildMealDay.todayFixture(date: "2026-07-25")
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            date: date,
+            now: { date }
+        )
+        let first = try XCTUnwrap(viewModel.makeMealDetailPresentation())
+        let second = try XCTUnwrap(viewModel.makeMealDetailPresentation())
+        for presentation in [first, second] {
+            presentation.recordingViewModel.synchronizeMeal(
+                meal,
+                for: presentation.route
+            )
+        }
+        let item = try XCTUnwrap(meal.menuItems.first)
+        let firstPrepared = try await first.recordingViewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+        let secondPrepared = try await second.recordingViewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+
+        _ = try await second.recordingViewModel.record(
+            prepared: secondPrepared
+        )
+        _ = try await first.recordingViewModel.record(
+            prepared: firstPrepared
+        )
+
+        XCTAssertEqual(viewModel.totalXP, 50)
+        XCTAssertEqual(viewModel.lastGrantedXP, 12)
+        XCTAssertEqual(viewModel.motion, .mealSuccess)
+        XCTAssertEqual(viewModel.message, "12 XP를 얻었어요!")
+    }
+
     func testCurrentDayRefreshClearsYesterdayBeforeAwaitingNewMeal() async {
         let beforeMidnight = seoulDate(
             year: 2026,
@@ -1159,7 +1219,7 @@ final class TodayForestViewModelTests: XCTestCase {
         repository: any TodayMealRepository = TodayMealRepositoryStub(
             states: [.cached(.todayFixture(), refreshedAt: nil)]
         ),
-        recorder: TodayMealRecorderSpy = TodayMealRecorderSpy(),
+        recorder: any TodayMealRecorder = TodayMealRecorderSpy(),
         metadataStore: TodayMealPhotoMetadataStoreStub =
             TodayMealPhotoMetadataStoreStub(),
         progressProvider: TodayProgressProviderStub =
@@ -1374,6 +1434,21 @@ private final class TodayMealRecorderSpy: TodayMealRecorder, @unchecked Sendable
                 )
             }
         )
+    }
+}
+
+private actor SequencedTodayMealRecorder: TodayMealRecorder {
+    private var results: [RecordMealResult]
+
+    init(results: [RecordMealResult]) {
+        self.results = results
+    }
+
+    func execute(_ command: RecordMealCommand) async throws -> RecordMealResult {
+        guard !results.isEmpty else {
+            throw TodayForestError.mealUnavailable
+        }
+        return results.removeFirst()
     }
 }
 

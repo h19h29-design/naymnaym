@@ -216,6 +216,8 @@ final class TodayForestViewModel: ObservableObject {
     private let recordResultObserver: ((RecordMealResult) -> Void)?
     private var progressRevision = 0
     private var loadGeneration = 0
+    private var nextMealDetailPresentationRevision = 0
+    private var latestMirroredFeedbackRevision = 0
 
     var mealScheduleRepository: any MealScheduleRepository {
         TodayMealScheduleRepositoryAdapter(repository: repository)
@@ -298,12 +300,15 @@ final class TodayForestViewModel: ObservableObject {
 
     func makeMealDetailPresentation() -> TodayMealDetailPresentation? {
         let route = MealDayRoute(dateKey: dateKey)
+        nextMealDetailPresentationRevision += 1
+        let presentationRevision = nextMealDetailPresentationRevision
         guard let recordingViewModel = recordingViewModel(
             for: route,
             recordResultObserver: { [weak self] result in
                 self?.applyMirroredRecordResult(
                     result,
-                    sourceDateKey: route.dateKey
+                    sourceDateKey: route.dateKey,
+                    presentationRevision: presentationRevision
                 )
             }
         ) else {
@@ -552,19 +557,27 @@ final class TodayForestViewModel: ObservableObject {
     }
 
     private func applyRecordResult(_ result: RecordMealResult) {
-        progressRevision += 1
-        totalXP = result.totalXP
+        applyGlobalRecordProgress(result)
         applyRecordFeedback(result)
     }
 
     private func applyMirroredRecordResult(
         _ result: RecordMealResult,
-        sourceDateKey: String
+        sourceDateKey: String,
+        presentationRevision: Int
     ) {
-        progressRevision += 1
-        totalXP = result.totalXP
-        guard dateKey == sourceDateKey else { return }
+        applyGlobalRecordProgress(result)
+        guard dateKey == sourceDateKey,
+              presentationRevision >= latestMirroredFeedbackRevision else {
+            return
+        }
+        latestMirroredFeedbackRevision = presentationRevision
         applyRecordFeedback(result)
+    }
+
+    private func applyGlobalRecordProgress(_ result: RecordMealResult) {
+        progressRevision += 1
+        totalXP = max(totalXP, result.totalXP)
     }
 
     private func applyRecordFeedback(_ result: RecordMealResult) {
