@@ -18,17 +18,23 @@ enum GrowthHomePresentation {
         let recordedDates = Set(challengeRecords.map(\.date) + mealRecords.map(\.date))
         guard !recordedDates.isEmpty else { return 0 }
 
+        let dateKeyFormatter = DateFormatter()
+        dateKeyFormatter.calendar = calendar
+        dateKeyFormatter.locale = calendar.locale ?? Locale(identifier: "ko_KR")
+        dateKeyFormatter.timeZone = calendar.timeZone
+        dateKeyFormatter.dateFormat = "yyyyMMdd"
+
         var cursor = calendar.startOfDay(for: date)
-        if !recordedDates.contains(DateUtils.apiString(from: cursor)) {
+        if !recordedDates.contains(dateKeyFormatter.string(from: cursor)) {
             guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor),
-                  recordedDates.contains(DateUtils.apiString(from: yesterday)) else {
+                  recordedDates.contains(dateKeyFormatter.string(from: yesterday)) else {
                 return 0
             }
             cursor = yesterday
         }
 
         var streak = 0
-        while recordedDates.contains(DateUtils.apiString(from: cursor)) {
+        while recordedDates.contains(dateKeyFormatter.string(from: cursor)) {
             streak += 1
             guard let previousDay = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
             cursor = previousDay

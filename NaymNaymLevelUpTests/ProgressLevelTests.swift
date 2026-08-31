@@ -157,6 +157,36 @@ final class ProgressLevelTests: XCTestCase {
         )
     }
 
+    func testActivityStreakUsesInjectedCalendarForDateKeys() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ko_KR")
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Pacific/Kiritimati"))
+        let asOf = try XCTUnwrap(
+            calendar.date(
+                from: DateComponents(
+                    year: 2026,
+                    month: 8,
+                    day: 30,
+                    hour: 12
+                )
+            )
+        )
+        let records = [
+            ChallengeRecord(date: "20260830", menuName: "현미밥", action: .alreadyEats, gainedExp: 0, badgeName: nil, nutrients: []),
+            ChallengeRecord(date: "20260829", menuName: "시금치나물", action: .oneBite, gainedExp: 18, badgeName: nil, nutrients: [])
+        ]
+
+        XCTAssertEqual(
+            GrowthHomePresentation.activityStreak(
+                challengeRecords: records,
+                mealRecords: [],
+                asOf: asOf,
+                calendar: calendar
+            ),
+            2
+        )
+    }
+
     func testGrowthHomeMissionUsesActualSafeUnrecordedMealItem() {
         let rice = MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥")
         let spinach = MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["비타민"], tags: [], sourceRawText: "시금치나물")
