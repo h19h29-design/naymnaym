@@ -426,6 +426,52 @@ final class GrowthPolicyTests: XCTestCase {
         }
     }
 
+    func testRoadmapUsesPolicyRowsAndPreservesLockedTitles() throws {
+        let roadmap = GrowthStageRoadmapPresentation.items(
+            policy: try policy,
+            selectedStageID: 8,
+            highestUnlockedStageID: 7
+        )
+
+        XCTAssertEqual(roadmap.map(\.stageID), Array(1...12))
+        XCTAssertEqual(roadmap.map(\.threshold), try policy.thresholds)
+        XCTAssertEqual(roadmap.map(\.title), try policy.titles)
+
+        let locked = try XCTUnwrap(roadmap.first { $0.stageID == 8 })
+        XCTAssertTrue(locked.isSelected)
+        XCTAssertFalse(locked.isUnlocked)
+        XCTAssertTrue(locked.usesNeutralFallback)
+        XCTAssertTrue(locked.accessibilityLabel.contains("별빛 셰프"))
+        XCTAssertTrue(locked.accessibilityLabel.contains("잠김"))
+        XCTAssertTrue(locked.accessibilityLabel.contains("그림 준비 중"))
+    }
+
+    func testRoadmapDetailIncludesThresholdUnlockStateAndFallbackAccessibility() throws {
+        let detail = GrowthStageRoadmapPresentation.detail(
+            policy: try policy,
+            stageID: 8,
+            highestUnlockedStageID: 7
+        )
+
+        XCTAssertEqual(detail.stageID, 8)
+        XCTAssertEqual(detail.title, "별빛 셰프")
+        XCTAssertEqual(detail.threshold, 1_300)
+        XCTAssertFalse(detail.isUnlocked)
+        XCTAssertEqual(detail.unlockStateText, "1300 XP에 해금")
+        XCTAssertTrue(detail.usesNeutralFallback)
+        XCTAssertTrue(detail.accessibilityLabel.contains("레벨 8"))
+        XCTAssertTrue(detail.accessibilityLabel.contains("별빛 셰프"))
+        XCTAssertTrue(detail.accessibilityLabel.contains("1300 XP에 해금"))
+        XCTAssertTrue(detail.accessibilityLabel.contains("그림 준비 중"))
+    }
+
+    func testNeutralFallbackAccessibilityLabelIsStageSpecific() {
+        XCTAssertEqual(
+            MascotNeutralFallbackView.accessibilityLabel(stageID: 8),
+            "레벨 8, 그림 준비 중"
+        )
+    }
+
     func testMalformedOrMissingPolicyNeverSilentlyFallsBack() {
         XCTAssertThrowsError(
             try GrowthPolicy(

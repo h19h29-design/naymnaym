@@ -11,6 +11,7 @@ struct GrowthView: View {
 
     @State private var snapshot: GrowthSnapshot?
     @State private var entitlement: GrowthEntitlement?
+    @State private var inspectedStageID: Int?
     @State private var loadFailed = false
 
     init(
@@ -55,12 +56,24 @@ struct GrowthView: View {
         let fallbackLevel = policy.level(totalXP: snapshot.totalXP)
         let highestUnlockedStageID = entitlement?.highestUnlockedStageID
             ?? fallbackLevel
-        let selectedStageID = entitlement?.selectedStageID
+        let activeStageID = entitlement?.selectedStageID
             ?? highestUnlockedStageID
+        let inspectionStageID = inspectedStageID ?? activeStageID
         let progressPresentation = GrowthEntitlementProgressPresentation.resolve(
             policy: policy,
             totalXP: snapshot.totalXP,
             highestUnlockedStageID: highestUnlockedStageID
+        )
+        let roadmap = GrowthStageRoadmapPresentation.items(
+            policy: policy,
+            selectedStageID: inspectionStageID,
+            highestUnlockedStageID: highestUnlockedStageID
+        )
+        let inspectedDetail = GrowthStageRoadmapPresentation.detail(
+            policy: policy,
+            stageID: inspectionStageID,
+            highestUnlockedStageID: highestUnlockedStageID,
+            selectedStageID: inspectionStageID
         )
 
         return ScrollView {
@@ -68,7 +81,7 @@ struct GrowthView: View {
                 alignment: .leading,
                 spacing: RebuildDesignTokens.spacing[3]
             ) {
-                currentCharacter(level: selectedStageID)
+                currentCharacter(level: activeStageID)
                 progressCard(
                     snapshot: snapshot,
                     presentation: progressPresentation
@@ -76,6 +89,10 @@ struct GrowthView: View {
                 nextUnlock(
                     level: progressPresentation.level,
                     nextThreshold: progressPresentation.nextThreshold
+                )
+                growthRoadmap(
+                    items: roadmap,
+                    detail: inspectedDetail
                 )
                 recentEvents(snapshot.recentEvents)
                 Text("성장은 천천히, 매일의 한 입으로")
@@ -106,7 +123,6 @@ struct GrowthView: View {
                     reduceMotion: reduceMotion
                 )
                 .frame(width: 188, height: 188)
-                .accessibilityHidden(true)
             }
 
             Text(policy.title(for: level))
@@ -192,7 +208,6 @@ struct GrowthView: View {
                         silhouetteColor: GrowthLockedPalette.silhouetteColor
                     )
                     .frame(width: 92, height: 92)
-                    .accessibilityHidden(true)
                 }
 
                 VStack(
@@ -236,6 +251,97 @@ struct GrowthView: View {
                 )
                 .accessibilityIdentifier("growth_next_unlock")
         }
+    }
+
+    private func growthRoadmap(
+        items: [GrowthStageRoadmapItem],
+        detail: GrowthStageDetailPresentation
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: RebuildDesignTokens.spacing[2]
+        ) {
+            Text("성장 단계")
+                .font(RebuildDesignTokens.titleFont.bold())
+                .foregroundStyle(RebuildDesignTokens.ink900)
+                .accessibilityAddTraits(.isHeader)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: RebuildDesignTokens.spacing[2]) {
+                    ForEach(items) { item in
+                        GrowthRoadmapCard(item: item) {
+                            inspectedStageID = item.stageID
+                        }
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+
+            growthStageDetail(detail)
+        }
+        .accessibilityIdentifier("growth_stage_roadmap")
+    }
+
+    private func growthStageDetail(
+        _ detail: GrowthStageDetailPresentation
+    ) -> some View {
+        HStack(
+            alignment: .top,
+            spacing: RebuildDesignTokens.spacing[3]
+        ) {
+            let art = GrowthStageArtResolver.resolve(stageID: detail.stageID)
+            if art.usesNeutralFallback {
+                MascotNeutralFallbackView(stageID: art.stageID)
+                    .frame(width: 96, height: 96)
+            } else {
+                MascotRestArtView(
+                    level: art.artStageID,
+                    silhouetteColor: detail.isUnlocked
+                        ? nil
+                        : GrowthLockedPalette.silhouetteColor
+                )
+                .frame(width: 96, height: 96)
+            }
+
+            VStack(
+                alignment: .leading,
+                spacing: RebuildDesignTokens.spacing[1]
+            ) {
+                Text("선택한 단계")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.muted600)
+                Text("레벨 \(detail.stageID)")
+                    .font(RebuildDesignTokens.headlineFont)
+                    .foregroundStyle(RebuildDesignTokens.ink900)
+                Text(detail.title)
+                    .font(RebuildDesignTokens.bodyFont.weight(.semibold))
+                    .foregroundStyle(RebuildDesignTokens.forest700)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(detail.threshold) XP · \(detail.unlockStateText)")
+                    .font(.footnote)
+                    .foregroundStyle(
+                        detail.isUnlocked
+                            ? RebuildDesignTokens.forest700
+                            : GrowthLockedPalette.textColor
+                    )
+                if detail.usesNeutralFallback {
+                    Text(MascotArtAccessibility.pendingArtText)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(RebuildDesignTokens.muted600)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(RebuildDesignTokens.spacing[3])
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(
+            cornerRadius: RebuildDesignTokens.radii[1],
+            style: .continuous
+        ))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(detail.accessibilityLabel)
+        .accessibilityIdentifier("growth_stage_roadmap_detail")
     }
 
     private func recentEvents(
@@ -329,9 +435,100 @@ struct GrowthView: View {
                 )
             )
             entitlement = resolved
+            if inspectedStageID == nil {
+                inspectedStageID = resolved.selectedStageID
+            }
             snapshot = loadedSnapshot
         } catch {
             loadFailed = true
+        }
+    }
+}
+
+private struct GrowthRoadmapCard: View {
+    let item: GrowthStageRoadmapItem
+    let action: () -> Void
+
+    private var stageText: String {
+        "레벨 \(item.stageID)"
+    }
+
+    private var stateText: String {
+        item.isUnlocked ? "해금" : "\(item.threshold) XP"
+    }
+
+    private var stateIconName: String {
+        item.isUnlocked ? "checkmark.circle.fill" : "lock.fill"
+    }
+
+    private var foregroundColor: Color {
+        item.isSelected
+            ? RebuildDesignTokens.forest700
+            : RebuildDesignTokens.ink900
+    }
+
+    private var backgroundColor: Color {
+        item.isUnlocked ? Color.white : GrowthLockedPalette.surfaceColor
+    }
+
+    private var borderColor: Color {
+        item.isSelected
+            ? RebuildDesignTokens.forest500
+            : RebuildDesignTokens.cream100
+    }
+
+    private var borderWidth: CGFloat {
+        item.isSelected ? 2 : 1
+    }
+
+    var body: some View {
+        Button(action: action) {
+            cardLabel
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.accessibilityLabel)
+        .accessibilityIdentifier(item.accessibilityIdentifier)
+        .accessibilityAddTraits(item.isSelected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var cardLabel: some View {
+        VStack(
+            alignment: .leading,
+            spacing: RebuildDesignTokens.spacing[1]
+        ) {
+            Text(stageText)
+                .font(.footnote.weight(.bold))
+            Text(item.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: RebuildDesignTokens.spacing[1]) {
+                Image(systemName: stateIconName)
+                    .accessibilityHidden(true)
+                Text(stateText)
+            }
+            .font(.caption2.weight(.semibold))
+            if item.usesNeutralFallback {
+                Text(MascotArtAccessibility.pendingArtText)
+                    .font(.caption2.weight(.semibold))
+            }
+        }
+        .foregroundStyle(foregroundColor)
+        .padding(RebuildDesignTokens.spacing[2])
+        .frame(width: 132, alignment: .topLeading)
+        .frame(minHeight: 112, alignment: .topLeading)
+        .background(backgroundColor)
+        .clipShape(RoundedRectangle(
+            cornerRadius: RebuildDesignTokens.radii[1],
+            style: .continuous
+        ))
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[1],
+                style: .continuous
+            )
+            .stroke(borderColor, lineWidth: borderWidth)
         }
     }
 }

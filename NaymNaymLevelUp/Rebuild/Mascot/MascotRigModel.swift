@@ -397,6 +397,14 @@ enum MascotRigAssetError: Error, Equatable {
     case invalidImage(String)
 }
 
+enum MascotArtAccessibility {
+    static let pendingArtText = "그림 준비 중"
+
+    static func pendingLabel(stageID: Int) -> String {
+        "레벨 \(stageID), \(pendingArtText)"
+    }
+}
+
 @MainActor
 final class MascotRestArtLoader: ObservableObject {
     typealias ImageLoader =

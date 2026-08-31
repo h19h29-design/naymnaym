@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct MascotNeutralFallbackView: View {
-    static let pendingArtText = "그림 준비 중"
+    static let pendingArtText = MascotArtAccessibility.pendingArtText
+
+    static func accessibilityLabel(stageID: Int) -> String {
+        MascotArtAccessibility.pendingLabel(stageID: stageID)
+    }
 
     let stageID: Int
 
@@ -16,7 +20,7 @@ struct MascotNeutralFallbackView: View {
         .foregroundStyle(RebuildDesignTokens.muted600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Self.pendingArtText)
+        .accessibilityLabel(Self.accessibilityLabel(stageID: stageID))
         .accessibilityIdentifier("mascot_pending_art_stage_\(stageID)")
     }
 }

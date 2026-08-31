@@ -172,6 +172,127 @@ struct GrowthEntitlementProgressPresentation: Equatable, Sendable {
     }
 }
 
+struct GrowthStageRoadmapItem: Equatable, Identifiable, Sendable {
+    let stageID: Int
+    let title: String
+    let threshold: Int
+    let isSelected: Bool
+    let isUnlocked: Bool
+    let usesNeutralFallback: Bool
+
+    var id: Int { stageID }
+
+    var accessibilityIdentifier: String {
+        "growth_stage_roadmap_stage_\(stageID)"
+    }
+
+    var accessibilityLabel: String {
+        var components = [
+            "레벨 \(stageID)",
+            title,
+            isSelected ? "선택됨" : "선택 안 됨",
+        ]
+        components.append(
+            isUnlocked
+                ? "해금됨"
+                : "잠김, \(threshold) XP에 해금"
+        )
+        if usesNeutralFallback {
+            components.append(MascotArtAccessibility.pendingArtText)
+        }
+        return components.joined(separator: ", ")
+    }
+}
+
+struct GrowthStageDetailPresentation: Equatable, Sendable {
+    let stageID: Int
+    let title: String
+    let threshold: Int
+    let isSelected: Bool
+    let isUnlocked: Bool
+    let usesNeutralFallback: Bool
+
+    var unlockStateText: String {
+        isUnlocked ? "해금 완료" : "\(threshold) XP에 해금"
+    }
+
+    var accessibilityLabel: String {
+        var components = [
+            "레벨 \(stageID)",
+            title,
+            "\(threshold) XP",
+            unlockStateText,
+        ]
+        if isSelected {
+            components.append("선택됨")
+        }
+        if usesNeutralFallback {
+            components.append(MascotArtAccessibility.pendingArtText)
+        }
+        return components.joined(separator: ", ")
+    }
+}
+
+enum GrowthStageRoadmapPresentation {
+    static func items(
+        policy: GrowthPolicy,
+        selectedStageID: Int,
+        highestUnlockedStageID: Int
+    ) -> [GrowthStageRoadmapItem] {
+        let selected = clamp(
+            selectedStageID,
+            count: policy.thresholds.count
+        )
+        let highestUnlocked = clamp(
+            highestUnlockedStageID,
+            count: policy.thresholds.count
+        )
+
+        return policy.thresholds.enumerated().map { index, threshold in
+            let stageID = index + 1
+            return GrowthStageRoadmapItem(
+                stageID: stageID,
+                title: policy.title(for: stageID),
+                threshold: threshold,
+                isSelected: stageID == selected,
+                isUnlocked: stageID <= highestUnlocked,
+                usesNeutralFallback: GrowthStageArtResolver.resolve(
+                    stageID: stageID
+                ).usesNeutralFallback
+            )
+        }
+    }
+
+    static func detail(
+        policy: GrowthPolicy,
+        stageID: Int,
+        highestUnlockedStageID: Int,
+        selectedStageID: Int? = nil
+    ) -> GrowthStageDetailPresentation {
+        let safeStageID = clamp(stageID, count: policy.thresholds.count)
+        let highestUnlocked = clamp(
+            highestUnlockedStageID,
+            count: policy.thresholds.count
+        )
+        let art = GrowthStageArtResolver.resolve(stageID: safeStageID)
+        return GrowthStageDetailPresentation(
+            stageID: safeStageID,
+            title: policy.title(for: safeStageID),
+            threshold: policy.thresholds[safeStageID - 1],
+            isSelected: selectedStageID.map {
+                clamp($0, count: policy.thresholds.count) == safeStageID
+            } ?? true,
+            isUnlocked: safeStageID <= highestUnlocked,
+            usesNeutralFallback: art.usesNeutralFallback
+        )
+    }
+
+    private static func clamp(_ stageID: Int, count: Int) -> Int {
+        guard count > 0 else { return 1 }
+        return min(max(stageID, 1), count)
+    }
+}
+
 protocol GrowthStageStateStore: Sendable {
     func read() -> GrowthStageStateV2?
     func writeMonotonic(_ state: GrowthStageStateV2)

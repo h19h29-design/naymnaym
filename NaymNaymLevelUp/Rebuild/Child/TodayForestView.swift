@@ -126,10 +126,6 @@ struct TodayForestView: View {
             .clipped()
         }
         .frame(width: 132, height: 152)
-        .accessibilityHidden(
-            !GrowthStageArtResolver.resolve(stageID: currentLevel)
-                .usesNeutralFallback
-        )
     }
 
     private var characterDetails: some View {

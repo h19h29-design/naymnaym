@@ -237,19 +237,19 @@ struct CollectionView: View {
                             : GrowthLockedPalette.silhouetteColor
                     )
                     .padding(RebuildDesignTokens.spacing[2])
-                    .accessibilityHidden(true)
                 }
             }
             .frame(height: 122)
             Text("레벨 \(level)")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(RebuildDesignTokens.muted600)
-            Text(isUnlocked ? policy.title(for: level) : "아직 잠겨 있어요")
+                .accessibilityHidden(true)
+            Text(policy.title(for: level))
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(RebuildDesignTokens.ink900)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(isUnlocked ? "해금 완료" : "\(threshold) XP에 해금")
+            Text(isUnlocked ? "해금 완료" : "잠김 · \(threshold) XP에 해금")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(isUnlocked ? RebuildDesignTokens.forest700 : GrowthLockedPalette.textColor)
         }
@@ -260,12 +260,7 @@ struct CollectionView: View {
             cornerRadius: RebuildDesignTokens.radii[1],
             style: .continuous
         ))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            isUnlocked
-                ? "레벨 \(level) 해금, \(policy.title(for: level))\(art.usesNeutralFallback ? ", 그림 준비 중" : "")"
-                : "레벨 \(level) 잠김, \(threshold) XP에 해금\(art.usesNeutralFallback ? ", 그림 준비 중" : "")"
-        )
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier(
             isUnlocked
                 ? "collection_level_\(level)_unlocked"

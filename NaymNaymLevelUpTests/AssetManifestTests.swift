@@ -1,4 +1,5 @@
 import CryptoKit
+import Foundation
 import XCTest
 @testable import NaymNaymLevelUp
 
@@ -84,6 +85,37 @@ final class AssetManifestTests: XCTestCase {
                 "manifest path is not tracked: \(path)"
             )
         }
+    }
+
+    func testEveryManifestAssetPathIsGitTrackedAndChecksumMatches() throws {
+        let entries = try manifestEntries()
+
+        XCTAssertFalse(entries.isEmpty)
+        let failures = validate(entries: entries)
+        XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
+    }
+
+    func testManifestValidatorRejectsTamperedHashAndUntrackedPath() throws {
+        let validEntry = try XCTUnwrap(manifestEntries().first { $0.sha256 != "N/A" })
+        let tampered = ManifestEntry(
+            path: validEntry.path,
+            sha256: String(repeating: "0", count: 64)
+        )
+        let untracked = ManifestEntry(
+            path: "build/verification/task8-fix-round1/untracked-fixture.png",
+            sha256: validEntry.sha256
+        )
+
+        let failures = validate(entries: [tampered, untracked])
+
+        XCTAssertTrue(
+            failures.contains { $0.contains("checksum mismatch") },
+            "tampered manifest hashes must be rejected"
+        )
+        XCTAssertTrue(
+            failures.contains { $0.contains("not Git-tracked") },
+            "untracked manifest paths must be rejected"
+        )
     }
 
     func testExistingStageSourcesKeepStableNamesAndChecksums() throws {
@@ -178,5 +210,137 @@ final class AssetManifestTests: XCTestCase {
                     .filter { $0.contains("/") && !$0.contains("sha") }
             }
             .filter { $0.hasPrefix("NaymNaymLevelUp/") }
+    }
+
+    private struct ManifestEntry {
+        let path: String
+        let sha256: String
+    }
+
+    private func manifestEntries() throws -> [ManifestEntry] {
+        let manifests = [
+            try manifest(named: "CHARACTER_ASSET_MANIFEST.md"),
+            try manifest(named: "MEAL_ICON_ASSET_MANIFEST.md"),
+        ]
+        return manifests.flatMap(parseEntries)
+    }
+
+    private func parseEntries(_ text: String) -> [ManifestEntry] {
+        var entries: [ManifestEntry] = []
+        var header: [String: Int]?
+
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard line.contains("|") else {
+                header = nil
+                continue
+            }
+            let cells = line
+                .split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+
+            if cells.contains("sha256"),
+               let pathIndex = cells.firstIndex(where: {
+                   $0 == "source_path" || $0 == "path"
+               }),
+               let checksumIndex = cells.firstIndex(of: "sha256") {
+                header = [
+                    "path": pathIndex,
+                    "sha256": checksumIndex,
+                ]
+                continue
+            }
+
+            guard let header,
+                  header.values.allSatisfy({ $0 < cells.count }),
+                  cells.allSatisfy({ $0 != "---" })
+            else {
+                continue
+            }
+            let path = cells[header["path"]!]
+            let sha256 = cells[header["sha256"]!]
+            guard path != "N/A", sha256 != "N/A" else {
+                continue
+            }
+            entries.append(ManifestEntry(path: path, sha256: sha256))
+        }
+
+        return entries
+    }
+
+    private func validate(entries: [ManifestEntry]) -> [String] {
+        entries.flatMap { entry in
+            var failures: [String] = []
+            guard gitTracks(entry.path) else {
+                failures.append("\(entry.path) is not Git-tracked")
+                return failures
+            }
+
+            let url = repositoryRoot.appendingPathComponent(entry.path)
+            guard let data = try? Data(contentsOf: url) else {
+                failures.append("\(entry.path) is missing")
+                return failures
+            }
+            let digest = SHA256.hash(data: data)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            if digest != entry.sha256 {
+                failures.append("\(entry.path) checksum mismatch")
+            }
+            return failures
+        }
+    }
+
+    private func gitTracks(_ path: String) -> Bool {
+        // XCTest runs against the iOS SDK, where Foundation.Process is
+        // unavailable. Reading the worktree's Git index is the equivalent of
+        // `git ls-files --error-unmatch -- <path>` and does not rely on a
+        // shell or mutate the repository.
+        guard let indexData = try? Data(contentsOf: gitIndexURL),
+              indexData.count >= 12,
+              indexData.prefix(4).elementsEqual(Data("DIRC".utf8)),
+              readUInt32(indexData, at: 4) == 2
+        else {
+            return false
+        }
+
+        let entryCount = Int(readUInt32(indexData, at: 8))
+        var offset = 12
+        for _ in 0..<entryCount {
+            guard offset + 62 <= indexData.count else { return false }
+            let nameStart = offset + 62
+            guard let nameEnd = indexData[nameStart...].firstIndex(of: 0) else {
+                return false
+            }
+            let name = String(
+                bytes: indexData[nameStart..<nameEnd],
+                encoding: .utf8
+            )
+            if name == path {
+                return true
+            }
+            let recordLength = nameEnd - offset + 1
+            offset += (recordLength + 7) / 8 * 8
+        }
+        return false
+    }
+
+    private var gitIndexURL: URL {
+        let gitFile = repositoryRoot.appendingPathComponent(".git")
+        guard let pointer = try? String(contentsOf: gitFile, encoding: .utf8),
+              pointer.hasPrefix("gitdir:")
+        else {
+            return gitFile.appendingPathComponent("index")
+        }
+        let target = pointer
+            .dropFirst("gitdir:".count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetURL = URL(fileURLWithPath: String(target), relativeTo: repositoryRoot)
+        return targetURL.standardizedFileURL.appendingPathComponent("index")
+    }
+
+    private func readUInt32(_ data: Data, at offset: Int) -> UInt32 {
+        data[offset..<offset + 4].reduce(UInt32(0)) { value, byte in
+            (value << 8) | UInt32(byte)
+        }
     }
 }
