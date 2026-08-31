@@ -372,6 +372,39 @@ final class RebuildMealClientTests: XCTestCase {
         }
     }
 
+    func testNEISDebugErrorMessageDoesNotExposeFailingURLValues() throws {
+        let failingURL = try XCTUnwrap(
+            URL(
+                string: "https://example.invalid/meal?KEY=fake-private-key"
+                    + "&ATPT_OFCDC_SC_CODE=fake-office"
+                    + "&SD_SCHUL_CODE=fake-school"
+                    + "&MLSV_FROM_YMD=20991231"
+            )
+        )
+        let error = URLError(
+            .badServerResponse,
+            userInfo: [NSURLErrorFailingURLErrorKey: failingURL]
+        )
+
+        let message = NEISDebugLog.redactedErrorMessage(
+            path: "mealServiceDietInfo",
+            error: error
+        )
+
+        XCTAssertTrue(message.hasPrefix("mealServiceDietInfo error "))
+        XCTAssertTrue(message.contains("code=\(error.errorCode)"))
+        for privateFragment in [
+            failingURL.absoluteString,
+            "fake-private-key",
+            "fake-office",
+            "fake-school",
+            "20991231",
+            "KEY=",
+        ] {
+            XCTAssertFalse(message.contains(privateFragment))
+        }
+    }
+
     func testExplicitDemoReturnsSampleMealForWeekendWithRebuildMetadata() async throws {
         let client = RebuildMealClientFactory.make(isDemoMode: true)
         let school = RebuildSchool(

@@ -92,6 +92,15 @@ enum NEISDebugLog {
         return "\(path) params \(parameters.joined(separator: " "))"
     }
 
+    static func redactedErrorMessage(
+        path: String,
+        error: Error
+    ) -> String {
+        let errorCode = (error as NSError).code
+        let errorType = String(reflecting: type(of: error))
+        return "\(path) error type=\(errorType) code=\(errorCode)"
+    }
+
     private static func redacted(url: URL) -> String {
         redactedURLString(url.absoluteString)
     }

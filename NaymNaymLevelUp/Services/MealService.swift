@@ -133,7 +133,12 @@ struct MealService {
                 message: "NEIS API 키가 설정되지 않아 실제 급식 정보를 조회할 수 없어요. 설정 파일을 확인해 주세요."
             )
         } catch {
-            NEISDebugLog.info("mealServiceDietInfo error=\(error)")
+            NEISDebugLog.info(
+                NEISDebugLog.redactedErrorMessage(
+                    path: "mealServiceDietInfo",
+                    error: error
+                )
+            )
             return MealFetchResult(
                 meals: [],
                 status: .error,
