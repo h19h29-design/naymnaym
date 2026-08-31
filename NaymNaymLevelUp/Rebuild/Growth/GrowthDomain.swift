@@ -359,17 +359,22 @@ struct GrowthStageArtResolution: Equatable, Sendable {
 }
 
 enum GrowthStageArtResolver {
-    static let highestVerifiedStageID = 7
+    static var highestVerifiedStageID: Int {
+        MascotRigLevelCatalog.verifiedLevelIDs.max() ?? 0
+    }
 
     static func resolve(stageID: Int) -> GrowthStageArtResolution {
         let safeStageID = min(
             max(stageID, GrowthStageStateV2.validStageRange.lowerBound),
             GrowthStageStateV2.validStageRange.upperBound
         )
+        let hasVerifiedArt = MascotRigLevelCatalog.hasVerifiedArt(
+            for: safeStageID
+        )
         return GrowthStageArtResolution(
             stageID: safeStageID,
-            artStageID: min(safeStageID, highestVerifiedStageID),
-            usesNeutralFallback: safeStageID > highestVerifiedStageID
+            artStageID: safeStageID,
+            usesNeutralFallback: !hasVerifiedArt
         )
     }
 }

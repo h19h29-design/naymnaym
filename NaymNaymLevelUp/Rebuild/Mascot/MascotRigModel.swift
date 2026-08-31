@@ -179,6 +179,15 @@ struct MascotRigLevelDefinition: Sendable {
     let semanticParts: [
         MascotRigSemanticPart: MascotRigKeyframeDescriptor
     ]
+
+    func semanticPart(
+        _ part: MascotRigSemanticPart
+    ) throws -> MascotRigKeyframeDescriptor {
+        guard let descriptor = semanticParts[part] else {
+            throw MascotRigAssetError.missingAsset(part.rawValue)
+        }
+        return descriptor
+    }
 }
 
 enum MascotRigLevelCatalog {
@@ -344,6 +353,13 @@ enum MascotRigLevelCatalog {
                 }
             )
         )
+    }
+
+    /// The catalog is the single source of truth for art that is present and verified.
+    static let verifiedLevelIDs = definitions.keys.sorted()
+
+    static func hasVerifiedArt(for levelID: Int) -> Bool {
+        definitions[levelID] != nil
     }
 }
 
@@ -977,10 +993,10 @@ final class MascotRigAssetStore {
             level
         )
 
-        _ = try MascotRigSemanticPart.allCases.map {
+        _ = try MascotRigSemanticPart.allCases.map { part in
             try imageLoadRequest(
-                descriptor: definition.semanticParts[$0]!,
-                part: $0,
+                descriptor: try definition.semanticPart(part),
+                part: part,
                 bundle: bundle,
                 subdirectory: subdirectory
             )

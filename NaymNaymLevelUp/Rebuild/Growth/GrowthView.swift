@@ -97,12 +97,8 @@ struct GrowthView: View {
         let art = GrowthStageArtResolver.resolve(stageID: level)
         return VStack(spacing: RebuildDesignTokens.spacing[2]) {
             if art.usesNeutralFallback {
-                MascotRestArtView(
-                    level: art.artStageID,
-                    silhouetteColor: GrowthLockedPalette.silhouetteColor
-                )
+                MascotNeutralFallbackView(stageID: art.stageID)
                 .frame(width: 188, height: 188)
-                .accessibilityHidden(true)
             } else {
                 MascotRigView(
                     level: art.artStageID,
@@ -117,11 +113,6 @@ struct GrowthView: View {
                 .font(RebuildDesignTokens.titleFont.bold())
                 .foregroundStyle(RebuildDesignTokens.forest700)
                 .fixedSize(horizontal: false, vertical: true)
-            if art.usesNeutralFallback {
-                Text("중립 미리보기")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-            }
         }
         .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity)
@@ -192,12 +183,17 @@ struct GrowthView: View {
             let nextLevel = level + 1
             let art = GrowthStageArtResolver.resolve(stageID: nextLevel)
             HStack(spacing: RebuildDesignTokens.spacing[3]) {
-                MascotRestArtView(
-                    level: art.artStageID,
-                    silhouetteColor: GrowthLockedPalette.silhouetteColor
-                )
-                .frame(width: 92, height: 92)
-                .accessibilityHidden(true)
+                if art.usesNeutralFallback {
+                    MascotNeutralFallbackView(stageID: art.stageID)
+                        .frame(width: 92, height: 92)
+                } else {
+                    MascotRestArtView(
+                        level: art.artStageID,
+                        silhouetteColor: GrowthLockedPalette.silhouetteColor
+                    )
+                    .frame(width: 92, height: 92)
+                    .accessibilityHidden(true)
+                }
 
                 VStack(
                     alignment: .leading,
@@ -212,11 +208,6 @@ struct GrowthView: View {
                     Text("\(nextThreshold) XP에 만나요")
                         .font(.footnote)
                         .foregroundStyle(GrowthLockedPalette.textColor)
-                    if art.usesNeutralFallback {
-                        Text("중립 미리보기")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(RebuildDesignTokens.muted600)
-                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -385,27 +376,12 @@ struct MascotRestArtView: View {
 
     var body: some View {
         Group {
-            if let image = loader.renderedImage(for: level) {
+            if usesNeutralFallback {
+                MascotNeutralFallbackView(stageID: level)
+            } else if let image = loader.renderedImage(for: level) {
                 loadedArt(image)
             } else if loader.canRetry(for: level) {
-                Button {
-                    Task {
-                        await loader.load(level: level)
-                    }
-                } label: {
-                    VStack(spacing: RebuildDesignTokens.spacing[1]) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.title3)
-                        Text("다시 시도")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(RebuildDesignTokens.forest700)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .accessibilityLabel(
-                    "레벨 \(level) 캐릭터를 불러오지 못했습니다. 다시 시도"
-                )
-                .accessibilityIdentifier("mascot_rest_retry_level_\(level)")
+                MascotNeutralFallbackView(stageID: level)
             } else {
                 ProgressView()
                     .accessibilityLabel(
@@ -415,8 +391,13 @@ struct MascotRestArtView: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .task(id: level) {
+            guard !usesNeutralFallback else { return }
             await loader.load(level: level)
         }
+    }
+
+    private var usesNeutralFallback: Bool {
+        GrowthStageArtResolver.resolve(stageID: level).usesNeutralFallback
     }
 
     @ViewBuilder

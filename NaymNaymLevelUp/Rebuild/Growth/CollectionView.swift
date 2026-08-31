@@ -220,40 +220,30 @@ struct CollectionView: View {
     ) -> some View {
         let art = GrowthStageArtResolver.resolve(stageID: level)
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
-            ZStack(alignment: .topTrailing) {
+            ZStack {
                 RoundedRectangle(
                     cornerRadius: RebuildDesignTokens.radii[1],
                     style: .continuous
                 )
                 .fill(isUnlocked ? RebuildDesignTokens.cream100 : GrowthLockedPalette.surfaceColor)
-                MascotRestArtView(
-                    level: art.artStageID,
-                    silhouetteColor: isUnlocked && !art.usesNeutralFallback
-                        ? nil
-                        : GrowthLockedPalette.silhouetteColor
-                )
-                .padding(RebuildDesignTokens.spacing[2])
-                .accessibilityHidden(true)
-                if level >= 8 {
-                    Image(systemName: stageSymbol(for: level))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(isUnlocked ? Color.white : GrowthLockedPalette.textColor)
-                        .padding(7)
-                        .background(isUnlocked ? RebuildDesignTokens.forest700 : GrowthLockedPalette.surfaceColor)
-                        .clipShape(Circle())
-                        .padding(RebuildDesignTokens.spacing[1])
-                        .accessibilityHidden(true)
+                if art.usesNeutralFallback {
+                    MascotNeutralFallbackView(stageID: art.stageID)
+                        .padding(RebuildDesignTokens.spacing[2])
+                } else {
+                    MascotRestArtView(
+                        level: art.artStageID,
+                        silhouetteColor: isUnlocked
+                            ? nil
+                            : GrowthLockedPalette.silhouetteColor
+                    )
+                    .padding(RebuildDesignTokens.spacing[2])
+                    .accessibilityHidden(true)
                 }
             }
             .frame(height: 122)
             Text("레벨 \(level)")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(RebuildDesignTokens.muted600)
-            if art.usesNeutralFallback {
-                Text("중립 미리보기")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(RebuildDesignTokens.muted600)
-            }
             Text(isUnlocked ? policy.title(for: level) : "아직 잠겨 있어요")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(RebuildDesignTokens.ink900)
@@ -273,8 +263,8 @@ struct CollectionView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isUnlocked
-                ? "레벨 \(level) 해금, \(policy.title(for: level))\(art.usesNeutralFallback ? ", 중립 미리보기" : "")"
-                : "레벨 \(level) 잠김, \(threshold) XP에 해금\(art.usesNeutralFallback ? ", 중립 미리보기" : "")"
+                ? "레벨 \(level) 해금, \(policy.title(for: level))\(art.usesNeutralFallback ? ", 그림 준비 중" : "")"
+                : "레벨 \(level) 잠김, \(threshold) XP에 해금\(art.usesNeutralFallback ? ", 그림 준비 중" : "")"
         )
         .accessibilityIdentifier(
             isUnlocked
@@ -360,15 +350,6 @@ struct CollectionView: View {
                 .accessibilityLabel("\(progress.legacyBadgeGroupTitle), \(badgeID)")
                 .accessibilityIdentifier("collection_legacy_badge_\(badgeID)")
             }
-        }
-    }
-
-    private func stageSymbol(for level: Int) -> String {
-        switch level {
-        case 8...9: return "leaf.fill"
-        case 10...11: return "medal.fill"
-        case 12: return "crown.fill"
-        default: return "sparkles"
         }
     }
 

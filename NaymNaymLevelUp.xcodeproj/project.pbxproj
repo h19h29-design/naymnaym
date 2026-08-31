@@ -108,6 +108,7 @@
 		C20000000000000000000099 /* MealPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000103 /* MealPresentation.swift */; };
 		C20000000000000000000104 /* NutrientImpactSidecar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000104 /* NutrientImpactSidecar.swift */; };
 		C20000000000000000000105 /* NutrientImpactSidecarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000105 /* NutrientImpactSidecarTests.swift */; };
+		C20000000000000000000106 /* AssetManifestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000106 /* AssetManifestTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -226,6 +227,7 @@
 		C10000000000000000000103 /* MealPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/MealPresentation.swift; sourceTree = "<group>"; };
 		C10000000000000000000104 /* NutrientImpactSidecar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rebuild/Meal/NutrientImpactSidecar.swift; sourceTree = "<group>"; };
 		C10000000000000000000105 /* NutrientImpactSidecarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutrientImpactSidecarTests.swift; sourceTree = "<group>"; };
+		C10000000000000000000106 /* AssetManifestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetManifestTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -369,6 +371,7 @@
 				C10000000000000000000100 /* MealScheduleSelectionTests.swift */,
 				C10000000000000000000102 /* MealPresentationTests.swift */,
 				C10000000000000000000105 /* NutrientImpactSidecarTests.swift */,
+				C10000000000000000000106 /* AssetManifestTests.swift */,
 			);
 			path = NaymNaymLevelUpTests;
 			sourceTree = "<group>";
@@ -602,6 +605,7 @@
 				C20000000000000000000096 /* MealScheduleSelectionTests.swift in Sources */,
 				C20000000000000000000098 /* MealPresentationTests.swift in Sources */,
 				C20000000000000000000105 /* NutrientImpactSidecarTests.swift in Sources */,
+				C20000000000000000000106 /* AssetManifestTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

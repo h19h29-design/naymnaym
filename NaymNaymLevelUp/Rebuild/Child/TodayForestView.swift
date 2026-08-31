@@ -113,7 +113,7 @@ struct TodayForestView: View {
     private var characterMascot: some View {
         GeometryReader { proxy in
             MascotRigView(
-                level: min(currentLevel, 7),
+                level: currentLevel,
                 state: viewModel.motion,
                 reduceMotion: reduceMotion,
                 playbackRevision: viewModel.motionRevision
@@ -126,7 +126,10 @@ struct TodayForestView: View {
             .clipped()
         }
         .frame(width: 132, height: 152)
-        .accessibilityHidden(true)
+        .accessibilityHidden(
+            !GrowthStageArtResolver.resolve(stageID: currentLevel)
+                .usesNeutralFallback
+        )
     }
 
     private var characterDetails: some View {

@@ -412,7 +412,7 @@ final class GrowthPolicyTests: XCTestCase {
         XCTAssertEqual(defaults.data(forKey: LegacyDefaultsReader.Key.progress), original)
     }
 
-    func testMissingStageAssetUsesVerifiedOneToSevenFallback() {
+    func testMissingStageAssetRetainsRequestedStageAndUsesNeutralFallback() {
         for stageID in 1...7 {
             let resolution = GrowthStageArtResolver.resolve(stageID: stageID)
             XCTAssertEqual(resolution.artStageID, stageID)
@@ -421,7 +421,7 @@ final class GrowthPolicyTests: XCTestCase {
 
         for stageID in 8...12 {
             let resolution = GrowthStageArtResolver.resolve(stageID: stageID)
-            XCTAssertEqual(resolution.artStageID, 7)
+            XCTAssertEqual(resolution.artStageID, stageID)
             XCTAssertTrue(resolution.usesNeutralFallback)
         }
     }

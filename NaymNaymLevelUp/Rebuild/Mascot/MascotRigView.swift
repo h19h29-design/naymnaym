@@ -1,5 +1,26 @@
 import SwiftUI
 
+struct MascotNeutralFallbackView: View {
+    static let pendingArtText = "그림 준비 중"
+
+    let stageID: Int
+
+    var body: some View {
+        VStack(spacing: RebuildDesignTokens.spacing[1]) {
+            Image(systemName: "photo")
+                .font(.title2)
+                .accessibilityHidden(true)
+            Text(Self.pendingArtText)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(RebuildDesignTokens.muted600)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.pendingArtText)
+        .accessibilityIdentifier("mascot_pending_art_stage_\(stageID)")
+    }
+}
+
 struct MascotRigView: View {
     let level: Int
     let state: RebuildMotionState
@@ -31,26 +52,8 @@ struct MascotRigView: View {
 
     var body: some View {
         Group {
-            if loader.canRetry(for: level) {
-                Button {
-                    Task {
-                        await loader.load(level: level)
-                    }
-                } label: {
-                    VStack(spacing: RebuildDesignTokens.spacing[1]) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.title3)
-                        Text("캐릭터 다시 불러오기")
-                            .font(.caption.weight(.semibold))
-                            .multilineTextAlignment(.center)
-                    }
-                    .foregroundStyle(RebuildDesignTokens.forest700)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .accessibilityLabel(
-                    "레벨 \(level) 캐릭터를 불러오지 못했습니다. 다시 시도"
-                )
-                .accessibilityIdentifier("mascot_rig_retry_level_\(level)")
+            if usesNeutralFallback || loader.canRetry(for: level) {
+                MascotNeutralFallbackView(stageID: level)
             } else {
                 ZStack {
                     Color.clear
@@ -75,20 +78,29 @@ struct MascotRigView: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .task(id: level) {
+            guard !usesNeutralFallback else { return }
             await loader.load(level: level)
         }
         .onAppear {
+            guard !usesNeutralFallback else { return }
             controller.play(state, reduceMotion: reduceMotion)
         }
         .onChange(of: state) { newState in
+            guard !usesNeutralFallback else { return }
             controller.play(newState, reduceMotion: reduceMotion)
         }
         .onChange(of: playbackRevision) { _ in
+            guard !usesNeutralFallback else { return }
             controller.play(state, reduceMotion: reduceMotion)
         }
         .onChange(of: reduceMotion) { isReduced in
+            guard !usesNeutralFallback else { return }
             controller.play(state, reduceMotion: isReduced)
         }
+    }
+
+    private var usesNeutralFallback: Bool {
+        GrowthStageArtResolver.resolve(stageID: level).usesNeutralFallback
     }
 
     @ViewBuilder

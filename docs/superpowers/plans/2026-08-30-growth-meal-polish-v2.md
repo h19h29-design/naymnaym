@@ -534,22 +534,22 @@
 - `MascotRigLoader` remains the source of truth for verified parts. `GrowthView`/`CollectionView` request a stage asset key; missing/invalid 8–12 assets return a neutral, non-crashing fallback with accessible text, not a fake finished character.
 - Every food category key resolves either to an existing bundled asset listed in `MEAL_ICON_ASSET_MANIFEST.md` or to explicit `food.other` SF Symbol fallback. Every new file records origin, creator/generation path, license, source URL/internal source, and modification status.
 
-- [ ] Step 1: Add failing `AssetManifestTests` cases `testStagesOneThroughTwelveHaveDeterministicAssetResolution`, `testMissingStageAssetReturnsNeutralFallback`, `testFoodIconManifestContainsEveryResolverKey`, and `testUnlicensedOrUntrackedAssetIsRejected`. Extend existing `MascotMotionControllerTests`/`LocalStoreTests` to assert existing 1–7 names and first-party Lottie files are unchanged.
-- [ ] Step 2: Run RED. Expected RED: no manifest covers new stage/icon keys and current 8–12 lookup is an implicit 7-stage reuse.
+- [x] Step 1: Add failing `AssetManifestTests` cases `testStagesOneThroughTwelveHaveDeterministicAssetResolution`, `testMissingStageAssetReturnsNeutralFallback`, `testFoodIconManifestContainsEveryResolverKey`, and `testUnlicensedOrUntrackedAssetIsRejected`. Extend existing `MascotMotionControllerTests`/`LocalStoreTests` to assert existing 1–7 names and first-party Lottie files are unchanged.
+- [x] Step 2: Run RED. Expected RED: no manifest covers new stage/icon keys and current 8–12 lookup is an implicit 7-stage reuse.
 
   ```bash
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/AssetManifestTests -only-testing:NaymNaymLevelUpTests/MascotMotionControllerTests -only-testing:NaymNaymLevelUpTests/LocalStoreTests
   ```
 
-- [ ] Step 3: Add only rights-verified 8–12 artwork if available; otherwise encode neutral fallback and document the limitation. Update growth/collection to use actual policy count, 2-column grid, stage name/threshold/reward, lock text and accessibility labels. Keep the existing 1–7 MascotRig names, forest layers, Lottie package and no new animation engine.
-- [ ] Step 4: Run GREEN, inspect all manifest paths and checksums, and confirm fallback does not affect data/XP or crash when an asset is absent.
+- [x] Step 3: Add only rights-verified 8–12 artwork if available; otherwise encode neutral fallback and document the limitation. Update growth/collection to use actual policy count, 2-column grid, stage name/threshold/reward, lock text and accessibility labels. Keep the existing 1–7 MascotRig names, forest layers, Lottie package and no new animation engine.
+- [x] Step 4: Run GREEN, inspect all manifest paths and checksums, and confirm fallback does not affect data/XP or crash when an asset is absent.
 
   ```bash
   xcodebuild test -project NaymNaymLevelUp.xcodeproj -scheme NaymNaymLevelUp -configuration Debug -destination 'platform=iOS Simulator,id=5D3D62C5-12A4-49A3-8D44-F513FCEAFDED' -derivedDataPath build/verification/growth-meal-polish-v2/DerivedData -only-testing:NaymNaymLevelUpTests/AssetManifestTests -only-testing:NaymNaymLevelUpTests/MascotMotionControllerTests -only-testing:NaymNaymLevelUpTests/LocalStoreTests
   rg -n "14단계|캐릭터 14|stage.*14|level.*14" NaymNaymLevelUp docs release README.md || true
   ```
 
-- [ ] Step 5: Commit the visual asset/fallback contract.
+- [x] Step 5: Commit the visual asset/fallback contract.
 
   ```bash
   git add NaymNaymLevelUp/Rebuild/Growth NaymNaymLevelUp/Rebuild/Mascot NaymNaymLevelUp/Rebuild/Meal/MealPresentation.swift NaymNaymLevelUp/Resources/Assets.xcassets NaymNaymLevelUp/Resources/MascotRig docs/CHARACTER_ASSET_MANIFEST.md docs/MEAL_ICON_ASSET_MANIFEST.md THIRD_PARTY_NOTICES.md NaymNaymLevelUpTests/AssetManifestTests.swift NaymNaymLevelUpTests/MascotMotionControllerTests.swift NaymNaymLevelUpTests/LocalStoreTests.swift NaymNaymLevelUp.xcodeproj/project.pbxproj
