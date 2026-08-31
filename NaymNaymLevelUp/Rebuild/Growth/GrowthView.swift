@@ -285,11 +285,20 @@ struct GrowthView: View {
     private func growthStageDetail(
         _ detail: GrowthStageDetailPresentation
     ) -> some View {
-        HStack(
+        let art = GrowthStageArtResolver.resolve(stageID: detail.stageID)
+        let artState: MascotArtAccessibilityState =
+            art.usesNeutralFallback
+                ? .pending
+                : .verified(unlocked: detail.isUnlocked)
+        let accessibility = GrowthStageDetailAccessibilitySemantics.make(
+            detail: detail,
+            artState: artState
+        )
+
+        return HStack(
             alignment: .top,
             spacing: RebuildDesignTokens.spacing[3]
         ) {
-            let art = GrowthStageArtResolver.resolve(stageID: detail.stageID)
             if art.usesNeutralFallback {
                 MascotNeutralFallbackView(stageID: art.stageID)
                     .frame(width: 96, height: 96)
@@ -307,33 +316,33 @@ struct GrowthView: View {
                 alignment: .leading,
                 spacing: RebuildDesignTokens.spacing[1]
             ) {
-                Text("선택한 단계")
+                Text(accessibility.selectionLabel)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(RebuildDesignTokens.muted600)
-                Text("레벨 \(detail.stageID)")
+                Text(accessibility.stageLabel)
                     .font(RebuildDesignTokens.headlineFont)
                     .foregroundStyle(RebuildDesignTokens.ink900)
                     .accessibilityHidden(true)
-                Text(detail.title)
+                Text(accessibility.titleLabel)
                     .font(RebuildDesignTokens.bodyFont.weight(.semibold))
                     .foregroundStyle(RebuildDesignTokens.forest700)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(detail.threshold) XP · \(detail.unlockStateText)")
+                Text(accessibility.thresholdStateLabel)
                     .font(.footnote)
                     .foregroundStyle(
                         detail.isUnlocked
                             ? RebuildDesignTokens.forest700
                             : GrowthLockedPalette.textColor
                     )
-                Text("이야기: \(detail.story)")
+                Text(accessibility.storyLabel)
                     .font(.footnote)
                     .foregroundStyle(RebuildDesignTokens.ink900)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("보상: \(detail.reward)")
+                Text(accessibility.rewardLabel)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(RebuildDesignTokens.forest700)
                     .fixedSize(horizontal: false, vertical: true)
-                if detail.usesNeutralFallback {
+                if accessibility.childArtIsPending {
                     Text(MascotArtAccessibility.pendingArtText)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(RebuildDesignTokens.muted600)
@@ -350,7 +359,7 @@ struct GrowthView: View {
             style: .continuous
         ))
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("growth_stage_roadmap_detail")
+        .accessibilityIdentifier(accessibility.identifier)
     }
 
     private func recentEvents(
@@ -596,6 +605,13 @@ struct MascotRestArtView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            MascotRestArtAccessibility.label(
+                stageID: level,
+                state: accessibilityState
+            )
+        )
         .task(id: level) {
             guard !usesNeutralFallback else { return }
             await loader.load(level: level)
@@ -604,6 +620,15 @@ struct MascotRestArtView: View {
 
     private var usesNeutralFallback: Bool {
         GrowthStageArtResolver.resolve(stageID: level).usesNeutralFallback
+    }
+
+    private var accessibilityState: MascotArtAccessibilityState {
+        MascotRestArtAccessibility.state(
+            usesNeutralFallback: usesNeutralFallback,
+            hasRenderedImage: loader.renderedImage(for: level) != nil,
+            canRetry: loader.canRetry(for: level),
+            isLocked: silhouetteColor != nil
+        )
     }
 
     @ViewBuilder

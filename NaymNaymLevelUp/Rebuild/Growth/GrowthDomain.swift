@@ -237,7 +237,7 @@ enum GrowthStageStoryRewardCatalog {
         ),
         GrowthStageStoryReward(
             story: "자기만의 속도로 성장한 레전드",
-            reward: "공개 1.1 레전드 모습"
+            reward: "황금빛 레전드 모습"
         ),
         GrowthStageStoryReward(
             story: "별빛이 켜진 저녁 숲에서 새로운 맛을 천천히 만나 봐요.",
@@ -297,6 +297,66 @@ struct GrowthStageDetailPresentation: Equatable, Sendable {
             components.append(MascotArtAccessibility.pendingArtText)
         }
         return components.joined(separator: ", ")
+    }
+}
+
+/// The semantic values spoken by the selected-stage detail's combined tree.
+///
+/// The parent intentionally has no fixed label. The art child owns its label
+/// so a runtime loader failure can replace verified art with the stage-specific
+/// pending state without being masked by the detail container.
+struct GrowthStageDetailAccessibilitySemantics: Equatable, Sendable {
+    let identifier: String
+    let parentLabel: String?
+    let artLabel: String
+    let selectionLabel: String
+    let stageLabel: String
+    let titleLabel: String
+    let thresholdStateLabel: String
+    let storyLabel: String
+    let rewardLabel: String
+    let childArtIsPending: Bool
+
+    var spokenLabel: String {
+        [
+            artLabel,
+            selectionLabel,
+            titleLabel,
+            thresholdStateLabel,
+            storyLabel,
+            rewardLabel,
+        ]
+        .joined(separator: ", ")
+    }
+
+    static func make(
+        detail: GrowthStageDetailPresentation,
+        artState: MascotArtAccessibilityState
+    ) -> Self {
+        let childArtIsPending: Bool
+        switch artState {
+        case .pending:
+            childArtIsPending = true
+        case .verified, .loading:
+            childArtIsPending = false
+        }
+
+        return Self(
+            identifier: "growth_stage_roadmap_detail",
+            parentLabel: nil,
+            artLabel: MascotArtAccessibility.label(
+                stageID: detail.stageID,
+                state: artState
+            ),
+            selectionLabel: "선택한 단계",
+            stageLabel: "레벨 \(detail.stageID)",
+            titleLabel: detail.title,
+            thresholdStateLabel:
+                "\(detail.threshold) XP · \(detail.unlockStateText)",
+            storyLabel: "이야기: \(detail.story)",
+            rewardLabel: "보상: \(detail.reward)",
+            childArtIsPending: childArtIsPending
+        )
     }
 }
 

@@ -1097,6 +1097,95 @@ final class MascotMotionControllerTests: XCTestCase {
         XCTAssertTrue(loader.canRetry)
     }
 
+    func testRestArtAccessibilityTracksLoadingFailureAndVerifiedArt() async {
+        let loadingState = MascotRestArtAccessibility.state(
+            usesNeutralFallback: false,
+            hasRenderedImage: false,
+            canRetry: false,
+            isLocked: false
+        )
+        XCTAssertEqual(
+            MascotRestArtAccessibility.label(
+                stageID: 3,
+                state: loadingState
+            ),
+            "레벨 3 캐릭터를 불러오는 중"
+        )
+        XCTAssertFalse(
+            MascotRestArtAccessibility.label(
+                stageID: 3,
+                state: loadingState
+            ).contains("그림 준비 중")
+        )
+
+        let failedLoader = MascotRestArtLoader(
+            loadImage: { _, _ in
+                throw MascotRigAssetError.missingAsset("composite-rest")
+            }
+        )
+        await failedLoader.load(level: 3)
+        let failureState = MascotRestArtAccessibility.state(
+            usesNeutralFallback: GrowthStageArtResolver.resolve(
+                stageID: 3
+            ).usesNeutralFallback,
+            hasRenderedImage: failedLoader.renderedImage(for: 3) != nil,
+            canRetry: failedLoader.canRetry(for: 3),
+            isLocked: false
+        )
+        XCTAssertEqual(failureState, .pending)
+        XCTAssertEqual(
+            MascotRestArtAccessibility.label(
+                stageID: 3,
+                state: failureState
+            ),
+            "레벨 3, 그림 준비 중"
+        )
+
+        let image = UIImage(
+            color: .green,
+            size: CGSize(width: 1, height: 1)
+        )
+        let successfulLoader = MascotRestArtLoader(
+            loadImage: { _, _ in image }
+        )
+        await successfulLoader.load(level: 3)
+        let verifiedState = MascotRestArtAccessibility.state(
+            usesNeutralFallback: false,
+            hasRenderedImage: successfulLoader.renderedImage(for: 3) != nil,
+            canRetry: successfulLoader.canRetry(for: 3),
+            isLocked: false
+        )
+        XCTAssertEqual(verifiedState, .verified(unlocked: true))
+        XCTAssertEqual(
+            MascotRestArtAccessibility.label(
+                stageID: 3,
+                state: verifiedState
+            ),
+            "레벨 3 해금 캐릭터"
+        )
+        XCTAssertFalse(
+            MascotRestArtAccessibility.label(
+                stageID: 3,
+                state: verifiedState
+            ).contains("그림 준비 중")
+        )
+
+        let lockedState = MascotRestArtAccessibility.state(
+            usesNeutralFallback: false,
+            hasRenderedImage: true,
+            canRetry: false,
+            isLocked: true
+        )
+        XCTAssertEqual(lockedState, .verified(unlocked: false))
+        XCTAssertEqual(
+            MascotRestArtAccessibility.label(
+                stageID: 3,
+                state: lockedState
+            ),
+            "레벨 3 잠긴 캐릭터 실루엣"
+        )
+    }
+
     func testRestArtLoaderSwitchesToTheLatestRequestedLevel() async {
         let levelOne = UIImage(
             color: .red,

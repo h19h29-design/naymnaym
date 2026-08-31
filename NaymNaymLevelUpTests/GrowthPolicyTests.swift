@@ -486,6 +486,7 @@ final class GrowthPolicyTests: XCTestCase {
         )
         XCTAssertEqual(details[0].story, "밝게 시작하는 공통 마스코트")
         XCTAssertEqual(details[0].reward, "새싹과 작은 잎")
+        XCTAssertEqual(details[6].reward, "황금빛 레전드 모습")
         XCTAssertEqual(
             details[7].story,
             "별빛이 켜진 저녁 숲에서 새로운 맛을 천천히 만나 봐요."
@@ -509,7 +510,11 @@ final class GrowthPolicyTests: XCTestCase {
         )
 
         XCTAssertFalse(detail.usesNeutralFallback)
-        XCTAssertFalse(detail.accessibilityLabel.contains("그림 준비 중"))
+        let semantics = GrowthStageDetailAccessibilitySemantics.make(
+            detail: detail,
+            artState: .verified(unlocked: detail.isUnlocked)
+        )
+        XCTAssertFalse(semantics.spokenLabel.contains("그림 준비 중"))
     }
 
     func testNeutralFallbackAccessibilityLabelIsStageSpecific() {
@@ -517,6 +522,48 @@ final class GrowthPolicyTests: XCTestCase {
             MascotNeutralFallbackView.accessibilityLabel(stageID: 8),
             "레벨 8, 그림 준비 중"
         )
+    }
+
+    func testGrowthStageDetailAccessibilityComposesRuntimeArtState() throws {
+        let policy = try policy
+        let verifiedDetail = GrowthStageRoadmapPresentation.detail(
+            policy: policy,
+            stageID: 7,
+            highestUnlockedStageID: 7
+        )
+        let verified = GrowthStageDetailAccessibilitySemantics.make(
+            detail: verifiedDetail,
+            artState: .verified(unlocked: true)
+        )
+
+        XCTAssertNil(verified.parentLabel)
+        XCTAssertTrue(verified.spokenLabel.contains("레벨 7 해금 캐릭터"))
+        XCTAssertFalse(verified.spokenLabel.contains("그림 준비 중"))
+
+        let runtimeFailure = GrowthStageDetailAccessibilitySemantics.make(
+            detail: verifiedDetail,
+            artState: .pending
+        )
+        XCTAssertEqual(runtimeFailure.artLabel, "레벨 7, 그림 준비 중")
+        XCTAssertTrue(runtimeFailure.childArtIsPending)
+        XCTAssertTrue(
+            runtimeFailure.spokenLabel.contains("레벨 7, 그림 준비 중")
+        )
+        XCTAssertTrue(
+            runtimeFailure.spokenLabel.contains("보상: 황금빛 레전드 모습")
+        )
+
+        let neutralDetail = GrowthStageRoadmapPresentation.detail(
+            policy: policy,
+            stageID: 8,
+            highestUnlockedStageID: 7
+        )
+        let neutralFallback = GrowthStageDetailAccessibilitySemantics.make(
+            detail: neutralDetail,
+            artState: .pending
+        )
+        XCTAssertEqual(neutralFallback.artLabel, "레벨 8, 그림 준비 중")
+        XCTAssertTrue(neutralFallback.spokenLabel.contains("그림 준비 중"))
     }
 
     func testMalformedOrMissingPolicyNeverSilentlyFallsBack() {

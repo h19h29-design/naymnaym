@@ -397,11 +397,57 @@ enum MascotRigAssetError: Error, Equatable {
     case invalidImage(String)
 }
 
+enum MascotArtAccessibilityState: Equatable, Sendable {
+    case verified(unlocked: Bool)
+    case pending
+    case loading
+}
+
 enum MascotArtAccessibility {
     static let pendingArtText = "그림 준비 중"
 
     static func pendingLabel(stageID: Int) -> String {
         "레벨 \(stageID), \(pendingArtText)"
+    }
+
+    static func label(
+        stageID: Int,
+        state: MascotArtAccessibilityState
+    ) -> String {
+        switch state {
+        case .verified(let unlocked):
+            return unlocked
+                ? "레벨 \(stageID) 해금 캐릭터"
+                : "레벨 \(stageID) 잠긴 캐릭터 실루엣"
+        case .pending:
+            return pendingLabel(stageID: stageID)
+        case .loading:
+            return "레벨 \(stageID) 캐릭터를 불러오는 중"
+        }
+    }
+}
+
+enum MascotRestArtAccessibility {
+    static func state(
+        usesNeutralFallback: Bool,
+        hasRenderedImage: Bool,
+        canRetry: Bool,
+        isLocked: Bool
+    ) -> MascotArtAccessibilityState {
+        if usesNeutralFallback || canRetry {
+            return .pending
+        }
+        if hasRenderedImage {
+            return .verified(unlocked: !isLocked)
+        }
+        return .loading
+    }
+
+    static func label(
+        stageID: Int,
+        state: MascotArtAccessibilityState
+    ) -> String {
+        MascotArtAccessibility.label(stageID: stageID, state: state)
     }
 }
 
