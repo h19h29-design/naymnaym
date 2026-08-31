@@ -39,8 +39,23 @@ struct TodayForestView: View {
             }
             .navigationBarHidden(true)
         }
-        .task {
-            await viewModel.load()
+        .task(id: isCurrentDayRefreshActive) {
+            guard isCurrentDayRefreshActive else { return }
+            let didChangeDay = await viewModel.refreshCurrentDayIfNeeded()
+            if !didChangeDay {
+                await viewModel.load()
+            }
+
+            while !Task.isCancelled {
+                let delay = viewModel.nanosecondsUntilNextCalendarDay()
+                do {
+                    try await Task.sleep(nanoseconds: delay)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                _ = await viewModel.refreshCurrentDayIfNeeded()
+            }
         }
         .sheet(item: $presentedSheet) { _ in
             MealDayDetailView(
@@ -327,6 +342,10 @@ struct TodayForestView: View {
 
     private var isShowingMealDetail: Bool {
         presentedSheet != nil
+    }
+
+    private var isCurrentDayRefreshActive: Bool {
+        isTabActive && isAppActive
     }
 
     private var characterMessage: String {

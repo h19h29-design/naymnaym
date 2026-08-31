@@ -172,6 +172,105 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isPrimaryActionEnabled)
     }
 
+    func testCurrentDayRefreshAcrossSeoulMidnightPublishesDateAndLoadsOnlyNewKey() async {
+        let beforeMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )
+        let afterMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 26,
+            hour: 0,
+            minute: 0,
+            second: 1
+        )
+        let clock = MutableTodayClock(beforeMidnight)
+        let nextMeal = RebuildMealDay.todayFixture(date: "2026-07-26")
+        let repository = DateTrackingTodayMealRepository(
+            statesByDate: ["2026-07-26": .live(nextMeal)]
+        )
+        let viewModel = makeViewModel(
+            repository: repository,
+            date: beforeMidnight,
+            now: { clock.now() }
+        )
+
+        clock.date = afterMidnight
+        let changed = await viewModel.refreshCurrentDayIfNeeded()
+
+        XCTAssertTrue(changed)
+        XCTAssertEqual(viewModel.dateKey, "2026-07-26")
+        XCTAssertEqual(viewModel.dateText, "7월 26일 일요일")
+        XCTAssertEqual(viewModel.meal, nextMeal)
+        XCTAssertTrue(viewModel.isPrimaryActionEnabled)
+        let firstRequests = await repository.currentStateRequests
+        XCTAssertEqual(firstRequests, ["2026-07-26"])
+
+        let unchanged = await viewModel.refreshCurrentDayIfNeeded()
+
+        XCTAssertFalse(unchanged)
+        let finalRequests = await repository.currentStateRequests
+        XCTAssertEqual(finalRequests, ["2026-07-26"])
+    }
+
+    func testCurrentDayRefreshClearsYesterdayBeforeAwaitingNewMeal() async {
+        let beforeMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )
+        let clock = MutableTodayClock(beforeMidnight)
+        let repository = SuspendedTodayMealRepository()
+        let viewModel = makeViewModel(
+            repository: repository,
+            date: beforeMidnight,
+            now: { clock.now() }
+        )
+        let yesterdayMeal = RebuildMealDay.todayFixture()
+        viewModel.synchronizeMeal(
+            yesterdayMeal,
+            for: MealDayRoute(dateKey: "2026-07-25")
+        )
+        XCTAssertTrue(viewModel.isPrimaryActionEnabled)
+
+        clock.date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 26,
+            hour: 0,
+            minute: 0,
+            second: 1
+        )
+        let refresh = Task {
+            await viewModel.refreshCurrentDayIfNeeded()
+        }
+        await repository.waitUntilCurrentStateRequested()
+
+        XCTAssertEqual(viewModel.dateKey, "2026-07-26")
+        XCTAssertNil(viewModel.meal)
+        XCTAssertFalse(viewModel.isPrimaryActionEnabled)
+        XCTAssertTrue(viewModel.isLoading)
+        let requestedDates = await repository.currentStateRequests
+        XCTAssertEqual(requestedDates, ["2026-07-26"])
+
+        let todayMeal = RebuildMealDay.todayFixture(date: "2026-07-26")
+        await repository.resumeCurrentState(with: .live(todayMeal))
+
+        let didRefresh = await refresh.value
+        XCTAssertTrue(didRefresh)
+        XCTAssertEqual(viewModel.meal, todayMeal)
+        XCTAssertTrue(viewModel.isPrimaryActionEnabled)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
     func testAllergyRiskAllowsOnlyAllergyAvoidedAndGuardianCheck() {
         let viewModel = makeViewModel(allergyCodes: [1, 5])
         let item = RebuildMealItem.todayFixture(allergyCodes: [5, 6])
@@ -694,7 +793,7 @@ final class TodayForestViewModelTests: XCTestCase {
     }
 
     private func makeViewModel(
-        repository: TodayMealRepositoryStub = TodayMealRepositoryStub(
+        repository: any TodayMealRepository = TodayMealRepositoryStub(
             states: [.cached(.todayFixture(), refreshedAt: nil)]
         ),
         recorder: TodayMealRecorderSpy = TodayMealRecorderSpy(),
@@ -704,10 +803,20 @@ final class TodayForestViewModelTests: XCTestCase {
             TodayProgressProviderStub(totalXP: 0),
         school: RebuildSchool? = nil,
         allergyCodes: [Int] = [],
-        isDemoMode: Bool = false
+        isDemoMode: Bool = false,
+        date: Date? = nil,
+        now: @escaping TodayForestViewModel.Clock = { Date() }
     ) -> TodayForestViewModel {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        let fixtureDate = date ?? calendar.date(
+            from: DateComponents(
+                year: 2026,
+                month: 7,
+                day: 25,
+                hour: 12
+            )
+        )!
         return TodayForestViewModel(
             repository: repository,
             recorder: recorder,
@@ -716,16 +825,101 @@ final class TodayForestViewModelTests: XCTestCase {
             school: school,
             allergyCodes: allergyCodes,
             isDemoMode: isDemoMode,
-            date: calendar.date(
-                from: DateComponents(
-                    year: 2026,
-                    month: 7,
-                    day: 25,
-                    hour: 12
-                )
-            )!,
-            calendar: calendar
+            date: fixtureDate,
+            calendar: calendar,
+            now: now
         )
+    }
+
+    private func seoulDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int,
+        minute: Int,
+        second: Int
+    ) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        return calendar.date(
+            from: DateComponents(
+                year: year,
+                month: month,
+                day: day,
+                hour: hour,
+                minute: minute,
+                second: second
+            )
+        )!
+    }
+}
+
+private final class MutableTodayClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedDate: Date
+
+    init(_ date: Date) {
+        storedDate = date
+    }
+
+    var date: Date {
+        get {
+            lock.withLock { storedDate }
+        }
+        set {
+            lock.withLock { storedDate = newValue }
+        }
+    }
+
+    func now() -> Date {
+        date
+    }
+}
+
+private actor DateTrackingTodayMealRepository: TodayMealRepository {
+    let statesByDate: [String: MealLoadState]
+    private(set) var currentStateRequests: [String] = []
+
+    init(statesByDate: [String: MealLoadState]) {
+        self.statesByDate = statesByDate
+    }
+
+    func currentState(date: String) -> MealLoadState {
+        currentStateRequests.append(date)
+        return statesByDate[date] ?? .empty
+    }
+
+    func refresh(date: String, school: RebuildSchool) {}
+}
+
+private actor SuspendedTodayMealRepository: TodayMealRepository {
+    private(set) var currentStateRequests: [String] = []
+    private var currentStateContinuation:
+        CheckedContinuation<MealLoadState, Never>?
+    private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func currentState(date: String) async -> MealLoadState {
+        currentStateRequests.append(date)
+        let waiters = requestWaiters
+        requestWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        return await withCheckedContinuation { continuation in
+            currentStateContinuation = continuation
+        }
+    }
+
+    func refresh(date: String, school: RebuildSchool) {}
+
+    func waitUntilCurrentStateRequested() async {
+        guard currentStateRequests.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            requestWaiters.append(continuation)
+        }
+    }
+
+    func resumeCurrentState(with state: MealLoadState) {
+        currentStateContinuation?.resume(returning: state)
+        currentStateContinuation = nil
     }
 }
 
@@ -791,10 +985,11 @@ private struct TodayMealPhotoMetadataStoreStub: TodayMealPhotoMetadataStore {
 
 private extension RebuildMealDay {
     static func todayFixture(
+        date: String = "2026-07-25",
         menuItems: [RebuildMealItem] = [.todayFixture()]
     ) -> RebuildMealDay {
         RebuildMealDay(
-            date: "2026-07-25",
+            date: date,
             menuItems: menuItems,
             calorie: "620 Kcal",
             nutrition: .empty

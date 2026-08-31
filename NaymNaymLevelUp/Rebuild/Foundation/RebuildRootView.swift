@@ -83,7 +83,9 @@ final class RebuildLegacyProfileBridge: ObservableObject {
 
     func prepare(_ profile: RebuildUserProfile, appState: AppState) {
         state = .pending
-        appState.applyRebuildProfile(profile)
+        if !isApplied(profile, to: appState) {
+            appState.applyRebuildProfile(profile)
+        }
         guard isApplied(profile, to: appState) else { return }
         state = .ready(profile)
     }
@@ -95,14 +97,27 @@ final class RebuildLegacyProfileBridge: ObservableObject {
         switch profile.role {
         case .child:
             guard let school = profile.school else { return false }
-            return appState.currentMode == .elementary
+            let nickname = profile.nickname
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return appState.profile?.nickname == nickname
+                && appState.profile?.schoolName == school.name
                 && appState.profile?.officeCode == school.officeCode
                 && appState.profile?.schoolCode == school.schoolCode
                 && appState.profile?.selectedAllergyCodes
-                    == profile.allergyCodes.sorted()
+                    == Set(profile.allergyCodes).sorted()
+                && appState.currentMode == .elementary
+                && appState.profile?.isUsingDemoMode == profile.isDemoMode
         case .parent:
-            return appState.currentMode == .parent
-                && appState.profile?.nickname == profile.nickname
+            let trimmed = profile.nickname
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let nickname = trimmed.isEmpty ? "보호자" : trimmed
+            return appState.profile?.nickname == nickname
+                && appState.profile?.schoolName == ""
+                && appState.profile?.officeCode == ""
+                && appState.profile?.schoolCode == ""
+                && appState.profile?.selectedAllergyCodes == []
+                && appState.currentMode == .parent
+                && appState.profile?.isUsingDemoMode == false
         }
     }
 }

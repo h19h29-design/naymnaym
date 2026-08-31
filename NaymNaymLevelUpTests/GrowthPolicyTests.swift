@@ -109,6 +109,59 @@ final class GrowthPolicyTests: XCTestCase {
         }
     }
 
+    func testPolicyRejectsSameCountThresholdOrTitleDrift() throws {
+        var driftedThresholds = try policy.thresholds
+        driftedThresholds[1] = 81
+        var driftedTitles = try policy.titles
+        driftedTitles[5] = "바뀐 영양 마스터"
+
+        let sameCountDrifts: [([Int], [String])] = [
+            (driftedThresholds, try policy.titles),
+            (try policy.thresholds, driftedTitles),
+        ]
+        for (index, drift) in sameCountDrifts.enumerated() {
+            let data = try JSONSerialization.data(withJSONObject: [
+                "version": 1,
+                "thresholds": drift.0,
+                "titles": drift.1,
+            ])
+
+            XCTAssertThrowsError(
+                try GrowthPolicy(data: data),
+                "Same-count policy drift \(index) must be rejected"
+            ) { error in
+                XCTAssertEqual(error as? GrowthPolicyError, .invalidContract)
+            }
+        }
+    }
+
+    func testBundledOrEmbeddedDefaultRecoversMissingAndMalformedProvidersExactly() throws {
+        let expected = try policy
+        var diagnostics: [String] = []
+
+        let missing = GrowthPolicy.bundledOrEmbeddedDefault(
+            dataProvider: { throw GrowthPolicyError.missingContract },
+            diagnostic: { diagnostics.append($0) }
+        )
+        let malformed = GrowthPolicy.bundledOrEmbeddedDefault(
+            dataProvider: { Data("{".utf8) },
+            diagnostic: { diagnostics.append($0) }
+        )
+
+        XCTAssertEqual(missing, expected)
+        XCTAssertEqual(malformed, expected)
+        XCTAssertEqual(missing.thresholds.count, 12)
+        XCTAssertEqual(missing.thresholds, expected.thresholds)
+        XCTAssertEqual(missing.titles, expected.titles)
+        XCTAssertEqual(
+            diagnostics,
+            [
+                "Growth policy fallback activated.",
+                "Growth policy fallback activated.",
+            ]
+        )
+    }
+
     func testHighestUnlockedIsMonotonicUnionOfXPLegacyLevelSkinAndStoredState() throws {
         let defaults = makeDefaults()
         let store = UserDefaultsGrowthStageStateStore(defaults: defaults)

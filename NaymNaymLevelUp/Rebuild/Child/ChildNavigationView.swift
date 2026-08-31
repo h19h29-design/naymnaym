@@ -79,11 +79,7 @@ final class RebuildChildComposition: ObservableObject {
         )
         self.session = session
 
-        do {
-            growthPolicy = try GrowthPolicy.bundled()
-        } catch {
-            fatalError("Validated growth policy is missing or invalid: \(error)")
-        }
+        growthPolicy = GrowthPolicy.bundledOrEmbeddedDefault()
 
         if let container = session.container {
             growthProvider = CoreDataGrowthSnapshotProvider(

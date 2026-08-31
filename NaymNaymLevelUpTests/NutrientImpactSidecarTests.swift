@@ -359,6 +359,9 @@ final class NutrientImpactSidecarTests: XCTestCase {
             "철분이 모자라서 몸이 나빠져요.",
             "철분 결핍이라고 진단해요.",
             "이 증상은 치료가 필요해요.",
+            "오늘은 이 메뉴의 대표 영양소를 덜 섭취했을 수 있어요.",
+            "먹지 못했으니 다음에는 꼭 먹어야 해요.",
+            "솔직하게 기록하는 것이 첫걸음이에요.",
         ]
         for (index, copy) in rejectedCopy.enumerated() {
             let snapshot = fixtureSnapshot(
@@ -762,8 +765,8 @@ final class NutrientImpactSidecarTests: XCTestCase {
             (
                 .difficultToday,
                 NutrientImpactCopy(
-                    headline: "오늘은 이 메뉴의 대표 영양소를 덜 섭취했을 수 있어요.",
-                    explanation: "이 메뉴에서는 보통 철분 같은 대표 영양소를 만날 수 있어요. 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요.",
+                    headline: "오늘 어려웠던 느낌을 편하게 돌아봐요.",
+                    explanation: "어떤 점이 어려웠는지 천천히 돌아봐도 괜찮아요.",
                     disclaimer: NutrientImpactCopyCatalog.educationNotice
                 )
             ),
@@ -804,12 +807,61 @@ final class NutrientImpactSidecarTests: XCTestCase {
                 XCTAssertFalse(expected.explanation.contains("먹"))
             }
             if status == .difficultToday {
-                XCTAssertTrue(expected.headline.contains("덜 섭취했을 수 있어요"))
-                XCTAssertTrue(expected.explanation.contains("보통 철분"))
-                XCTAssertTrue(expected.explanation.contains("그래도 괜찮아요"))
-                XCTAssertTrue(expected.explanation.contains("솔직하게 기록한 것이 첫걸음"))
+                XCTAssertTrue(expected.headline.contains("편하게 돌아봐요"))
+                XCTAssertTrue(expected.explanation.contains("천천히 돌아봐도 괜찮아요"))
             }
             XCTAssertNoThrow(try store.install(snapshot))
+        }
+    }
+
+    func testDifficultTodayCopyUsesOptionalSafeAlternativeWithoutForbiddenClaims() throws {
+        let withoutAlternative = try XCTUnwrap(
+            NutrientImpactCopyCatalog.makeCopy(
+                status: .difficultToday,
+                nutrientIDs: ["iron"],
+                hasAlternatives: false
+            )
+        )
+        let withAlternative = try XCTUnwrap(
+            NutrientImpactCopyCatalog.makeCopy(
+                status: .difficultToday,
+                nutrientIDs: ["iron"],
+                hasAlternatives: true
+            )
+        )
+
+        XCTAssertEqual(
+            withoutAlternative,
+            NutrientImpactCopy(
+                headline: "오늘 어려웠던 느낌을 편하게 돌아봐요.",
+                explanation: "어떤 점이 어려웠는지 천천히 돌아봐도 괜찮아요.",
+                disclaimer: NutrientImpactCopyCatalog.educationNotice
+            )
+        )
+        XCTAssertEqual(withAlternative.headline, withoutAlternative.headline)
+        XCTAssertEqual(
+            withAlternative.explanation,
+            "어떤 점이 어려웠는지 천천히 돌아보고, 보호자와 학교 안내를 확인한 뒤 같은 급식의 다른 메뉴를 살펴봐도 괜찮아요."
+        )
+
+        let forbiddenFragments = [
+            "섭취", "부족", "결핍", "먹었", "먹어야", "꼭", "실패", "잘못",
+            "죄책", "진단", "치료", "예방", "완치", "보장", "mg", "㎎",
+        ]
+        for copy in [withoutAlternative, withAlternative] {
+            let persistedText = "\(copy.headline) \(copy.explanation)"
+            for fragment in forbiddenFragments {
+                XCTAssertFalse(
+                    persistedText.localizedCaseInsensitiveContains(fragment),
+                    "Forbidden fragment persisted: \(fragment)"
+                )
+            }
+            XCTAssertNil(
+                persistedText.range(
+                    of: "[0-9０-９]",
+                    options: .regularExpression
+                )
+            )
         }
     }
 

@@ -20,11 +20,6 @@ struct RebuildMealClient: RebuildMealClientProtocol {
         school: RebuildSchool
     ) async throws -> RebuildMealDay? {
         let neisDate = try Self.neisDate(from: date)
-        NEISDebugLog.info(
-            "mealServiceDietInfo params ATPT_OFCDC_SC_CODE=\(school.officeCode) "
-                + "SD_SCHUL_CODE=\(school.schoolCode) MMEAL_SC_CODE=2 "
-                + "MLSV_FROM_YMD=\(neisDate) MLSV_TO_YMD=\(neisDate)"
-        )
         let data = try await neisClient.request(
             path: "mealServiceDietInfo",
             query: [

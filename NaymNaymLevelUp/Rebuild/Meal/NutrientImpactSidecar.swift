@@ -329,8 +329,10 @@ enum NutrientImpactCopyCatalog {
             headline = "냄새와 느낌을 살펴본 것도 멋진 탐색이에요!"
             explanation = "오늘은 냄새와 느낌을 천천히 알아봤어요. \(commonNutritionSentence(for: normalized))"
         case .difficultToday:
-            headline = "오늘은 이 메뉴의 대표 영양소를 덜 섭취했을 수 있어요."
-            explanation = "\(commonNutritionSentence(for: normalized)) 그래도 괜찮아요. 솔직하게 기록한 것이 첫걸음이에요."
+            headline = "오늘 어려웠던 느낌을 편하게 돌아봐요."
+            explanation = hasAlternatives
+                ? "어떤 점이 어려웠는지 천천히 돌아보고, 보호자와 학교 안내를 확인한 뒤 같은 급식의 다른 메뉴를 살펴봐도 괜찮아요."
+                : "어떤 점이 어려웠는지 천천히 돌아봐도 괜찮아요."
         case .allergyAvoided:
             headline = "알레르기 안전을 먼저 챙긴 선택이에요!"
             explanation = "보호자와 학교 안내를 먼저 확인해요."

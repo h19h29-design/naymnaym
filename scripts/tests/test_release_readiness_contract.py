@@ -13,6 +13,8 @@ READINESS = ROOT / "scripts/verify-release-readiness.sh"
 SCREENSHOT_CHECKER = ROOT / "scripts/check-app-store-screenshot-manifest.sh"
 LOCAL_APP_CHECKER = ROOT / "scripts/check-local-app.sh"
 RELEASE_UPLOAD_CHECKER = ROOT / "scripts/check-release-upload-disabled.sh"
+ASC_STATUS_CHECKER = ROOT / "scripts/check-app-store-build-status.sh"
+ASC_CONFIGURATOR = ROOT / "scripts/configure-app-store-connect-api.sh"
 SCREENSHOTS = ROOT / "docs/APP_STORE_SCREENSHOTS.md"
 PLAY_METADATA = ROOT / "release/GooglePlayMetadata/play-console-values.md"
 IOS_METADATA = ROOT / "docs/APP_STORE_METADATA.md"
@@ -373,6 +375,26 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         text = PRIVACY_DRAFT.read_text(encoding="utf-8")
         self.assertIn("https://nyam.h19h19.com/privacy.html", text)
         self.assertNotIn("https://h19h29-design.github.io/naymnaym/privacy.html", text)
+
+    def test_app_store_helpers_default_to_current_ios_candidate(self):
+        status_checker = ASC_STATUS_CHECKER.read_text(encoding="utf-8")
+        configurator = ASC_CONFIGURATOR.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            status_checker,
+            r'(?m)^VERSION="\$\{ASC_VERSION:-1\.2\}"$',
+        )
+        self.assertRegex(
+            status_checker,
+            r'(?m)^BUILD_NUMBER="\$\{ASC_BUILD:-33\}"$',
+        )
+        self.assertRegex(configurator, r"(?m)^ASC_VERSION=1\.2$")
+        self.assertRegex(configurator, r"(?m)^ASC_BUILD=33$")
+
+        self.assertNotRegex(status_checker, r"ASC_VERSION:-1\.0")
+        self.assertNotRegex(status_checker, r"ASC_BUILD:-(15|16)")
+        self.assertNotRegex(configurator, r"(?m)^ASC_VERSION=1\.0$")
+        self.assertNotRegex(configurator, r"(?m)^ASC_BUILD=(15|16)$")
 
     def _run_readiness(self, fixture, *, merge_output=False):
         environment = self._readiness_environment()

@@ -194,8 +194,8 @@ final class TodayForestViewModel: ObservableObject {
     @Published private(set) var message: String?
     @Published private(set) var lastNutritionGuidance: NutrientImpactGuidance?
 
-    let dateText: String
-    let dateKey: String
+    @Published private(set) var dateText: String
+    @Published private(set) var dateKey: String
     let allergyCodes: [Int]
 
     private let repository: any TodayMealRepository
@@ -207,6 +207,7 @@ final class TodayForestViewModel: ObservableObject {
     private let now: Clock
     private let calendar: Calendar
     private var progressRevision = 0
+    private var loadGeneration = 0
 
     var mealScheduleRepository: any MealScheduleRepository {
         TodayMealScheduleRepositoryAdapter(repository: repository)
@@ -249,19 +250,12 @@ final class TodayForestViewModel: ObservableObject {
                 TimeZone(identifier: "Asia/Seoul") ?? .current
         }
         self.calendar = localizedCalendar
-        let keyFormatter = DateFormatter()
-        keyFormatter.calendar = localizedCalendar
-        keyFormatter.locale = Locale(identifier: "en_US_POSIX")
-        keyFormatter.timeZone = localizedCalendar.timeZone
-        keyFormatter.dateFormat = "yyyy-MM-dd"
-        dateKey = keyFormatter.string(from: date)
-
-        let displayFormatter = DateFormatter()
-        displayFormatter.calendar = localizedCalendar
-        displayFormatter.locale = Locale(identifier: "ko_KR")
-        displayFormatter.timeZone = localizedCalendar.timeZone
-        displayFormatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
-        dateText = displayFormatter.string(from: date)
+        let datePresentation = Self.datePresentation(
+            for: date,
+            calendar: localizedCalendar
+        )
+        dateKey = datePresentation.key
+        dateText = datePresentation.text
     }
 
     func recordingViewModel(
@@ -292,19 +286,77 @@ final class TodayForestViewModel: ObservableObject {
     }
 
     func load() async {
+        await load(dateKey: dateKey)
+    }
+
+    @discardableResult
+    func refreshCurrentDayIfNeeded() async -> Bool {
+        let presentation = Self.datePresentation(for: now(), calendar: calendar)
+        guard presentation.key != dateKey else { return false }
+
+        loadGeneration += 1
+        dateKey = presentation.key
+        dateText = presentation.text
+        meal = nil
+        sourceLabel = "급식을 확인하고 있어요"
+        isPrimaryActionEnabled = false
+        isLoading = true
+        lastGrantedXP = 0
+        motion = .idle
+        message = nil
+        lastNutritionGuidance = nil
+
+        await load(dateKey: presentation.key)
+        return true
+    }
+
+    func nanosecondsUntilNextCalendarDay() -> UInt64 {
+        let currentDate = now()
+        let startOfDay = calendar.startOfDay(for: currentDate)
+        guard let nextDay = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: startOfDay
+        ) else {
+            return 60_000_000_000
+        }
+        let seconds = min(
+            max(nextDay.timeIntervalSince(currentDate), 0.001),
+            25 * 60 * 60
+        )
+        return UInt64(seconds * 1_000_000_000)
+    }
+
+    private func load(dateKey targetDateKey: String) async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
         let progressRevisionAtStart = progressRevision
         async let persistedTotalXP = try? progressProvider.totalXP()
-        apply(await repository.currentState(date: dateKey))
+        let initialState = await repository.currentState(date: targetDateKey)
+        guard isCurrentLoad(generation, dateKey: targetDateKey) else { return }
+        apply(initialState)
         if let school {
-            await repository.refresh(date: dateKey, school: school)
-            apply(await repository.currentState(date: dateKey))
+            await repository.refresh(date: targetDateKey, school: school)
+            guard isCurrentLoad(generation, dateKey: targetDateKey) else {
+                return
+            }
+            let refreshedState = await repository.currentState(
+                date: targetDateKey
+            )
+            guard isCurrentLoad(generation, dateKey: targetDateKey) else {
+                return
+            }
+            apply(refreshedState)
         }
         if let persistedTotalXP = await persistedTotalXP,
+           isCurrentLoad(generation, dateKey: targetDateKey),
            progressRevision == progressRevisionAtStart {
             totalXP = persistedTotalXP
         }
-        isLoading = false
+        if isCurrentLoad(generation, dateKey: targetDateKey) {
+            isLoading = false
+        }
     }
 
     func isAllergyRisk(_ item: RebuildMealItem) -> Bool {
@@ -518,6 +570,31 @@ final class TodayForestViewModel: ObservableObject {
     ) -> [RebuildDifficultyReason] {
         let selected = Set(reasons)
         return difficultyReasonOrder.filter(selected.contains)
+    }
+
+    private func isCurrentLoad(_ generation: Int, dateKey: String) -> Bool {
+        loadGeneration == generation && self.dateKey == dateKey
+    }
+
+    private static func datePresentation(
+        for date: Date,
+        calendar: Calendar
+    ) -> (key: String, text: String) {
+        let keyFormatter = DateFormatter()
+        keyFormatter.calendar = calendar
+        keyFormatter.locale = Locale(identifier: "en_US_POSIX")
+        keyFormatter.timeZone = calendar.timeZone
+        keyFormatter.dateFormat = "yyyy-MM-dd"
+
+        let displayFormatter = DateFormatter()
+        displayFormatter.calendar = calendar
+        displayFormatter.locale = Locale(identifier: "ko_KR")
+        displayFormatter.timeZone = calendar.timeZone
+        displayFormatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
+        return (
+            key: keyFormatter.string(from: date),
+            text: displayFormatter.string(from: date)
+        )
     }
 
     private func apply(_ state: MealLoadState) {

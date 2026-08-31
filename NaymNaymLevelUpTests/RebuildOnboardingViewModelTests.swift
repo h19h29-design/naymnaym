@@ -1552,6 +1552,173 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(appState.profile?.selectedAllergyCodes, [1, 5])
         XCTAssertEqual(appState.currentMode, .elementary)
     }
+
+    func testRootBridgeLeavesMatchingChildProfileBytesUnchanged() throws {
+        let suiteName = "RebuildBridgeChildNoOp-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserProfileStore(defaults: defaults)
+        let legacyProfile = UserProfile(
+            id: try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111")),
+            nickname: "냠냠이",
+            schoolName: "서울 냠냠초",
+            officeCode: "B10",
+            schoolCode: "7010111",
+            regionName: "서울특별시",
+            selectedAllergyCodes: [1, 5],
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            userMode: .elementary,
+            themeId: "legacy-child-theme",
+            isDemoMode: false
+        )
+        store.save(legacyProfile)
+        let bytesBefore = try XCTUnwrap(defaults.data(forKey: "user-profile"))
+        let appState = AppState(profileStore: store)
+        let bridge = RebuildLegacyProfileBridge()
+        let rebuildProfile = RebuildUserProfile.fixture(role: .child)
+
+        bridge.prepare(rebuildProfile, appState: appState)
+
+        XCTAssertEqual(bridge.state, .ready(rebuildProfile))
+        XCTAssertEqual(defaults.data(forKey: "user-profile"), bytesBefore)
+        XCTAssertEqual(appState.profile, legacyProfile)
+    }
+
+    func testRootBridgeLeavesMatchingParentProfileBytesUnchanged() throws {
+        let suiteName = "RebuildBridgeParentNoOp-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserProfileStore(defaults: defaults)
+        let legacyProfile = UserProfile(
+            id: try XCTUnwrap(UUID(uuidString: "22222222-2222-2222-2222-222222222222")),
+            nickname: "보호자",
+            schoolName: "",
+            officeCode: "",
+            schoolCode: "",
+            regionName: "legacy-parent-region",
+            selectedAllergyCodes: [],
+            createdAt: Date(timeIntervalSince1970: 1_710_000_000),
+            userMode: .parent,
+            themeId: "legacy-parent-theme",
+            isDemoMode: false
+        )
+        store.save(legacyProfile)
+        let bytesBefore = try XCTUnwrap(defaults.data(forKey: "user-profile"))
+        let appState = AppState(profileStore: store)
+        let bridge = RebuildLegacyProfileBridge()
+        let rebuildProfile = RebuildUserProfile.fixture(role: .parent)
+
+        bridge.prepare(rebuildProfile, appState: appState)
+
+        XCTAssertEqual(bridge.state, .ready(rebuildProfile))
+        XCTAssertEqual(defaults.data(forKey: "user-profile"), bytesBefore)
+        XCTAssertEqual(appState.profile, legacyProfile)
+    }
+
+    func testRootBridgeChildUpdatePreservesLegacyIdentityAndFields() throws {
+        let suiteName = "RebuildBridgeChildPatch-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserProfileStore(defaults: defaults)
+        let legacyID = try XCTUnwrap(
+            UUID(uuidString: "33333333-3333-3333-3333-333333333333")
+        )
+        let legacyCreatedAt = Date(timeIntervalSince1970: 1_720_000_000)
+        store.save(
+            UserProfile(
+                id: legacyID,
+                nickname: "이전 별명",
+                schoolName: "이전 학교",
+                officeCode: "C10",
+                schoolCode: "old-school",
+                regionName: "보존할 지역",
+                selectedAllergyCodes: [2],
+                createdAt: legacyCreatedAt,
+                userMode: .middle,
+                themeId: "preserved-child-theme",
+                isDemoMode: true
+            )
+        )
+        let appState = AppState(profileStore: store)
+        let bridge = RebuildLegacyProfileBridge()
+        let rebuildProfile = RebuildUserProfile(
+            id: "rebuild-child",
+            role: .child,
+            nickname: "새 별명",
+            school: .fixture,
+            allergyCodes: [5, 1, 5],
+            destination: .today,
+            isDemoMode: false
+        )
+
+        bridge.prepare(rebuildProfile, appState: appState)
+
+        let persisted = try XCTUnwrap(store.load())
+        XCTAssertEqual(bridge.state, .ready(rebuildProfile))
+        XCTAssertEqual(persisted.id, legacyID)
+        XCTAssertEqual(persisted.createdAt, legacyCreatedAt)
+        XCTAssertEqual(persisted.regionName, "보존할 지역")
+        XCTAssertEqual(persisted.themeId, "preserved-child-theme")
+        XCTAssertEqual(persisted.nickname, "새 별명")
+        XCTAssertEqual(persisted.schoolName, "서울 냠냠초")
+        XCTAssertEqual(persisted.officeCode, "B10")
+        XCTAssertEqual(persisted.schoolCode, "7010111")
+        XCTAssertEqual(persisted.selectedAllergyCodes, [1, 5])
+        XCTAssertEqual(persisted.effectiveMode, .elementary)
+        XCTAssertFalse(persisted.isUsingDemoMode)
+    }
+
+    func testRootBridgeParentUpdatePreservesLegacyIdentityAndFields() throws {
+        let suiteName = "RebuildBridgeParentPatch-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserProfileStore(defaults: defaults)
+        let legacyID = try XCTUnwrap(
+            UUID(uuidString: "44444444-4444-4444-4444-444444444444")
+        )
+        let legacyCreatedAt = Date(timeIntervalSince1970: 1_730_000_000)
+        store.save(
+            UserProfile(
+                id: legacyID,
+                nickname: "아이",
+                schoolName: "이전 학교",
+                officeCode: "B10",
+                schoolCode: "7010111",
+                regionName: "보존할 보호자 지역",
+                selectedAllergyCodes: [1, 5],
+                createdAt: legacyCreatedAt,
+                userMode: .elementary,
+                themeId: "preserved-parent-theme",
+                isDemoMode: true
+            )
+        )
+        let appState = AppState(profileStore: store)
+        let bridge = RebuildLegacyProfileBridge()
+        let rebuildProfile = RebuildUserProfile(
+            id: "rebuild-parent",
+            role: .parent,
+            nickname: "새 보호자",
+            school: nil,
+            allergyCodes: [],
+            destination: .parentConnection
+        )
+
+        bridge.prepare(rebuildProfile, appState: appState)
+
+        let persisted = try XCTUnwrap(store.load())
+        XCTAssertEqual(bridge.state, .ready(rebuildProfile))
+        XCTAssertEqual(persisted.id, legacyID)
+        XCTAssertEqual(persisted.createdAt, legacyCreatedAt)
+        XCTAssertEqual(persisted.regionName, "보존할 보호자 지역")
+        XCTAssertEqual(persisted.themeId, "preserved-parent-theme")
+        XCTAssertEqual(persisted.nickname, "새 보호자")
+        XCTAssertEqual(persisted.schoolName, "")
+        XCTAssertEqual(persisted.officeCode, "")
+        XCTAssertEqual(persisted.schoolCode, "")
+        XCTAssertEqual(persisted.selectedAllergyCodes, [])
+        XCTAssertEqual(persisted.effectiveMode, .parent)
+        XCTAssertFalse(persisted.isUsingDemoMode)
+    }
 }
 
 private final class OnboardingProfileStoreSpy: RebuildOnboardingProfileStore {

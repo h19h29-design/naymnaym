@@ -102,23 +102,13 @@ actor RebuildMealRepository {
             guard isLatestRefresh(refreshGeneration, for: date) else {
                 return
             }
-            if let cached {
-                update(
-                    .cached(
-                        cached.meal,
-                        refreshedAt: cached.refreshedAt
-                    ),
-                    date: date
-                )
-            } else {
-                update(
-                    .failed(
-                        message: Self.message(for: error),
-                        cached: nil
-                    ),
-                    date: date
-                )
-            }
+            update(
+                .failed(
+                    message: Self.message(for: error),
+                    cached: cached?.meal
+                ),
+                date: date
+            )
         }
     }
 

@@ -70,13 +70,19 @@ enum NEISDebugLog {
         #endif
     }
 
-    private static func redacted(url: URL) -> String {
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return url.absoluteString
+    static func redactedURLString(_ rawURL: String) -> String {
+        guard var components = URLComponents(string: rawURL),
+              components.scheme?.isEmpty == false,
+              components.host?.isEmpty == false else {
+            return "<invalid-url>"
         }
         components.queryItems = components.queryItems?.map { item in
-            item.name == "KEY" ? URLQueryItem(name: item.name, value: "<redacted>") : item
+            URLQueryItem(name: item.name, value: "<redacted>")
         }
-        return components.url?.absoluteString ?? url.absoluteString
+        return components.string ?? "<invalid-url>"
+    }
+
+    private static func redacted(url: URL) -> String {
+        redactedURLString(url.absoluteString)
     }
 }

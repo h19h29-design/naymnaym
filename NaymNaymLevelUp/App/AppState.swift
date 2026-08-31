@@ -169,6 +169,27 @@ final class AppState: ObservableObject {
         case .child:
             guard let school = rebuildProfile.school else { return }
             draftUserMode = .elementary
+            let nickname = rebuildProfile.nickname
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let allergyCodes = Set(rebuildProfile.allergyCodes).sorted()
+            if var existing = profile {
+                let original = existing
+                existing.nickname = nickname
+                existing.schoolName = school.name
+                existing.officeCode = school.officeCode
+                existing.schoolCode = school.schoolCode
+                existing.selectedAllergyCodes = allergyCodes
+                if existing.effectiveMode != .elementary {
+                    existing.userMode = .elementary
+                }
+                if existing.isUsingDemoMode != rebuildProfile.isDemoMode {
+                    existing.isDemoMode = rebuildProfile.isDemoMode
+                }
+                guard existing != original else { return }
+                profile = existing
+                profileStore.save(existing)
+                return
+            }
             let legacySchool = School(
                 name: school.name,
                 officeCode: school.officeCode,
@@ -178,13 +199,35 @@ final class AppState: ObservableObject {
                 schoolType: ""
             )
             saveProfile(
-                nickname: rebuildProfile.nickname,
+                nickname: nickname,
                 school: legacySchool,
-                allergyCodes: Set(rebuildProfile.allergyCodes),
+                allergyCodes: Set(allergyCodes),
                 isDemoMode: rebuildProfile.isDemoMode
             )
         case .parent:
-            saveParentProfile(nickname: rebuildProfile.nickname)
+            draftUserMode = .parent
+            let trimmed = rebuildProfile.nickname
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let nickname = trimmed.isEmpty ? "보호자" : trimmed
+            if var existing = profile {
+                let original = existing
+                existing.nickname = nickname
+                existing.schoolName = ""
+                existing.officeCode = ""
+                existing.schoolCode = ""
+                existing.selectedAllergyCodes = []
+                if existing.effectiveMode != .parent {
+                    existing.userMode = .parent
+                }
+                if existing.isUsingDemoMode {
+                    existing.isDemoMode = false
+                }
+                guard existing != original else { return }
+                profile = existing
+                profileStore.save(existing)
+                return
+            }
+            saveParentProfile(nickname: nickname)
         }
     }
 

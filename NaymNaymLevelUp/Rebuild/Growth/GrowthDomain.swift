@@ -7,8 +7,32 @@ enum GrowthPolicyError: Error, Equatable {
 }
 
 struct GrowthPolicy: Equatable, Sendable {
+    static let canonicalThresholds = [
+        0, 80, 180, 320, 500, 720, 1_000,
+        1_300, 1_650, 2_050, 2_500, 3_000,
+    ]
+    static let canonicalTitles = [
+        "냠냠 새싹",
+        "한 입 탐험가",
+        "냠냠 용사",
+        "편식 몬스터 사냥꾼",
+        "급식 히어로",
+        "영양 마스터",
+        "레전드 냠냠러",
+        "별빛 셰프",
+        "균형 수호자",
+        "숲의 영양 기사",
+        "황금 한입 챔피언",
+        "전설의 급식대장",
+    ]
+
     let thresholds: [Int]
     let titles: [String]
+
+    private init(thresholds: [Int], titles: [String]) {
+        self.thresholds = thresholds
+        self.titles = titles
+    }
 
     init(data: Data) throws {
         do {
@@ -24,6 +48,8 @@ struct GrowthPolicy: Equatable, Sendable {
             }
             let document = try JSONDecoder().decode(Document.self, from: data)
             guard document.version == 1,
+                  document.thresholds == Self.canonicalThresholds,
+                  document.titles == Self.canonicalTitles,
                   document.thresholds.count == 12,
                   document.thresholds.first == 0,
                   zip(
@@ -92,6 +118,40 @@ struct GrowthPolicy: Equatable, Sendable {
             try loadRebuildContractData(
                 named: "growth-policy.json",
                 bundle: bundle
+            )
+        }
+    }
+
+    static func bundledOrEmbeddedDefault(
+        bundle: Bundle = .main,
+        diagnostic: (String) -> Void = { _ in
+            NSLog("Growth policy fallback activated.")
+        }
+    ) -> GrowthPolicy {
+        bundledOrEmbeddedDefault(
+            dataProvider: {
+                try loadRebuildContractData(
+                    named: "growth-policy.json",
+                    bundle: bundle
+                )
+            },
+            diagnostic: diagnostic
+        )
+    }
+
+    static func bundledOrEmbeddedDefault(
+        dataProvider: () throws -> Data,
+        diagnostic: (String) -> Void = { _ in
+            NSLog("Growth policy fallback activated.")
+        }
+    ) -> GrowthPolicy {
+        do {
+            return try load(dataProvider)
+        } catch {
+            diagnostic("Growth policy fallback activated.")
+            return GrowthPolicy(
+                thresholds: canonicalThresholds,
+                titles: canonicalTitles
             )
         }
     }

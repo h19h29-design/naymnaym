@@ -3,20 +3,39 @@ import XCTest
 @testable import NaymNaymLevelUp
 
 final class RebuildMealRepositoryTests: XCTestCase {
-    func testRefreshFailureKeepsCachedMealVisible() async throws {
+    func testRefreshFailureKeepsCachedMealInRetryableFailedStateWithoutRewritingStore() async throws {
         let meal = RebuildMealDay.fixture(date: "2026-07-25")
-        let cache = InMemoryMealDayStore(meals: [meal])
+        let container = try RebuildPersistentStore.makeInMemory()
+        let cache = CoreDataRebuildMealDayStore(context: container.viewContext)
+        let refreshedAt = Date(timeIntervalSince1970: 1_753_401_600)
+        try cache.save(meal, refreshedAt: refreshedAt, source: "neis")
+        let payloadBefore = try mealPayload(
+            date: meal.date,
+            context: container.viewContext
+        )
         let client = StubMealClient(result: .failure(NEISClientError.serverStatus(503)))
         let repository = RebuildMealRepository(store: cache, client: client)
 
         await repository.refresh(date: "2026-07-25", school: .fixture)
         let state = await repository.currentState(date: "2026-07-25")
 
+        guard case let .failed(message, cached) = state else {
+            return XCTFail("Expected a retryable failed state with cached content")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertEqual(cached, meal)
         XCTAssertEqual(
-            state,
-            .cached(meal, refreshedAt: nil)
+            try cache.load(date: "2026-07-25"),
+            RebuildCachedMealDay(
+                meal: meal,
+                refreshedAt: refreshedAt,
+                source: "neis"
+            )
         )
-        XCTAssertEqual(try cache.load(date: "2026-07-25")?.meal, meal)
+        XCTAssertEqual(
+            try mealPayload(date: meal.date, context: container.viewContext),
+            payloadBefore
+        )
     }
 
     func testObserverImmediatelyEmitsCachedStateThenRefreshStates() async throws {
@@ -269,12 +288,65 @@ final class RebuildMealRepositoryTests: XCTestCase {
             testCase.name
         )
     }
+
+    private func mealPayload(
+        date: String,
+        context: NSManagedObjectContext
+    ) throws -> String {
+        try context.performAndWait {
+            let request = NSFetchRequest<RebuildMealDayManagedObject>(
+                entityName: RebuildEntityName.mealDay
+            )
+            request.predicate = NSPredicate(format: "date == %@", date)
+            request.fetchLimit = 1
+            return try XCTUnwrap(context.fetch(request).first).payloadJSON
+        }
+    }
 }
 
 final class RebuildMealClientTests: XCTestCase {
     override func tearDown() {
         RebuildMealMockURLProtocol.requestHandler = nil
         super.tearDown()
+    }
+
+    func testNEISDebugURLRedactionHidesEveryQueryValue() throws {
+        let rawURL = "https://open.neis.go.kr/hub/schoolInfo?KEY=fixture-key-value&ATPT_OFCDC_SC_CODE=B10&SD_SCHUL_CODE=7010700&SCHUL_NM=냠냠초&pIndex=1"
+
+        let redacted = NEISDebugLog.redactedURLString(rawURL)
+
+        let components = try XCTUnwrap(URLComponents(string: redacted))
+        XCTAssertEqual(components.path, "/hub/schoolInfo")
+        XCTAssertEqual(
+            components.queryItems?.map(\.name),
+            [
+                "KEY",
+                "ATPT_OFCDC_SC_CODE",
+                "SD_SCHUL_CODE",
+                "SCHUL_NM",
+                "pIndex",
+            ]
+        )
+        XCTAssertTrue(
+            components.queryItems?.allSatisfy { $0.value == "<redacted>" }
+                == true
+        )
+        for privateValue in [
+            "fixture-key-value", "B10", "7010700", "냠냠초", "=1",
+        ] {
+            XCTAssertFalse(redacted.contains(privateValue))
+        }
+    }
+
+    func testNEISDebugURLRedactionDoesNotEchoMalformedInput() {
+        let malformed = "not a valid URL?KEY=fixture-key-value&query=냠냠초"
+
+        let redacted = NEISDebugLog.redactedURLString(malformed)
+
+        XCTAssertEqual(redacted, "<invalid-url>")
+        XCTAssertFalse(redacted.contains(malformed))
+        XCTAssertFalse(redacted.contains("fixture-key-value"))
+        XCTAssertFalse(redacted.contains("냠냠초"))
     }
 
     func testExplicitDemoReturnsSampleMealForWeekendWithRebuildMetadata() async throws {
