@@ -213,11 +213,14 @@ final class TodayForestViewModel: ObservableObject {
     let isDemoMode: Bool
     private let now: Clock
     private let calendar: Calendar
-    private let recordResultObserver: ((RecordMealResult) -> Void)?
+    private let recordResultObserver: ((RecordMealResult, Int) -> Void)?
     private var progressRevision = 0
     private var loadGeneration = 0
+    private var nextRecordRequestRevision = 0
+    private var latestAppliedRecordFeedbackRevision = 0
     private var nextMealDetailPresentationRevision = 0
-    private var latestMirroredFeedbackRevision = 0
+    private var latestMirroredPresentationRevision = 0
+    private var latestMirroredRecordRevision = 0
 
     var mealScheduleRepository: any MealScheduleRepository {
         TodayMealScheduleRepositoryAdapter(repository: repository)
@@ -244,7 +247,7 @@ final class TodayForestViewModel: ObservableObject {
         date: Date = Date(),
         calendar: Calendar = Calendar(identifier: .gregorian),
         now: @escaping Clock = { Date() },
-        recordResultObserver: ((RecordMealResult) -> Void)? = nil
+        recordResultObserver: ((RecordMealResult, Int) -> Void)? = nil
     ) {
         self.repository = repository
         self.recorder = recorder
@@ -271,7 +274,7 @@ final class TodayForestViewModel: ObservableObject {
 
     func recordingViewModel(
         for route: MealDayRoute,
-        recordResultObserver: ((RecordMealResult) -> Void)? = nil
+        recordResultObserver: ((RecordMealResult, Int) -> Void)? = nil
     ) -> TodayForestViewModel? {
         let formatter = DateFormatter()
         formatter.calendar = calendar
@@ -304,11 +307,12 @@ final class TodayForestViewModel: ObservableObject {
         let presentationRevision = nextMealDetailPresentationRevision
         guard let recordingViewModel = recordingViewModel(
             for: route,
-            recordResultObserver: { [weak self] result in
+            recordResultObserver: { [weak self] result, recordRevision in
                 self?.applyMirroredRecordResult(
                     result,
                     sourceDateKey: route.dateKey,
-                    presentationRevision: presentationRevision
+                    presentationRevision: presentationRevision,
+                    recordRevision: recordRevision
                 )
             }
         ) else {
@@ -550,28 +554,46 @@ final class TodayForestViewModel: ObservableObject {
         prepared: PreparedMealRecord
     ) async throws -> RecordMealResult {
         try validateCurrentMeal(for: prepared)
+        nextRecordRequestRevision += 1
+        let recordRevision = nextRecordRequestRevision
         let result = try await recorder.execute(prepared.command)
-        applyRecordResult(result)
-        recordResultObserver?(result)
+        applyRecordResult(result, recordRevision: recordRevision)
+        recordResultObserver?(result, recordRevision)
         return result
     }
 
-    private func applyRecordResult(_ result: RecordMealResult) {
+    private func applyRecordResult(
+        _ result: RecordMealResult,
+        recordRevision: Int
+    ) {
         applyGlobalRecordProgress(result)
+        guard recordRevision >= latestAppliedRecordFeedbackRevision else {
+            return
+        }
+        latestAppliedRecordFeedbackRevision = recordRevision
         applyRecordFeedback(result)
     }
 
     private func applyMirroredRecordResult(
         _ result: RecordMealResult,
         sourceDateKey: String,
-        presentationRevision: Int
+        presentationRevision: Int,
+        recordRevision: Int
     ) {
         applyGlobalRecordProgress(result)
-        guard dateKey == sourceDateKey,
-              presentationRevision >= latestMirroredFeedbackRevision else {
+        guard dateKey == sourceDateKey else {
             return
         }
-        latestMirroredFeedbackRevision = presentationRevision
+        let isNewerPresentation = presentationRevision
+            > latestMirroredPresentationRevision
+        let isCurrentPresentationRecord = presentationRevision
+            == latestMirroredPresentationRevision
+            && recordRevision >= latestMirroredRecordRevision
+        guard isNewerPresentation || isCurrentPresentationRecord else {
+            return
+        }
+        latestMirroredPresentationRevision = presentationRevision
+        latestMirroredRecordRevision = recordRevision
         applyRecordFeedback(result)
     }
 

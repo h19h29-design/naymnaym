@@ -577,6 +577,83 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.message, "12 XP를 얻었어요!")
     }
 
+    func testLateOlderSaveInSamePinnedRecorderCannotOverwriteFeedback() async throws {
+        let date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 12,
+            minute: 0,
+            second: 0
+        )
+        let recorder = SuspendedStatusTodayMealRecorder()
+        let meal = RebuildMealDay.todayFixture(date: "2026-07-25")
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            date: date,
+            now: { date }
+        )
+        let presentation = try XCTUnwrap(
+            viewModel.makeMealDetailPresentation()
+        )
+        presentation.recordingViewModel.synchronizeMeal(
+            meal,
+            for: presentation.route
+        )
+        let item = try XCTUnwrap(meal.menuItems.first)
+        let olderPrepared = try await presentation.recordingViewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+        let newerPrepared = try await presentation.recordingViewModel.prepareRecord(
+            item: item,
+            status: .oneBite
+        )
+
+        let olderSave = Task {
+            try await presentation.recordingViewModel.record(
+                prepared: olderPrepared
+            )
+        }
+        await recorder.waitUntilRequested(status: .finished)
+        let newerSave = Task {
+            try await presentation.recordingViewModel.record(
+                prepared: newerPrepared
+            )
+        }
+        await recorder.waitUntilRequested(status: .oneBite)
+        await recorder.resume(
+            status: .oneBite,
+            result: RecordMealResult(
+                xpGranted: 12,
+                totalXP: 50,
+                motion: .mealSuccess
+            )
+        )
+        _ = try await newerSave.value
+        await recorder.resume(
+            status: .finished,
+            result: RecordMealResult(
+                xpGranted: 3,
+                totalXP: 23,
+                motion: .comfort
+            )
+        )
+        _ = try await olderSave.value
+
+        XCTAssertEqual(presentation.recordingViewModel.totalXP, 50)
+        XCTAssertEqual(presentation.recordingViewModel.lastGrantedXP, 12)
+        XCTAssertEqual(presentation.recordingViewModel.motion, .mealSuccess)
+        XCTAssertEqual(
+            presentation.recordingViewModel.message,
+            "12 XP를 얻었어요!"
+        )
+        XCTAssertEqual(viewModel.totalXP, 50)
+        XCTAssertEqual(viewModel.lastGrantedXP, 12)
+        XCTAssertEqual(viewModel.motion, .mealSuccess)
+        XCTAssertEqual(viewModel.message, "12 XP를 얻었어요!")
+    }
+
     func testCurrentDayRefreshClearsYesterdayBeforeAwaitingNewMeal() async {
         let beforeMidnight = seoulDate(
             year: 2026,
@@ -1449,6 +1526,32 @@ private actor SequencedTodayMealRecorder: TodayMealRecorder {
             throw TodayForestError.mealUnavailable
         }
         return results.removeFirst()
+    }
+}
+
+private actor SuspendedStatusTodayMealRecorder: TodayMealRecorder {
+    private var continuations:
+        [RebuildEatingStatus: CheckedContinuation<RecordMealResult, Error>] = [:]
+    private var waiters:
+        [RebuildEatingStatus: [CheckedContinuation<Void, Never>]] = [:]
+
+    func execute(_ command: RecordMealCommand) async throws -> RecordMealResult {
+        try await withCheckedThrowingContinuation { continuation in
+            continuations[command.status] = continuation
+            let statusWaiters = waiters.removeValue(forKey: command.status) ?? []
+            statusWaiters.forEach { $0.resume() }
+        }
+    }
+
+    func waitUntilRequested(status: RebuildEatingStatus) async {
+        guard continuations[status] == nil else { return }
+        await withCheckedContinuation { continuation in
+            waiters[status, default: []].append(continuation)
+        }
+    }
+
+    func resume(status: RebuildEatingStatus, result: RecordMealResult) {
+        continuations.removeValue(forKey: status)?.resume(returning: result)
     }
 }
 
