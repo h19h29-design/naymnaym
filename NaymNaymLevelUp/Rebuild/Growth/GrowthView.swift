@@ -291,12 +291,17 @@ struct GrowthView: View {
     }
 }
 
+private struct GrowthStageDetailArtState: Equatable {
+    let stageID: Int
+    let state: MascotArtAccessibilityState
+}
+
 struct GrowthStageDetailView: View {
     let detail: GrowthStageDetailPresentation
     private let restArtLoader: MascotRestArtLoader?
     private let onAccessibilityLabelChange: ((String) -> Void)?
 
-    @State private var artState: MascotArtAccessibilityState
+    @State private var artState: GrowthStageDetailArtState
 
     init(
         detail: GrowthStageDetailPresentation,
@@ -306,19 +311,23 @@ struct GrowthStageDetailView: View {
         self.detail = detail
         self.restArtLoader = restArtLoader
         self.onAccessibilityLabelChange = onAccessibilityLabelChange
-        let usesNeutralFallback = GrowthStageArtResolver.resolve(
-            stageID: detail.stageID
-        ).usesNeutralFallback
+        let initialArtState = Self.initialArtState(for: detail.stageID)
         _artState = State(
-            initialValue: usesNeutralFallback ? .pending : .loading
+            initialValue: GrowthStageDetailArtState(
+                stageID: detail.stageID,
+                state: initialArtState
+            )
         )
     }
 
     var body: some View {
         let art = GrowthStageArtResolver.resolve(stageID: detail.stageID)
+        let effectiveArtState = artState.stageID == detail.stageID
+            ? artState.state
+            : Self.initialArtState(for: detail.stageID)
         let accessibility = GrowthStageDetailAccessibilitySemantics.make(
             detail: detail,
-            artState: artState
+            artState: effectiveArtState
         )
 
         return HStack(
@@ -329,6 +338,7 @@ struct GrowthStageDetailView: View {
                 MascotNeutralFallbackView(stageID: art.stageID)
                     .frame(width: 96, height: 96)
             } else {
+                let stageID = art.stageID
                 MascotRestArtView(
                     level: art.artStageID,
                     silhouetteColor: detail.isUnlocked
@@ -336,7 +346,10 @@ struct GrowthStageDetailView: View {
                         : GrowthLockedPalette.silhouetteColor,
                     loader: restArtLoader,
                     onAccessibilityStateChange: { state in
-                        artState = state
+                        artState = GrowthStageDetailArtState(
+                            stageID: stageID,
+                            state: state
+                        )
                     }
                 )
                 .frame(width: 96, height: 96)
@@ -395,10 +408,19 @@ struct GrowthStageDetailView: View {
             )
         )
         .onChange(of: detail.stageID) { _ in
-            artState = GrowthStageArtResolver.resolve(
-                stageID: detail.stageID
-            ).usesNeutralFallback ? .pending : .loading
+            artState = GrowthStageDetailArtState(
+                stageID: detail.stageID,
+                state: Self.initialArtState(for: detail.stageID)
+            )
         }
+    }
+
+    private static func initialArtState(
+        for stageID: Int
+    ) -> MascotArtAccessibilityState {
+        GrowthStageArtResolver.resolve(stageID: stageID).usesNeutralFallback
+            ? .pending
+            : .loading
     }
 }
 

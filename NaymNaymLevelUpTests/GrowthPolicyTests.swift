@@ -669,6 +669,80 @@ final class GrowthPolicyTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testGrowthStageDetailAccessibilityUsesCurrentStageArtOnFirstTransitionRender() async throws {
+        let policy = try policy
+        let stageSeven = GrowthStageRoadmapPresentation.detail(
+            policy: policy,
+            stageID: 7,
+            highestUnlockedStageID: 7,
+            selectedStageID: 7
+        )
+        let stageEight = GrowthStageRoadmapPresentation.detail(
+            policy: policy,
+            stageID: 8,
+            highestUnlockedStageID: 7,
+            selectedStageID: 8
+        )
+        let gate = AccessibilityLoaderGate()
+        let loader = MascotRestArtLoader(
+            loadImage: { _, _ in
+                await gate.wait()
+                return UIGraphicsImageRenderer(
+                    size: CGSize(width: 1, height: 1)
+                ).image { context in
+                    UIColor.green.setFill()
+                    context.fill(context.format.bounds)
+                }
+            }
+        )
+        let model = GrowthStageDetailTransitionModel(detail: stageSeven)
+        var appliedLabels: [String] = []
+        let host = makeHost(
+            GrowthStageDetailTransitionHarness(
+                model: model,
+                restArtLoader: loader,
+                onAccessibilityLabelChange: { label in
+                    appliedLabels.append(label)
+                }
+            )
+        )
+        defer {
+            gate.open()
+            tearDownHost(host)
+        }
+
+        try await waitUntil {
+            appliedLabels.contains {
+                $0.hasPrefix("레벨 7 캐릭터를 불러오는 중")
+            }
+        }
+
+        let stageEightStart = appliedLabels.count
+        model.detail = stageEight
+        try await waitUntil {
+            appliedLabels.count > stageEightStart
+        }
+        XCTAssertTrue(
+            appliedLabels[stageEightStart].hasPrefix("레벨 8, 그림 준비 중"),
+            "first stage 8 accessibility label used stale stage art state: \(appliedLabels[stageEightStart])"
+        )
+
+        try await waitUntil {
+            appliedLabels.last?.hasPrefix("레벨 8, 그림 준비 중") == true
+        }
+
+        let stageSevenReturnStart = appliedLabels.count
+        model.detail = stageSeven
+        try await waitUntil {
+            appliedLabels.count > stageSevenReturnStart
+        }
+        XCTAssertTrue(
+            appliedLabels[stageSevenReturnStart].hasPrefix("레벨 7 캐릭터를 불러오는 중"),
+            "first stage 7 accessibility label used stale stage art state: \(appliedLabels[stageSevenReturnStart])"
+        )
+    }
+
     func testMalformedOrMissingPolicyNeverSilentlyFallsBack() {
         XCTAssertThrowsError(
             try GrowthPolicy(
@@ -805,6 +879,30 @@ private final class AccessibilityLoaderGate {
         let waiters = continuations
         continuations.removeAll()
         waiters.forEach { $0.resume() }
+    }
+}
+
+@MainActor
+private final class GrowthStageDetailTransitionModel: ObservableObject {
+    @Published var detail: GrowthStageDetailPresentation
+
+    init(detail: GrowthStageDetailPresentation) {
+        self.detail = detail
+    }
+}
+
+@MainActor
+private struct GrowthStageDetailTransitionHarness: View {
+    @ObservedObject var model: GrowthStageDetailTransitionModel
+    let restArtLoader: MascotRestArtLoader
+    let onAccessibilityLabelChange: (String) -> Void
+
+    var body: some View {
+        GrowthStageDetailView(
+            detail: model.detail,
+            restArtLoader: restArtLoader,
+            onAccessibilityLabelChange: onAccessibilityLabelChange
+        )
     }
 }
 
