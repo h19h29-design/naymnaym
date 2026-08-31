@@ -33,17 +33,13 @@ struct MealCalendarPeriod {
     static func weekTitle(starting date: Date, calendar: Calendar = DateUtils.calendar) -> String {
         let dates = weekDates(starting: date, calendar: calendar)
         guard let first = dates.first, let last = dates.last else { return "" }
-        return "\(compactDateFormatter.string(from: first)) ~ \(compactDateFormatter.string(from: last))"
-    }
-
-    static let compactDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.calendar = DateUtils.calendar
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.timeZone = DateUtils.calendar.timeZone
+        formatter.calendar = calendar
+        formatter.locale = calendar.locale ?? Locale(identifier: "ko_KR")
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy.MM.dd"
-        return formatter
-    }()
+        return "\(formatter.string(from: first)) ~ \(formatter.string(from: last))"
+    }
 }
 
 struct MonthlyMealCalendarView: View {

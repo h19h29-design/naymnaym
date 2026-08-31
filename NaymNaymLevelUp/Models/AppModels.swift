@@ -853,7 +853,7 @@ enum LevelUpXPPolicy {
 
     private static func previousDateString(before date: String) -> String? {
         guard let dateValue = DateUtils.apiDateFormatter.date(from: date),
-              let previous = Calendar.current.date(byAdding: .day, value: -1, to: dateValue) else {
+              let previous = DateUtils.calendar.date(byAdding: .day, value: -1, to: dateValue) else {
             return nil
         }
         return DateUtils.apiString(from: previous)

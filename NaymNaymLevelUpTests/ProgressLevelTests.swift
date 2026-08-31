@@ -140,6 +140,23 @@ final class ProgressLevelTests: XCTestCase {
         )
     }
 
+    func testLegacyGrowthStreakUsesSeoulDatesAcrossDSTBoundary() throws {
+        let asOf = try XCTUnwrap(DateUtils.apiDateFormatter.date(from: "20261102"))
+        let records = [
+            ChallengeRecord(date: "20261102", menuName: "현미밥", action: .alreadyEats, gainedExp: 0, badgeName: nil, nutrients: []),
+            ChallengeRecord(date: "20261101", menuName: "시금치나물", action: .oneBite, gainedExp: 18, badgeName: nil, nutrients: [])
+        ]
+
+        XCTAssertEqual(
+            GrowthHomePresentation.activityStreak(
+                challengeRecords: records,
+                mealRecords: [],
+                asOf: asOf
+            ),
+            2
+        )
+    }
+
     func testGrowthHomeMissionUsesActualSafeUnrecordedMealItem() {
         let rice = MealItem(name: "현미밥", allergyCodes: [], nutrients: ["탄수화물"], tags: [], sourceRawText: "현미밥")
         let spinach = MealItem(name: "시금치나물", allergyCodes: [], nutrients: ["비타민"], tags: [], sourceRawText: "시금치나물")
@@ -357,6 +374,33 @@ final class ProgressLevelTests: XCTestCase {
         XCTAssertEqual(grant.base.challenge, 18)
         XCTAssertEqual(grant.bonus.challenge, 25)
         XCTAssertTrue(grant.notes.contains { $0.contains("한 입 도전 +25") })
+    }
+
+    func testLegacyXPStreakBonusUsesSeoulPreviousDateAcrossDSTBoundary() {
+        let item = MealItem(
+            name: "현미밥",
+            allergyCodes: [],
+            nutrients: ["탄수화물"],
+            tags: [],
+            sourceRawText: "현미밥"
+        )
+        let previous = MealRecord(
+            date: "20261101",
+            menuName: "시금치나물",
+            eatingStatus: .finished
+        )
+
+        let grant = LevelUpXPPolicy.grant(
+            for: item,
+            status: .finished,
+            date: "20261102",
+            existingRecords: [],
+            existingMealRecords: [previous],
+            isAllergyRisk: false
+        )
+
+        XCTAssertEqual(grant.base.record, 15)
+        XCTAssertTrue(grant.notes.contains("연속 기록 +5"))
     }
 
     func testBalancedAndConsistentRecordsEarnConfiguredXPBonuses() {

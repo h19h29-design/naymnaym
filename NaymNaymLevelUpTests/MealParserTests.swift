@@ -227,6 +227,54 @@ final class MealParserTests: XCTestCase {
             XCTAssertEqual(nextMonthComponents.day, 1, identifier)
         }
     }
+
+    func testMealCalendarWeekTitleUsesInjectedCalendarForComponentsTitleAndDateKeys() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ko_KR")
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Pacific/Kiritimati"))
+
+        let start = try XCTUnwrap(
+            calendar.date(
+                from: DateComponents(
+                    year: 2026,
+                    month: 8,
+                    day: 30,
+                    hour: 12
+                )
+            )
+        )
+        let week = MealCalendarPeriod.weekDates(starting: start, calendar: calendar)
+        let components = week.map {
+            calendar.dateComponents([.year, .month, .day], from: $0)
+        }
+        let dateKeys = components.map {
+            String(
+                format: "%04d%02d%02d",
+                $0.year ?? 0,
+                $0.month ?? 0,
+                $0.day ?? 0
+            )
+        }
+
+        XCTAssertEqual(
+            components.map(\.month),
+            [8, 8, 9, 9, 9, 9, 9]
+        )
+        XCTAssertEqual(
+            components.map(\.day),
+            [30, 31, 1, 2, 3, 4, 5]
+        )
+        XCTAssertEqual(
+            dateKeys,
+            ["20260830", "20260831", "20260901", "20260902", "20260903", "20260904", "20260905"]
+        )
+
+        let expectedTitle = "2026.08.30 ~ 2026.09.05"
+        XCTAssertEqual(
+            MealCalendarPeriod.weekTitle(starting: start, calendar: calendar),
+            expectedTitle
+        )
+    }
 }
 
 final class MealServiceTests: XCTestCase {

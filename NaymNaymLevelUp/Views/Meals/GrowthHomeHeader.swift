@@ -13,7 +13,7 @@ enum GrowthHomePresentation {
         challengeRecords: [ChallengeRecord],
         mealRecords: [MealRecord],
         asOf date: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = DateUtils.calendar
     ) -> Int {
         let recordedDates = Set(challengeRecords.map(\.date) + mealRecords.map(\.date))
         guard !recordedDates.isEmpty else { return 0 }
