@@ -301,6 +301,62 @@ check_local_app() {
   pass "$configuration app matches the expected candidate"
 }
 
+check_app_store_screenshot_manifest() {
+  directory="$1"
+  expected_count="$2"
+  manifest="$3"
+
+  [ -d "$directory" ] || fail "Missing App Store screenshot directory: $directory"
+
+  count="$(find "$directory" -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')"
+  [ "$count" = "$expected_count" ] || fail "App Store screenshot count is $count, expected exactly $expected_count"
+  pass "App Store screenshot count is $count"
+
+  actual_files="$(find "$directory" -maxdepth 1 -type f -print | sed 's#^.*/##' | sort)"
+  while IFS= read -r actual_file; do
+    [ -n "$actual_file" ] || continue
+    if ! printf '%s\n' "$manifest" | grep -Fxq -- "$actual_file"; then
+      fail "Unmanifested App Store screenshot file: $directory/$actual_file"
+    fi
+  done <<EOF
+$actual_files
+EOF
+  pass "App Store screenshot directory contains only the current manifest"
+}
+
+check_release_upload() {
+  if [ "$RELEASE_UPLOAD_REQUIRED" = "1" ]; then
+    require_file "$RELEASE_ARCHIVE_PATH/Info.plist"
+    require_file "$RELEASE_ARCHIVE_PATH/Products/Applications/NaymNaymLevelUp.app/Info.plist"
+    require_file "$RELEASE_EXPORT_OPTIONS_PATH"
+    require_file "$RELEASE_UPLOAD_LOG"
+    require_pattern "$RELEASE_UPLOAD_LOG" "Uploaded NaymNaymLevelUp" "build ${EXPECTED_BUILD_NUMBER} upload log has app upload marker"
+    require_pattern "$RELEASE_UPLOAD_LOG" "EXPORT SUCCEEDED" "build ${EXPECTED_BUILD_NUMBER} upload command succeeded"
+    require_not_tracked "$RELEASE_UPLOAD_LOG"
+    check_uploaded_ipa "$RELEASE_IPA_PATH" "$EXPECTED_MARKETING_VERSION" "$EXPECTED_BUILD_NUMBER"
+  else
+    pass "Signed archive, export IPA, and upload-log checks skipped because RELEASE_UPLOAD_REQUIRED=0"
+  fi
+}
+
+case "${1:-}" in
+  --check-screenshot-manifest)
+    [ "$#" -eq 3 ] || fail "Usage: $0 --check-screenshot-manifest DIRECTORY EXPECTED_JPG_COUNT < manifest"
+    check_app_store_screenshot_manifest "$2" "$3" "$(cat)"
+    exit 0
+    ;;
+  --check-local-app)
+    [ "$#" -eq 3 ] || fail "Usage: $0 --check-local-app APP_DIRECTORY CONFIGURATION"
+    check_local_app "$2" "$3"
+    exit 0
+    ;;
+  --check-release-upload)
+    [ "$#" -eq 1 ] || fail "Usage: $0 --check-release-upload"
+    check_release_upload
+    exit 0
+    ;;
+esac
+
 git diff --check
 pass "git diff --check"
 
@@ -603,18 +659,7 @@ require_pattern "supabase/functions/parent-sync/index.ts" "apns_not_configured" 
 require_pattern "supabase/functions/parent-sync/index.ts" "photo_ids: \\[\\]" "Parent sync strips photo ids from uploaded meal records"
 require_pattern "supabase/migrations/20260702_parent_notifications.sql" "nyam_parent_devices" "Parent notification device table migration exists"
 
-if [ "$RELEASE_UPLOAD_REQUIRED" = "1" ]; then
-  require_file "$RELEASE_ARCHIVE_PATH/Info.plist"
-  require_file "$RELEASE_ARCHIVE_PATH/Products/Applications/NaymNaymLevelUp.app/Info.plist"
-  require_file "$RELEASE_EXPORT_OPTIONS_PATH"
-  require_file "$RELEASE_UPLOAD_LOG"
-  require_pattern "$RELEASE_UPLOAD_LOG" "Uploaded NaymNaymLevelUp" "build ${EXPECTED_BUILD_NUMBER} upload log has app upload marker"
-  require_pattern "$RELEASE_UPLOAD_LOG" "EXPORT SUCCEEDED" "build ${EXPECTED_BUILD_NUMBER} upload command succeeded"
-  require_not_tracked "$RELEASE_UPLOAD_LOG"
-  check_uploaded_ipa "$RELEASE_IPA_PATH" "$EXPECTED_MARKETING_VERSION" "$EXPECTED_BUILD_NUMBER"
-else
-  pass "Signed archive, export IPA, and upload-log checks skipped because RELEASE_UPLOAD_REQUIRED=0"
-fi
+check_release_upload
 
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@2x.png" 40 40
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-20@3x.png" 60 60
@@ -631,20 +676,10 @@ for screenshot in $APP_STORE_SCREENSHOT_MANIFEST; do
   require_literal "docs/APP_STORE_SCREENSHOTS.md" "$screenshot" "Screenshot manifest documents $screenshot"
 done
 
-count="$(find "$APP_STORE_SCREENSHOT_DIR" -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')"
-[ "$count" = "$APP_STORE_SCREENSHOT_COUNT" ] || fail "App Store screenshot count is $count, expected exactly $APP_STORE_SCREENSHOT_COUNT"
-pass "App Store screenshot count is $count"
-
-actual_files="$(find "$APP_STORE_SCREENSHOT_DIR" -maxdepth 1 -type f -print | sed 's#^.*/##' | sort)"
-while IFS= read -r actual_file; do
-  [ -n "$actual_file" ] || continue
-  if ! printf '%s\n' $APP_STORE_SCREENSHOT_MANIFEST | grep -Fxq "$actual_file"; then
-    fail "Unmanifested App Store screenshot file: $APP_STORE_SCREENSHOT_DIR/$actual_file"
-  fi
-done <<EOF
-$actual_files
-EOF
-pass "App Store screenshot directory contains only the current 1.2 manifest"
+check_app_store_screenshot_manifest \
+  "$APP_STORE_SCREENSHOT_DIR" \
+  "$APP_STORE_SCREENSHOT_COUNT" \
+  "$APP_STORE_SCREENSHOT_MANIFEST"
 
 for url in \
   "https://nyam.h19h19.com/" \
