@@ -279,13 +279,13 @@ class ReleaseReadinessContractTests(unittest.TestCase):
             result.stderr,
         )
 
-    def test_normal_flow_with_upload_disabled_reaches_post_upload_screenshot_gate(self):
+    def test_normal_flow_with_upload_disabled_completes_readiness(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             fixture = self._make_readiness_fixture(pathlib.Path(temporary_directory))
 
             result = self._run_readiness(fixture, merge_output=True)
 
-        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("PASS: Debug app matches the expected candidate", result.stdout)
         self.assertIn("PASS: Release app matches the expected candidate", result.stdout)
         skip_marker = (
@@ -293,13 +293,14 @@ class ReleaseReadinessContractTests(unittest.TestCase):
             "RELEASE_UPLOAD_REQUIRED=0"
         )
         self.assertIn(skip_marker, result.stdout)
-        screenshot_marker = "FAIL: App Store screenshot count is "
+        screenshot_marker = "PASS: App Store screenshot count is 10"
         self.assertIn(screenshot_marker, result.stdout)
         self.assertLess(result.stdout.index(skip_marker), result.stdout.index(screenshot_marker))
         self.assertIn(
-            "expected exactly 10",
+            "PASS: App Store screenshot directory contains only the current manifest",
             result.stdout,
         )
+        self.assertIn("PASS: release readiness checks completed", result.stdout)
 
     def test_local_app_gate_requires_debug_and_release_platform_identity(self):
         source = LOCAL_APP_CHECKER.read_text(encoding="utf-8")
