@@ -79,8 +79,11 @@ struct RebuildMealClient: RebuildMealClientProtocol {
         throw RebuildMealClientError.malformedResponse
     }
 
-    private static func neisDate(from date: String) throws -> String {
-        let components = date.split(separator: "-", omittingEmptySubsequences: false)
+    fileprivate static func validatedDate(from date: String) throws -> Date {
+        let components = date.split(
+            separator: "-",
+            omittingEmptySubsequences: false
+        )
         guard
             components.count == 3,
             components[0].count == 4,
@@ -119,7 +122,100 @@ struct RebuildMealClient: RebuildMealClientProtocol {
         else {
             throw RebuildMealClientError.invalidDate(date)
         }
-        return components.joined()
+        return parsedDate
+    }
+
+    fileprivate static func localDate(from date: String) throws -> Date {
+        _ = try validatedDate(from: date)
+        let components = date.split(separator: "-")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        guard let year = Int(components[0]),
+              let month = Int(components[1]),
+              let day = Int(components[2]),
+              let localDate = calendar.date(
+                  from: DateComponents(
+                      calendar: calendar,
+                      timeZone: calendar.timeZone,
+                      year: year,
+                      month: month,
+                      day: day,
+                      hour: 12
+                  )
+              )
+        else {
+            throw RebuildMealClientError.invalidDate(date)
+        }
+        return localDate
+    }
+
+    private static func neisDate(from date: String) throws -> String {
+        _ = try validatedDate(from: date)
+        return date.replacingOccurrences(of: "-", with: "")
+    }
+}
+
+struct RebuildDemoMealClient: RebuildMealClientProtocol {
+    private let sampleProvider: SampleDataProvider
+
+    init(sampleProvider: SampleDataProvider = SampleDataProvider()) {
+        self.sampleProvider = sampleProvider
+    }
+
+    func fetch(
+        date: String,
+        school: RebuildSchool
+    ) async throws -> RebuildMealDay? {
+        let selectedDate = try RebuildMealClient.localDate(from: date)
+        let sample = sampleProvider.sampleMeal(for: selectedDate)
+        let values: [RebuildNutritionInfo.SourceField: Double] = [
+            .carbs: sample.nutrition.carbs,
+            .protein: sample.nutrition.protein,
+            .fat: sample.nutrition.fat,
+            .calcium: sample.nutrition.calcium,
+            .iron: sample.nutrition.iron,
+            .vitamin: sample.nutrition.vitamin,
+        ]
+        let sourceFields = Set(
+            values.compactMap { field, value in
+                value == 0 ? nil : field
+            }
+        )
+        return RebuildMealDay(
+            date: date,
+            menuItems: sample.menuItems.map {
+                RebuildMealItem(
+                    name: $0.name,
+                    allergyCodes: $0.allergyCodes,
+                    nutrients: $0.nutrients,
+                    tags: $0.tags,
+                    sourceRawText: $0.sourceRawText
+                )
+            },
+            calorie: sample.calorie,
+            nutrition: RebuildNutritionInfo(
+                carbs: sample.nutrition.carbs,
+                protein: sample.nutrition.protein,
+                fat: sample.nutrition.fat,
+                calcium: sample.nutrition.calcium,
+                iron: sample.nutrition.iron,
+                vitamin: sample.nutrition.vitamin,
+                sourceFields: sourceFields
+            )
+        )
+    }
+}
+
+enum RebuildMealClientFactory {
+    static func make(
+        isDemoMode: Bool,
+        neisClient: NEISClient = NEISClient(),
+        sampleProvider: SampleDataProvider = SampleDataProvider()
+    ) -> any RebuildMealClientProtocol {
+        if isDemoMode {
+            return RebuildDemoMealClient(sampleProvider: sampleProvider)
+        }
+        return RebuildMealClient(neisClient: neisClient)
     }
 }
 

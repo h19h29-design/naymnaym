@@ -68,7 +68,8 @@ enum MealDayDetailAccessibility {
         dateKey: String,
         stateLabel: String,
         meal: RebuildMealDay?,
-        canRecord: Bool
+        canRecord: Bool,
+        isDemoMode: Bool = false
     ) -> [MealDayDetailAccessibilityElement] {
         var values: [(
             MealDayDetailAccessibilitySection,
@@ -94,7 +95,10 @@ enum MealDayDetailAccessibility {
                         : "알레르기 정보 확인: \(allergySummary.joined(separator: " · "))"
                 )
             )
-            let totals = MealWholeMealTotals(meal: meal)
+            let totals = MealWholeMealTotals(
+                meal: meal,
+                isDemoMode: isDemoMode
+            )
             values.append(
                 (
                     .nutrition,
@@ -131,6 +135,7 @@ final class MealDayDetailViewModel: ObservableObject {
 
     private let repository: any MealScheduleRepository
     private let school: RebuildSchool?
+    let isDemoMode: Bool
 
     var shouldShowLoadingPlaceholder: Bool {
         (!hasLoaded || isLoading) && meal == nil
@@ -169,7 +174,9 @@ final class MealDayDetailViewModel: ObservableObject {
     var statePresentation: MealDayDetailStatePresentation {
         if isRefreshingCachedMeal {
             return MealDayDetailStatePresentation(
-                label: "저장된 급식 · 업데이트 중",
+                label: isDemoMode
+                    ? "체험 급식 · 업데이트 중"
+                    : "저장된 급식 · 업데이트 중",
                 systemImage: "arrow.triangle.2.circlepath"
             )
         }
@@ -183,19 +190,23 @@ final class MealDayDetailViewModel: ObservableObject {
         switch state {
         case let .cached(_, refreshedAt):
             return MealDayDetailStatePresentation(
-                label: "저장된 급식 · \(Self.cachedTimeLabel(refreshedAt))",
+                label: isDemoMode
+                    ? "체험 급식 · 저장됨 · \(Self.cachedTimeLabel(refreshedAt))"
+                    : "저장된 급식 · \(Self.cachedTimeLabel(refreshedAt))",
                 systemImage: "internaldrive"
             )
         case .refreshing:
             return MealDayDetailStatePresentation(
                 label: meal == nil
                     ? "급식을 확인하고 있어요"
-                    : "저장된 급식 · 업데이트 중",
+                    : (isDemoMode
+                        ? "체험 급식 · 업데이트 중"
+                        : "저장된 급식 · 업데이트 중"),
                 systemImage: "arrow.triangle.2.circlepath"
             )
         case .live:
             return MealDayDetailStatePresentation(
-                label: "최신 급식",
+                label: isDemoMode ? "체험 급식" : "최신 급식",
                 systemImage: "checkmark.circle.fill"
             )
         case .empty:
@@ -214,11 +225,13 @@ final class MealDayDetailViewModel: ObservableObject {
     init(
         route: MealDayRoute,
         repository: any MealScheduleRepository,
-        school: RebuildSchool?
+        school: RebuildSchool?,
+        isDemoMode: Bool = false
     ) {
         self.route = route
         self.repository = repository
         self.school = school
+        self.isDemoMode = isDemoMode
     }
 
     func load() async {
@@ -306,6 +319,7 @@ struct MealDayDetailView: View {
         route: MealDayRoute,
         repository: any MealScheduleRepository,
         school: RebuildSchool?,
+        isDemoMode: Bool = false,
         recordingViewModel: TodayForestViewModel? = nil
     ) {
         self.route = route
@@ -314,7 +328,8 @@ struct MealDayDetailView: View {
             wrappedValue: MealDayDetailViewModel(
                 route: route,
                 repository: repository,
-                school: school
+                school: school,
+                isDemoMode: isDemoMode
             )
         )
     }
@@ -356,7 +371,8 @@ struct MealDayDetailView: View {
             dateKey: route.dateKey,
             stateLabel: viewModel.statePresentation.label,
             meal: viewModel.meal,
-            canRecord: canRecord
+            canRecord: canRecord,
+            isDemoMode: viewModel.isDemoMode
         )
     }
 
@@ -637,7 +653,10 @@ struct MealDayDetailView: View {
     }
 
     private func nutritionSection(_ meal: RebuildMealDay) -> some View {
-        let totals = MealWholeMealTotals(meal: meal)
+        let totals = MealWholeMealTotals(
+            meal: meal,
+            isDemoMode: viewModel.isDemoMode
+        )
         let palette = RebuildDesignTokens.semanticPalette(.nutrition)
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
             Label("급식 전체 영양", systemImage: "leaf.fill")

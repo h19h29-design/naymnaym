@@ -294,10 +294,12 @@ struct MealWholeMealTotals: Equatable, Sendable {
     let nutrition: RebuildNutritionInfo
     let sourceLabel: String
 
-    init(meal: RebuildMealDay) {
+    init(meal: RebuildMealDay, isDemoMode: Bool = false) {
         calorie = meal.calorie
         nutrition = meal.nutrition
-        sourceLabel = "전체 급식 기준 · NEIS 제공"
+        sourceLabel = isDemoMode
+            ? "전체 급식 기준 · 체험 급식"
+            : "전체 급식 기준 · NEIS 제공"
     }
 
     var nutritionSummary: String {

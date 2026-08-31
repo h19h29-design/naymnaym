@@ -228,7 +228,10 @@ struct MealRecordingSheet: View {
                 }
 
                 if let meal = viewModel.meal {
-                    let totals = MealWholeMealTotals(meal: meal)
+                    let totals = MealWholeMealTotals(
+                        meal: meal,
+                        isDemoMode: viewModel.isDemoMode
+                    )
                     VStack(alignment: .leading, spacing: 4) {
                         Text(totals.sourceLabel)
                             .font(.caption.weight(.semibold))

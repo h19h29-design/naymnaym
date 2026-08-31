@@ -334,16 +334,19 @@ final class MealScheduleViewModel: ObservableObject {
     @Published private(set) var message: String?
 
     let schoolName: String
+    let isDemoMode: Bool
 
     let repository: any MealScheduleRepository
     let school: RebuildSchool?
 
     init(
         repository: any MealScheduleRepository,
-        school: RebuildSchool?
+        school: RebuildSchool?,
+        isDemoMode: Bool = false
     ) {
         self.repository = repository
         self.school = school
+        self.isDemoMode = isDemoMode
         schoolName = school?.name ?? "학교 등록 전"
     }
 
@@ -543,6 +546,7 @@ struct MealScheduleView: View {
                 route: route,
                 repository: viewModel.repository,
                 school: viewModel.school,
+                isDemoMode: viewModel.isDemoMode,
                 recordingViewModel: recordingViewModelFactory(route)
             )
         }
@@ -1538,19 +1542,23 @@ struct MealScheduleView: View {
         switch state {
         case .cached:
             return MealScheduleDateStatePresentation(
-                label: "저장된 급식",
+                label: viewModel.isDemoMode
+                    ? "체험 급식 · 저장됨"
+                    : "저장된 급식",
                 systemImage: "internaldrive",
                 color: RebuildDesignTokens.forest700
             )
         case .refreshing:
             return MealScheduleDateStatePresentation(
-                label: "업데이트 중",
+                label: viewModel.isDemoMode
+                    ? "체험 급식 · 업데이트 중"
+                    : "업데이트 중",
                 systemImage: "arrow.triangle.2.circlepath",
                 color: RebuildDesignTokens.semanticPalette(.schedule).surface
             )
         case .live:
             return MealScheduleDateStatePresentation(
-                label: "최신 급식",
+                label: viewModel.isDemoMode ? "체험 급식" : "최신 급식",
                 systemImage: "checkmark.circle.fill",
                 color: RebuildDesignTokens.forest700
             )

@@ -695,6 +695,20 @@ final class MealPresentationTests: XCTestCase {
         XCTAssertTrue(totals.nutritionSummary.contains("단백질"))
     }
 
+    func testDemoWholeMealTotalsDiscloseSampleSource() {
+        let meal = RebuildMealDay(
+            date: "2026-08-26",
+            menuItems: [],
+            calorie: "610 kcal",
+            nutrition: .empty
+        )
+
+        let totals = MealWholeMealTotals(meal: meal, isDemoMode: true)
+
+        XCTAssertEqual(totals.sourceLabel, "전체 급식 기준 · 체험 급식")
+        XCTAssertFalse(totals.sourceLabel.contains("NEIS"))
+    }
+
     func testRecordingAccessibilityPlacesMenuAndAllergyBeforeActionAndTotals() throws {
         let item = RebuildMealItem(
             name: "시금치나물",

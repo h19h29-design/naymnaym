@@ -203,6 +203,7 @@ final class TodayForestViewModel: ObservableObject {
     private let photoMetadataStore: any TodayMealPhotoMetadataStore
     private let progressProvider: any TodayProgressProvider
     private let school: RebuildSchool?
+    let isDemoMode: Bool
     private let now: Clock
     private let calendar: Calendar
     private var progressRevision = 0
@@ -228,6 +229,7 @@ final class TodayForestViewModel: ObservableObject {
             EmptyTodayProgressProvider(),
         school: RebuildSchool?,
         allergyCodes: [Int],
+        isDemoMode: Bool = false,
         date: Date = Date(),
         calendar: Calendar = Calendar(identifier: .gregorian),
         now: @escaping Clock = { Date() }
@@ -237,6 +239,7 @@ final class TodayForestViewModel: ObservableObject {
         self.photoMetadataStore = photoMetadataStore
         self.progressProvider = progressProvider
         self.school = school
+        self.isDemoMode = isDemoMode
         self.allergyCodes = Array(Set(allergyCodes)).sorted()
         self.now = now
 
@@ -281,6 +284,7 @@ final class TodayForestViewModel: ObservableObject {
             progressProvider: progressProvider,
             school: school,
             allergyCodes: allergyCodes,
+            isDemoMode: isDemoMode,
             date: date,
             calendar: calendar,
             now: now
@@ -520,14 +524,16 @@ final class TodayForestViewModel: ObservableObject {
         switch state {
         case let .cached(cached, _):
             meal = cached
-            sourceLabel = "저장된 급식"
+            sourceLabel = isDemoMode ? "체험 급식 · 저장됨" : "저장된 급식"
             message = "인터넷이 없어도 저장된 급식을 기록할 수 있어요."
         case let .refreshing(cached):
             meal = cached
-            sourceLabel = cached == nil ? "급식을 확인하고 있어요" : "저장된 급식"
+            sourceLabel = cached == nil
+                ? "급식을 확인하고 있어요"
+                : (isDemoMode ? "체험 급식 · 업데이트 중" : "저장된 급식")
         case let .live(live):
             meal = live
-            sourceLabel = "학교 급식"
+            sourceLabel = isDemoMode ? "체험 급식" : "학교 급식"
             message = nil
         case .empty:
             meal = nil
@@ -537,7 +543,7 @@ final class TodayForestViewModel: ObservableObject {
             meal = cached
             sourceLabel = cached == nil
                 ? "급식을 불러오지 못했어요"
-                : "저장된 급식"
+                : (isDemoMode ? "체험 급식 · 저장됨" : "저장된 급식")
             message = cached == nil
                 ? "인터넷 연결을 확인하고 다시 시도해 주세요."
                 : "인터넷이 없어 저장된 급식을 보여드려요."

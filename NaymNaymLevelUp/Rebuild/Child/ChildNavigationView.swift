@@ -170,7 +170,8 @@ struct ChildNavigationView: View {
                 repository: UnavailableTodayMealRepository(),
                 recorder: UnavailableTodayMealRecorder(),
                 school: profile.school.map(Self.rebuildSchool),
-                allergyCodes: profile.allergyCodes
+                allergyCodes: profile.allergyCodes,
+                isDemoMode: profile.isDemoMode
             )
         }
 
@@ -178,7 +179,9 @@ struct ChildNavigationView: View {
             store: CoreDataRebuildMealDayStore(
                 context: container.newBackgroundContext()
             ),
-            client: RebuildMealClient()
+            client: RebuildMealClientFactory.make(
+                isDemoMode: profile.isDemoMode
+            )
         )
         return TodayForestViewModel(
             repository: repository,
@@ -190,7 +193,8 @@ struct ChildNavigationView: View {
                 container: container
             ),
             school: profile.school.map(Self.rebuildSchool),
-            allergyCodes: profile.allergyCodes
+            allergyCodes: profile.allergyCodes,
+            isDemoMode: profile.isDemoMode
         )
     }
 
@@ -203,18 +207,22 @@ struct ChildNavigationView: View {
         guard let container else {
             return MealScheduleViewModel(
                 repository: UnavailableMealScheduleRepository(),
-                school: school
+                school: school,
+                isDemoMode: profile.isDemoMode
             )
         }
         let repository = RebuildMealRepository(
             store: CoreDataRebuildMealDayStore(
                 context: container.newBackgroundContext()
             ),
-            client: RebuildMealClient()
+            client: RebuildMealClientFactory.make(
+                isDemoMode: profile.isDemoMode
+            )
         )
         return MealScheduleViewModel(
             repository: LiveMealScheduleRepository(repository: repository),
-            school: school
+            school: school,
+            isDemoMode: profile.isDemoMode
         )
     }
 

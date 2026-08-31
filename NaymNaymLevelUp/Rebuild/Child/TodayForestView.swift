@@ -47,6 +47,7 @@ struct TodayForestView: View {
                 route: MealDayRoute(dateKey: viewModel.dateKey),
                 repository: viewModel.mealScheduleRepository,
                 school: viewModel.detailSchool,
+                isDemoMode: viewModel.isDemoMode,
                 recordingViewModel: viewModel
             )
         }
@@ -171,7 +172,10 @@ struct TodayForestView: View {
             }
 
             if let meal = viewModel.meal {
-                let totals = MealWholeMealTotals(meal: meal)
+                let totals = MealWholeMealTotals(
+                    meal: meal,
+                    isDemoMode: viewModel.isDemoMode
+                )
                 VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[1]) {
                     ForEach(Array(meal.menuItems.enumerated()), id: \.offset) {
                         _, item in

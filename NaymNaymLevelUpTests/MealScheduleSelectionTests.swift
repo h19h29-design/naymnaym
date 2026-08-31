@@ -85,6 +85,26 @@ final class MealScheduleSelectionTests: XCTestCase {
         XCTAssertEqual(viewModel.state, .empty)
     }
 
+    func testDemoMealDetailDisclosesThatLiveStateIsSampleContent() async {
+        let meal = RebuildMealDay.fixture(
+            date: "2026-08-12",
+            menuName: "체험 메뉴"
+        )
+        let repository = RecordingMealScheduleRepository(
+            states: [meal.date: .live(meal)]
+        )
+        let viewModel = MealDayDetailViewModel(
+            route: MealDayRoute(dateKey: meal.date),
+            repository: repository,
+            school: nil,
+            isDemoMode: true
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.statePresentation.label, "체험 급식")
+    }
+
     func testMissingSelectedDateDoesNotUseTodayFallback() async {
         let todayMeal = RebuildMealDay.fixture(date: "2026-08-30", menuName: "오늘 급식")
         let firstCachedMeal = RebuildMealDay.fixture(date: "2026-08-01", menuName: "첫 캐시")

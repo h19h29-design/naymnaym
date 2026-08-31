@@ -263,6 +263,119 @@ final class RebuildMealClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testExplicitDemoReturnsSampleMealForWeekendWithRebuildMetadata() async throws {
+        let client = RebuildMealClientFactory.make(isDemoMode: true)
+        let school = RebuildSchool(
+            name: "냠냠중학교",
+            officeCode: "B10",
+            schoolCode: "7010111"
+        )
+
+        let meal = try await client.fetch(
+            date: "2026-08-30",
+            school: school
+        )
+
+        let sample = try XCTUnwrap(meal)
+        XCTAssertEqual(sample.date, "2026-08-30")
+        XCTAssertEqual(sample.menuItems.map(\.name), [
+            "현미밥",
+            "미역국",
+            "닭갈비",
+            "콩나물무침",
+            "배추김치",
+        ])
+        XCTAssertEqual(sample.menuItems[2].allergyCodes, [5, 6, 15])
+        XCTAssertEqual(sample.menuItems[2].nutrients, ["단백질", "철분"])
+        XCTAssertEqual(sample.menuItems[2].tags, ["튼튼 파워", "성장 에너지"])
+        XCTAssertEqual(sample.menuItems[2].sourceRawText, "닭갈비(5.6.15)")
+        XCTAssertEqual(sample.calorie, "610 kcal")
+        XCTAssertEqual(sample.nutrition.carbs, 78, accuracy: 0.001)
+        XCTAssertEqual(sample.nutrition.protein, 23, accuracy: 0.001)
+        XCTAssertEqual(sample.nutrition.fat, 14, accuracy: 0.001)
+        XCTAssertEqual(sample.nutrition.calcium, 190, accuracy: 0.001)
+        XCTAssertEqual(sample.nutrition.iron, 2.6, accuracy: 0.001)
+        XCTAssertEqual(sample.nutrition.vitamin, 36, accuracy: 0.001)
+        XCTAssertEqual(
+            sample.nutrition.sourceFields,
+            [.carbs, .protein, .fat, .calcium, .iron, .vitamin]
+        )
+        XCTAssertEqual(sample.nutrition.sourceUnits, [:])
+    }
+
+    func testExplicitDemoReturnsSampleMealForTheSelectedCurrentDate() async throws {
+        let client = RebuildMealClientFactory.make(isDemoMode: true)
+        let selectedDate = MealScheduleCalendar.key(for: Date())
+
+        let meal = try await client.fetch(
+            date: selectedDate,
+            school: .fixture
+        )
+
+        XCTAssertEqual(meal?.date, selectedDate)
+        XCTAssertFalse(meal?.menuItems.isEmpty ?? true)
+    }
+
+    func testNonDemoUsesNEISForSchoolWithSampleIdentifiers() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RebuildMealMockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        RebuildMealMockURLProtocol.requestHandler = { request in
+            let url = try XCTUnwrap(request.url)
+            let components = try XCTUnwrap(
+                URLComponents(url: url, resolvingAgainstBaseURL: false)
+            )
+            let query = Dictionary(
+                uniqueKeysWithValues: (components.queryItems ?? []).compactMap {
+                    item in item.value.map { (item.name, $0) }
+                }
+            )
+            XCTAssertEqual(query["ATPT_OFCDC_SC_CODE"], "B10")
+            XCTAssertEqual(query["SD_SCHUL_CODE"], "7010111")
+
+            let body = """
+            {
+              "mealServiceDietInfo": [
+                {"row": [{
+                  "MLSV_YMD": "20260830",
+                  "DDISH_NM": "보리밥<br/>김치찌개(5.9.10)",
+                  "CAL_INFO": "700 Kcal",
+                  "NTR_INFO": "단백질(g) : 31.5"
+                }]}
+              ]
+            }
+            """
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )
+            )
+            return (response, Data(body.utf8))
+        }
+        let client = RebuildMealClientFactory.make(
+            isDemoMode: false,
+            neisClient: NEISClient(
+                apiKey: "fixture-key",
+                session: session
+            )
+        )
+        let school = RebuildSchool(
+            name: "냠냠중학교",
+            officeCode: "B10",
+            schoolCode: "7010111"
+        )
+
+        let meal = try await client.fetch(date: "2026-08-30", school: school)
+
+        let live = try XCTUnwrap(meal)
+        XCTAssertEqual(live.date, "2026-08-30")
+        XCTAssertEqual(live.menuItems.map(\.name), ["보리밥", "김치찌개"])
+        XCTAssertEqual(live.nutrition.protein, 31.5, accuracy: 0.001)
+    }
+
     func testFetchUsesCurrentNEISEndpointAndParsesMeal() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RebuildMealMockURLProtocol.self]

@@ -91,6 +91,19 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertTrue(failed.isMealDetailActionEnabled)
     }
 
+    func testDemoLiveMealDisclosesThatItIsSampleContent() async {
+        let demo = makeViewModel(
+            repository: TodayMealRepositoryStub(
+                states: [.live(.todayFixture())]
+            ),
+            isDemoMode: true
+        )
+
+        await demo.load()
+
+        XCTAssertEqual(demo.sourceLabel, "체험 급식")
+    }
+
     func testDetailMealSynchronizationOnlyAcceptsExactDate() {
         let viewModel = makeViewModel()
         let exactMeal = RebuildMealDay.todayFixture()
@@ -690,7 +703,8 @@ final class TodayForestViewModelTests: XCTestCase {
         progressProvider: TodayProgressProviderStub =
             TodayProgressProviderStub(totalXP: 0),
         school: RebuildSchool? = nil,
-        allergyCodes: [Int] = []
+        allergyCodes: [Int] = [],
+        isDemoMode: Bool = false
     ) -> TodayForestViewModel {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
@@ -701,6 +715,7 @@ final class TodayForestViewModelTests: XCTestCase {
             progressProvider: progressProvider,
             school: school,
             allergyCodes: allergyCodes,
+            isDemoMode: isDemoMode,
             date: calendar.date(
                 from: DateComponents(
                     year: 2026,
