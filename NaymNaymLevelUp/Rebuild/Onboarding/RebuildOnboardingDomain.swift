@@ -26,11 +26,22 @@ struct RebuildOnboardingSchool: Equatable, Identifiable, Sendable {
     let schoolCode: String
 }
 
+extension RebuildOnboardingSchool {
+    init(sampleSchool: School) {
+        self.init(
+            name: sampleSchool.name,
+            officeCode: sampleSchool.officeCode,
+            schoolCode: sampleSchool.schoolCode
+        )
+    }
+}
+
 struct OnboardingDraft: Equatable, Sendable {
     var role: RebuildOnboardingRole?
     var nickname = ""
     var school: RebuildOnboardingSchool?
     var allergyCodes: [Int] = []
+    var isDemoMode = false
 }
 
 struct RebuildUserProfile: Equatable, Sendable {
@@ -40,6 +51,25 @@ struct RebuildUserProfile: Equatable, Sendable {
     let school: RebuildOnboardingSchool?
     let allergyCodes: [Int]
     let destination: RebuildOnboardingDestination
+    let isDemoMode: Bool
+
+    init(
+        id: String,
+        role: RebuildOnboardingRole,
+        nickname: String,
+        school: RebuildOnboardingSchool?,
+        allergyCodes: [Int],
+        destination: RebuildOnboardingDestination,
+        isDemoMode: Bool = false
+    ) {
+        self.id = id
+        self.role = role
+        self.nickname = nickname
+        self.school = school
+        self.allergyCodes = allergyCodes
+        self.destination = destination
+        self.isDemoMode = isDemoMode
+    }
 }
 
 enum RebuildOnboardingError: Error, Equatable {
@@ -102,10 +132,15 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
             )
     }
 
+    func isDemoMode(profileID: String) -> Bool {
+        defaults.string(forKey: profileDemoModeKey(profileID)) == "true"
+    }
+
     func write(_ profile: RebuildUserProfile) -> Snapshot {
         let idNameKey = profileNameKey(profile.id)
         let idOfficeKey = profileOfficeKey(profile.id)
         let idSchoolKey = profileSchoolKey(profile.id)
+        let idDemoModeKey = profileDemoModeKey(profile.id)
         let legacyIDKey = legacyProfileNameKey(profile.id)
         let previousOfficeCode = defaults.string(forKey: idOfficeKey)
         let previousSchoolCode = defaults.string(forKey: idSchoolKey)
@@ -113,6 +148,7 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
             idNameKey,
             idOfficeKey,
             idSchoolKey,
+            idDemoModeKey,
             legacyIDKey
         ]
         if let previousOfficeCode, let previousSchoolCode {
@@ -142,6 +178,11 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
             schoolCode: previousSchoolCode
         )
         defaults.removeObject(forKey: legacyIDKey)
+        if profile.isDemoMode {
+            defaults.set("true", forKey: idDemoModeKey)
+        } else {
+            defaults.removeObject(forKey: idDemoModeKey)
+        }
         guard let school = profile.school else {
             defaults.removeObject(forKey: idNameKey)
             defaults.removeObject(forKey: idOfficeKey)
@@ -176,6 +217,7 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         let idNameKey = profileNameKey(profileID)
         let idOfficeKey = profileOfficeKey(profileID)
         let idSchoolKey = profileSchoolKey(profileID)
+        let idDemoModeKey = profileDemoModeKey(profileID)
         let legacyIDKey = legacyProfileNameKey(profileID)
         let profileName = defaults.string(forKey: idNameKey)
             ?? defaults.string(forKey: legacyIDKey)
@@ -192,6 +234,7 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         defaults.removeObject(forKey: idNameKey)
         defaults.removeObject(forKey: idOfficeKey)
         defaults.removeObject(forKey: idSchoolKey)
+        defaults.removeObject(forKey: idDemoModeKey)
         defaults.removeObject(forKey: legacyIDKey)
     }
 
@@ -199,6 +242,7 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
         defaults.object(forKey: profileNameKey(id)) != nil
             || defaults.object(forKey: profileOfficeKey(id)) != nil
             || defaults.object(forKey: profileSchoolKey(id)) != nil
+            || defaults.object(forKey: profileDemoModeKey(id)) != nil
             || defaults.object(forKey: legacyProfileNameKey(id)) != nil
     }
 
@@ -267,6 +311,10 @@ final class RebuildSchoolNameMetadataStore: @unchecked Sendable {
 
     private func profileSchoolKey(_ id: String) -> String {
         "rebuild.school-name.profile.\(id).school"
+    }
+
+    private func profileDemoModeKey(_ id: String) -> String {
+        "rebuild.profile.\(id).demo-mode"
     }
 
     private func schoolNameKey(
@@ -357,7 +405,8 @@ actor RebuildOnboardingProfileTransactionCoordinator {
                 nickname: object.nickname,
                 school: school,
                 allergyCodes: Array(Set(allergyCodes)).sorted(),
-                destination: role == .child ? .today : .parentConnection
+                destination: role == .child ? .today : .parentConnection,
+                isDemoMode: metadataStore.isDemoMode(profileID: object.id)
             )
         }
     }

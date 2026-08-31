@@ -69,6 +69,13 @@ struct RebuildOnboardingFlowView: View {
                     .font(RebuildDesignTokens.bodyFont)
                 Text("알레르기: \(allergySummary)")
                     .font(RebuildDesignTokens.bodyFont)
+                if viewModel.isDemoSelection {
+                    Text(RebuildOnboardingViewModel.demoDisclosureText)
+                        .font(RebuildDesignTokens.bodyFont)
+                        .foregroundStyle(RebuildDesignTokens.forest700)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("rebuildOnboardingDemoState")
+                }
                 action("완료") {
                     Task {
                         do {

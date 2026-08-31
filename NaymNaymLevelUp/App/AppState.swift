@@ -126,7 +126,12 @@ final class AppState: ObservableObject {
         draftUserMode = profile?.effectiveMode ?? .elementary
     }
 
-    func saveProfile(nickname: String, school: School, allergyCodes: Set<Int>) {
+    func saveProfile(
+        nickname: String,
+        school: School,
+        allergyCodes: Set<Int>,
+        isDemoMode: Bool = false
+    ) {
         let newProfile = UserProfile(
             nickname: nickname.trimmingCharacters(in: .whitespacesAndNewlines),
             schoolName: school.name,
@@ -136,7 +141,7 @@ final class AppState: ObservableObject {
             selectedAllergyCodes: allergyCodes.sorted(),
             userMode: draftUserMode,
             themeId: draftUserMode.defaultThemeId,
-            isDemoMode: false
+            isDemoMode: isDemoMode
         )
         profile = newProfile
         profileStore.save(newProfile)
@@ -164,17 +169,19 @@ final class AppState: ObservableObject {
         case .child:
             guard let school = rebuildProfile.school else { return }
             draftUserMode = .elementary
+            let legacySchool = School(
+                name: school.name,
+                officeCode: school.officeCode,
+                schoolCode: school.schoolCode,
+                region: "",
+                address: "",
+                schoolType: ""
+            )
             saveProfile(
                 nickname: rebuildProfile.nickname,
-                school: School(
-                    name: school.name,
-                    officeCode: school.officeCode,
-                    schoolCode: school.schoolCode,
-                    region: "",
-                    address: "",
-                    schoolType: ""
-                ),
-                allergyCodes: Set(rebuildProfile.allergyCodes)
+                school: legacySchool,
+                allergyCodes: Set(rebuildProfile.allergyCodes),
+                isDemoMode: rebuildProfile.isDemoMode
             )
         case .parent:
             saveParentProfile(nickname: rebuildProfile.nickname)

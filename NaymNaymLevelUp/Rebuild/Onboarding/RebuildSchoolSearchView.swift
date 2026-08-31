@@ -9,6 +9,23 @@ struct RebuildSchoolSearchView: View {
             Text("어느 학교에 다니나요?")
                 .font(RebuildDesignTokens.titleFont)
                 .accessibilityAddTraits(.isHeader)
+            Text(RebuildOnboardingViewModel.demoDisclosureText)
+                .font(RebuildDesignTokens.bodyFont)
+                .foregroundStyle(RebuildDesignTokens.muted600)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("rebuildOnboardingDemoDisclosure")
+            Button(RebuildOnboardingViewModel.demoActionTitle) {
+                viewModel.selectDemoExperience()
+            }
+            .font(RebuildDesignTokens.headlineFont)
+            .foregroundStyle(RebuildDesignTokens.forest700)
+            .frame(maxWidth: .infinity, minHeight: RebuildDesignTokens.minimumActionSize)
+            .overlay(
+                RoundedRectangle(cornerRadius: RebuildDesignTokens.radii[0])
+                    .stroke(RebuildDesignTokens.forest700)
+            )
+            .accessibilityLabel(RebuildOnboardingViewModel.demoActionTitle)
+            .accessibilityIdentifier("rebuildOnboardingDemoButton")
             TextField("학교 이름", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .font(RebuildDesignTokens.bodyFont)

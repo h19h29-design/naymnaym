@@ -13,9 +13,11 @@ final class RebuildOnboardingViewModel: ObservableObject {
     @Published private(set) var completedProfile: RebuildUserProfile?
     @Published private(set) var isCompleting = false
 
+    static let demoActionTitle = "체험 모드로 살펴보기"
+    static let demoDisclosureText = "체험 모드는 샘플 학교와 샘플 급식을 사용해요. 실제 학교의 급식 데이터가 아니에요."
+
     private let profileStore: RebuildOnboardingProfileStore
     private let schoolSearchClient: RebuildSchoolSearchClient
-    private let demoMode: Bool
     private let demoSchools: [RebuildOnboardingSchool]
     private let sleep: Sleep
     private var searchGeneration = 0
@@ -26,15 +28,22 @@ final class RebuildOnboardingViewModel: ObservableObject {
         schoolSearchClient: RebuildSchoolSearchClient,
         demoMode: Bool = false,
         demoSchools: [RebuildOnboardingSchool] = [],
+        sampleProvider: SampleDataProvider = SampleDataProvider(),
         sleep: @escaping Sleep = { nanoseconds in
             try await Task.sleep(nanoseconds: nanoseconds)
         }
     ) {
         self.profileStore = profileStore
         self.schoolSearchClient = schoolSearchClient
-        self.demoMode = demoMode
-        self.demoSchools = demoSchools
+        self.demoSchools = demoSchools.isEmpty
+            ? sampleProvider.sampleSchools.map { RebuildOnboardingSchool(sampleSchool: $0) }
+            : demoSchools
         self.sleep = sleep
+        self.draft = OnboardingDraft(isDemoMode: demoMode)
+    }
+
+    var isDemoSelection: Bool {
+        draft.isDemoMode
     }
 
     var progressText: String {
@@ -48,6 +57,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
         if role == .parent {
             draft.school = nil
             draft.allergyCodes = []
+            draft.isDemoMode = false
         }
         validationMessage = nil
         step = .nickname
@@ -66,6 +76,15 @@ final class RebuildOnboardingViewModel: ObservableObject {
 
     func selectSchool(_ school: RebuildOnboardingSchool) {
         draft.school = school
+        draft.isDemoMode = false
+        validationMessage = nil
+        step = .allergies
+    }
+
+    func selectDemoExperience() {
+        guard let school = demoSchools.first else { return }
+        draft.school = school
+        draft.isDemoMode = true
         validationMessage = nil
         step = .allergies
     }
@@ -105,7 +124,8 @@ final class RebuildOnboardingViewModel: ObservableObject {
             nickname: draft.nickname,
             school: role == .child ? draft.school : nil,
             allergyCodes: role == .child ? draft.allergyCodes : [],
-            destination: role == .child ? .today : .parentConnection
+            destination: role == .child ? .today : .parentConnection,
+            isDemoMode: role == .child && draft.isDemoMode
         )
         let generation = completionGeneration
         isCompleting = true
@@ -146,7 +166,7 @@ final class RebuildOnboardingViewModel: ObservableObject {
         do {
             try await sleep(Self.searchDebounceNanoseconds)
             guard generation == searchGeneration else { return }
-            if demoMode {
+            if draft.isDemoMode {
                 let matches = demoSchools.filter {
                     $0.name.localizedCaseInsensitiveContains(trimmed)
                 }

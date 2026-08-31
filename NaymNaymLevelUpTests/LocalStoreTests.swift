@@ -249,6 +249,76 @@ final class LocalStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testApplyingRebuildSampleSchoolPersistsDemoModeAndProfileFields() {
+        let sample = SampleDataProvider().sampleSchools[0]
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
+        )
+
+        appState.applyRebuildProfile(
+            RebuildUserProfile(
+                id: "demo-profile",
+                role: .child,
+                nickname: " 체험이 ",
+                school: RebuildOnboardingSchool(
+                    name: sample.name,
+                    officeCode: sample.officeCode,
+                    schoolCode: sample.schoolCode
+                ),
+                allergyCodes: [5, 1, 5],
+                destination: .today,
+                isDemoMode: true
+            )
+        )
+
+        let persisted = UserProfileStore(defaults: defaults).load()
+        XCTAssertEqual(persisted?.nickname, "체험이")
+        XCTAssertEqual(persisted?.effectiveMode, .elementary)
+        XCTAssertEqual(persisted?.selectedAllergyCodes, [1, 5])
+        XCTAssertTrue(persisted?.isUsingDemoMode == true)
+    }
+
+    @MainActor
+    func testApplyingRebuildLiveSchoolWithSampleIdentifiersKeepsDemoModeFalse() {
+        let sample = SampleDataProvider().sampleSchools[0]
+        let appState = AppState(
+            profileStore: UserProfileStore(defaults: defaults),
+            progressStore: ProgressStore(defaults: defaults),
+            challengeStore: ChallengeStore(defaults: defaults),
+            mealRecordStore: MealRecordStore(defaults: defaults),
+            mealPhotoMetadataStore: MealPhotoMetadataStore(defaults: defaults),
+            parentProfileStore: ParentProfileStore(defaults: defaults),
+            sampleProvider: SampleDataProvider(),
+            automaticallyPublishesParentSharedData: false
+        )
+
+        appState.applyRebuildProfile(
+            RebuildUserProfile(
+                id: "live-profile",
+                role: .child,
+                nickname: "실사용자",
+                school: RebuildOnboardingSchool(
+                    name: "실제 학교",
+                    officeCode: sample.officeCode,
+                    schoolCode: sample.schoolCode
+                ),
+                allergyCodes: [],
+                destination: .today,
+                isDemoMode: false
+            )
+        )
+
+        XCTAssertFalse(UserProfileStore(defaults: defaults).load()?.isUsingDemoMode == true)
+    }
+
+    @MainActor
     func testAppStateAddsInviteCodeChildLinkWithoutDuplicates() {
         let photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let appState = AppState(

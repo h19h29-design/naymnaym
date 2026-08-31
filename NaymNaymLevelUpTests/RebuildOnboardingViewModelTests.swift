@@ -319,6 +319,82 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(demo.schoolSearchState, .demoResults([.fixture]))
     }
 
+    func testExplicitDemoSelectionUsesMappedSampleSchoolAndAdvances() {
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: OnboardingProfileStoreSpy(),
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+
+        XCTAssertFalse(viewModel.isDemoSelection)
+
+        viewModel.selectDemoExperience()
+
+        let sample = SampleDataProvider().sampleSchools[0]
+        XCTAssertTrue(viewModel.isDemoSelection)
+        XCTAssertTrue(viewModel.draft.isDemoMode)
+        XCTAssertEqual(viewModel.step, .allergies)
+        XCTAssertEqual(
+            viewModel.draft.school,
+            RebuildOnboardingSchool(
+                name: sample.name,
+                officeCode: sample.officeCode,
+                schoolCode: sample.schoolCode
+            )
+        )
+    }
+
+    func testLiveSchoolWithSampleIdentifiersDoesNotBecomeDemoSelection() {
+        let sample = SampleDataProvider().sampleSchools[0]
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: OnboardingProfileStoreSpy(),
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+
+        viewModel.selectSchool(
+            RebuildOnboardingSchool(
+                name: "실제 학교",
+                officeCode: sample.officeCode,
+                schoolCode: sample.schoolCode
+            )
+        )
+
+        XCTAssertFalse(viewModel.draft.isDemoMode)
+        XCTAssertFalse(viewModel.isDemoSelection)
+    }
+
+    func testExplicitDemoSelectionPersistsIntentOnCompletedProfile() async throws {
+        let store = OnboardingProfileStoreSpy()
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: store,
+            schoolSearchClient: SchoolSearchClientStub()
+        )
+
+        viewModel.selectRole(.child)
+        viewModel.setNickname("체험이")
+        viewModel.selectDemoExperience()
+        viewModel.setAllergies([5, 1])
+
+        let profile = try await viewModel.complete()
+
+        XCTAssertTrue(profile.isDemoMode)
+        XCTAssertEqual(store.savedProfiles, [profile])
+    }
+
+    func testLiveFailureDoesNotBecomeDemoUntilExplicitSelection() async {
+        let viewModel = RebuildOnboardingViewModel(
+            profileStore: OnboardingProfileStoreSpy(),
+            schoolSearchClient: SchoolSearchClientStub(error: TestError.offline)
+        )
+
+        await viewModel.searchSchools(query: "냠냠")
+
+        XCTAssertEqual(
+            viewModel.schoolSearchState,
+            .failed("학교 검색에 실패했어요. 네트워크 상태를 확인해 주세요.")
+        )
+        XCTAssertFalse(viewModel.isDemoSelection)
+    }
+
     func testSchoolSearchTreatsInfo200AsEmptyAndRejectsErrorOrMalformedRows() async throws {
         let noData = makeSchoolClient(
             #"{"RESULT":{"CODE":"INFO-200","MESSAGE":"no data"}}"#
@@ -496,7 +572,8 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
                 schoolCode: "7010111"
             ),
             allergyCodes: [1, 5],
-            destination: .today
+            destination: .today,
+            isDemoMode: true
         )
         let firstStore = RebuildCoreDataOnboardingProfileStore(
             coordinator: RebuildOnboardingProfileTransactionCoordinator(
@@ -515,6 +592,13 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
 
         let reloaded = try await relaunchedStore.load()
         XCTAssertEqual(reloaded?.school?.name, "서울 냠냠초등학교")
+        XCTAssertTrue(reloaded?.isDemoMode == true)
+
+        let bootstrap = RebuildOnboardingBootstrapViewModel(
+            profileStore: relaunchedStore
+        )
+        await bootstrap.load()
+        XCTAssertEqual(bootstrap.state, .destination(reloaded!))
     }
 
     func testRealStoreWithoutSchoolNameMetadataUsesBackwardsFallback() async throws {
@@ -712,6 +796,7 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         }
         XCTAssertEqual(count, 0)
         XCTAssertFalse(metadata.hasProfileMetadata(id: profile.id))
+        XCTAssertFalse(metadata.isDemoMode(profileID: profile.id))
         XCTAssertFalse(
             metadata.hasSchoolMetadata(
                 officeCode: "B10",
