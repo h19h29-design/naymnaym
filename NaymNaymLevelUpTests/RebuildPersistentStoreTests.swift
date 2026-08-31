@@ -509,6 +509,235 @@ final class RebuildPersistentStoreTests: XCTestCase {
     }
 }
 
+@MainActor
+final class RebuildDemoIsolationTests: XCTestCase {
+    func testDemoSessionUsesOneRetainedInMemoryContainer() throws {
+        let liveContainer = try RebuildPersistentStore.makeInMemory()
+        let session = RebuildChildSessionStore(
+            profile: .demoFixture,
+            persistentContainer: liveContainer
+        )
+
+        let demoContainer = try XCTUnwrap(session.container)
+
+        XCTAssertFalse(demoContainer === liveContainer)
+        XCTAssertEqual(
+            demoContainer.persistentStoreCoordinator.persistentStores.first?.url?.path,
+            "/dev/null"
+        )
+        XCTAssertTrue(demoContainer === session.container)
+        XCTAssertTrue(
+            session.nutrientImpactSidecar is InMemoryNutrientImpactSidecar
+        )
+        XCTAssertTrue(
+            session.growthStageStateStore is RebuildInMemoryGrowthStageStateStore
+        )
+        XCTAssertEqual(session.legacyRights, .empty)
+    }
+
+    func testLiveSessionKeepsSuppliedPersistentContainer() throws {
+        let liveContainer = try RebuildPersistentStore.makeInMemory()
+        let session = RebuildChildSessionStore(
+            profile: .liveFixture,
+            persistentContainer: liveContainer
+        )
+
+        XCTAssertTrue(session.container === liveContainer)
+        XCTAssertFalse(
+            session.nutrientImpactSidecar is InMemoryNutrientImpactSidecar
+        )
+        XCTAssertNil(session.growthStageStateStore)
+        XCTAssertNil(session.legacyRights)
+    }
+
+    func testDemoCacheAndRecordXPStayOutOfLiveContainer() async throws {
+        let liveContainer = try RebuildPersistentStore.makeInMemory()
+        let liveStore = CoreDataRebuildMealDayStore(
+            context: liveContainer.viewContext
+        )
+        let liveMeal = RebuildMealDay(
+            date: "2026-08-30",
+            menuItems: [
+                RebuildMealItem(
+                    name: "실제 급식",
+                    allergyCodes: [],
+                    nutrients: ["탄수화물"],
+                    tags: [],
+                    sourceRawText: "실제 급식"
+                )
+            ],
+            calorie: "700 kcal",
+            nutrition: .empty
+        )
+        try liveStore.save(
+            liveMeal,
+            refreshedAt: Date(timeIntervalSince1970: 1_753_401_600),
+            source: "neis"
+        )
+        let liveUseCase = try RecordMealUseCase(container: liveContainer)
+        try liveUseCase.execute(
+            RecordMealCommand(
+                recordID: "2026-08-30|실제 급식",
+                date: "2026-08-30",
+                menuName: "실제 급식",
+                status: .oneBite,
+                difficultyReasons: [],
+                allergyCodes: [],
+                childAllergyCodes: [],
+                itemAllergyCodes: [],
+                photoIDs: ["live-photo"],
+                parentShareEnabled: false,
+                occurredAt: Date(timeIntervalSince1970: 1_753_401_601)
+            )
+        )
+
+        let session = RebuildChildSessionStore(
+            profile: .demoFixture,
+            persistentContainer: liveContainer
+        )
+        let demoContainer = try XCTUnwrap(session.container)
+        let demoStore = CoreDataRebuildMealDayStore(
+            context: demoContainer.viewContext
+        )
+        let demoRepository = RebuildMealRepository(
+            store: demoStore,
+            client: RebuildDemoMealClient(),
+            now: { Date(timeIntervalSince1970: 1_753_405_602) }
+        )
+
+        await demoRepository.refresh(
+            date: "2026-08-30",
+            school: RebuildSchool(
+                name: "냠냠 초등학교",
+                officeCode: "B10",
+                schoolCode: "7010111"
+            )
+        )
+
+        XCTAssertEqual(try liveStore.load(date: "2026-08-30")?.meal, liveMeal)
+        XCTAssertEqual(try liveStore.load(date: "2026-08-30")?.source, "neis")
+        XCTAssertEqual(try demoStore.load(date: "2026-08-30")?.source, "demo")
+
+        let demoUseCase = try RecordMealUseCase(
+            container: demoContainer,
+            nutrientImpactSidecar: session.nutrientImpactSidecar
+        )
+        let demoRecordResult = try demoUseCase.execute(
+            RecordMealCommand(
+                recordID: "2026-08-30|체험 급식",
+                date: "2026-08-30",
+                menuName: "체험 급식",
+                status: .oneBite,
+                difficultyReasons: [],
+                allergyCodes: [],
+                childAllergyCodes: [],
+                itemAllergyCodes: [],
+                photoIDs: ["demo-photo"],
+                parentShareEnabled: false,
+                occurredAt: Date(timeIntervalSince1970: 1_753_405_603),
+                nutritionSnapshot: try XCTUnwrap(
+                    NutrientImpactSnapshotFactory.make(
+                        recordID: "2026-08-30|체험 급식",
+                        date: "2026-08-30",
+                        normalizedMenuName: "체험 급식",
+                        status: .oneBite,
+                        recordUpdatedAt: Date(timeIntervalSince1970: 1_753_405_603),
+                        nutrientIDs: ["fiber", "vitamin"]
+                    )
+                )
+            )
+        )
+        XCTAssertEqual(demoRecordResult.nutritionGuidance?.source, .recordedRevision)
+
+        let liveProgress = RebuildProgressRepository(
+            context: liveContainer.viewContext
+        )
+        let demoProgress = RebuildProgressRepository(
+            context: demoContainer.viewContext
+        )
+        XCTAssertEqual(try liveProgress.totalXP(), 18)
+        XCTAssertEqual(try demoProgress.totalXP(), 18)
+        XCTAssertEqual(
+            try count(entity: RebuildEntityName.mealRecord, in: liveContainer.viewContext),
+            1
+        )
+        XCTAssertEqual(
+            try count(entity: RebuildEntityName.mealRecord, in: demoContainer.viewContext),
+            1
+        )
+        let livePhotoIDs = try await CoreDataTodayMealPhotoMetadataStore(
+            container: liveContainer
+        ).photoIDs(
+            date: "2026-08-30",
+            normalizedMenuName: "체험 급식"
+        )
+        XCTAssertEqual(livePhotoIDs, [])
+    }
+
+    func testDemoWholeMealSourceLabelsNeverSayNEIS() {
+        XCTAssertEqual(
+            MealPresentationCopy.wholeMealSourceLabel(isDemoMode: true),
+            "전체 급식 기준 · 체험 급식"
+        )
+        XCTAssertEqual(
+            MealPresentationCopy.wholeMealSourceLabel(
+                isDemoMode: true,
+                isAveraged: true
+            ),
+            "전체 급식 기준 · 체험 급식 (기간 평균)"
+        )
+        XCTAssertEqual(
+            MealPresentationCopy.wholeMealSourceLabel(isDemoMode: false),
+            "전체 급식 기준 · NEIS 제공"
+        )
+    }
+
+    private func count(
+        entity: String,
+        in context: NSManagedObjectContext
+    ) throws -> Int {
+        try context.performAndWait {
+            try context.count(
+                for: NSFetchRequest<NSFetchRequestResult>(entityName: entity)
+            )
+        }
+    }
+}
+
+private extension RebuildUserProfile {
+    static var demoFixture: RebuildUserProfile {
+        RebuildUserProfile(
+            id: "demo-profile",
+            role: .child,
+            nickname: "체험 아이",
+            school: RebuildOnboardingSchool(
+                name: "냠냠 초등학교",
+                officeCode: "B10",
+                schoolCode: "7010111"
+            ),
+            allergyCodes: [],
+            destination: .today,
+            isDemoMode: true
+        )
+    }
+
+    static var liveFixture: RebuildUserProfile {
+        RebuildUserProfile(
+            id: "live-profile",
+            role: .child,
+            nickname: "실제 아이",
+            school: RebuildOnboardingSchool(
+                name: "냠냠 초등학교",
+                officeCode: "B10",
+                schoolCode: "7010111"
+            ),
+            allergyCodes: [],
+            destination: .today,
+            isDemoMode: false
+        )
+    }
+}
+
 private final class RebuildLockedBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var storedValue: Value

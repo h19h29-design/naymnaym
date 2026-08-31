@@ -32,8 +32,37 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
     }
 }
 
+final class RebuildChildSessionStore: ObservableObject {
+    let container: NSPersistentContainer?
+    let nutrientImpactSidecar: any NutrientImpactSidecar
+    let growthStageStateStore: (any GrowthStageStateStore)?
+    let legacyRights: LegacyGrowthRights?
+    let canUseNutrientImpactSidecar: Bool
+
+    init(
+        profile: RebuildUserProfile,
+        persistentContainer: NSPersistentContainer?
+    ) {
+        if profile.isDemoMode {
+            container = try? RebuildPersistentStore.makeInMemory()
+            nutrientImpactSidecar = InMemoryNutrientImpactSidecar()
+            growthStageStateStore = RebuildInMemoryGrowthStageStateStore()
+            legacyRights = .empty
+            canUseNutrientImpactSidecar = true
+            return
+        }
+
+        container = persistentContainer
+        growthStageStateStore = nil
+        legacyRights = nil
+        nutrientImpactSidecar = NoopNutrientImpactSidecar.shared
+        canUseNutrientImpactSidecar = false
+    }
+}
+
 struct ChildNavigationView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var childSession: RebuildChildSessionStore
     @StateObject private var todayViewModel: TodayForestViewModel
     @StateObject private var mealScheduleViewModel: MealScheduleViewModel
     @State private var selection: RebuildChildTab = .today
@@ -45,12 +74,17 @@ struct ChildNavigationView: View {
         profile: RebuildUserProfile,
         container: NSPersistentContainer?
     ) {
+        let session = RebuildChildSessionStore(
+            profile: profile,
+            persistentContainer: container
+        )
+        _childSession = StateObject(wrappedValue: session)
         do {
             growthPolicy = try GrowthPolicy.bundled()
         } catch {
             fatalError("Validated growth policy is missing or invalid: \(error)")
         }
-        if let container {
+        if let container = session.container {
             growthProvider = CoreDataGrowthSnapshotProvider(
                 container: container
             )
@@ -64,13 +98,14 @@ struct ChildNavigationView: View {
         _todayViewModel = StateObject(
             wrappedValue: Self.makeTodayViewModel(
                 profile: profile,
-                container: container
+                container: session.container,
+                session: session
             )
         )
         _mealScheduleViewModel = StateObject(
             wrappedValue: Self.makeMealScheduleViewModel(
                 profile: profile,
-                container: container
+                container: session.container
             )
         )
     }
@@ -108,7 +143,9 @@ struct ChildNavigationView: View {
             GrowthView(
                 provider: growthProvider,
                 policy: growthPolicy,
-                isActive: selection == .growth
+                isActive: selection == .growth,
+                stateStore: childSession.growthStageStateStore,
+                legacyRights: childSession.legacyRights
             )
                 .tabItem {
                     Label(
@@ -121,7 +158,9 @@ struct ChildNavigationView: View {
             CollectionView(
                 provider: collectionProvider,
                 policy: growthPolicy,
-                isActive: selection == .collection
+                isActive: selection == .collection,
+                stateStore: childSession.growthStageStateStore,
+                legacyRights: childSession.legacyRights
             )
                 .tabItem {
                     Label(
@@ -147,25 +186,54 @@ struct ChildNavigationView: View {
     @MainActor
     private static func makeTodayViewModel(
         profile: RebuildUserProfile,
-        container: NSPersistentContainer?
+        container: NSPersistentContainer?,
+        session: RebuildChildSessionStore
     ) -> TodayForestViewModel {
-        guard let container,
-              let applicationSupportURL = try? FileManager.default.url(
-                  for: .applicationSupportDirectory,
-                  in: .userDomainMask,
-                  appropriateFor: nil,
-                  create: true
-              ),
-              let recorder = try? RecordMealUseCase(
-                  container: container,
-                  nutrientImpactSidecar: FileNutrientImpactSidecar(
-                      directoryURL: applicationSupportURL.appendingPathComponent(
-                          "NutrientImpactSidecar",
-                          isDirectory: true
-                      )
-                  )
-              )
-        else {
+        guard let container else {
+            return TodayForestViewModel(
+                repository: UnavailableTodayMealRepository(),
+                recorder: UnavailableTodayMealRecorder(),
+                school: profile.school.map(Self.rebuildSchool),
+                allergyCodes: profile.allergyCodes,
+                isDemoMode: profile.isDemoMode
+            )
+        }
+
+        let recorder: RecordMealUseCase?
+        if profile.isDemoMode {
+            recorder = session.canUseNutrientImpactSidecar
+                ? try? RecordMealUseCase(
+                    container: container,
+                    nutrientImpactSidecar: session.nutrientImpactSidecar
+                )
+                : nil
+        } else {
+            guard let applicationSupportURL = try? FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ) else {
+                return TodayForestViewModel(
+                    repository: UnavailableTodayMealRepository(),
+                    recorder: UnavailableTodayMealRecorder(),
+                    school: profile.school.map(Self.rebuildSchool),
+                    allergyCodes: profile.allergyCodes,
+                    isDemoMode: profile.isDemoMode
+                )
+            }
+            recorder = try? RecordMealUseCase(
+                container: container,
+                nutrientImpactSidecar: FileNutrientImpactSidecar(
+                    directoryURL: applicationSupportURL.appendingPathComponent(
+                        "NutrientImpactSidecar",
+                        isDirectory: true
+                    )
+                )
+            )
+        }
+
+        guard let recorder else {
             return TodayForestViewModel(
                 repository: UnavailableTodayMealRepository(),
                 recorder: UnavailableTodayMealRecorder(),

@@ -92,7 +92,11 @@ actor RebuildMealRepository {
                 return
             }
             let refreshedAt = now()
-            try store.save(meal, refreshedAt: refreshedAt, source: "neis")
+            try store.save(
+                meal,
+                refreshedAt: refreshedAt,
+                source: client.source.rawValue
+            )
             update(.live(meal), date: date)
         } catch {
             guard isLatestRefresh(refreshGeneration, for: date) else {

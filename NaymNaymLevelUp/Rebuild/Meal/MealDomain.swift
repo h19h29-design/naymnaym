@@ -306,8 +306,19 @@ protocol RebuildMealDayStore {
 }
 
 protocol RebuildMealClientProtocol {
+    var source: RebuildMealSource { get }
+
     func fetch(
         date: String,
         school: RebuildSchool
     ) async throws -> RebuildMealDay?
+}
+
+enum RebuildMealSource: String, Sendable {
+    case neis
+    case demo
+}
+
+extension RebuildMealClientProtocol {
+    var source: RebuildMealSource { .neis }
 }

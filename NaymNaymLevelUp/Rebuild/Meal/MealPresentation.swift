@@ -258,6 +258,15 @@ enum MealPresentationCopy {
     static let allergyAvoidance =
         "안전하게 피한 선택이 가장 중요해요. 보호자와 학교 안내를 먼저 확인해요."
 
+    static func wholeMealSourceLabel(
+        isDemoMode: Bool,
+        isAveraged: Bool = false
+    ) -> String {
+        let source = isDemoMode ? "체험 급식" : "NEIS 제공"
+        let average = isAveraged ? " (기간 평균)" : ""
+        return "전체 급식 기준 · \(source)\(average)"
+    }
+
     static func representative(
         category: MealFoodCategory,
         nutrientIDs: [String]
@@ -297,9 +306,9 @@ struct MealWholeMealTotals: Equatable, Sendable {
     init(meal: RebuildMealDay, isDemoMode: Bool = false) {
         calorie = meal.calorie
         nutrition = meal.nutrition
-        sourceLabel = isDemoMode
-            ? "전체 급식 기준 · 체험 급식"
-            : "전체 급식 기준 · NEIS 제공"
+        sourceLabel = MealPresentationCopy.wholeMealSourceLabel(
+            isDemoMode: isDemoMode
+        )
     }
 
     var nutritionSummary: String {

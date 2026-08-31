@@ -97,6 +97,20 @@ final class RebuildMealRepositoryTests: XCTestCase {
         )
     }
 
+    func testDemoRefreshPersistsDemoSourceProvenance() async throws {
+        let container = try RebuildPersistentStore.makeInMemory()
+        let store = CoreDataRebuildMealDayStore(context: container.viewContext)
+        let repository = RebuildMealRepository(
+            store: store,
+            client: RebuildDemoMealClient(),
+            now: { Date(timeIntervalSince1970: 1_753_405_200) }
+        )
+
+        await repository.refresh(date: "2026-08-30", school: .fixture)
+
+        XCTAssertEqual(try store.load(date: "2026-08-30")?.source, "demo")
+    }
+
     func testSuccessfulNoMealResponseBecomesEmpty() async {
         let repository = RebuildMealRepository(
             store: InMemoryMealDayStore(),

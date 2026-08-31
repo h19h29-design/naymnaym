@@ -517,6 +517,54 @@ struct UserDefaultsGrowthStageStateStore: GrowthStageStateStore, @unchecked Send
     }
 }
 
+final class RebuildInMemoryGrowthStageStateStore:
+    GrowthStageStateStore,
+    @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: GrowthStageStateV2?
+
+    func read() -> GrowthStageStateV2? {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
+    }
+
+    func writeMonotonic(_ candidate: GrowthStageStateV2) {
+        guard candidate.version == GrowthStageStateV2.currentVersion else {
+            return
+        }
+        lock.lock()
+        defer { lock.unlock() }
+
+        let existingHighest = state?.highestUnlockedStageID ?? 1
+        let candidateHighest = min(
+            max(
+                candidate.highestUnlockedStageID,
+                GrowthStageStateV2.validStageRange.lowerBound
+            ),
+            GrowthStageStateV2.validStageRange.upperBound
+        )
+        let highest = max(existingHighest, candidateHighest)
+        let selected = validStage(candidate.selectedStageID)
+            .flatMap { $0 <= highest ? $0 : nil }
+            ?? state?.selectedStageID.flatMap { $0 <= highest ? $0 : nil }
+        state = GrowthStageStateV2(
+            version: GrowthStageStateV2.currentVersion,
+            highestUnlockedStageID: highest,
+            selectedStageID: selected
+        )
+    }
+
+    private func validStage(_ stageID: Int?) -> Int? {
+        guard let stageID,
+              GrowthStageStateV2.validStageRange.contains(stageID)
+        else {
+            return nil
+        }
+        return stageID
+    }
+}
+
 enum GrowthEntitlementResolver {
     static func resolve(
         policy: GrowthPolicy,

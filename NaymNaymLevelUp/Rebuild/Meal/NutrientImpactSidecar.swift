@@ -595,6 +595,80 @@ struct NoopNutrientImpactSidecar: NutrientImpactSidecar, Sendable {
     }
 }
 
+final class InMemoryNutrientImpactSidecar:
+    NutrientImpactSidecar,
+    @unchecked Sendable {
+    private struct RevisionKey: Hashable {
+        let recordID: String
+        let date: String
+        let normalizedMenuName: String
+        let status: RebuildEatingStatus
+        let updatedAt: Date
+
+        init(snapshot: NutrientImpactSnapshot) {
+            self.init(
+                recordID: snapshot.recordID,
+                date: snapshot.date,
+                normalizedMenuName: snapshot.normalizedMenuName,
+                status: snapshot.status,
+                updatedAt: snapshot.recordUpdatedAt
+            )
+        }
+
+        init(revision: RebuildMealRecordRevision) {
+            self.init(
+                recordID: revision.recordID,
+                date: revision.date,
+                normalizedMenuName: revision.normalizedMenuName,
+                status: revision.status,
+                updatedAt: revision.updatedAt
+            )
+        }
+
+        private init(
+            recordID: String,
+            date: String,
+            normalizedMenuName: String,
+            status: RebuildEatingStatus,
+            updatedAt: Date
+        ) {
+            self.recordID = recordID
+            self.date = date
+            self.normalizedMenuName = normalizedMenuName
+            self.status = status
+            self.updatedAt = updatedAt
+        }
+    }
+
+    private let lock = NSLock()
+    private var snapshots: [RevisionKey: NutrientImpactSnapshot] = [:]
+
+    func install(_ snapshot: NutrientImpactSnapshot) throws {
+        guard (try? FileNutrientImpactSidecar.validate(snapshot)) != nil else {
+            throw NutrientImpactSidecarError.invalidSnapshot
+        }
+        let key = RevisionKey(snapshot: snapshot)
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = snapshots[key] {
+            guard existing == snapshot else {
+                throw NutrientImpactSidecarError.conflictingRevision
+            }
+            return
+        }
+        snapshots[key] = snapshot
+    }
+
+    func load(
+        matching revision: RebuildMealRecordRevision
+    ) throws -> NutrientImpactSnapshot? {
+        guard FileNutrientImpactSidecar.validate(revision) else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return snapshots[RevisionKey(revision: revision)]
+    }
+}
+
 struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
     private struct Envelope: Codable {
         let envelopeVersion: Int
@@ -999,7 +1073,7 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         )
     }
 
-    private static func validate(_ snapshot: NutrientImpactSnapshot) throws {
+    static func validate(_ snapshot: NutrientImpactSnapshot) throws {
         guard snapshot.schemaVersion == NutrientImpactSnapshot.supportedSchemaVersion else {
             throw NutrientImpactSidecarError.unsupportedSchemaVersion
         }
@@ -1038,7 +1112,7 @@ struct FileNutrientImpactSidecar: NutrientImpactSidecar, @unchecked Sendable {
         (try? validate(snapshot)) != nil
     }
 
-    private static func validate(_ record: RebuildMealRecordRevision) -> Bool {
+    static func validate(_ record: RebuildMealRecordRevision) -> Bool {
         validateRevisionComponents(
             recordID: record.recordID,
             date: record.date,

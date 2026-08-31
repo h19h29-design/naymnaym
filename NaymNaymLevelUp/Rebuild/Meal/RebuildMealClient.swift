@@ -9,6 +9,8 @@ enum RebuildMealClientError: Error, Equatable {
 struct RebuildMealClient: RebuildMealClientProtocol {
     private let neisClient: NEISClient
 
+    var source: RebuildMealSource { .neis }
+
     init(neisClient: NEISClient = NEISClient()) {
         self.neisClient = neisClient
     }
@@ -157,6 +159,8 @@ struct RebuildMealClient: RebuildMealClientProtocol {
 
 struct RebuildDemoMealClient: RebuildMealClientProtocol {
     private let sampleProvider: SampleDataProvider
+
+    var source: RebuildMealSource { .demo }
 
     init(sampleProvider: SampleDataProvider = SampleDataProvider()) {
         self.sampleProvider = sampleProvider

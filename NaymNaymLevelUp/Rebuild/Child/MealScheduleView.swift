@@ -1229,9 +1229,10 @@ struct MealScheduleView: View {
             : [GridItem(.adaptive(minimum: 96), spacing: 6)]
         return VStack(alignment: .leading, spacing: 8) {
             Text(
-                meals.count > 1
-                    ? "전체 급식 기준 · NEIS 제공 (기간 평균)"
-                    : "전체 급식 기준 · NEIS 제공"
+                MealPresentationCopy.wholeMealSourceLabel(
+                    isDemoMode: viewModel.isDemoMode,
+                    isAveraged: meals.count > 1
+                )
             )
             .font(.caption2.weight(.semibold))
             .foregroundStyle(RebuildDesignTokens.forest700)

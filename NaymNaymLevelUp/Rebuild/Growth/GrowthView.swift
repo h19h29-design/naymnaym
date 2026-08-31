@@ -20,15 +20,17 @@ struct GrowthView: View {
         isActive: Bool,
         defaults: UserDefaults = .standard,
         legacyDefaultsDomainName: String? = nil,
-        stateStore: (any GrowthStageStateStore)? = nil
+        stateStore: (any GrowthStageStateStore)? = nil,
+        legacyRights: LegacyGrowthRights? = nil
     ) {
         self.provider = provider
         self.policy = policy
         self.isActive = isActive
-        legacyRights = LegacyDefaultsReader.readGrowthRights(
-            defaults: defaults,
-            persistentDomainName: legacyDefaultsDomainName
-        )
+        self.legacyRights = legacyRights
+            ?? LegacyDefaultsReader.readGrowthRights(
+                defaults: defaults,
+                persistentDomainName: legacyDefaultsDomainName
+            )
         self.stateStore = stateStore
             ?? UserDefaultsGrowthStageStateStore(defaults: defaults)
     }
