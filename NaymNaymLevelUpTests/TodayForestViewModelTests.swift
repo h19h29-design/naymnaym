@@ -423,6 +423,100 @@ final class TodayForestViewModelTests: XCTestCase {
         )
     }
 
+    func testMealDetailRecorderMirrorsResultToTodayHubOnSameDate() async throws {
+        let date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 12,
+            minute: 0,
+            second: 0
+        )
+        let meal = RebuildMealDay.todayFixture(date: "2026-07-25")
+        let viewModel = makeViewModel(date: date, now: { date })
+        let presentation = try XCTUnwrap(
+            viewModel.makeMealDetailPresentation()
+        )
+        presentation.recordingViewModel.synchronizeMeal(
+            meal,
+            for: presentation.route
+        )
+        let item = try XCTUnwrap(meal.menuItems.first)
+        let prepared = try await presentation.recordingViewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+
+        let result = try await presentation.recordingViewModel.record(
+            prepared: prepared
+        )
+
+        XCTAssertEqual(result.totalXP, 23)
+        XCTAssertEqual(viewModel.totalXP, 23)
+        XCTAssertEqual(viewModel.lastGrantedXP, 8)
+        XCTAssertEqual(viewModel.motion, .mealSuccess)
+        XCTAssertEqual(viewModel.motionRevision, 1)
+        XCTAssertEqual(viewModel.lastNutritionGuidance, result.nutritionGuidance)
+        XCTAssertEqual(viewModel.message, "8 XP를 얻었어요!")
+    }
+
+    func testMealDetailRecorderDoesNotMixOldFeedbackIntoNewDay() async throws {
+        let beforeMidnight = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 25,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )
+        let clock = MutableTodayClock(beforeMidnight)
+        let oldMeal = RebuildMealDay.todayFixture(date: "2026-07-25")
+        let newMeal = RebuildMealDay.todayFixture(date: "2026-07-26")
+        let repository = DateTrackingTodayMealRepository(
+            statesByDate: ["2026-07-26": .live(newMeal)]
+        )
+        let viewModel = makeViewModel(
+            repository: repository,
+            date: beforeMidnight,
+            now: { clock.now() }
+        )
+        let presentation = try XCTUnwrap(
+            viewModel.makeMealDetailPresentation()
+        )
+        presentation.recordingViewModel.synchronizeMeal(
+            oldMeal,
+            for: presentation.route
+        )
+        let item = try XCTUnwrap(oldMeal.menuItems.first)
+
+        clock.date = seoulDate(
+            year: 2026,
+            month: 7,
+            day: 26,
+            hour: 0,
+            minute: 0,
+            second: 1
+        )
+        let didRefresh = await viewModel.refreshCurrentDayIfNeeded()
+        XCTAssertTrue(didRefresh)
+        let prepared = try await presentation.recordingViewModel.prepareRecord(
+            item: item,
+            status: .finished
+        )
+        _ = try await presentation.recordingViewModel.record(
+            prepared: prepared
+        )
+
+        XCTAssertEqual(viewModel.dateKey, "2026-07-26")
+        XCTAssertEqual(viewModel.meal, newMeal)
+        XCTAssertEqual(viewModel.totalXP, 23)
+        XCTAssertEqual(viewModel.lastGrantedXP, 0)
+        XCTAssertEqual(viewModel.motion, .idle)
+        XCTAssertEqual(viewModel.motionRevision, 0)
+        XCTAssertNil(viewModel.lastNutritionGuidance)
+        XCTAssertNil(viewModel.message)
+    }
+
     func testCurrentDayRefreshClearsYesterdayBeforeAwaitingNewMeal() async {
         let beforeMidnight = seoulDate(
             year: 2026,

@@ -213,6 +213,7 @@ final class TodayForestViewModel: ObservableObject {
     let isDemoMode: Bool
     private let now: Clock
     private let calendar: Calendar
+    private let recordResultObserver: ((RecordMealResult) -> Void)?
     private var progressRevision = 0
     private var loadGeneration = 0
 
@@ -240,7 +241,8 @@ final class TodayForestViewModel: ObservableObject {
         isDemoMode: Bool = false,
         date: Date = Date(),
         calendar: Calendar = Calendar(identifier: .gregorian),
-        now: @escaping Clock = { Date() }
+        now: @escaping Clock = { Date() },
+        recordResultObserver: ((RecordMealResult) -> Void)? = nil
     ) {
         self.repository = repository
         self.recorder = recorder
@@ -250,8 +252,11 @@ final class TodayForestViewModel: ObservableObject {
         self.isDemoMode = isDemoMode
         self.allergyCodes = Array(Set(allergyCodes)).sorted()
         self.now = now
+        self.recordResultObserver = recordResultObserver
 
-        var localizedCalendar = Calendar(identifier: .gregorian)
+        var localizedCalendar = calendar.identifier == .gregorian
+            ? calendar
+            : Calendar(identifier: .gregorian)
         localizedCalendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
         self.calendar = localizedCalendar
         let datePresentation = Self.datePresentation(
@@ -263,7 +268,8 @@ final class TodayForestViewModel: ObservableObject {
     }
 
     func recordingViewModel(
-        for route: MealDayRoute
+        for route: MealDayRoute,
+        recordResultObserver: ((RecordMealResult) -> Void)? = nil
     ) -> TodayForestViewModel? {
         let formatter = DateFormatter()
         formatter.calendar = calendar
@@ -285,13 +291,22 @@ final class TodayForestViewModel: ObservableObject {
             isDemoMode: isDemoMode,
             date: date,
             calendar: calendar,
-            now: now
+            now: now,
+            recordResultObserver: recordResultObserver
         )
     }
 
     func makeMealDetailPresentation() -> TodayMealDetailPresentation? {
         let route = MealDayRoute(dateKey: dateKey)
-        guard let recordingViewModel = recordingViewModel(for: route) else {
+        guard let recordingViewModel = recordingViewModel(
+            for: route,
+            recordResultObserver: { [weak self] result in
+                self?.applyMirroredRecordResult(
+                    result,
+                    sourceDateKey: route.dateKey
+                )
+            }
+        ) else {
             return nil
         }
         return TodayMealDetailPresentation(
@@ -531,8 +546,28 @@ final class TodayForestViewModel: ObservableObject {
     ) async throws -> RecordMealResult {
         try validateCurrentMeal(for: prepared)
         let result = try await recorder.execute(prepared.command)
+        applyRecordResult(result)
+        recordResultObserver?(result)
+        return result
+    }
+
+    private func applyRecordResult(_ result: RecordMealResult) {
         progressRevision += 1
         totalXP = result.totalXP
+        applyRecordFeedback(result)
+    }
+
+    private func applyMirroredRecordResult(
+        _ result: RecordMealResult,
+        sourceDateKey: String
+    ) {
+        progressRevision += 1
+        totalXP = result.totalXP
+        guard dateKey == sourceDateKey else { return }
+        applyRecordFeedback(result)
+    }
+
+    private func applyRecordFeedback(_ result: RecordMealResult) {
         lastGrantedXP = result.xpGranted
         motion = result.motion
         motionRevision += 1
@@ -540,7 +575,6 @@ final class TodayForestViewModel: ObservableObject {
         message = result.xpGranted > 0
             ? "\(result.xpGranted) XP를 얻었어요!"
             : "오늘 기록을 저장했어요."
-        return result
     }
 
     private func validateCurrentMeal(
