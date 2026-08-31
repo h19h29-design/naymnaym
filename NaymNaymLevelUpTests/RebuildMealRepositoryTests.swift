@@ -330,6 +330,53 @@ final class RebuildMealClientTests: XCTestCase {
         XCTAssertFalse(meal?.menuItems.isEmpty ?? true)
     }
 
+    func testDemoSelectionUsesSeoulCalendarAcrossAdjacentMonthBoundary() async throws {
+        // Prime the formatter before changing the process default timezone.
+        _ = DateUtils.apiDateFormatter
+        let originalTimeZone = NSTimeZone.default
+        defer { NSTimeZone.default = originalTimeZone }
+
+        let client = RebuildMealClientFactory.make(isDemoMode: true)
+        let school = RebuildSchool(
+            name: "냠냠중학교",
+            officeCode: "B10",
+            schoolCode: "7010111"
+        )
+        let expectedMenus: [(date: String, names: [String])] = [
+            (
+                "2026-08-27",
+                ["잡곡밥", "닭곰탕", "두부조림", "오이무침", "배추김치"]
+            ),
+            (
+                "2026-08-31",
+                ["귀리밥", "소고기무국", "계란말이", "김치볶음", "사과"]
+            ),
+            (
+                "2026-09-01",
+                ["현미밥", "미역국", "닭갈비", "콩나물무침", "배추김치"]
+            ),
+        ]
+
+        for identifier in ["Pacific/Pago_Pago", "Pacific/Kiritimati"] {
+            NSTimeZone.default = try XCTUnwrap(TimeZone(identifier: identifier))
+
+            for expected in expectedMenus {
+                let fetched = try await client.fetch(
+                    date: expected.date,
+                    school: school
+                )
+                let meal = try XCTUnwrap(fetched)
+
+                XCTAssertEqual(meal.date, expected.date, identifier)
+                XCTAssertEqual(
+                    meal.menuItems.map(\.name),
+                    expected.names,
+                    "\(identifier) \(expected.date)"
+                )
+            }
+        }
+    }
+
     func testNonDemoUsesNEISForSchoolWithSampleIdentifiers() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RebuildMealMockURLProtocol.self]

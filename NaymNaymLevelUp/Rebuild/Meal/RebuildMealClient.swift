@@ -130,8 +130,7 @@ struct RebuildMealClient: RebuildMealClientProtocol {
     fileprivate static func localDate(from date: String) throws -> Date {
         _ = try validatedDate(from: date)
         let components = date.split(separator: "-")
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .current
+        let calendar = DateUtils.calendar
         guard let year = Int(components[0]),
               let month = Int(components[1]),
               let day = Int(components[2]),

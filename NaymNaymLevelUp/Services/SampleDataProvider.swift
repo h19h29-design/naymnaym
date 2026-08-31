@@ -18,7 +18,7 @@ struct SampleDataProvider {
         let days = DateUtils.daysInMonth(for: date)
         var meals: [MealDay] = []
         for day in days {
-            let weekday = Calendar.current.component(.weekday, from: day)
+            let weekday = DateUtils.calendar.component(.weekday, from: day)
             guard weekday != 1 && weekday != 7 else { continue }
             let index = meals.count % menuTemplates.count
             meals.append(makeMeal(date: DateUtils.apiString(from: day), names: menuTemplates[index], index: index))
@@ -73,4 +73,3 @@ struct SampleDataProvider {
         ["잡곡밥", "콩나물국(5)", "고등어조림(5.6.7)", "멸치볶음(5)", "배추김치(9)"]
     ]
 }
-

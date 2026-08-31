@@ -1,27 +1,36 @@
 import Foundation
 
 enum DateUtils {
+    static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ko_KR")
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        return calendar
+    }()
+
     static let apiDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.calendar = calendar
         formatter.locale = Locale(identifier: "ko_KR")
-        formatter.timeZone = TimeZone.current
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyyMMdd"
         return formatter
     }()
 
     static let displayDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.calendar = calendar
         formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "M월 d일 (E)"
         return formatter
     }()
 
     static let monthTitleFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.calendar = calendar
         formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy년 M월"
         return formatter
     }()
@@ -36,13 +45,11 @@ enum DateUtils {
     }
 
     static func startOfMonth(for date: Date) -> Date {
-        let calendar = Calendar.current
         let components = calendar.dateComponents([.year, .month], from: date)
         return calendar.date(from: components) ?? date
     }
 
     static func daysInMonth(for date: Date) -> [Date] {
-        let calendar = Calendar.current
         let start = startOfMonth(for: date)
         guard let range = calendar.range(of: .day, in: .month, for: start) else { return [] }
         return range.compactMap { day in
@@ -51,7 +58,6 @@ enum DateUtils {
     }
 
     static func isSameDay(_ first: Date, _ second: Date) -> Bool {
-        Calendar.current.isDate(first, inSameDayAs: second)
+        calendar.isDate(first, inSameDayAs: second)
     }
 }
-
