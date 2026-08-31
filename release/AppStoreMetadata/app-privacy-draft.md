@@ -95,5 +95,5 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 - Supabase `parent-sync` Edge Function과 `nyam_parent_*` 테이블에 실제 저장되는 필드 확인
 - 부모 공유를 끈 상태에서 서버 전송이 없는지 확인
 - 사진 원본이 서버 부모 동기화로 전송되지 않는지 확인
-- 개인정보 처리방침 URL 공개 확인: `https://h19h29-design.github.io/naymnaym/privacy.html`
+- 개인정보 처리방침 URL 공개 확인: `https://nyam.h19h19.com/privacy.html`
 - App Privacy 답변과 `PrivacyInfo.xcprivacy`가 서로 충돌하지 않는지 확인

@@ -6,8 +6,8 @@
 
 - 앱 이름: 급식레벨업
 - 패키지명: `com.h19h29.naymnaymlevelup`
-- 버전: `1.1`
-- versionCode: `11`
+- 버전: `1.11`
+- versionCode: `13`
 - 카테고리: 교육
 - 가격: 무료
 - 광고 포함: 아니요
@@ -63,4 +63,4 @@
 - `phone-screenshots/03-growth.png`: XP와 다음 레벨 성장 현황
 - `phone-screenshots/04-growth-collection.png`: 해금한 캐릭터와 성장 도감
 
-모든 파일은 Android 에뮬레이터의 실제 1.1 화면을 1080 × 1920 크기로 촬영한 이미지입니다.
+모든 파일은 Android 에뮬레이터의 실제 1.11 화면을 1080 × 1920 크기로 촬영한 이미지입니다.

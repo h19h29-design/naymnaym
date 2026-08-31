@@ -14,6 +14,20 @@ RELEASE_UPLOAD_LOG="${RELEASE_UPLOAD_LOG:-build/build${EXPECTED_BUILD_NUMBER}-si
 RELEASE_EXPORT_DIR="${RELEASE_EXPORT_DIR:-build/TestFlightExportBuild${EXPECTED_BUILD_NUMBER}Signed}"
 RELEASE_EXPORT_OPTIONS_PATH="${RELEASE_EXPORT_OPTIONS_PATH:-build/ExportOptions-Build${EXPECTED_BUILD_NUMBER}-Signed.plist}"
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
+APP_STORE_SCREENSHOT_DIR="docs/app-store-screenshots/iphone-6-9-upload"
+APP_STORE_SCREENSHOT_MANIFEST='
+01-onboarding-demo.jpg
+02-today-meal-icons.jpg
+03-weekly-meal.jpg
+04-monthly-meal.jpg
+05-selected-day-detail.jpg
+06-eating-status-picker.jpg
+07-allergy-safe-choice.jpg
+08-growth-stage-roadmap.jpg
+09-growth-next-unlock.jpg
+10-parent-growth-summary.jpg
+'
+APP_STORE_SCREENSHOT_COUNT=10
 export EXPECTED_MARKETING_VERSION EXPECTED_BUILD_NUMBER
 
 fail() {
@@ -272,11 +286,18 @@ check_uploaded_ipa() {
 check_local_app() {
   app_dir="$1"
   configuration="$2"
+  case "$configuration" in
+    Debug) expected_platform="iphonesimulator" ;;
+    Release) expected_platform="iphoneos" ;;
+    *) fail "Unsupported local app configuration: $configuration" ;;
+  esac
+
   require_file "$app_dir/Info.plist"
   require_plist_value "$app_dir/Info.plist" "CFBundleIdentifier" "com.h19h29.naymnaymlevelup"
   require_plist_value "$app_dir/Info.plist" "CFBundleShortVersionString" "$EXPECTED_MARKETING_VERSION"
   require_plist_value "$app_dir/Info.plist" "CFBundleVersion" "$EXPECTED_BUILD_NUMBER"
   require_plist_value "$app_dir/Info.plist" "CFBundleDisplayName" "급식레벨업"
+  require_plist_value "$app_dir/Info.plist" "DTPlatformName" "$expected_platform"
   pass "$configuration app matches the expected candidate"
 }
 
@@ -289,6 +310,7 @@ require_file "NaymNaymLevelUp/NaymNaymLevelUp.entitlements"
 require_file "Config.example.xcconfig"
 require_file "release/AppStoreMetadata/app-store-connect-values.json"
 require_file "release/GooglePlayMetadata/play-console-values.md"
+require_file "docs/APP_STORE_SCREENSHOTS.md"
 require_file "release/GooglePlayMetadata/closed-testing-plan.md"
 require_file "release/CloudKit/schema-contract.json"
 require_file "scripts/check-app-store-build-status.sh"
@@ -438,7 +460,21 @@ require_literal "docs/APP_STORE_METADATA.md" "- 버전: ${EXPECTED_MARKETING_VER
 require_literal "docs/APP_STORE_METADATA.md" "- 빌드: ${EXPECTED_BUILD_NUMBER}" "App Store metadata build is ${EXPECTED_BUILD_NUMBER}"
 require_literal "release/AppStoreMetadata/ko-KR.md" "- 버전: ${EXPECTED_MARKETING_VERSION}" "ko-KR metadata version is ${EXPECTED_MARKETING_VERSION}"
 require_literal "release/AppStoreMetadata/ko-KR.md" "- 빌드: ${EXPECTED_BUILD_NUMBER}" "ko-KR metadata build is ${EXPECTED_BUILD_NUMBER}"
+ruby -rjson -e '
+  values = JSON.parse(File.read("release/AppStoreMetadata/app-store-connect-values.json"))
+  subtitle = values.dig("appInfo", "subtitle")
+  abort "App Store subtitle is missing" unless subtitle.is_a?(String) && !subtitle.empty?
+
+  expected_line = "- 부제: #{subtitle}\n"
+  ["docs/APP_STORE_METADATA.md", "release/AppStoreMetadata/ko-KR.md"].each do |path|
+    line = File.readlines(path, encoding: "UTF-8").find { |entry| entry.start_with?("- 부제:") }
+    abort "#{path} subtitle does not match App Store Connect values" unless line == expected_line
+  end
+'
+pass "App Store subtitle is shared by the current metadata sources"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "App Store Connect 입력 매트릭스" "App Privacy draft includes input matrix"
+require_literal "release/AppStoreMetadata/app-privacy-draft.md" "https://nyam.h19h19.com/privacy.html" "App Privacy draft uses the published privacy URL"
+require_absent_pattern "release/AppStoreMetadata/app-privacy-draft.md" "h19h29-design\\.github\\.io/naymnaym" "App Privacy draft has no stale GitHub Pages URL"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Other User Content \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers other user content"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Photos or Videos \\| 수집 안 함" "App Privacy draft keeps local-only photos out of collected data"
 require_pattern "release/AppStoreMetadata/app-privacy-draft.md" "Health and Fitness \\| 수집함 \\| App Functionality \\| 예 \\| 아니요" "App Privacy draft covers health and fitness"
@@ -496,6 +532,9 @@ require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivi
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "clearLocalData" "Android app has local data deletion"
 require_absent_pattern "android/app/src/main/AndroidManifest.xml" "POST_NOTIFICATIONS|CAMERA|READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|READ_CONTACTS" "Android test app keeps sensitive permissions out of the manifest"
 require_pattern "release/GooglePlayMetadata/play-console-values.md" "Data Safety 입력 초안" "Google Play metadata includes Data Safety draft"
+require_literal "release/GooglePlayMetadata/play-console-values.md" '- 버전: `1.11`' "Google Play metadata version matches the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" '- versionCode: `13`' "Google Play metadata versionCode matches the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" "실제 1.11 화면" "Google Play screenshots are labeled with the current Android candidate"
 require_pattern "release/GooglePlayMetadata/closed-testing-plan.md" "12명 이상 테스터가 14일 연속 opt-in" "Google Play closed testing plan documents 12 tester requirement"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
@@ -587,28 +626,25 @@ check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIco
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60@3x.png" 180 180
 check_image "NaymNaymLevelUp/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" 1024 1024
 
-for screenshot in docs/app-store-screenshots/iphone-6-9-upload/*.jpg; do
-  check_screenshot "$screenshot"
+for screenshot in $APP_STORE_SCREENSHOT_MANIFEST; do
+  check_screenshot "$APP_STORE_SCREENSHOT_DIR/$screenshot"
+  require_literal "docs/APP_STORE_SCREENSHOTS.md" "$screenshot" "Screenshot manifest documents $screenshot"
 done
 
-count="$(find docs/app-store-screenshots/iphone-6-9-upload -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')"
-[ "$count" = "10" ] || fail "App Store screenshot count is $count, expected exactly 10"
+count="$(find "$APP_STORE_SCREENSHOT_DIR" -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')"
+[ "$count" = "$APP_STORE_SCREENSHOT_COUNT" ] || fail "App Store screenshot count is $count, expected exactly $APP_STORE_SCREENSHOT_COUNT"
 pass "App Store screenshot count is $count"
 
-for required_screenshot in \
-  01-onboarding.jpg \
-  02-today-meal.jpg \
-  03-one-bite.jpg \
-  04-levelup.jpg \
-  05-parent-summary.jpg \
-  06-allergy-safety.jpg \
-  07-share-card.jpg \
-  08-monthly-calendar-live.jpg \
-  09-settings-privacy-support.jpg \
-  10-support-guide.jpg
-do
-  require_file "docs/app-store-screenshots/iphone-6-9-upload/$required_screenshot"
-done
+actual_files="$(find "$APP_STORE_SCREENSHOT_DIR" -maxdepth 1 -type f -print | sed 's#^.*/##' | sort)"
+while IFS= read -r actual_file; do
+  [ -n "$actual_file" ] || continue
+  if ! printf '%s\n' $APP_STORE_SCREENSHOT_MANIFEST | grep -Fxq "$actual_file"; then
+    fail "Unmanifested App Store screenshot file: $APP_STORE_SCREENSHOT_DIR/$actual_file"
+  fi
+done <<EOF
+$actual_files
+EOF
+pass "App Store screenshot directory contains only the current 1.2 manifest"
 
 for url in \
   "https://nyam.h19h19.com/" \
