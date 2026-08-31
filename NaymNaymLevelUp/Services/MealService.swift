@@ -58,18 +58,22 @@ struct MealService {
         }
 
         do {
+            let query = [
+                "ATPT_OFCDC_SC_CODE": school.officeCode,
+                "SD_SCHUL_CODE": school.schoolCode,
+                "MMEAL_SC_CODE": "2",
+                "MLSV_FROM_YMD": DateUtils.apiString(from: start),
+                "MLSV_TO_YMD": DateUtils.apiString(from: end)
+            ]
             NEISDebugLog.info(
-                "mealServiceDietInfo params ATPT_OFCDC_SC_CODE=\(school.officeCode) SD_SCHUL_CODE=\(school.schoolCode) MMEAL_SC_CODE=2 MLSV_FROM_YMD=\(DateUtils.apiString(from: start)) MLSV_TO_YMD=\(DateUtils.apiString(from: end))"
+                NEISDebugLog.redactedQueryMessage(
+                    path: "mealServiceDietInfo",
+                    query: query
+                )
             )
             let data = try await client.request(
                 path: "mealServiceDietInfo",
-                query: [
-                    "ATPT_OFCDC_SC_CODE": school.officeCode,
-                    "SD_SCHUL_CODE": school.schoolCode,
-                    "MMEAL_SC_CODE": "2",
-                    "MLSV_FROM_YMD": DateUtils.apiString(from: start),
-                    "MLSV_TO_YMD": DateUtils.apiString(from: end)
-                ]
+                query: query
             )
             let decoded = try JSONDecoder().decode(MealInfoResponse.self, from: data)
             let rows = decoded.mealServiceDietInfo?.flatMap { $0.row ?? [] } ?? []

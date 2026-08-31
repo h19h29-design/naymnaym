@@ -245,10 +245,7 @@ final class TodayForestViewModel: ObservableObject {
         self.now = now
 
         var localizedCalendar = calendar
-        if localizedCalendar.timeZone.identifier == "GMT" {
-            localizedCalendar.timeZone =
-                TimeZone(identifier: "Asia/Seoul") ?? .current
-        }
+        localizedCalendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
         self.calendar = localizedCalendar
         let datePresentation = Self.datePresentation(
             for: date,

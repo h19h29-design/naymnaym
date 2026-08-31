@@ -82,6 +82,16 @@ enum NEISDebugLog {
         return components.string ?? "<invalid-url>"
     }
 
+    static func redactedQueryMessage(
+        path: String,
+        query: [String: String]
+    ) -> String {
+        let parameters = query.keys.sorted().map {
+            "\($0)=<redacted>"
+        }
+        return "\(path) params \(parameters.joined(separator: " "))"
+    }
+
     private static func redacted(url: URL) -> String {
         redactedURLString(url.absoluteString)
     }

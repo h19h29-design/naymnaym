@@ -1584,6 +1584,28 @@ final class RebuildOnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(appState.profile, legacyProfile)
     }
 
+    func testRootBridgeTreatsNoncanonicalLegacyAllergiesAsBytePreservingNoOp() throws {
+        let suiteName = "RebuildBridgeChildNoncanonicalNoOp-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let bytesBefore = Data(
+            #"{"id":"11111111-1111-1111-1111-111111111111","nickname":"냠냠이","schoolName":"서울 냠냠초","officeCode":"B10","schoolCode":"7010111","regionName":"서울특별시","selectedAllergyCodes":[5,1,5],"createdAt":"2023-11-14T22:13:20Z","userMode":"elementary","themeId":"legacy-child-theme","isDemoMode":false}"#.utf8
+        )
+        defaults.set(bytesBefore, forKey: "user-profile")
+        let store = UserProfileStore(defaults: defaults)
+        let appState = AppState(profileStore: store)
+        let bridge = RebuildLegacyProfileBridge()
+        let rebuildProfile = RebuildUserProfile.fixture(role: .child)
+
+        bridge.prepare(rebuildProfile, appState: appState)
+
+        XCTAssertEqual(bridge.state, .ready(rebuildProfile))
+        XCTAssertEqual(defaults.data(forKey: "user-profile"), bytesBefore)
+        XCTAssertEqual(appState.profile?.selectedAllergyCodes, [5, 1, 5])
+        XCTAssertEqual(appState.profile?.regionName, "서울특별시")
+        XCTAssertEqual(appState.profile?.themeId, "legacy-child-theme")
+    }
+
     func testRootBridgeLeavesMatchingParentProfileBytesUnchanged() throws {
         let suiteName = "RebuildBridgeParentNoOp-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

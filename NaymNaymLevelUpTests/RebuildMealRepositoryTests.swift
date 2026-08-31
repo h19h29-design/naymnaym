@@ -349,6 +349,29 @@ final class RebuildMealClientTests: XCTestCase {
         XCTAssertFalse(redacted.contains("냠냠초"))
     }
 
+    func testNEISDebugQueryMessageRedactsLegacySchoolAndDateValues() {
+        let query = [
+            "ATPT_OFCDC_SC_CODE": "fixture-office-code",
+            "SD_SCHUL_CODE": "fixture-school-code",
+            "MMEAL_SC_CODE": "2",
+            "MLSV_FROM_YMD": "20260701",
+            "MLSV_TO_YMD": "20260731",
+        ]
+
+        let message = NEISDebugLog.redactedQueryMessage(
+            path: "mealServiceDietInfo",
+            query: query
+        )
+
+        XCTAssertTrue(message.hasPrefix("mealServiceDietInfo params "))
+        for field in query.keys {
+            XCTAssertTrue(message.contains("\(field)=<redacted>"))
+        }
+        for privateValue in query.values {
+            XCTAssertFalse(message.contains("=\(privateValue)"))
+        }
+    }
+
     func testExplicitDemoReturnsSampleMealForWeekendWithRebuildMetadata() async throws {
         let client = RebuildMealClientFactory.make(isDemoMode: true)
         let school = RebuildSchool(

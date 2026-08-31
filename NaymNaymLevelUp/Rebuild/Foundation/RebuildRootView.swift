@@ -103,7 +103,7 @@ final class RebuildLegacyProfileBridge: ObservableObject {
                 && appState.profile?.schoolName == school.name
                 && appState.profile?.officeCode == school.officeCode
                 && appState.profile?.schoolCode == school.schoolCode
-                && appState.profile?.selectedAllergyCodes
+                && Set(appState.profile?.selectedAllergyCodes ?? []).sorted()
                     == Set(profile.allergyCodes).sorted()
                 && appState.currentMode == .elementary
                 && appState.profile?.isUsingDemoMode == profile.isDemoMode
