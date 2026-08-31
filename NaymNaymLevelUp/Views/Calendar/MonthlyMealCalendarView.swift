@@ -15,20 +15,22 @@ enum MealCalendarMode: String, CaseIterable, Identifiable {
 }
 
 struct MealCalendarPeriod {
-    static func weekDates(starting date: Date, calendar: Calendar = .current) -> [Date] {
+    static func weekDates(starting date: Date, calendar: Calendar = DateUtils.calendar) -> [Date] {
         let start = calendar.startOfDay(for: date)
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
     }
 
-    static func shiftedWeekStart(_ date: Date, by value: Int, calendar: Calendar = .current) -> Date {
+    static func shiftedWeekStart(_ date: Date, by value: Int, calendar: Calendar = DateUtils.calendar) -> Date {
         calendar.date(byAdding: .day, value: value * 7, to: calendar.startOfDay(for: date)) ?? date
     }
 
-    static func shiftedMonth(_ date: Date, by value: Int, calendar: Calendar = .current) -> Date {
-        calendar.date(byAdding: .month, value: value, to: DateUtils.startOfMonth(for: date)) ?? date
+    static func shiftedMonth(_ date: Date, by value: Int, calendar: Calendar = DateUtils.calendar) -> Date {
+        let components = calendar.dateComponents([.year, .month], from: date)
+        let start = calendar.date(from: components) ?? date
+        return calendar.date(byAdding: .month, value: value, to: start) ?? date
     }
 
-    static func weekTitle(starting date: Date, calendar: Calendar = .current) -> String {
+    static func weekTitle(starting date: Date, calendar: Calendar = DateUtils.calendar) -> String {
         let dates = weekDates(starting: date, calendar: calendar)
         guard let first = dates.first, let last = dates.last else { return "" }
         return "\(compactDateFormatter.string(from: first)) ~ \(compactDateFormatter.string(from: last))"
@@ -36,8 +38,9 @@ struct MealCalendarPeriod {
 
     static let compactDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.calendar = DateUtils.calendar
         formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = DateUtils.calendar.timeZone
         formatter.dateFormat = "yyyy.MM.dd"
         return formatter
     }()
@@ -52,7 +55,7 @@ struct MonthlyMealCalendarView: View {
 struct MealCalendarView: View {
     @EnvironmentObject private var appState: AppState
     @State private var mode: MealCalendarMode = .weekly
-    @State private var displayedWeekStart = Calendar.current.startOfDay(for: Date())
+    @State private var displayedWeekStart = DateUtils.calendar.startOfDay(for: Date())
     @State private var displayedMonth = DateUtils.startOfMonth(for: Date())
     @State private var selectedDay: CalendarSelectedMeal?
 
@@ -151,7 +154,7 @@ struct MealCalendarView: View {
                         .minimumScaleFactor(AppReadabilityPolicy.minimumTextScale)
                         .lineLimit(1)
                     Button("오늘") {
-                        displayedWeekStart = Calendar.current.startOfDay(for: Date())
+                        displayedWeekStart = DateUtils.calendar.startOfDay(for: Date())
                         displayedMonth = DateUtils.startOfMonth(for: Date())
                     }
                     .font(.caption.weight(.bold))
@@ -236,20 +239,20 @@ struct MealCalendarView: View {
     }
 
     private var weekDates: [Date] {
-        MealCalendarPeriod.weekDates(starting: displayedWeekStart)
+        MealCalendarPeriod.weekDates(starting: displayedWeekStart, calendar: DateUtils.calendar)
     }
 
     private var calendarCells: [Date?] {
         let days = DateUtils.daysInMonth(for: displayedMonth)
         guard let first = days.first else { return [] }
-        let leading = Calendar.current.component(.weekday, from: first) - 1
+        let leading = DateUtils.calendar.component(.weekday, from: first) - 1
         return Array(repeating: nil, count: leading) + days.map(Optional.some)
     }
 
     private var periodTitle: String {
         switch mode {
         case .weekly:
-            return MealCalendarPeriod.weekTitle(starting: displayedWeekStart)
+            return MealCalendarPeriod.weekTitle(starting: displayedWeekStart, calendar: DateUtils.calendar)
         case .monthly:
             return DateUtils.monthTitleFormatter.string(from: displayedMonth)
         }
@@ -262,9 +265,9 @@ struct MealCalendarView: View {
     private func movePeriod(_ value: Int) {
         switch mode {
         case .weekly:
-            displayedWeekStart = MealCalendarPeriod.shiftedWeekStart(displayedWeekStart, by: value)
+            displayedWeekStart = MealCalendarPeriod.shiftedWeekStart(displayedWeekStart, by: value, calendar: DateUtils.calendar)
         case .monthly:
-            displayedMonth = MealCalendarPeriod.shiftedMonth(displayedMonth, by: value)
+            displayedMonth = MealCalendarPeriod.shiftedMonth(displayedMonth, by: value, calendar: DateUtils.calendar)
         }
     }
 
@@ -344,7 +347,7 @@ private struct MealDayPreviewCard: View {
     }
 
     private var dayText: String {
-        "\(Calendar.current.component(.day, from: date))"
+        "\(DateUtils.calendar.component(.day, from: date))"
     }
 
     private var weekdayText: String {
@@ -370,7 +373,7 @@ private struct MealMonthDayCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("\(Calendar.current.component(.day, from: date))")
+            Text("\(DateUtils.calendar.component(.day, from: date))")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(isToday ? Color.white : AppColors.textDark)
                 .frame(width: 24, height: 24)

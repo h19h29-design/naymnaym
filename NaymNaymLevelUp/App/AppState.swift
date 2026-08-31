@@ -321,10 +321,11 @@ final class AppState: ObservableObject {
         isLoadingMeals = true
         defer { isLoadingMeals = false }
 
+        let calendar = DateUtils.calendar
         let monthResult = await mealService.fetchMonthlyMeals(
             school: profile.school,
-            year: Calendar.current.component(.year, from: date),
-            month: Calendar.current.component(.month, from: date),
+            year: calendar.component(.year, from: date),
+            month: calendar.component(.month, from: date),
             allowsDemo: profile.isUsingDemoMode
         )
         monthlyMeals = monthResult.meals

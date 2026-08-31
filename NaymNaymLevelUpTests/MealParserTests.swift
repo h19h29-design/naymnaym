@@ -194,6 +194,39 @@ final class MealParserTests: XCTestCase {
         XCTAssertEqual(DateUtils.apiString(from: previous), "20260617")
         XCTAssertEqual(DateUtils.apiString(from: next), "20260701")
     }
+
+    func testMealCalendarPeriodUsesInjectedHostileTimeZonesAcrossWeekendAndMonthBoundary() throws {
+        for identifier in ["Pacific/Pago_Pago", "Pacific/Kiritimati"] {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.locale = Locale(identifier: "ko_KR")
+            calendar.timeZone = try XCTUnwrap(TimeZone(identifier: identifier))
+
+            let start = try XCTUnwrap(
+                calendar.date(
+                    from: DateComponents(
+                        year: 2026,
+                        month: 8,
+                        day: 30,
+                        hour: 12
+                    )
+                )
+            )
+            let week = MealCalendarPeriod.weekDates(starting: start, calendar: calendar)
+            let weekComponents = week.map {
+                calendar.dateComponents([.year, .month, .day], from: $0)
+            }
+
+            XCTAssertEqual(weekComponents.map(\.year), [2026, 2026, 2026, 2026, 2026, 2026, 2026], identifier)
+            XCTAssertEqual(weekComponents.map(\.month), [8, 8, 9, 9, 9, 9, 9], identifier)
+            XCTAssertEqual(weekComponents.map(\.day), [30, 31, 1, 2, 3, 4, 5], identifier)
+
+            let nextMonth = MealCalendarPeriod.shiftedMonth(start, by: 1, calendar: calendar)
+            let nextMonthComponents = calendar.dateComponents([.year, .month, .day], from: nextMonth)
+            XCTAssertEqual(nextMonthComponents.year, 2026, identifier)
+            XCTAssertEqual(nextMonthComponents.month, 9, identifier)
+            XCTAssertEqual(nextMonthComponents.day, 1, identifier)
+        }
+    }
 }
 
 final class MealServiceTests: XCTestCase {
@@ -295,6 +328,47 @@ final class MealServiceTests: XCTestCase {
         XCTAssertEqual(result.meals[0].menuItems.map(\.name), ["현미밥", "닭갈비", "우유"])
         XCTAssertEqual(result.meals[0].menuItems[1].allergyCodes, [5, 6, 13, 15])
         XCTAssertEqual(result.meals[0].nutrition.protein, 42.3, accuracy: 0.01)
+    }
+
+    func testFetchMonthlyMealsRequestsTheEntireCalendarMonthRange() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.requestHandler = { request in
+            let url = try XCTUnwrap(request.url)
+            let components = try XCTUnwrap(
+                URLComponents(url: url, resolvingAgainstBaseURL: false)
+            )
+            let query = Dictionary(
+                uniqueKeysWithValues: (components.queryItems ?? []).compactMap {
+                    item in item.value.map { (item.name, $0) }
+                }
+            )
+            XCTAssertEqual(query["MLSV_FROM_YMD"], "20260801")
+            XCTAssertEqual(query["MLSV_TO_YMD"], "20260831")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )
+            )
+            return (response, Data(#"{"mealServiceDietInfo":[]}"#.utf8))
+        }
+        let service = MealService(
+            client: NEISClient(apiKey: "test-key", session: session)
+        )
+
+        let result = await service.fetchMonthlyMeals(
+            school: actualSchool,
+            year: 2026,
+            month: 8
+        )
+
+        XCTAssertEqual(result.status, .noMeal)
+        XCTAssertTrue(result.meals.isEmpty)
     }
 
     @MainActor

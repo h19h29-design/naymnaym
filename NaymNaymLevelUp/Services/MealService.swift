@@ -27,10 +27,11 @@ struct MealService {
 
     func fetchDailyMeal(school: School, date: Date, allowsDemo: Bool = false) async -> MealFetchResult {
         let dateText = DateUtils.apiString(from: date)
+        let calendar = DateUtils.calendar
         let result = await fetchMonthlyMeals(
             school: school,
-            year: Calendar.current.component(.year, from: date),
-            month: Calendar.current.component(.month, from: date),
+            year: calendar.component(.year, from: date),
+            month: calendar.component(.month, from: date),
             allowsDemo: allowsDemo
         )
         if let found = result.meals.first(where: { $0.date == dateText }) {
@@ -44,7 +45,7 @@ struct MealService {
     }
 
     func fetchMonthlyMeals(school: School, year: Int, month: Int, allowsDemo: Bool = false) async -> MealFetchResult {
-        let calendar = Calendar.current
+        let calendar = DateUtils.calendar
         guard
             let start = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
             let end = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: start)

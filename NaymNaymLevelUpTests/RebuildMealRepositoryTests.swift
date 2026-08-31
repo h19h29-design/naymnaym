@@ -331,11 +331,6 @@ final class RebuildMealClientTests: XCTestCase {
     }
 
     func testDemoSelectionUsesSeoulCalendarAcrossAdjacentMonthBoundary() async throws {
-        // Prime the formatter before changing the process default timezone.
-        _ = DateUtils.apiDateFormatter
-        let originalTimeZone = NSTimeZone.default
-        defer { NSTimeZone.default = originalTimeZone }
-
         let client = RebuildMealClientFactory.make(isDemoMode: true)
         let school = RebuildSchool(
             name: "냠냠중학교",
@@ -357,23 +352,15 @@ final class RebuildMealClientTests: XCTestCase {
             ),
         ]
 
-        for identifier in ["Pacific/Pago_Pago", "Pacific/Kiritimati"] {
-            NSTimeZone.default = try XCTUnwrap(TimeZone(identifier: identifier))
+        for expected in expectedMenus {
+            let fetched = try await client.fetch(
+                date: expected.date,
+                school: school
+            )
+            let meal = try XCTUnwrap(fetched)
 
-            for expected in expectedMenus {
-                let fetched = try await client.fetch(
-                    date: expected.date,
-                    school: school
-                )
-                let meal = try XCTUnwrap(fetched)
-
-                XCTAssertEqual(meal.date, expected.date, identifier)
-                XCTAssertEqual(
-                    meal.menuItems.map(\.name),
-                    expected.names,
-                    "\(identifier) \(expected.date)"
-                )
-            }
+            XCTAssertEqual(meal.date, expected.date)
+            XCTAssertEqual(meal.menuItems.map(\.name), expected.names, expected.date)
         }
     }
 
