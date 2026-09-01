@@ -9,7 +9,7 @@ PROJECT_PATH="NaymNaymLevelUp.xcodeproj"
 SCHEME="NaymNaymLevelUp"
 TEAM_ID="47SNWAZN3G"
 EXPECTED_BUNDLE_ID="com.h19h29.naymnaymlevelup"
-EXPECTED_VERSION="1.1"
+EXPECTED_VERSION="1.2"
 EXPECTED_ICLOUD_CONTAINER="iCloud.com.h19h29.naymnaymlevelup"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-FEDEF97987FC83EC65955EB899B96DBF7BBF2EA8}"
 SIGNING_PREFLIGHT_TIMEOUT_SECONDS="${SIGNING_PREFLIGHT_TIMEOUT_SECONDS:-20}"
@@ -32,6 +32,7 @@ Before running:
     then rerun the same command.
   - Do not continue to upload unless scripts/inspect-ipa-entitlements.sh passes.
 EOF
+  printf 'Expected marketing version: %s\n' "$EXPECTED_VERSION"
 }
 
 fail() {

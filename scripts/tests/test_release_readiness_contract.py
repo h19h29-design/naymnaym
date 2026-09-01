@@ -397,6 +397,17 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         self.assertNotRegex(configurator, r"(?m)^ASC_VERSION=1\.0$")
         self.assertNotRegex(configurator, r"(?m)^ASC_BUILD=(15|16)$")
 
+    def test_testflight_release_helper_reports_current_marketing_version(self):
+        result = subprocess.run(
+            [str(ROOT / "scripts/release-testflight-build.sh"), "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Expected marketing version: 1.2", result.stdout)
+
     def _run_readiness(self, fixture, *, merge_output=False):
         environment = self._readiness_environment()
         environment.update(
