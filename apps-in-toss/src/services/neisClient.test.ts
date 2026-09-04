@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NeisClientError, createNeisClient } from './neisClient';
+import { NeisClientError, clientErrorMessage, createNeisClient } from './neisClient';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -25,5 +25,10 @@ describe('NEIS client', () => {
     await expect(client.searchSchools('서울', 'elementary')).rejects.toMatchObject({ kind: 'RATE_LIMITED' });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
     await expect(client.searchSchools('서울', 'elementary')).rejects.toEqual(expect.objectContaining<Partial<NeisClientError>>({ kind: 'NETWORK' }));
+  });
+
+  it('gives origin, rate, backend, and network failures distinct user copy', () => {
+    const messages = ['FORBIDDEN_ORIGIN', 'RATE_LIMITED', 'UPSTREAM_ERROR', 'NETWORK'].map((kind) => clientErrorMessage(new NeisClientError(kind as never, 'x')));
+    expect(new Set(messages).size).toBe(4);
   });
 });

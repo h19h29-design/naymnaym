@@ -50,6 +50,7 @@ input[type="text"], input:not([type]) { width: 100%; border: 1px solid #d9c8b2; 
 .source-badge { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: .75rem; font-weight: 800; margin: 0; }
 .source-badge.live { background: #def7e7; color: #176b36; }.source-badge.cache { background: #e4ecff; color: #2458a7; }.source-badge.demo { background: #f1e8ff; color: #7440a0; }
 .warning, .demo-note, .safety-message { border-radius: 12px; padding: 10px 12px; line-height: 1.45; font-size: .9rem; }
+.growth-feedback { background: #e5f7e9; color: #196d36; border-radius: 12px; padding: 10px 12px; font-weight: 750; }
 .warning { background: #e9f0ff; color: #264f8d; }.demo-note { background: #f4ecff; color: #63318c; }.safety-message { background: #fff0ee; color: #a62f24; margin: 8px 0 12px; }
 .meal-list { display: grid; gap: 12px; }
 .meal-card { background: #fff; border: 1px solid #eddfca; border-radius: 18px; padding: 16px; }

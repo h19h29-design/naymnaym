@@ -36,7 +36,7 @@ export function AppStateProvider({ children, repository, client }: { children: R
 
   useEffect(() => {
     let live = true;
-    repositoryValue.load().then((loaded) => {
+    repositoryValue.load().catch(() => ({ ...EMPTY_STATE })).then((loaded) => {
       if (!live) return;
       stateRef.current = loaded;
       setState(loaded);

@@ -47,6 +47,7 @@ describe('lite routes', () => {
     expect(screen.getByText('냠냠 새싹')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: '현미밥 한 입 도전' }));
     await waitFor(() => expect(repository.save).toHaveBeenLastCalledWith(expect.objectContaining({ totalXP: 18 })));
+    expect(screen.getByText('기록했어요! XP가 새 상태로 반영됐어요.')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: '현미밥 잘 먹음' }));
     await waitFor(() => expect(repository.save).toHaveBeenLastCalledWith(expect.objectContaining({ totalXP: 10 })));
   });

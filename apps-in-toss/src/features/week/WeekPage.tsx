@@ -3,6 +3,7 @@ import { formatKoreanDate, getSeoulDateKey, weekKeys } from '../../domain/date';
 import { hasAllergyRisk } from '../../domain/allergy';
 import type { MealDay } from '../../domain/types';
 import { useAppState } from '../../state/AppStateProvider';
+import { clientErrorMessage } from '../../services/neisClient';
 
 export function WeekPage() {
   const { state, client } = useAppState();
@@ -11,17 +12,17 @@ export function WeekPage() {
   const keys = useMemo(() => weekKeys(today), [today]);
   const [meals, setMeals] = useState<MealDay[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    setLoading(true); setError(false);
+    setLoading(true); setError(null);
     try { setMeals(await client.fetchMealsRange({ officeCode: school.officeCode, schoolCode: school.schoolCode, fromDate: keys[0], toDate: keys[6] })); }
-    catch { setError(true); }
+    catch (cause) { setError(clientErrorMessage(cause)); }
     finally { setLoading(false); }
   }, [client, keys, school.officeCode, school.schoolCode]);
   useEffect(() => { void load(); }, [load]);
   return <main className="page with-tabs"><header className="page-header"><div><p className="eyebrow">{school.name}</p><h1>이번 주 급식</h1><p>오늘부터 7일을 보여드려요.</p></div></header>
     {loading && <section className="state-card" aria-live="polite">일주일 급식을 불러오는 중이에요…</section>}
-    {error && <section className="state-card"><h2>주간 급식을 불러오지 못했어요</h2><p>네트워크 또는 급식 서버 상태를 확인해 주세요.</p><button className="primary" onClick={() => void load()}>다시 시도</button></section>}
+    {error && <section className="state-card"><h2>주간 급식을 불러오지 못했어요</h2><p>{error}</p><button className="primary" onClick={() => void load()}>다시 시도</button></section>}
     {!loading && !error && <div className="week-list">{keys.map((key) => {
       const meal = meals.find((entry) => entry.date === key);
       const risky = meal?.menuItems.some((item) => hasAllergyRisk(item.allergyCodes, state.profile!.allergyCodes));

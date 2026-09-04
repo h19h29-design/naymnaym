@@ -17,4 +17,13 @@ describe('AppStateProvider', () => {
     expect(result.current.state.totalXP).toBe(10);
     expect(repository.save).toHaveBeenLastCalledWith(expect.objectContaining({ totalXP: 10 }));
   });
+
+  it('falls back to a ready default state when Storage cannot be read', async () => {
+    const repository = { load: vi.fn(async () => { throw new Error('storage unavailable'); }), save: vi.fn(async () => {}), clearAllConfirmed: vi.fn(async () => {}) };
+    const client = { searchSchools: vi.fn(), fetchMeals: vi.fn(), fetchMealsRange: vi.fn() };
+    const wrapper = ({ children }: { children: ReactNode }) => <AppStateProvider repository={repository} client={client as never}>{children}</AppStateProvider>;
+    const { result } = renderHook(() => useAppState(), { wrapper });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.state).toEqual(EMPTY_STATE);
+  });
 });
