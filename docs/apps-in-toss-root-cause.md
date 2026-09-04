@@ -401,3 +401,13 @@ network만 내리며 다른 container나 ContainerManager package를 건드리�
 5. unit/type/web/release gate 뒤 기존 mini-app에만 test bundle을 올리고 iOS,
    Android QR 및 live origin을 각각 확인한다. 검토 요청과 출시는 누르지
    않는다.
+
+## Phase 3 client resolution
+
+client는 SDK 3.3.0의 `apps-in-toss.config.ts`와 `webBundleDir=dist`로 수동
+migration했다. 운영 endpoint는 `VITE_NEIS_PROXY_URL` 하나로 분리했고,
+client token은 v2 환경 이름을 우선하며 과거 anon 이름은 한 버전 fallback으로만
+읽는다. UI는 오류를 sample로 덮지 않고 live, cache, no-data, backend,
+network, Origin, rate-limit 상태를 분리한다. 따라서 과거 inactive Supabase를
+다시 깨우는 heartbeat나 새 유료 리소스 없이 현재 NAS proxy를 사용할 수 있고,
+추후 승인된 backend로도 환경 값 하나만 바꿔 이전할 수 있다.
