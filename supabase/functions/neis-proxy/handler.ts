@@ -34,6 +34,20 @@ function isRealDate(value: string): boolean {
     date.getUTCDate() === day;
 }
 
+function daysInRange(fromDate: string, toDate: string): number {
+  const toEpoch = Date.UTC(
+    Number(toDate.slice(0, 4)),
+    Number(toDate.slice(4, 6)) - 1,
+    Number(toDate.slice(6, 8)),
+  );
+  const fromEpoch = Date.UTC(
+    Number(fromDate.slice(0, 4)),
+    Number(fromDate.slice(4, 6)) - 1,
+    Number(fromDate.slice(6, 8)),
+  );
+  return (toEpoch - fromEpoch) / 86_400_000 + 1;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -124,6 +138,7 @@ function validateRequest(value: unknown): ProxyRequest | null {
     if (
       !SCHOOL_KEYWORD.test(keyword) ||
       schoolType !== undefined &&
+        schoolType !== "elementary" &&
         schoolType !== "middle" &&
         schoolType !== "high"
     ) {
@@ -155,6 +170,35 @@ function validateRequest(value: unknown): ProxyRequest | null {
       ? {
         action: "fetchMeals",
         payload: { officeCode, schoolCode, date },
+      }
+      : null;
+  }
+
+  if (value.action === "fetchMealsRange") {
+    if (
+      !hasOnlyKeys(value.payload, [
+        "officeCode",
+        "schoolCode",
+        "fromDate",
+        "toDate",
+      ])
+    ) {
+      return null;
+    }
+    const { officeCode, schoolCode, fromDate, toDate } = value.payload;
+    return typeof officeCode === "string" &&
+        OFFICE_CODE.test(officeCode) &&
+        typeof schoolCode === "string" &&
+        SCHOOL_CODE.test(schoolCode) &&
+        typeof fromDate === "string" &&
+        isRealDate(fromDate) &&
+        typeof toDate === "string" &&
+        isRealDate(toDate) &&
+        daysInRange(fromDate, toDate) >= 1 &&
+        daysInRange(fromDate, toDate) <= 7
+      ? {
+        action: "fetchMealsRange",
+        payload: { officeCode, schoolCode, fromDate, toDate },
       }
       : null;
   }
@@ -211,7 +255,11 @@ function neisUrl(request: ProxyRequest, apiKey: string): URL {
     if (request.payload.schoolType !== undefined) {
       url.searchParams.set(
         "SCHUL_KND_SC_NM",
-        request.payload.schoolType === "middle" ? "중학교" : "고등학교",
+        request.payload.schoolType === "elementary"
+          ? "초등학교"
+          : request.payload.schoolType === "middle"
+          ? "중학교"
+          : "고등학교",
       );
     }
   } else {
@@ -221,7 +269,12 @@ function neisUrl(request: ProxyRequest, apiKey: string): URL {
     );
     url.searchParams.set("SD_SCHUL_CODE", request.payload.schoolCode);
     url.searchParams.set("MMEAL_SC_CODE", "2");
-    url.searchParams.set("MLSV_YMD", request.payload.date);
+    if (request.action === "fetchMeals") {
+      url.searchParams.set("MLSV_YMD", request.payload.date);
+    } else {
+      url.searchParams.set("MLSV_FROM_YMD", request.payload.fromDate);
+      url.searchParams.set("MLSV_TO_YMD", request.payload.toDate);
+    }
   }
 
   return url;
@@ -272,7 +325,9 @@ function resourceRows(
 }
 
 function noData(origin: string, request: ProxyRequest): Response {
-  if (request.action === "searchSchools") {
+  if (
+    request.action === "searchSchools" || request.action === "fetchMealsRange"
+  ) {
     return json(origin, 200, { ok: true, data: [] });
   }
   return error(
@@ -568,10 +623,9 @@ export function createHandler(deps: HandlerDeps) {
 
       const data = parsed.action === "searchSchools"
         ? normalizeSchoolRows(upstreamRows as RawSchoolRow[])
-        : normalizeMealRows(
-          upstreamRows as RawMealRow[],
-          parsed.payload.date,
-        )[0];
+        : parsed.action === "fetchMeals"
+        ? normalizeMealRows(upstreamRows as RawMealRow[])[0]
+        : normalizeMealRows(upstreamRows as RawMealRow[]);
       status = 200;
       return json(origin, status, { ok: true, data });
     } catch {

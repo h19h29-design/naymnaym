@@ -81,9 +81,24 @@ jq -e '.ok == true and any(.data[]; .name == "등촌고등학교" and .officeCod
   "$TMP_DIR/school.json" >/dev/null || fail "school search result is invalid"
 pass "school search"
 
+elementary_status=$(request "$LIVE_ORIGIN" searchSchools \
+  '{"keyword":"서울등촌초등학교","schoolType":"elementary"}' "$TMP_DIR/elementary.json")
+[ "$elementary_status" = 200 ] ||
+  fail "elementary school search returned HTTP $elementary_status"
+jq -e '.ok == true and any(.data[]; .name == "서울등촌초등학교" and .officeCode == "B10" and .schoolCode == "7081436" and .schoolType == "elementary")' \
+  "$TMP_DIR/elementary.json" >/dev/null || fail "elementary school search result is invalid"
+pass "elementary school search"
+
 meal_status=$(request "$LIVE_ORIGIN" fetchMeals \
   '{"officeCode":"B10","schoolCode":"7010700","date":"20260601"}' "$TMP_DIR/meal.json")
 [ "$meal_status" = 200 ] || fail "meal returned HTTP $meal_status"
 jq -e '.ok == true and .data.date == "20260601" and (.data.menuItems | length > 0) and any(.data.menuItems[]; .allergyCodes | length > 0) and (.data.calorie != null) and (.data.nutrition != null)' \
   "$TMP_DIR/meal.json" >/dev/null || fail "meal response is incomplete"
 pass "June 2026 meal with allergens, calories, and nutrition"
+
+range_status=$(request "$LIVE_ORIGIN" fetchMealsRange \
+  '{"officeCode":"B10","schoolCode":"7081436","fromDate":"20260601","toDate":"20260607"}' "$TMP_DIR/range.json")
+[ "$range_status" = 200 ] || fail "meal range returned HTTP $range_status"
+jq -e '.ok == true and [.data[].date] == ["20260601", "20260602", "20260604", "20260605"] and all(.data[]; (.menuItems | length > 0))' \
+  "$TMP_DIR/range.json" >/dev/null || fail "meal range response is incomplete"
+pass "seven-day elementary meal range with actual NEIS dates"

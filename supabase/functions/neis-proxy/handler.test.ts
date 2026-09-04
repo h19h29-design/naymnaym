@@ -250,7 +250,7 @@ Deno.test("accepts only the exact action and payload fields", async () => {
     },
     {
       action: "searchSchools",
-      payload: { keyword: "가람", schoolType: "elementary" },
+      payload: { keyword: "가람", schoolType: "special" },
     },
     { action: "searchSchools", payload: ["가람"] },
     null,
@@ -338,6 +338,50 @@ Deno.test("rejects malformed meal identifiers and impossible dates before fetch"
   assertEquals(calls, 0);
 });
 
+Deno.test("rejects reversed, eight-day, malformed, and extra-key meal ranges", async () => {
+  let calls = 0;
+  const handler = createHandler(deps(async () => {
+    calls++;
+    return new Response(JSON.stringify({ RESULT: { CODE: "INFO-200" } }));
+  }));
+  const invalidPayloads = [
+    {
+      officeCode: "B10",
+      schoolCode: "7011234",
+      fromDate: "20260608",
+      toDate: "20260607",
+    },
+    {
+      officeCode: "B10",
+      schoolCode: "7011234",
+      fromDate: "20260601",
+      toDate: "20260608",
+    },
+    {
+      officeCode: "B10",
+      schoolCode: "7011234",
+      fromDate: "20260229",
+      toDate: "20260301",
+    },
+    {
+      officeCode: "B10",
+      schoolCode: "7011234",
+      fromDate: "20260601",
+      toDate: "20260607",
+      extra: true,
+    },
+  ];
+
+  for (const payload of invalidPayloads) {
+    const response = await handler(request({
+      action: "fetchMealsRange",
+      payload,
+    }));
+    assertEquals(response.status, 400);
+  }
+  assertEquals(calls, 0);
+});
+
 Deno.test("allows a real leap-day meal date", async () => {
   let calls = 0;
   const response = await createHandler(deps(async () => {
@@ -402,14 +446,6 @@ Deno.test("calls only the fixed schoolInfo endpoint and normalizes school rows",
               ORG_RDNMA: " 서울 중구 1 ",
               SCHUL_KND_SC_NM: "중학교",
             },
-            {
-              SCHUL_NM: "가람초등학교",
-              ATPT_OFCDC_SC_CODE: "B10",
-              SD_SCHUL_CODE: "7015678",
-              LCTN_SC_NM: "서울특별시",
-              ORG_RDNMA: "서울 중구 2",
-              SCHUL_KND_SC_NM: "초등학교",
-            },
           ],
         },
       ],
@@ -437,6 +473,50 @@ Deno.test("calls only the fixed schoolInfo endpoint and normalizes school rows",
       region: "서울특별시",
       address: "서울 중구 1",
       schoolType: "middle",
+    }],
+  });
+});
+
+Deno.test("maps the elementary school filter and normalizes its school type", async () => {
+  let upstreamUrl: URL | undefined;
+  const response = await createHandler(deps(async (input) => {
+    upstreamUrl = new URL(String(input));
+    return new Response(JSON.stringify({
+      schoolInfo: [
+        {
+          head: [
+            { list_total_count: 1 },
+            { RESULT: { CODE: "INFO-000" } },
+          ],
+        },
+        {
+          row: [{
+            SCHUL_NM: "서울등촌초등학교",
+            ATPT_OFCDC_SC_CODE: "B10",
+            SD_SCHUL_CODE: "7081436",
+            LCTN_SC_NM: "서울특별시",
+            ORG_RDNMA: "서울특별시 강서구 등촌로39길 71",
+            SCHUL_KND_SC_NM: "초등학교",
+          }],
+        },
+      ],
+    }));
+  }))(request({
+    action: "searchSchools",
+    payload: { keyword: "등촌", schoolType: "elementary" },
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(upstreamUrl?.searchParams.get("SCHUL_KND_SC_NM"), "초등학교");
+  assertEquals(await body(response), {
+    ok: true,
+    data: [{
+      name: "서울등촌초등학교",
+      officeCode: "B10",
+      schoolCode: "7081436",
+      region: "서울특별시",
+      address: "서울특별시 강서구 등촌로39길 71",
+      schoolType: "elementary",
     }],
   });
 });
@@ -518,6 +598,92 @@ Deno.test("calls only the fixed meal endpoint and returns a normalized meal", as
   const result = await body(response);
   assertEquals(result.ok, true);
   assertEquals((result.data as { date: string }).date, "20260724");
+});
+
+Deno.test("fetches an inclusive seven-day range once and uses row dates", async () => {
+  let upstreamUrl: URL | undefined;
+  let calls = 0;
+  const response = await createHandler(deps(async (input) => {
+    calls++;
+    upstreamUrl = new URL(String(input));
+    return new Response(JSON.stringify({
+      mealServiceDietInfo: [
+        {
+          head: [
+            { list_total_count: 2 },
+            { RESULT: { CODE: "INFO-000" } },
+          ],
+        },
+        {
+          row: [
+            {
+              MLSV_YMD: "20260601",
+              DDISH_NM: "현미밥<br/>닭갈비(5.6.15.)",
+            },
+            {
+              MLSV_YMD: "20260604",
+              DDISH_NM: "보리밥<br/>두부조림(5.)",
+            },
+          ],
+        },
+      ],
+    }));
+  }))(request({
+    action: "fetchMealsRange",
+    payload: {
+      officeCode: "B10",
+      schoolCode: "7081436",
+      fromDate: "20260601",
+      toDate: "20260607",
+    },
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, 1);
+  assertEquals(upstreamUrl?.pathname, "/hub/mealServiceDietInfo");
+  assertEquals(upstreamUrl?.searchParams.get("MLSV_YMD"), null);
+  assertEquals(upstreamUrl?.searchParams.get("MLSV_FROM_YMD"), "20260601");
+  assertEquals(upstreamUrl?.searchParams.get("MLSV_TO_YMD"), "20260607");
+  const result = await body(response);
+  assertEquals(result.ok, true);
+  assertEquals(
+    (result.data as Array<{ date: string }>).map((meal) => meal.date),
+    ["20260601", "20260604"],
+  );
+});
+
+Deno.test("returns an empty array for range no-data envelopes and empty rows", async () => {
+  const envelopes = [
+    { RESULT: { CODE: "INFO-200" } },
+    {
+      mealServiceDietInfo: [
+        {
+          head: [
+            { list_total_count: 0 },
+            { RESULT: { CODE: "INFO-000" } },
+          ],
+        },
+        { row: [] },
+      ],
+    },
+  ];
+
+  for (const envelope of envelopes) {
+    const response = await createHandler(
+      deps(async () => new Response(JSON.stringify(envelope))),
+    )(request({
+      action: "fetchMealsRange",
+      payload: {
+        officeCode: "B10",
+        schoolCode: "7081436",
+        fromDate: "20260601",
+        toDate: "20260607",
+      },
+    }));
+
+    assertEquals(response.status, 200);
+    assertEquals(await body(response), { ok: true, data: [] });
+  }
 });
 
 Deno.test("maps explicit top-level and resource-head no-data envelopes safely", async () => {

@@ -1,4 +1,4 @@
-export type SchoolType = "middle" | "high";
+export type SchoolType = "elementary" | "middle" | "high";
 
 export interface School {
   name: string;
@@ -35,6 +35,15 @@ export type ProxyRequest =
   | {
     action: "fetchMeals";
     payload: { officeCode: string; schoolCode: string; date: string };
+  }
+  | {
+    action: "fetchMealsRange";
+    payload: {
+      officeCode: string;
+      schoolCode: string;
+      fromDate: string;
+      toDate: string;
+    };
   };
 
 export type ProxyErrorCode =

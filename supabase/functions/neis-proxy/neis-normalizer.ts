@@ -143,7 +143,9 @@ function normalizeMenuItems(rawDishName: string, date: string): MealItem[] {
 
 export function normalizeSchoolRows(rows: RawSchoolRow[]): School[] {
   return rows.flatMap((row) => {
-    const schoolType = row.SCHUL_KND_SC_NM === "중학교"
+    const schoolType = row.SCHUL_KND_SC_NM === "초등학교"
+      ? "elementary"
+      : row.SCHUL_KND_SC_NM === "중학교"
       ? "middle"
       : row.SCHUL_KND_SC_NM === "고등학교"
       ? "high"
@@ -159,10 +161,10 @@ export function normalizeSchoolRows(rows: RawSchoolRow[]): School[] {
   });
 }
 
-export function normalizeMealRows(rows: RawMealRow[], date: string): MealDay[] {
+export function normalizeMealRows(rows: RawMealRow[]): MealDay[] {
   return rows.map((row) => ({
-    date,
-    menuItems: normalizeMenuItems(row.DDISH_NM, date),
+    date: row.MLSV_YMD,
+    menuItems: normalizeMenuItems(row.DDISH_NM, row.MLSV_YMD),
     calorie: row.CAL_INFO?.trim() || null,
     nutrition: row.NTR_INFO ? plainText(row.NTR_INFO) : null,
     isSample: false,

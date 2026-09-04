@@ -1,8 +1,16 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import { normalizeMealRows, normalizeSchoolRows } from "./neis-normalizer.ts";
 
-Deno.test("keeps only middle and high schools", () => {
+Deno.test("keeps elementary, middle, and high schools", () => {
   const rows = [
+    {
+      SCHUL_NM: "가람초등학교",
+      ATPT_OFCDC_SC_CODE: "B10",
+      SD_SCHUL_CODE: "7015678",
+      LCTN_SC_NM: "서울특별시",
+      ORG_RDNMA: "서울 중구 2",
+      SCHUL_KND_SC_NM: "초등학교",
+    },
     {
       SCHUL_NM: "가람중학교",
       ATPT_OFCDC_SC_CODE: "B10",
@@ -12,19 +20,40 @@ Deno.test("keeps only middle and high schools", () => {
       SCHUL_KND_SC_NM: "중학교",
     },
     {
-      SCHUL_NM: "가람초등학교",
+      SCHUL_NM: "가람고등학교",
       ATPT_OFCDC_SC_CODE: "B10",
-      SD_SCHUL_CODE: "7015678",
+      SD_SCHUL_CODE: "7019999",
       LCTN_SC_NM: "서울특별시",
-      ORG_RDNMA: "서울 중구 2",
-      SCHUL_KND_SC_NM: "초등학교",
+      ORG_RDNMA: "서울 중구 3",
+      SCHUL_KND_SC_NM: "고등학교",
     },
   ];
 
   assertEquals(
-    normalizeSchoolRows(rows).map((school) => school.name),
-    ["가람중학교"],
+    normalizeSchoolRows(rows).map((school) => [school.name, school.schoolType]),
+    [
+      ["가람초등학교", "elementary"],
+      ["가람중학교", "middle"],
+      ["가람고등학교", "high"],
+    ],
   );
+});
+
+Deno.test("uses each NEIS row date when normalizing a meal range", () => {
+  const meals = normalizeMealRows([
+    {
+      MLSV_YMD: "20260601",
+      DDISH_NM: "현미밥",
+    },
+    {
+      MLSV_YMD: "20260604",
+      DDISH_NM: "보리밥",
+    },
+  ]);
+
+  assertEquals(meals.map((meal) => meal.date), ["20260601", "20260604"]);
+  assertEquals(meals[0].menuItems[0].id.startsWith("20260601:"), true);
+  assertEquals(meals[1].menuItems[0].id.startsWith("20260604:"), true);
 });
 
 Deno.test("parses allergens and nutrition hints without leaking raw markup", () => {
@@ -34,7 +63,7 @@ Deno.test("parses allergens and nutrition hints without leaking raw markup", () 
       "현미밥<br/><strong>닭갈비</strong>&nbsp;(5.6.15.)<br/>배추김치(9.)",
     CAL_INFO: "812.3 Kcal",
     NTR_INFO: "<span>탄수화물</span>&nbsp;(g) : &#49;12.0<br/>단백질(g) : 32.0",
-  }], "20260724");
+  }]);
 
   assertEquals(meal.menuItems[1].name, "닭갈비");
   assertEquals(meal.menuItems[1].allergyCodes, [5, 6, 15]);
@@ -51,7 +80,7 @@ Deno.test("does not treat numbered menu prefixes as allergy codes", () => {
   const [meal] = normalizeMealRows([{
     MLSV_YMD: "20260724",
     DDISH_NM: "1. 현미밥<br/>2. 닭갈비(5.6.15.)",
-  }], "20260724");
+  }]);
 
   assertEquals(meal.menuItems[0].name, "현미밥");
   assertEquals(meal.menuItems[0].allergyCodes, []);
@@ -62,11 +91,11 @@ Deno.test("keeps an item ID stable when a different item is inserted before it",
   const [original] = normalizeMealRows([{
     MLSV_YMD: "20260724",
     DDISH_NM: "현미밥<br/>닭갈비(5.6.15.)",
-  }], "20260724");
+  }]);
   const [withInsertion] = normalizeMealRows([{
     MLSV_YMD: "20260724",
     DDISH_NM: "오이무침<br/>현미밥<br/>닭갈비(5.6.15.)",
-  }], "20260724");
+  }]);
 
   assertEquals(original.menuItems[1].id, withInsertion.menuItems[2].id);
 });
@@ -75,7 +104,7 @@ Deno.test("gives same-content menu items distinct occurrence IDs", () => {
   const [meal] = normalizeMealRows([{
     MLSV_YMD: "20260724",
     DDISH_NM: "닭갈비(5.6.15.)<br/>닭갈비(5.6.15.)",
-  }], "20260724");
+  }]);
 
   assertEquals(meal.menuItems[0].id === meal.menuItems[1].id, false);
 });
