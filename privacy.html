@@ -3,16 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="냠냠레벨업 개인정보 처리방침" />
-    <meta name="theme-color" content="#67b94f" />
-    <title>냠냠레벨업 개인정보 처리방침</title>
+    <meta name="description" content="급식레벨업 개인정보 처리방침" />
+    <meta name="theme-color" content="#fff9ed" />
+    <title>급식레벨업 개인정보 처리방침</title>
+    <link rel="icon" href="./assets/app-icon.png" />
     <link rel="stylesheet" href="./assets/site.css" />
   </head>
   <body>
+    <a class="skip-link" href="#content">본문으로 바로가기</a>
     <header class="site-header">
       <nav class="nav" aria-label="주요 메뉴">
-        <a class="brand" href="./index.html" aria-label="냠냠레벨업 홈">
-          <img src="./assets/logo-reference.png" alt="냠냠레벨업" />
+        <a class="brand" href="./index.html" aria-label="급식레벨업 홈">
+          <img src="./assets/app-icon.png" alt="" />
+          <span>급식레벨업</span>
         </a>
         <div class="nav-links">
           <a href="./privacy.html">개인정보 처리방침</a>
@@ -22,15 +25,19 @@
       </nav>
     </header>
 
-    <main>
-      <a class="back-link" href="./index.html">냠냠레벨업으로 돌아가기</a>
+    <main id="content">
+      <a class="back-link" href="./index.html">급식레벨업으로 돌아가기</a>
       <article class="panel">
         <h1>개인정보 처리방침</h1>
-        <p>시행일: 2026-06-20</p>
-        <p>이 개인정보 처리방침은 냠냠레벨업 1.0 공개 배포 후보에 적용됩니다.</p>
-        <p>냠냠레벨업은 회원가입 없이 학교 급식 정보와 한 입 도전 기록을 사용할 수 있는 무료 급식 식습관 코칭 앱입니다.</p>
+        <p>시행일: 2026-09-05</p>
+        <p>이 개인정보 처리방침은 급식레벨업 iOS·Android 앱과 앱인토스 미니앱에 적용됩니다. 플랫폼에 따라 제공 기능과 저장 범위가 다릅니다.</p>
+        <p>급식레벨업은 회원가입 없이 학교 급식 정보와 한 입 도전 기록을 사용할 수 있는 무료 급식 식습관 코칭 앱입니다.</p>
 
-        <h2>기기 내부에 저장되는 정보</h2>
+        <h2>앱인토스 Lite v2</h2>
+        <p>앱인토스 미니앱은 별명, 선택 학교, 알레르기 선택값, 식사 기록, 누적 XP, 마지막 정상 급식 캐시와 저장 시각만 토스 앱의 기기 저장소에 보관합니다. 회원가입, 로그인, 사진, 보호자 연결, 알림, 광고, 분석 및 추적 기능은 사용하지 않습니다.</p>
+        <p>학교와 급식 조회 시 선택한 학교 코드와 날짜가 급식레벨업의 보호 프록시를 거쳐 NEIS 학교기본정보 API와 급식식단정보 API 요청에 사용됩니다. 공통 요청 토큰은 오남용 억제를 위한 값이며 사용자를 식별하는 계정 정보가 아닙니다.</p>
+
+        <h2>iOS·Android 앱의 기기 저장 정보</h2>
         <ul>
           <li>별명, 선택 학교, 알레르기 선택값</li>
           <li>먹은 정도, 한 입 도전, 어려운 이유 기록</li>
@@ -41,8 +48,8 @@
         <h2>공공데이터 조회</h2>
         <p>급식 조회를 위해 선택한 학교 코드와 날짜가 NEIS 학교기본정보 API와 급식식단정보 API 요청에 사용될 수 있습니다.</p>
 
-        <h2>사진과 부모 연결</h2>
-        <p>사진은 기기 내부에만 저장됩니다. 부모 공유를 켠 먹은 정도, 한 입 도전 기록, 알레르기 주의 정보만 부모 모드 표시와 급식 결과 알림을 위해 서버에 저장될 수 있습니다. 서버 부모 동기화에는 사진 원본을 업로드하지 않습니다. 친구 얼굴, 이름표, 반/번호가 포함된 사진 촬영을 권장하지 않습니다.</p>
+        <h2>iOS·Android 앱의 사진과 부모 연결</h2>
+        <p>이 기능은 앱인토스 Lite v2에는 없습니다. iOS·Android 앱에서 사진은 기기 내부에만 저장됩니다. 부모 공유를 켠 먹은 정도, 한 입 도전 기록, 알레르기 주의 정보만 부모 모드 표시와 급식 결과 알림을 위해 서버에 저장될 수 있습니다. 서버 부모 동기화에는 사진 원본을 업로드하지 않습니다. 친구 얼굴, 이름표, 반/번호가 포함된 사진 촬영을 권장하지 않습니다.</p>
 
         <h2>수집하지 않는 정보</h2>
         <ul>
@@ -53,17 +60,26 @@
         </ul>
 
         <h2>광고와 추적</h2>
-        <p>냠냠레벨업은 광고, 인앱결제, 제3자 광고 추적을 사용하지 않습니다.</p>
+        <p>급식레벨업은 광고, 인앱결제, 제3자 광고 추적을 사용하지 않습니다.</p>
 
         <h2>알레르기와 영양 안내</h2>
         <p>알레르기 정보와 영양 안내는 교육용 참고 정보입니다. 앱은 알레르기 안전, 건강 상태, 영양 상태를 진단하거나 보장하지 않습니다. 학교 안내와 보호자 판단이 항상 우선입니다.</p>
 
         <h2>데이터 삭제</h2>
-        <p>앱의 설정 &gt; 데이터 관리에서 도전 기록, 프로필, 전체 데이터를 삭제할 수 있습니다.</p>
+        <p>앱인토스 Lite v2는 설정 &gt; 모든 데이터 삭제에서 토스 앱의 기기 저장소에 보관된 미니앱 데이터를 삭제할 수 있습니다. iOS·Android 앱은 설정 &gt; 데이터 관리에서 도전 기록, 프로필 또는 전체 데이터를 삭제할 수 있습니다.</p>
 
         <h2>지원 및 데이터 안전</h2>
         <p>앱 사용 도움말과 문의 방법은 <a href="./support.html">지원 안내</a>에서, 데이터 설명은 <a href="./data-safety.html">데이터 안전 안내</a>에서 확인할 수 있습니다.</p>
       </article>
     </main>
+    <footer class="footer">
+      <div class="footer-inner">
+        <strong>급식레벨업</strong>
+        <div class="footer-links">
+          <a href="./data-safety.html">데이터 안전</a>
+          <a href="./support.html">지원 안내</a>
+        </div>
+      </div>
+    </footer>
   </body>
 </html>
