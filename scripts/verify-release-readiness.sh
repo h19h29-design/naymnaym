@@ -5,7 +5,7 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 EXPECTED_MARKETING_VERSION="${EXPECTED_MARKETING_VERSION:-1.2}"
-EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-33}"
+EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-34}"
 RELEASE_UPLOAD_REQUIRED="${RELEASE_UPLOAD_REQUIRED:-0}"
 LOCAL_DEBUG_APP_PATH="${LOCAL_DEBUG_APP_PATH:-build/verification/growth-meal-polish-v2/DerivedData/Build/Products/Debug-iphonesimulator/NaymNaymLevelUp.app}"
 LOCAL_RELEASE_APP_PATH="${LOCAL_RELEASE_APP_PATH:-build/verification/growth-meal-polish-v2/ReleaseDerivedData/Build/Products/Release-iphoneos/NaymNaymLevelUp.app}"

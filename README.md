@@ -3,7 +3,7 @@
 급식레벨업은 학교 급식 데이터를 기반으로 아이가 안 먹는 반찬을 혼내지 않고, 먹은 정도와 한 입 도전 기록으로 식습관을 바꾸도록 돕는 무료 iPhone 앱입니다.
 
 ## 1.2 출시 후보 범위
-- 앱 이름 `급식레벨업`, Bundle ID `com.h19h29.naymnaymlevelup`, 버전 `1.2`, 빌드 `33`
+- 앱 이름 `급식레벨업`, Bundle ID `com.h19h29.naymnaymlevelup`, 버전 `1.2`, 빌드 `34`
 - 실제 NEIS 학교 검색 및 급식식단정보 조회
 - 초등학생, 중학생, 고등학생, 부모 모드
 - 모드별 테마와 캐릭터 성장
@@ -151,7 +151,7 @@ Release 구성은 Native rebuild 경로를 활성화합니다. Debug 구성에�
 5. 라이선스 정보를 `THIRD_PARTY_NOTICES.md`에 추가합니다.
 
 ## 출시 전 체크
-- `EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=33 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh`로 로컬 Debug/Release 산출물, plist, 버전/빌드, 메타데이터, 아이콘, 스크린샷, 공개 URL 상태 확인
+- `EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=34 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh`로 로컬 Debug/Release 산출물, plist, 버전/빌드, 메타데이터, 아이콘, 스크린샷, 공개 URL 상태 확인
 - `scripts/smoke-neis-live.sh`로 실제 NEIS 학교 검색과 급식식단정보 응답 확인
   - 기본 검증: 등촌고등학교, 2026년 6월 중식
   - 다른 학교/월 검증: `NEIS_SMOKE_SCHOOL_NAME=학교명 NEIS_SMOKE_MEAL_MONTH=YYYYMM scripts/smoke-neis-live.sh`

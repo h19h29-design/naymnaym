@@ -387,10 +387,10 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertRegex(
             status_checker,
-            r'(?m)^BUILD_NUMBER="\$\{ASC_BUILD:-33\}"$',
+            r'(?m)^BUILD_NUMBER="\$\{ASC_BUILD:-34\}"$',
         )
         self.assertRegex(configurator, r"(?m)^ASC_VERSION=1\.2$")
-        self.assertRegex(configurator, r"(?m)^ASC_BUILD=33$")
+        self.assertRegex(configurator, r"(?m)^ASC_BUILD=34$")
 
         self.assertNotRegex(status_checker, r"ASC_VERSION:-1\.0")
         self.assertNotRegex(status_checker, r"ASC_BUILD:-(15|16)")
@@ -473,7 +473,7 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         environment.update(
             {
                 "EXPECTED_MARKETING_VERSION": "1.2",
-                "EXPECTED_BUILD_NUMBER": "33",
+                "EXPECTED_BUILD_NUMBER": "34",
                 "RELEASE_UPLOAD_REQUIRED": "0",
             }
         )
@@ -498,7 +498,7 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         info = {
             "CFBundleIdentifier": "com.h19h29.naymnaymlevelup",
             "CFBundleShortVersionString": "1.2",
-            "CFBundleVersion": "33",
+            "CFBundleVersion": "34",
             "CFBundleDisplayName": "급식레벨업",
             "DTPlatformName": platform,
         }

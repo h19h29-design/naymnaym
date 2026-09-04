@@ -1,11 +1,11 @@
-# 급식레벨업 1.2 (33) 제출 전 대기 메모
+# 급식레벨업 1.2 (34) 제출 전 대기 메모
 
 ## 현재 후보
 
 - 앱 이름: 급식레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 마케팅 버전: `1.2`
-- 빌드: `33`
+- 빌드: `34`
 - 검증 모드: `RELEASE_UPLOAD_REQUIRED=0`
 
 이 작업에서는 App Store Connect 업로드나 App Review 제출을 수행하지 않았다. 서명된 archive·IPA·업로드 로그는 현재 로컬 후보 검증의 필수 조건이 아니며, 업로드가 별도로 승인된 경우에만 `RELEASE_UPLOAD_REQUIRED=1`로 검증한다.
@@ -19,7 +19,7 @@
 
 ## 로컬 검증 기준
 
-- 실제 후보 설정과 메타데이터가 `1.2`/`33` 및 `com.h19h29.naymnaymlevelup`로 일치
+- 실제 후보 설정과 메타데이터가 `1.2`/`34` 및 `com.h19h29.naymnaymlevelup`로 일치
 - Debug 테스트 앱과 서명하지 않은 Release 앱의 버전·빌드·번들 ID 확인
 - 샘플 급식은 사용자가 체험 모드를 직접 선택한 경우에만 표시하며, 조회 실패나 급식 없는 날에 자동 대체하지 않음
 - 알레르기 및 대표 영양소 안내는 교육용 참고 정보이며 학교 안내와 보호자 판단이 우선
@@ -30,7 +30,7 @@
 실행 명령:
 
 ```sh
-EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=33 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh
+EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=34 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh
 ```
 
 ## 앱 소유자 확인이 필요한 항목
