@@ -46,8 +46,10 @@ input[type="text"], input:not([type]) { width: 100%; border: 1px solid #d9c8b2; 
 .growth-card strong { color: #d65300; font-size: 1.25rem; }
 .growth-card p:last-child { color: #74685e; font-size: .85rem; margin: 6px 0 0; }
 .art-placeholder { aspect-ratio: 1; border: 2px dashed #cfb794; border-radius: 22px; display: grid; place-items: center; color: #79664e; background: #fff9ef; text-align: center; }
-.section-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 14px; }
+.section-heading { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-bottom: 14px; }
 .section-heading h2 { margin: 5px 0 0; }
+.section-actions { display: grid; justify-items: end; gap: 8px; }
+.section-actions button { min-width: max-content; }
 .source-badge { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: .75rem; font-weight: 800; margin: 0; }
 .source-badge.live { background: #def7e7; color: #176b36; }.source-badge.cache { background: #e4ecff; color: #2458a7; }.source-badge.demo { background: #f1e8ff; color: #7440a0; }
 .warning, .demo-note, .safety-message { border-radius: 12px; padding: 10px 12px; line-height: 1.45; font-size: .9rem; }

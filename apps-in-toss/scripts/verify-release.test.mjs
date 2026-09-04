@@ -8,6 +8,17 @@ import { verifyRelease, verifyWebRelease } from './verify-release.mjs';
 
 const APP_ROOT = new URL('../', import.meta.url);
 const TRUNCATED_WEBP = Buffer.from('524946460400000057454250', 'hex');
+const HEADER_ONLY_VP8 = (() => {
+  const image = Buffer.alloc(30);
+  image.write('RIFF', 0);
+  image.writeUInt32LE(22, 4);
+  image.write('WEBPVP8 ', 8);
+  image.writeUInt32LE(10, 16);
+  image.set([0, 0, 0, 0x9d, 0x01, 0x2a], 20);
+  image.writeUInt16LE(512, 26);
+  image.writeUInt16LE(512, 28);
+  return image;
+})();
 
 async function fixture(root, unsafe = false, imageOverride = null) {
   await mkdir(join(root, 'assets'), { recursive: true });
@@ -38,6 +49,11 @@ test('rejects source-map or bundle secret markers', async () => temporary(async 
 
 test('rejects a truncated RIFF/WEBP header with no decodable image structure', async () => temporary(async (root) => {
   await fixture(root, false, TRUNCATED_WEBP);
+  await assert.rejects(() => verifyWebRelease(root), /exactly seven verified stage images/);
+}));
+
+test('rejects a plausible VP8 frame header with no compressed image payload', async () => temporary(async (root) => {
+  await fixture(root, false, HEADER_ONLY_VP8);
   await assert.rejects(() => verifyWebRelease(root), /exactly seven verified stage images/);
 }));
 

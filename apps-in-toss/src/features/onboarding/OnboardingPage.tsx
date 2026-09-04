@@ -1,3 +1,4 @@
+import { Button } from '@toss/tds-mobile';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ALLERGIES } from '../../domain/allergy';
@@ -42,7 +43,7 @@ export function OnboardingPage() {
       </div></fieldset>
       <div className="search-row">
         <label>학교 이름<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="두 글자 이상 입력" /></label>
-        <button type="button" onClick={() => void search()} disabled={status === 'loading' || keyword.trim().length < 2}>학교 검색</button>
+        <Button color="light" type="button" onClick={() => void search()} disabled={status === 'loading' || keyword.trim().length < 2}>학교 검색</Button>
       </div>
       {status === 'loading' && <p aria-live="polite">학교를 찾는 중이에요…</p>}
       {status === 'error' && <p role="alert">학교 검색에 실패했어요. 잠시 후 다시 시도해 주세요.</p>}
@@ -54,7 +55,7 @@ export function OnboardingPage() {
       <fieldset><legend>알레르기 <span className="optional">해당 항목만 선택</span></legend><div className="allergy-grid">
         {ALLERGIES.map((name, index) => { const code = index + 1; return <label key={name}><input type="checkbox" checked={allergies.includes(code)} onChange={() => setAllergies((current) => current.includes(code) ? current.filter((item) => item !== code) : [...current, code])} />{name}</label>; })}
       </div></fieldset>
-      <button className="primary wide" disabled={!selected}>시작하기</button>
+      <Button display="block" type="submit" disabled={!selected}>시작하기</Button>
     </form>
   </main>;
 }

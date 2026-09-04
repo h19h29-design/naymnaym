@@ -31,4 +31,14 @@ describe('NEIS client', () => {
     const messages = ['FORBIDDEN_ORIGIN', 'RATE_LIMITED', 'UPSTREAM_ERROR', 'NETWORK'].map((kind) => clientErrorMessage(new NeisClientError(kind as never, 'x')));
     expect(new Set(messages).size).toBe(4);
   });
+
+  it.each([
+    ['school search', (client: ReturnType<typeof createNeisClient>) => client.searchSchools('학교', 'middle'), [{ name: '필드 부족' }]],
+    ['single meal', (client: ReturnType<typeof createNeisClient>) => client.fetchMeals({ officeCode: 'B10', schoolCode: '1', date: '20260904' }), { date: '20260904', menuItems: 'invalid' }],
+    ['meal range', (client: ReturnType<typeof createNeisClient>) => client.fetchMealsRange({ officeCode: 'B10', schoolCode: '1', fromDate: '20260901', toDate: '20260907' }), [{ date: 'invalid' }]],
+  ])('rejects malformed successful %s data before it reaches UI code', async (_name, call, data) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data }) }));
+    const client = createNeisClient({ proxyUrl: 'https://proxy.example', clientToken: 'token' });
+    await expect(call(client)).rejects.toMatchObject({ kind: 'INVALID_RESPONSE' });
+  });
 });

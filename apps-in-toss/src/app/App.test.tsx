@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { AppRoutes } from './App';
+import { AppProviders } from './AppProviders';
 import { AppStateProvider } from '../state/AppStateProvider';
 import { EMPTY_STATE } from '../services/repository';
 import type { AppState } from '../domain/types';
@@ -21,7 +22,7 @@ function setup(path: string, state: AppState = EMPTY_STATE, overrides: Record<st
     fetchMealsRange: vi.fn(async () => [meal]),
     ...overrides,
   };
-  render(<AppStateProvider repository={repository} client={client as never}><MemoryRouter initialEntries={[path]}><AppRoutes /></MemoryRouter></AppStateProvider>);
+  render(<AppProviders><AppStateProvider repository={repository} client={client as never}><MemoryRouter initialEntries={[path]}><AppRoutes /></MemoryRouter></AppStateProvider></AppProviders>);
   return { repository, client };
 }
 
@@ -102,5 +103,17 @@ describe('lite routes', () => {
     const button = (await screen.findByText('한 입 도전')).closest('button');
     expect(button).not.toBeNull();
     expect(button).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('uses a newly saved live cache when a later refresh fails in the same mount', async () => {
+    const state: AppState = { ...EMPTY_STATE, profile: { nickname: '나', school, allergyCodes: [] } };
+    const fetchMeals = vi.fn().mockResolvedValueOnce(meal).mockRejectedValueOnce(new NeisClientError('NETWORK', 'offline'));
+    const { client } = setup('/today', state, { fetchMeals });
+    expect(await screen.findByText('학교 급식')).toBeVisible();
+    await waitFor(() => expect(client.fetchMeals).toHaveBeenCalledOnce());
+    await userEvent.click(screen.getByRole('button', { name: '급식 새로고침' }));
+    expect(await screen.findByText('저장된 급식')).toBeVisible();
+    expect(screen.getByText(/저장된 급식을 보여드려요/)).toBeVisible();
+    expect(client.fetchMeals).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,15 @@ const MAX_BYTES = 100 * 1024 * 1024;
 const SAFE_EXTENSIONS = new Set(['.html', '.js', '.css', '.webp', '.png', '.jpg', '.jpeg', '.svg', '.json', '.map', '.woff', '.woff2', '.ttf', '.otf', '.wasm']);
 const FORBIDDEN = [/neis_api_key/i, /supabase_service_role_key/i, /service[_ -]?role/i, /sb_secret_/i, /sk_live_/i];
 const JWT = /[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
+const VERIFIED_STAGES = [
+  { bytes: 22692, sha256: 'fcf8194404f21ccf65d0d9389aa30a2ba7c23281c8f37fe2e86ec26e5415e253' },
+  { bytes: 27208, sha256: 'a218b4e7c5d145068bd6cf1d7baedd68d3e4a333268dddfc4ac0ed8e036c8da4' },
+  { bytes: 27078, sha256: '2bd80f3c8a55852c7f007b189c367a2aeadb6cd72008035f963daf98c10a31af' },
+  { bytes: 32116, sha256: '38b7dcae3ae07e5a42aa6a37edd450913c0ea296f39bd01fab994283c7ae93c9' },
+  { bytes: 32448, sha256: '42730bf7932f9ebe2293815e73cb1e38ad1110e80a75fae74c5d0641acb9042a' },
+  { bytes: 36406, sha256: '33d94899587b1ddb12cb3807f465065dae8616c622391a999bf3626c3d1469ff' },
+  { bytes: 40864, sha256: '7d2c237e187b2da4d9f973df37e6e37c6c7cdb1744bcf1d0301b1eb7d9003488' },
+];
 
 function fail(message) { throw new Error(message); }
 
@@ -37,45 +47,9 @@ function assertEntryName(name) {
   if (!SAFE_EXTENSIONS.has(extname(name).toLowerCase())) fail('Release bundle contains an unsupported artifact');
 }
 
-function webpDimensions(bytes) {
-  if (bytes.length < 20 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.readUInt32LE(4) + 8 !== bytes.length || bytes.toString('ascii', 8, 12) !== 'WEBP') return null;
-  let dimensions = null;
-  let imageData = false;
-  let offset = 12;
-  while (offset < bytes.length) {
-    if (offset + 8 > bytes.length) return null;
-    const type = bytes.toString('ascii', offset, offset + 4);
-    const size = bytes.readUInt32LE(offset + 4);
-    const data = offset + 8;
-    const end = data + size;
-    const paddedEnd = end + (size % 2);
-    if (end > bytes.length || paddedEnd > bytes.length) return null;
-    let candidate = null;
-    if (type === 'VP8X') {
-      if (size !== 10) return null;
-      candidate = { width: bytes.readUIntLE(data + 4, 3) + 1, height: bytes.readUIntLE(data + 7, 3) + 1 };
-    } else if (type === 'VP8L') {
-      if (size < 5 || bytes[data] !== 0x2f) return null;
-      const bits = bytes.readUInt32LE(data + 1);
-      candidate = { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
-      imageData = true;
-    } else if (type === 'VP8 ') {
-      if (size < 10 || bytes[data + 3] !== 0x9d || bytes[data + 4] !== 0x01 || bytes[data + 5] !== 0x2a) return null;
-      candidate = { width: bytes.readUInt16LE(data + 6) & 0x3fff, height: bytes.readUInt16LE(data + 8) & 0x3fff };
-      imageData = true;
-    }
-    if (candidate) {
-      if (candidate.width < 1 || candidate.height < 1 || (dimensions && (dimensions.width !== candidate.width || dimensions.height !== candidate.height))) return null;
-      dimensions = candidate;
-    }
-    offset = paddedEnd;
-  }
-  return offset === bytes.length && imageData ? dimensions : null;
-}
-
-function isVerifiedStageWebp(bytes) {
-  const dimensions = webpDimensions(bytes);
-  return dimensions?.width === 512 && dimensions.height === 512;
+function isVerifiedStage(bytes, index) {
+  const expected = VERIFIED_STAGES[index];
+  return bytes.length === expected.bytes && createHash('sha256').update(bytes).digest('hex') === expected.sha256;
 }
 
 function validateEntries(entries, prefix = '') {
@@ -88,7 +62,7 @@ function validateEntries(entries, prefix = '') {
   if (totalBytes >= MAX_BYTES) fail('Release bundle must be below 100 MB');
   const levels = [...entries].filter(([name]) => name.startsWith(`${prefix}growth/level-`));
   const expected = Array.from({ length: 7 }, (_, index) => `${prefix}growth/level-${index + 1}.webp`);
-  if (levels.length !== 7 || expected.some((name) => !entries.has(name) || !isVerifiedStageWebp(entries.get(name)))) fail('Release bundle must contain exactly seven verified stage images');
+  if (levels.length !== 7 || expected.some((name, index) => !entries.has(name) || !isVerifiedStage(entries.get(name), index))) fail('Release bundle must contain exactly seven verified stage images');
   const html = entries.get(`${prefix}index.html`)?.toString('utf8');
   if (!html || !/<script\b[^>]*\bsrc=/i.test(html)) fail('Release bundle is missing its app entry');
   return { totalBytes, fileCount: entries.size, levelImageCount: 7 };

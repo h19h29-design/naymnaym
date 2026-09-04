@@ -1,4 +1,4 @@
-import type { ApiResult, MealDay, ProxyErrorCode, School, SchoolType } from '@nyam/neis-contract';
+import type { MealDay, MealItem, ProxyErrorCode, School, SchoolType } from '@nyam/neis-contract';
 
 export type ClientErrorKind = ProxyErrorCode | 'NETWORK' | 'INVALID_RESPONSE';
 
@@ -16,8 +16,55 @@ export function clientErrorMessage(error: unknown) {
 
 interface ClientConfig { proxyUrl: string; clientToken: string }
 
+const proxyErrorCodes = new Set<ProxyErrorCode>(['BAD_REQUEST', 'FORBIDDEN_ORIGIN', 'NO_DATA', 'NOT_CONFIGURED', 'RATE_LIMITED', 'UPSTREAM_ERROR']);
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isSchool(value: unknown): value is School {
+  return isObject(value)
+    && ['name', 'officeCode', 'schoolCode', 'region', 'address'].every((key) => typeof value[key] === 'string')
+    && (value.schoolType === 'elementary' || value.schoolType === 'middle' || value.schoolType === 'high');
+}
+
+function isMealItem(value: unknown): value is MealItem {
+  return isObject(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && Array.isArray(value.allergyCodes)
+    && value.allergyCodes.every((code) => Number.isInteger(code))
+    && isStringArray(value.nutrients)
+    && isStringArray(value.tags)
+    && typeof value.sourceRawText === 'string';
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isMealDay(value: unknown): value is MealDay {
+  return isObject(value)
+    && typeof value.date === 'string'
+    && /^\d{8}$/.test(value.date)
+    && Array.isArray(value.menuItems)
+    && value.menuItems.every(isMealItem)
+    && isNullableString(value.calorie)
+    && isNullableString(value.nutrition)
+    && typeof value.isSample === 'boolean'
+    && isNullableString(value.notice);
+}
+
+function isArrayOf<T>(itemGuard: (value: unknown) => value is T) {
+  return (value: unknown): value is T[] => Array.isArray(value) && value.every(itemGuard);
+}
+
 export function createNeisClient(config: ClientConfig) {
-  async function request<T>(action: string, payload: object): Promise<T> {
+  async function request<T>(action: string, payload: object, dataGuard: (value: unknown) => value is T): Promise<T> {
     let response: Response;
     try {
       response = await fetch(config.proxyUrl, {
@@ -28,21 +75,28 @@ export function createNeisClient(config: ClientConfig) {
     } catch {
       throw new NeisClientError('NETWORK', '네트워크 연결을 확인해 주세요.');
     }
-    let result: ApiResult<T>;
-    try { result = await response.json() as ApiResult<T>; }
+    let result: unknown;
+    try { result = await response.json() as unknown; }
     catch { throw new NeisClientError('INVALID_RESPONSE', '서버 응답을 확인할 수 없어요.'); }
-    if (!result.ok) throw new NeisClientError(result.code, result.message);
+    if (!isObject(result) || typeof result.ok !== 'boolean') throw new NeisClientError('INVALID_RESPONSE', '서버 응답 형식이 올바르지 않아요.');
+    if (!result.ok) {
+      if (typeof result.code !== 'string' || !proxyErrorCodes.has(result.code as ProxyErrorCode) || typeof result.message !== 'string') {
+        throw new NeisClientError('INVALID_RESPONSE', '서버 응답 형식이 올바르지 않아요.');
+      }
+      throw new NeisClientError(result.code as ProxyErrorCode, result.message);
+    }
+    if (!dataGuard(result.data)) throw new NeisClientError('INVALID_RESPONSE', '서버 응답 형식이 올바르지 않아요.');
     return result.data;
   }
   return {
     searchSchools(keyword: string, schoolType?: SchoolType) {
-      return request<School[]>('searchSchools', { keyword, ...(schoolType ? { schoolType } : {}) });
+      return request('searchSchools', { keyword, ...(schoolType ? { schoolType } : {}) }, isArrayOf(isSchool));
     },
     fetchMeals(payload: { officeCode: string; schoolCode: string; date: string }) {
-      return request<MealDay>('fetchMeals', payload);
+      return request('fetchMeals', payload, isMealDay);
     },
     fetchMealsRange(payload: { officeCode: string; schoolCode: string; fromDate: string; toDate: string }) {
-      return request<MealDay[]>('fetchMealsRange', payload);
+      return request('fetchMealsRange', payload, isArrayOf(isMealDay));
     },
   };
 }
