@@ -411,3 +411,34 @@ client token은 v2 환경 이름을 우선하며 과거 anon 이름은 한 버�
 network, Origin, rate-limit 상태를 분리한다. 따라서 과거 inactive Supabase를
 다시 깨우는 heartbeat나 새 유료 리소스 없이 현재 NAS proxy를 사용할 수 있고,
 추후 승인된 backend로도 환경 값 하나만 바꿔 이전할 수 있다.
+
+## Phase 4 release candidate
+
+두 축 코드 리뷰 뒤 legacy meal status 보존, 손상 cache 검증, canonical meal
+identity, 월요일~일요일 주간 범위, 학교 지역·학교급 표시, 설정의 앱 정보,
+성공 응답 runtime schema 검증, 최신 cache fallback, live proxy의 sample 거부,
+고정 WebP hash 검증을 추가했다. 최종 app test 32개와 release test 5개가
+통과했다.
+
+2026-09-05 00:14 KST 기존 workspace 62825 / mini-app 57196에 SDK 3.3.0
+bundle을 한 건 등록했다.
+
+- console version: `20260905-15`
+- console status: `검토 필요`
+- deployment ID: `01a06cfb-ab5f-705d-b1b6-815f815f6cb0`
+- test scheme:
+  `intoss-private://nyam-levelup?_deploymentId=01a06cfb-ab5f-705d-b1b6-815f815f6cb0&host=appsInTossHost`
+- 업로드 직전 artifact: 660,958 bytes, SHA-256
+  `60f3236a6ce99facd6094565d0b55b875b1642c82f7f96625971f1140328bd42`
+
+등록 후 QR 발급과 정확한 appName을 확인했다. `검토 요청`과 `출시하기`는
+누르지 않았다. 현재 연결된 물리 iOS 기기가 없고 Android ADB도 사용할 수
+없어 QR WebView의 학교 검색, 오늘/주간, 기록·XP 재실행 보존, 뒤로가기는
+완료 판정하지 않는다. 일반 브라우저에서 private host를 직접 여는 요청은
+HTTP 403이며 Toss WebView를 대체할 수 없다.
+
+공개 privacy/support 페이지는 HTTP 200이지만 native 전용 사진·부모 연결
+문구를 플랫폼 구분 없이 표시하는 정합성 문제가 확인됐다. feature branch의
+`marketing-site/dist/` 원본은 앱인토스 Lite v2와 iOS·Android 기능을 명확히
+구분하도록 수정했다. 공개 사이트 반영과 실제 WebView 접근은 별도 확인이
+필요하다.
