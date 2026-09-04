@@ -41,4 +41,18 @@ describe('NEIS client', () => {
     const client = createNeisClient({ proxyUrl: 'https://proxy.example', clientToken: 'token' });
     await expect(call(client)).rejects.toMatchObject({ kind: 'INVALID_RESPONSE' });
   });
+
+  it('rejects a sample meal returned through the live proxy boundary', async () => {
+    const data = {
+      date: '20260904',
+      menuItems: [{ id: '1', name: '현미밥', allergyCodes: [], nutrients: [], tags: [], sourceRawText: '현미밥' }],
+      calorie: null,
+      nutrition: null,
+      isSample: true,
+      notice: null,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data }) }));
+    const client = createNeisClient({ proxyUrl: 'https://proxy.example', clientToken: 'token' });
+    await expect(client.fetchMeals({ officeCode: 'B10', schoolCode: '1', date: '20260904' })).rejects.toMatchObject({ kind: 'INVALID_RESPONSE' });
+  });
 });

@@ -55,7 +55,7 @@ function isMealDay(value: unknown): value is MealDay {
     && value.menuItems.every(isMealItem)
     && isNullableString(value.calorie)
     && isNullableString(value.nutrition)
-    && typeof value.isSample === 'boolean'
+    && value.isSample === false
     && isNullableString(value.notice);
 }
 
