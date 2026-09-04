@@ -135,6 +135,19 @@ class NativeRebuildContractTests(unittest.TestCase):
             source,
         )
 
+    def test_ios_meal_schedule_header_has_a_bounded_height(self):
+        source = (
+            ROOT
+            / "NaymNaymLevelUp/Rebuild/Child/MealScheduleView.swift"
+        ).read_text(encoding="utf-8")
+        header = source.split("private var header: some View", 1)[1].split(
+            "@ViewBuilder", 1
+        )[0]
+
+        self.assertNotIn("maxHeight: .infinity", header)
+        self.assertIn("minHeight: 124", header)
+        self.assertIn("maxHeight: 124", header)
+
     def test_intro_logo_assets_match_exact_rgba_pixel_and_hash_contract(self):
         expected_hash = (
             "da503579fe0edba817c019a314c94856"

@@ -556,7 +556,7 @@ struct MealScheduleView: View {
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
             MealScheduleHeaderBackground()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
             LinearGradient(
                 colors: [
                     RebuildDesignTokens.cream50.opacity(0.38),
@@ -565,7 +565,7 @@ struct MealScheduleView: View {
                 startPoint: .topTrailing,
                 endPoint: .bottomLeading
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("급식표")
@@ -576,7 +576,12 @@ struct MealScheduleView: View {
             }
             .padding(18)
         }
-        .frame(maxWidth: .infinity, minHeight: 124, alignment: .bottomLeading)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: 124,
+            maxHeight: 124,
+            alignment: .bottomLeading
+        )
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[2],
