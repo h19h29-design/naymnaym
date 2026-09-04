@@ -328,6 +328,53 @@ line이 허용된
 `origin_denied` 두 건, `searchSchools` 200 `INFO-000` 두 건, `fetchMeals` 200
 `INFO-000` 두 건이다.
 
+### 초등학교 및 7일 범위 계약 확장
+
+NEIS 공식 `급식식단정보` Open API metadata를 read-only로 조회한 결과,
+`MLSV_FROM_YMD`와 `MLSV_TO_YMD`는 선택 request parameter이고
+`MLSV_YMD`는 실제 급식일자 response field다. 공식 `학교기본정보` metadata도
+`SCHUL_KND_SC_NM`을 선택 filter와 response field로 제공한다. 따라서 range를
+단일 upstream request로 보내고 각 row의 `MLSV_YMD`를 사용하는 구현은 공식
+계약에 근거한다.
+
+commit `3eb443799258604c765cd3f80b8eb230aace558a`에서 다음을 구현했다.
+
+- `SchoolType`을 `elementary | middle | high`로 확장하고 초등학교 filter를
+  NEIS의 `초등학교` 값으로 mapping한다.
+- 기존 `fetchMeals`는 유지하고 `fetchMealsRange`의
+  `{officeCode, schoolCode, fromDate, toDate}`를 추가한다.
+- range는 UTC calendar 기준 양 끝을 포함해 1~7일만 허용한다. 역순, 실제로
+  존재하지 않는 날짜, 8일 이상, extra key는 upstream 호출 전에 거부한다.
+- range는 `MLSV_FROM_YMD`와 `MLSV_TO_YMD`를 이용한 upstream 한 번만
+  사용한다. DB, cache, 날짜별 fan-out은 추가하지 않았다.
+- range의 `INFO-200` 또는 정상 empty rows는 HTTP 200 `{ok:true,data:[]}`다.
+  기존 단일 날짜 no-data의 HTTP 404 `NO_DATA`는 바꾸지 않았다.
+
+실제 NEIS read-only 확인에서는 `서울등촌초등학교`가 office code `B10`,
+school code `7081436`으로 검색됐고 `20260601`~`20260607` 한 번의 range
+요청은 실제 row 날짜 `20260601`, `20260602`, `20260604`, `20260605`를
+반환했다.
+
+같은 commit SHA로 전용 image를 rebuild하고 `neis-proxy-proxy-1` container
+하나만 recreate했다. 기존 DSM reverse-proxy rule과 ContainerManager package는
+변경하지 않았다. container 내부 runtime source 6개의 hash는 해당 commit과
+모두 일치했고 기존 mode-600 환경 파일도 변경되지 않았다. public TLS smoke는
+다음을 통과했다.
+
+```text
+PASS: health
+PASS: both verified OPTIONS origins
+PASS: wrong Origin denied
+PASS: school search
+PASS: elementary school search
+PASS: June 2026 meal with allergens, calories, and nutrition
+PASS: seven-day elementary meal range with actual NEIS dates
+```
+
+최종 safe log는 `fetchMealsRange` 200 `INFO-000` 한 건을 포함해 모두 허용된
+diagnostic key만 사용했고 URL, environment key 이름, 학교명과 학교 코드는
+포함하지 않았다.
+
 ### Rollback
 
 rollback은 새 리소스 두 개만 대상으로 한다. 먼저 위 UUID가 여전히 target

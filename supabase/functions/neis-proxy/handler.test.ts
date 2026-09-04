@@ -617,11 +617,11 @@ Deno.test("fetches an inclusive seven-day range once and uses row dates", async 
         {
           row: [
             {
-              MLSV_YMD: "20260601",
+              MLSV_YMD: "20260227",
               DDISH_NM: "현미밥<br/>닭갈비(5.6.15.)",
             },
             {
-              MLSV_YMD: "20260604",
+              MLSV_YMD: "20260304",
               DDISH_NM: "보리밥<br/>두부조림(5.)",
             },
           ],
@@ -633,8 +633,8 @@ Deno.test("fetches an inclusive seven-day range once and uses row dates", async 
     payload: {
       officeCode: "B10",
       schoolCode: "7081436",
-      fromDate: "20260601",
-      toDate: "20260607",
+      fromDate: "20260227",
+      toDate: "20260305",
     },
   }));
 
@@ -642,13 +642,13 @@ Deno.test("fetches an inclusive seven-day range once and uses row dates", async 
   assertEquals(calls, 1);
   assertEquals(upstreamUrl?.pathname, "/hub/mealServiceDietInfo");
   assertEquals(upstreamUrl?.searchParams.get("MLSV_YMD"), null);
-  assertEquals(upstreamUrl?.searchParams.get("MLSV_FROM_YMD"), "20260601");
-  assertEquals(upstreamUrl?.searchParams.get("MLSV_TO_YMD"), "20260607");
+  assertEquals(upstreamUrl?.searchParams.get("MLSV_FROM_YMD"), "20260227");
+  assertEquals(upstreamUrl?.searchParams.get("MLSV_TO_YMD"), "20260305");
   const result = await body(response);
   assertEquals(result.ok, true);
   assertEquals(
     (result.data as Array<{ date: string }>).map((meal) => meal.date),
-    ["20260601", "20260604"],
+    ["20260227", "20260304"],
   );
 });
 
