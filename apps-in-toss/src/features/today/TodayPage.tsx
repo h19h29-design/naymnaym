@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GrowthCard } from '../../components/GrowthCard';
+import { recordIdentity } from '../../domain/progress';
 import { formatKoreanDate, getSeoulDateKey } from '../../domain/date';
 import { hasAllergyRisk } from '../../domain/allergy';
 import type { MealDay } from '../../domain/types';
@@ -46,7 +47,7 @@ export function TodayPage() {
       {view.warning && <p className="warning" role="status">{view.warning} 저장된 급식을 보여드려요.</p>}
       {view.source === 'demo' && <p className="demo-note">체험 급식의 선택과 XP는 저장되지 않아요.</p>}
       <div className="meal-list">{view.meal.menuItems.map((item) => {
-        const record = state.mealRecords.find((entry) => entry.identity === `${view.meal.date}|${item.name.trim()}`);
+        const record = state.mealRecords.find((entry) => entry.identity === recordIdentity(view.meal.date, item.name));
         return <MealCard key={item.id} item={item} risky={hasAllergyRisk(item.allergyCodes, profile.allergyCodes)} selected={record?.status} onStatus={(status) => { if (view.source !== 'demo') void recordMeal(view.meal.date, item.name, status).then(() => setFeedback(true)); }} />;
       })}</div>
     </section>}

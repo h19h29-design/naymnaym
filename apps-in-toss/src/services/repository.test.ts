@@ -73,4 +73,19 @@ describe('v2 repository', () => {
     expect(await repo.load()).toEqual(first);
     expect(map.has(LEGACY_KEYS.records)).toBe(true);
   });
+
+  it('drops a malformed legacy meal cache without dropping valid profile or XP', async () => {
+    const profile = { nickname: '나', school: { name: '한빛중', officeCode: 'B10', schoolCode: '1', region: '서울', address: '서울', schoolType: 'middle' }, allergyCodes: [] };
+    const { map, port } = memoryStorage({
+      [LEGACY_KEYS.profile]: JSON.stringify(profile),
+      [LEGACY_KEYS.progress]: JSON.stringify({ totalXp: 77 }),
+      [LEGACY_KEYS.cache]: JSON.stringify([{ key: 'B10:1:20260904', meal: { date: '20260904', menuItems: 'not-an-array', isSample: false }, savedAt: '2026-09-04T03:00:00.000Z' }]),
+    });
+    const state = await createRepository(port).load();
+    expect(state.profile?.school.name).toBe('한빛중');
+    expect(state.totalXP).toBe(77);
+    expect(state.cache).toBeNull();
+    expect(state.cacheSavedAt).toBeNull();
+    expect(map.has(LEGACY_KEYS.cache)).toBe(true);
+  });
 });

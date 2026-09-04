@@ -1,19 +1,23 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { AITWriter } from '@apps-in-toss/ait-format';
 import { verifyRelease, verifyWebRelease } from './verify-release.mjs';
 
-const WEBP = Buffer.from('524946460400000057454250', 'hex');
+const APP_ROOT = new URL('../', import.meta.url);
+const TRUNCATED_WEBP = Buffer.from('524946460400000057454250', 'hex');
 
-async function fixture(root, unsafe = false) {
+async function fixture(root, unsafe = false, imageOverride = null) {
   await mkdir(join(root, 'assets'), { recursive: true });
   await mkdir(join(root, 'growth'), { recursive: true });
   await writeFile(join(root, 'index.html'), '<script type="module" src="/assets/app.js"></script>');
   await writeFile(join(root, 'assets/app.js'), unsafe ? 'NEIS_API_KEY' : 'console.log("safe")');
-  for (let level = 1; level <= 7; level += 1) await writeFile(join(root, `growth/level-${level}.webp`), WEBP);
+  for (let level = 1; level <= 7; level += 1) {
+    const image = imageOverride ?? await readFile(new URL(`public/growth/level-${level}.webp`, APP_ROOT));
+    await writeFile(join(root, `growth/level-${level}.webp`), image);
+  }
 }
 
 async function temporary(run) {
@@ -30,6 +34,11 @@ test('accepts the exact seven-stage web bundle', async () => temporary(async (ro
 test('rejects source-map or bundle secret markers', async () => temporary(async (root) => {
   await fixture(root, true);
   await assert.rejects(() => verifyWebRelease(root), /Forbidden release marker/);
+}));
+
+test('rejects a truncated RIFF/WEBP header with no decodable image structure', async () => temporary(async (root) => {
+  await fixture(root, false, TRUNCATED_WEBP);
+  await assert.rejects(() => verifyWebRelease(root), /exactly seven verified stage images/);
 }));
 
 test('accepts an SDK-format AIT with the console appName', async () => temporary(async (root) => {

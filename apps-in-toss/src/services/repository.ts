@@ -1,4 +1,4 @@
-import type { AppState, MealRecord, MealStatus, Profile } from '../domain/types';
+import type { AppState, MealDay, MealItem, MealRecord, MealStatus, Profile } from '../domain/types';
 import { normalizeMenuName, recordIdentity } from '../domain/progress';
 import type { StoragePort } from './storage';
 
@@ -32,6 +32,38 @@ function object(value: unknown): Record<string, unknown> | null {
 
 function numberList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is number => Number.isInteger(item) && item >= 1 && item <= 19) : [];
+}
+
+function stringList(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : null;
+}
+
+function mealItemFrom(value: unknown): MealItem | null {
+  const source = object(value);
+  const allergyCodes = source && Array.isArray(source.allergyCodes) && source.allergyCodes.every((code) => Number.isInteger(code) && code >= 1 && code <= 19) ? source.allergyCodes as number[] : null;
+  const nutrients = source ? stringList(source.nutrients) : null;
+  const tags = source ? stringList(source.tags) : null;
+  if (!source || typeof source.id !== 'string' || typeof source.name !== 'string' || !allergyCodes || !nutrients || !tags || typeof source.sourceRawText !== 'string') return null;
+  return { id: source.id, name: source.name, allergyCodes, nutrients, tags, sourceRawText: source.sourceRawText };
+}
+
+function nullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function mealDayFrom(value: unknown): MealDay | null {
+  const source = object(value);
+  if (!source || typeof source.date !== 'string' || !/^\d{8}$/.test(source.date) || !Array.isArray(source.menuItems) || source.isSample !== false || !nullableString(source.calorie) || !nullableString(source.nutrition) || !nullableString(source.notice)) return null;
+  const menuItems = source.menuItems.map(mealItemFrom);
+  if (menuItems.some((item) => item === null)) return null;
+  return { date: source.date, menuItems: menuItems as MealItem[], calorie: source.calorie, nutrition: source.nutrition, isSample: source.isSample, notice: source.notice };
+}
+
+function cacheFrom(value: unknown): AppState['cache'] {
+  const source = object(value);
+  const meal = mealDayFrom(source?.meal);
+  if (!source || typeof source.key !== 'string' || !source.key || !meal || typeof source.savedAt !== 'number' || !Number.isFinite(source.savedAt)) return null;
+  return { key: source.key, meal, savedAt: source.savedAt };
 }
 
 function profileFrom(value: unknown): Profile | null {
@@ -88,14 +120,15 @@ function stateFrom(value: unknown): AppState | null {
   if (source?.schemaVersion !== 2) return null;
   const records = recordsFrom(source.mealRecords);
   const totalXP = typeof source.totalXP === 'number' && source.totalXP >= 0 ? source.totalXP : 0;
+  const cache = cacheFrom(source.cache);
   return {
     schemaVersion: 2,
     profile: profileFrom(source.profile),
     mealRecords: records,
     totalXP,
     xpBaseline: typeof source.xpBaseline === 'number' && source.xpBaseline >= 0 ? source.xpBaseline : Math.max(0, totalXP - records.reduce((sum, record) => sum + record.xp, 0)),
-    cache: object(source.cache) as AppState['cache'],
-    cacheSavedAt: typeof source.cacheSavedAt === 'number' ? source.cacheSavedAt : null,
+    cache,
+    cacheSavedAt: cache ? cache.savedAt : null,
   };
 }
 
@@ -114,17 +147,20 @@ export function createRepository(storage: StoragePort) {
     const totalXP = typeof totalXPSource?.totalXp === 'number' && totalXPSource.totalXp >= 0 ? totalXPSource.totalXp : records.reduce((sum, record) => sum + record.xp, 0);
     const cacheValue = parse(cacheRaw);
     const oldCache = object(Array.isArray(cacheValue) ? cacheValue[0] : cacheValue);
-    const oldMeal = object(oldCache?.meal);
-    const cacheDate = typeof oldMeal?.date === 'string' ? oldMeal.date : null;
+    const oldMeal = mealDayFrom(oldCache?.meal);
+    const cacheDate = oldMeal?.date ?? null;
     const savedAt = typeof oldCache?.savedAt === 'number' ? oldCache.savedAt : typeof oldCache?.savedAt === 'string' ? Date.parse(oldCache.savedAt) || null : null;
+    const cache = oldCache && oldMeal && cacheDate && profile && savedAt !== null
+      ? { key: `${profile.school.officeCode}|${profile.school.schoolCode}|${cacheDate}`, meal: oldMeal, savedAt }
+      : null;
     const state: AppState = {
       ...EMPTY_STATE,
       profile,
       mealRecords: records,
       totalXP,
       xpBaseline: Math.max(0, totalXP - records.reduce((sum, record) => sum + record.xp, 0)),
-      cache: oldCache && oldMeal && cacheDate && profile ? { key: `${profile.school.officeCode}|${profile.school.schoolCode}|${cacheDate}`, meal: oldMeal as unknown as NonNullable<AppState['cache']>['meal'], savedAt: savedAt ?? 0 } : null,
-      cacheSavedAt: savedAt,
+      cache,
+      cacheSavedAt: cache ? savedAt : null,
     };
     await storage.setItem(STATE_KEY, JSON.stringify(state));
     return state;

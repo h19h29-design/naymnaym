@@ -8,6 +8,7 @@ import { EMPTY_STATE } from '../services/repository';
 import type { AppState } from '../domain/types';
 import { NeisClientError } from '../services/neisClient';
 import { getSeoulDateKey, weekKeys } from '../domain/date';
+import { recordIdentity } from '../domain/progress';
 
 const school = { name: '한빛초등학교', officeCode: 'B10', schoolCode: '123', region: '서울', address: '서울 마포구', schoolType: 'elementary' as const };
 const meal = { date: '20260904', menuItems: [{ id: 'm1', name: '현미밥', allergyCodes: [], nutrients: [], tags: [], sourceRawText: '현미밥' }], calorie: null, nutrition: null, isSample: false, notice: null };
@@ -85,5 +86,21 @@ describe('lite routes', () => {
     expect(screen.getByText('체험 급식의 선택과 XP는 저장되지 않아요.')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: '귀리밥 잘 먹음' }));
     expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('shows a saved status for canonically equivalent NFC and whitespace menu names', async () => {
+    const menuName = '김치   볶음밥';
+    const canonical = '김치 볶음밥';
+    const canonicalMeal = { ...meal, menuItems: [{ ...meal.menuItems[0], id: 'canonical', name: menuName, sourceRawText: menuName }] };
+    const state: AppState = {
+      ...EMPTY_STATE,
+      profile: { nickname: '나', school, allergyCodes: [] },
+      mealRecords: [{ identity: recordIdentity(meal.date, canonical), date: meal.date, menuName: canonical, status: 'oneBite', xp: 18, recordedAt: 1 }],
+      totalXP: 18,
+    };
+    setup('/today', state, { fetchMeals: vi.fn(async () => canonicalMeal) });
+    const button = (await screen.findByText('한 입 도전')).closest('button');
+    expect(button).not.toBeNull();
+    expect(button).toHaveAttribute('aria-pressed', 'true');
   });
 });
