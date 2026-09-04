@@ -276,6 +276,70 @@ health 200, runtime UID 1000, read-only/cap-drop/no-new-privileges,
 제한한다. 필요 시 DSM/edge 계층 rate limit은 실제 abuse 지표를 근거로
 추가한다.
 
+### NAS 배포 결과
+
+로컬 구현 commit `c815522afa0f32570aade2bc45d50d38e87290b4`를 먼저
+생성한 뒤 그 commit의 runtime 파일만 NAS application path에 전송했다.
+기존 NEIS key와 새 client token은 로컬 mode-600 env file을 거쳐 stdin으로
+전송했고 NAS 전용 env file을 `root:root`, mode `600`으로 생성했다. 값은
+명령행, 출력, 문서, Git, container log에 기록하지 않았다.
+
+Compose는 image를
+`local/neis-proxy:c815522afa0f32570aade2bc45d50d38e87290b4`로 tag하고
+새 project `neis-proxy`만 `up --detach --build`했다. 기존 container 수는
+78개에서 새 container 하나를 포함한 79개가 됐다. ContainerManager package의
+stop/start/restart는 호출하지 않았다.
+
+DSM reverse proxy는 지원 API `SYNO.Core.AppPortal.ReverseProxy.create`로 한
+건만 만들었다. 생성 결과는 `success=true`, `httpd_restart=true`였으며 최종
+entry는 다음과 같다.
+
+- UUID: `4cd66938-e026-4ba0-ad19-0c0503a49771`
+- frontend: HTTPS `neis.h19h19.synology.me:443`, HSTS enabled
+- backend: HTTP `127.0.0.1:18787`
+- connect/read/send timeout: 60초
+- custom header: 없음
+
+rule reload 직후 최초 public health 요청 한 번은 HTTP 200의 non-JSON body를
+받았다. 이후 응답은 nginx를 통해 HTTP 200,
+`application/json; charset=utf-8`, 정확히 `{ "ok": true }`였고 같은 현상이
+재현되지 않았다. 이는 reload 중의 일시 상태라는 추론이며 원시 응답은
+보존하지 않았다.
+
+secret-safe smoke 결과:
+
+```text
+PASS: health
+PASS: both verified OPTIONS origins
+PASS: wrong Origin denied
+PASS: school search
+PASS: June 2026 meal with allergens, calories, and nutrition
+```
+
+학교 검색은 `등촌고등학교`, office code `B10`, school code `7010700`을
+확인했다. 급식은 `20260601`의 실제 메뉴, 알레르기 번호, calorie, nutrition을
+NAS proxy를 통해 확인했다. 기본 TLS 검증을 끄는 option은 사용하지 않았다.
+
+container에는 두 번의 최종 smoke 요청으로 JSON log 10건만 남았다. 모든
+line이 허용된
+`requestId`, `action`, `status`, `durationMs`, `safeReason`,
+`neisResultCode` key의 부분집합이었고 URL, payload, token/key 이름, 학교명,
+학교 코드는 없었다. 결과는 OPTIONS 204 네 건, wrong-Origin 403
+`origin_denied` 두 건, `searchSchools` 200 `INFO-000` 두 건, `fetchMeals` 200
+`INFO-000` 두 건이다.
+
+### Rollback
+
+rollback은 새 리소스 두 개만 대상으로 한다. 먼저 위 UUID가 여전히 target
+host의 단일 rule인지 list API로 확인한 뒤
+`SYNO.Core.AppPortal.ReverseProxy.delete` version 1에
+`uuids=["4cd66938-e026-4ba0-ad19-0c0503a49771"]`를 전달한다. 그 다음 같은
+commit SHA를 `NEIS_PROXY_IMAGE_TAG`로 설정하고 해당 compose file에
+`--project-name neis-proxy down`을 실행한다. 이는 새 container와 project
+network만 내리며 다른 container나 ContainerManager package를 건드리지
+않는다. application 파일, image, mode-600 secret은 문제 분석과 빠른 재배포를
+위해 기본 rollback에서 삭제하지 않는다.
+
 ## 의존 순서
 
 1. 현재 출시본 또는 QR에서 실패 요청 하나를 재현해 origin, secret 없는
