@@ -45,4 +45,32 @@ describe('v2 repository', () => {
     await createRepository(port).clearAllConfirmed();
     expect(port.clearItems).toHaveBeenCalledOnce();
   });
+
+  it('maps every evidenced v1 eating status without losing awarded XP', async () => {
+    const legacy = [
+      ['finished', 'finished', 10],
+      ['half', 'oneBite', 12],
+      ['oneBite', 'oneBite', 18],
+      ['smelledOnly', 'skipped', 10],
+      ['difficultToday', 'skipped', 3],
+      ['allergyAvoided', 'skipped', 8],
+    ] as const;
+    const records = legacy.map(([status, , awardedXp], index) => ({
+      date: `2026090${index + 1}`, mealItemId: `m${index}`, mealName: `메뉴 ${index}`,
+      status, awardedXp, recordedAt: `2026-09-0${index + 1}T03:00:00.000Z`,
+    }));
+    const totalXp = legacy.reduce((sum, [, , xp]) => sum + xp, 40);
+    const { map, port } = memoryStorage({
+      [LEGACY_KEYS.progress]: JSON.stringify({ totalXp }),
+      [LEGACY_KEYS.records]: JSON.stringify(records),
+    });
+    const repo = createRepository(port);
+    const first = await repo.load();
+    expect(first.mealRecords.map((record) => record.status)).toEqual(legacy.map(([, mapped]) => mapped));
+    expect(first.mealRecords.map((record) => record.xp)).toEqual(legacy.map(([, , xp]) => xp));
+    expect(first.totalXP).toBe(totalXp);
+    expect(first.xpBaseline).toBe(40);
+    expect(await repo.load()).toEqual(first);
+    expect(map.has(LEGACY_KEYS.records)).toBe(true);
+  });
 });

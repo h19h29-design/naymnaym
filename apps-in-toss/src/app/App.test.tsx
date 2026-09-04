@@ -7,6 +7,7 @@ import { AppStateProvider } from '../state/AppStateProvider';
 import { EMPTY_STATE } from '../services/repository';
 import type { AppState } from '../domain/types';
 import { NeisClientError } from '../services/neisClient';
+import { getSeoulDateKey, weekKeys } from '../domain/date';
 
 const school = { name: '한빛초등학교', officeCode: 'B10', schoolCode: '123', region: '서울', address: '서울 마포구', schoolType: 'elementary' as const };
 const meal = { date: '20260904', menuItems: [{ id: 'm1', name: '현미밥', allergyCodes: [], nutrients: [], tags: [], sourceRawText: '현미밥' }], calorie: null, nutrition: null, isSample: false, notice: null };
@@ -32,6 +33,7 @@ describe('lite routes', () => {
     expect(screen.getByLabelText('고등학교')).toBeVisible();
     await userEvent.type(screen.getByLabelText('학교 이름'), '한빛');
     await userEvent.click(screen.getByRole('button', { name: '학교 검색' }));
+    expect(await screen.findByText('서울 · 초등학교')).toBeVisible();
     await userEvent.click(await screen.findByRole('button', { name: /한빛초등학교 선택/ }));
     await userEvent.click(screen.getByLabelText('우유'));
     await userEvent.click(screen.getByRole('button', { name: '시작하기' }));
@@ -57,6 +59,8 @@ describe('lite routes', () => {
     const { client } = setup('/week', state);
     expect(await screen.findByRole('heading', { name: '이번 주 급식' })).toBeVisible();
     await waitFor(() => expect(client.fetchMealsRange).toHaveBeenCalledOnce());
+    const dates = weekKeys(getSeoulDateKey());
+    expect(client.fetchMealsRange).toHaveBeenCalledWith(expect.objectContaining({ fromDate: dates[0], toDate: dates[6] }));
     expect(screen.getAllByTestId('week-day')).toHaveLength(7);
     expect(screen.getAllByText('급식이 없어요').length).toBeGreaterThanOrEqual(6);
   });
@@ -65,6 +69,8 @@ describe('lite routes', () => {
     const state: AppState = { ...EMPTY_STATE, profile: { nickname: '나', school, allergyCodes: [] } };
     const { repository } = setup('/settings', state);
     await screen.findByRole('heading', { name: '설정' });
+    expect(screen.getByRole('heading', { name: '앱 정보' })).toBeVisible();
+    expect(screen.getByText('급식레벨업 Lite v2')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: '모든 데이터 삭제' }));
     expect(repository.clearAllConfirmed).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: '삭제할게요' }));

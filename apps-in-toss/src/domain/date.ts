@@ -17,7 +17,9 @@ export function addDays(key: string, count: number) {
 }
 
 export function weekKeys(start: string) {
-  return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  const weekday = dateFromKey(start).getUTCDay();
+  const monday = addDays(start, -((weekday + 6) % 7));
+  return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
 }
 
 export function formatKoreanDate(key: string, includeWeekday = true) {

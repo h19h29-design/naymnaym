@@ -32,6 +32,7 @@ input[type="text"], input:not([type]) { width: 100%; border: 1px solid #d9c8b2; 
 .school-results { display: grid; gap: 8px; margin: 0 0 14px; }
 .school-results button { text-align: left; display: grid; gap: 3px; }
 .school-results button span { color: #75675e; font-size: .85rem; }
+.school-results button small { color: #8b7f76; font-size: .78rem; font-weight: 500; }
 .school-results .selected { border-color: #f07822; background: #fff0dd; }
 .selected-school { background: #fff0dd; padding: 12px; border-radius: 12px; }
 .allergy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

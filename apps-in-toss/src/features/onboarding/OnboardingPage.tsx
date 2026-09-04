@@ -5,6 +5,7 @@ import type { School, SchoolType } from '../../domain/types';
 import { useAppState } from '../../state/AppStateProvider';
 
 const schoolTypes: Array<[SchoolType, string]> = [['elementary', '초등학교'], ['middle', '중학교'], ['high', '고등학교']];
+const schoolTypeLabels = Object.fromEntries(schoolTypes) as Record<SchoolType, string>;
 
 export function OnboardingPage() {
   const { state, client, saveProfile } = useAppState();
@@ -46,7 +47,7 @@ export function OnboardingPage() {
       {status === 'loading' && <p aria-live="polite">학교를 찾는 중이에요…</p>}
       {status === 'error' && <p role="alert">학교 검색에 실패했어요. 잠시 후 다시 시도해 주세요.</p>}
       <div className="school-results">
-        {schools.map((school) => <button type="button" className={selected?.schoolCode === school.schoolCode ? 'selected' : ''} key={`${school.officeCode}-${school.schoolCode}`} aria-label={`${school.name} 선택`} onClick={() => setSelected(school)}><strong>{school.name}</strong><span>{school.address}</span></button>)}
+        {schools.map((school) => <button type="button" className={selected?.schoolCode === school.schoolCode ? 'selected' : ''} key={`${school.officeCode}-${school.schoolCode}`} aria-label={`${school.name} 선택`} onClick={() => setSelected(school)}><strong>{school.name}</strong><span>{school.region} · {schoolTypeLabels[school.schoolType]}</span>{school.address && <small>{school.address}</small>}</button>)}
       </div>
       {selected && <p className="selected-school">선택한 학교: <strong>{selected.name}</strong></p>}
       <label>별명 <span className="optional">선택</span><input value={nickname} maxLength={12} onChange={(event) => setNickname(event.target.value)} placeholder="입력하지 않으면 냠냠이" /></label>

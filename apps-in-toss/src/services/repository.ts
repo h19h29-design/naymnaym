@@ -53,8 +53,14 @@ function profileFrom(value: unknown): Profile | null {
 }
 
 const OLD_ACTIONS: Record<string, MealStatus> = {
-  difficultToday: 'skipped', smelledOnly: 'skipped', oneBite: 'oneBite', half: 'oneBite', finished: 'finished',
+  difficultToday: 'skipped', smelledOnly: 'skipped', allergyAvoided: 'skipped', oneBite: 'oneBite', half: 'oneBite', finished: 'finished',
 };
+
+function mealStatusFrom(value: unknown): MealStatus | null {
+  if (typeof value !== 'string') return null;
+  if (value === 'skipped' || value === 'oneBite' || value === 'finished') return value;
+  return OLD_ACTIONS[value] ?? null;
+}
 
 function recordsFrom(value: unknown, migrated = false): MealRecord[] {
   if (!Array.isArray(value)) return [];
@@ -63,8 +69,8 @@ function recordsFrom(value: unknown, migrated = false): MealRecord[] {
     const source = object(entry);
     const rawMenuName = typeof source?.menuName === 'string' ? source.menuName : source?.mealName;
     if (!source || typeof source.date !== 'string' || typeof rawMenuName !== 'string') continue;
-    const status = (source.status as MealStatus | undefined) ?? OLD_ACTIONS[String(source.action)];
-    if (!['skipped', 'oneBite', 'finished'].includes(status)) continue;
+    const status = mealStatusFrom(source.status) ?? mealStatusFrom(source.action);
+    if (!status) continue;
     const menuName = normalizeMenuName(rawMenuName);
     const identity = recordIdentity(source.date, menuName);
     seen.set(identity, {

@@ -20,7 +20,7 @@ export function WeekPage() {
     finally { setLoading(false); }
   }, [client, keys, school.officeCode, school.schoolCode]);
   useEffect(() => { void load(); }, [load]);
-  return <main className="page with-tabs"><header className="page-header"><div><p className="eyebrow">{school.name}</p><h1>이번 주 급식</h1><p>오늘부터 7일을 보여드려요.</p></div></header>
+  return <main className="page with-tabs"><header className="page-header"><div><p className="eyebrow">{school.name}</p><h1>이번 주 급식</h1><p>이번 주 월요일부터 일요일까지 보여드려요.</p></div></header>
     {loading && <section className="state-card" aria-live="polite">일주일 급식을 불러오는 중이에요…</section>}
     {error && <section className="state-card"><h2>주간 급식을 불러오지 못했어요</h2><p>{error}</p><button className="primary" onClick={() => void load()}>다시 시도</button></section>}
     {!loading && !error && <div className="week-list">{keys.map((key) => {
