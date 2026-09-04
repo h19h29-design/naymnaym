@@ -1,0 +1,42 @@
+{
+  "name": "nyam-apps-in-toss",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:release": "node --test scripts/verify-release.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "build:web": "vite build",
+    "verify:web": "node scripts/verify-release.mjs --web",
+    "build:ait": "npm run build:web && ait build",
+    "verify:release": "node scripts/verify-release.mjs"
+  },
+  "dependencies": {
+    "@nyam/neis-contract": "file:../supabase/functions/_shared/neis-contract",
+    "@apps-in-toss/web-framework": "3.3.0",
+    "@emotion/react": "11.14.0",
+    "@toss/tds-mobile": "2.5.1",
+    "@toss/tds-mobile-ait": "2.5.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "7.18.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "22.20.1",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "dotenv": "17.4.2",
+    "fflate": "0.8.2",
+    "jsdom": "29.1.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  }
+}
