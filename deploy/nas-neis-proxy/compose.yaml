@@ -1,0 +1,37 @@
+name: neis-proxy
+
+services:
+  proxy:
+    image: local/neis-proxy:${NEIS_PROXY_IMAGE_TAG:?NEIS_PROXY_IMAGE_TAG is required}
+    build:
+      context: ../..
+      dockerfile: deploy/nas-neis-proxy/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - /volume2/edubuzz/config/neis-proxy.env
+    ports:
+      - "127.0.0.1:18787:8000"
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - deno
+        - eval
+        - --allow-net=127.0.0.1:8000
+        - const r = await fetch("http://127.0.0.1:8000/health"); if (!r.ok) Deno.exit(1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

@@ -3,7 +3,8 @@
 조사 시각: 2026-09-04 (Asia/Seoul)
 
 이 문서는 코드 변경 전 출시 상태 조사와 이후 백엔드 복구 시도의 증거를
-구분해 기록한다. 앱인토스 콘솔 인증이 필요한 값은 아직 확정하지 않았다.
+구분해 기록한다. 후속 콘솔 조사로 확인한 값과 아직 확인하지 못한 값을
+아래에서 명시적으로 구분한다.
 
 ## Git 기준선
 
@@ -45,7 +46,7 @@ git rev-list --left-right --count origin/main...origin/codex/apps-in-toss-mvp
 | 재사용 후보 | 검증된 현재 상태 | 가져오기 전 필요한 변경 |
 | --- | --- | --- |
 | `apps-in-toss/package.json`, `package-lock.json`, `index.html`, `tsconfig*.json`, `vite.config.ts`, `vitest.setup.ts` | 독립 Granite/Vite/React 앱과 요청된 빌드·검증 스크립트가 있다. | SDK stable 버전과 마이그레이션 문서를 먼저 확인하고 lockfile을 그 결정 뒤 갱신한다. |
-| `apps-in-toss/granite.config.ts` | `appName`과 아이콘을 환경변수로 강제하고 displayName은 `급식레벨업`, 권한은 빈 배열이다. | 콘솔에서 immutable appName과 실제 아이콘을 확인한 뒤에만 운영 빌드에 사용한다. |
+| `apps-in-toss/granite.config.ts` | `appName`과 아이콘을 환경변수로 강제하고 displayName은 `급식레벨업`, 권한은 빈 배열이다. | 확인된 immutable appName `nyam-levelup`을 사용하고 실제 아이콘은 별도로 대조한다. |
 | `apps-in-toss/src/services/storage.ts` | 운영에서는 Apps in Toss `Storage`; 개발에서만 `localStorage` fallback을 쓴다. | 현재 Storage API가 선택한 SDK 버전에서 호환되는지 확인한다. |
 | `apps-in-toss/src/services/repository.ts` 및 테스트 | 기존 `nyam-toss:*:v1` 프로필·진행·기록·캐시 키, 직렬화, 삭제 경합 보호, pending feedback 복구가 있다. | `schemaVersion`, 초등학교, 최신 단일 `totalXP` 재계산 마이그레이션을 추가하고 성공 전 기존 키를 삭제하지 않는다. 기존 validation 실패 시 즉시 key를 지우는 동작도 마이그레이션 요구와 함께 재검토한다. |
 | `supabase/functions/_shared/neis-contract/`, `apps-in-toss/src/services/neisClient.ts`, `supabase/functions/neis-proxy/` 및 테스트 | 클라이언트/함수 공유 계약, text/plain POST, origin/token 경계, NEIS 정규화와 오류 테스트가 있다. | 계약을 먼저 확장한 뒤 프록시와 클라이언트를 같은 순서로 갱신한다. 현재 계약은 중·고교와 단일 날짜만 지원한다. |
@@ -87,9 +88,11 @@ git rev-list --left-right --count origin/main...origin/codex/apps-in-toss-mvp
 - proxy 계약은 `fetchMeals` 단일 날짜만 지원하고 최대 7일 range 요청이
   없다.
 - origin 설정에는 `nyam-levelup` 두 origin이 기본값으로 내장돼 있다.
-  이 값은 Git 커밋의 주장일 뿐 이번 조사에서 콘솔로 재확인하지 못했다.
+  후속 콘솔 조사로 immutable appName이 `nyam-levelup`임을 확인했으므로 두
+  origin은 현재 콘솔 identity와 일치한다.
 - release verifier도 `nyam-levelup`을 `PRODUCTION_CONSOLE_IDENTITY`로
-  하드코딩한다. 이것도 현재 콘솔의 직접 증거로 취급하지 않는다.
+  하드코딩한다. identity 자체는 확인됐지만 환경변수 기반 검증으로 바꿔야
+  다른 mini-app에 잘못 재사용되는 것을 막을 수 있다.
 - MVP의 tracked 파일 약 18.5 MB 중 public/release asset이 약 17.1 MB다.
   화면 축소와 최신 에셋 선별을 먼저 해야 한다.
 
@@ -110,9 +113,19 @@ Chrome 프로필 `화영`의 탭 `2007622603`에서
 - 현재 아이콘과 썸네일
 - 최신 승인본·반려본과 사유
 
-immutable appName을 확인하지 않은 상태에서 Git의 `nyam-levelup`을 사용해
-live/QR 주소를 추측하지 않았다. 따라서 출시본/QR의 실제 Origin, safe
-response, preflight, WebView UI 상태와 QR/live 차이는 아직 확보하지 못했다.
+후속 콘솔 조사에서 다음 identity는 확인됐다.
+
+- immutable appName: `nyam-levelup`
+- live Origin: `https://nyam-levelup.apps.tossmini.com`
+- QR/private Origin: `https://nyam-levelup.private-apps.tossmini.com`
+
+따라서 이 세 값은 더 이상 추정이 아니다. 출시 중 bundle과 Git commit의
+대응, entry path, 아이콘·썸네일의 파일 동일성은 별도 검증이 필요하다.
+
+초기 조사에서는 immutable appName을 확인하지 않은 상태에서 Git의
+`nyam-levelup`을 사용해 live/QR 주소를 추측하지 않았다. 후속 조사로 두
+Origin은 확인됐지만 출시본/QR의 safe response, preflight, WebView UI 상태와
+QR/live 차이는 아직 확보하지 못했다.
 다만 아래의 production endpoint 직접 재현과 Supabase 관리 API 조사로
 `INACTIVE` 상태가 현재 연결 장애의 원인임은 별도로 확인했다. CORS, secret,
 client token, 1.8초 timeout은 활성화 이후 확인해야 할 2차 위험이다.
@@ -178,8 +191,9 @@ Supabase CLI도 설치돼 있지 않다. 프로젝트가 비활성이라 runtime
 - `NEIS_ALLOWED_ORIGINS`
 - `NEIS_CLIENT_TOKEN`
 
-immutable appName을 콘솔에서 확인하기 전에는 hard-coded default origin이
-맞는지 판정하거나 CORS 설정을 바꾸지 않는다.
+후속 콘솔 조사로 hard-coded default origin 두 개가 정확함을 확인했다.
+Supabase secret의 존재 여부는 여전히 확인하지 못했으며, 비활성 프로젝트는
+더 이상 운영 backend로 사용하지 않는다.
 
 ## 직접 NEIS 기준 데이터 확인
 
@@ -211,27 +225,68 @@ PASS: first meal row includes MLSV_YMD, DDISH_NM, CAL_INFO, NTR_INFO
 - `upstream_timeout`, `upstream_http_error`, `neis_no_data`,
   `neis_rate_limited`, `response_parse_error` 등을 구분
 
-`npx --yes deno test supabase/functions/neis-proxy`는 36개 테스트가 모두
+`npx --yes deno test supabase/functions/neis-proxy`는 standalone server
+2개를 포함한 38개 테스트가 모두
 통과했고 runtime source lint, type check, formatting, `git diff --check`도
 통과했다. CORS default와 function secret은 변경하지 않았고 배포도 하지
 않았다.
 
+## NAS replacement architecture
+
+Supabase free-project 활성 한도에 다른 서비스를 종속시키지 않기 위해 NEIS
+proxy만 기존 NAS로 이동한다. 이 변경은 DB, volume, 계정, Toss console을
+추가하거나 수정하지 않는다.
+
+확인된 운영 입력:
+
+- DSM `7.4.1-90080`, Docker `24.0.2`, Compose `2.20.1`
+- 기존 ContainerManager는 실행 상태를 그대로 사용하며 package 단위의
+  stop/start/restart를 호출하지 않음
+- 기존 container 78개와 분리된 Compose project `neis-proxy`
+- container `8000/tcp`를 host `127.0.0.1:18787`에만 bind
+- public endpoint: `https://neis.h19h19.synology.me`
+- DSM wildcard DNS/certificate가 해당 host를 포함
+- secret은 NAS의 mode-600 전용 env file로만 전달
+- json-file log rotation: `max-size=10m`, `max-file=3`
+
+배포 전 read-only preflight에서 host port `18787`, Compose project 이름,
+application path, secret file, public reverse-proxy host가 모두 사용되지 않은
+상태임을 확인했다. DSM 설치 UI와 `SYNO.API.Info`를 조사해 지원 API가
+`SYNO.Core.AppPortal.ReverseProxy` version 1이고, create schema가 기존 list
+entry와 같은 `entry` object임을 확인했다. raw nginx/system config는 수정하지
+않는다.
+
+standalone server는 기존 `createHandler`를 그대로 사용한다. unauthenticated
+surface는 `GET /health`의 `{ "ok": true }`뿐이고, `POST /`와 `OPTIONS /`는 기존
+정확한 Origin, client token, body size, action/payload validation을 모두 거친다.
+그 밖의 path는 404, `/health`의 다른 method는 405다.
+
+container는 official `denoland/deno:alpine-2.9.6` multi-architecture image를
+immutable digest로 pin한다. runtime은 UID/GID 1000, read-only root filesystem,
+all Linux capabilities dropped, `no-new-privileges`, 16 MiB tmpfs로 실행한다.
+Deno 권한도 지정한 세 환경변수와 `0.0.0.0:8000`,
+`open.neis.go.kr:443` network access만 허용한다. 로컬 container preflight에서
+health 200, runtime UID 1000, read-only/cap-drop/no-new-privileges,
+`127.0.0.1:18787` bind와 wrong-Origin 403을 확인했다.
+
+남는 위험은 client token이 앱 bundle에서 추출 가능한 abuse 억제용 값일 뿐
+사용자 인증 수단이 아니라는 점, proxy 자체에 별도 IP rate limit이 없다는
+점, 단일 NAS와 DSM reverse proxy가 장애 지점이라는 점이다. NEIS의 429는
+재시도하지 않고 전달되며 Docker log rotation과 최소 권한으로 영향 범위를
+제한한다. 필요 시 DSM/edge 계층 rate limit은 실제 abuse 지표를 근거로
+추가한다.
+
 ## 의존 순서
 
-1. 보존된 Toss Business 탭에서 사용자가 로그인한 뒤 workspace `62825` /
-   mini-app `57196`의 identity, 버전, entry, scheme, 이미지, 심사 이력을
-   읽기 전용으로 캡처한다.
-2. 확인한 immutable appName으로 QR/live origin을 확정한다.
-3. 현재 출시본 또는 QR에서 실패 요청 하나를 재현해 origin, secret 없는
+1. 현재 출시본 또는 QR에서 실패 요청 하나를 재현해 origin, secret 없는
    request URL, status/error class, safe response, OPTIONS, UI 상태와 function
    log를 묶는다. 이 증거로 장애 분류를 확정한다.
-4. 승인받은 active project 정리 또는 요금제 결정 뒤 `nyam-levelup`을
-   복구한다. 그 다음 secret **존재 여부**와 실제 Origin을 확인하고 로컬
-   hardening을 배포한 뒤 proxy smoke를 실행한다.
-5. 실제 등촌고등학교 검색과 실제 급식 반환 후에만 client scaffold와 기존
+2. NAS Compose project와 전용 DSM reverse-proxy rule만 배포하고 local/public
+   health, 두 Origin의 OPTIONS, wrong-Origin 403, 실제 학교·급식을 검증한다.
+3. 실제 등촌고등학교 검색과 실제 급식 반환 후에만 client scaffold와 기존
    Storage migration을 연결한다.
-6. 오늘/주간/설정 UI를 4개 경로와 3개 탭으로 줄이고 최신 12단계 정책을
+4. 오늘/주간/설정 UI를 4개 경로와 3개 탭으로 줄이고 최신 12단계 정책을
    적용한다. 8~12단계 art는 별도 확인 없이는 생성하거나 꾸며내지 않는다.
-7. unit/type/web/release gate 뒤 기존 mini-app에만 test bundle을 올리고 iOS,
+5. unit/type/web/release gate 뒤 기존 mini-app에만 test bundle을 올리고 iOS,
    Android QR 및 live origin을 각각 확인한다. 검토 요청과 출시는 누르지
    않는다.
