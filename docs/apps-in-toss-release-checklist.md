@@ -24,7 +24,8 @@
 - [ ] Android QR: 학교 검색, 오늘/주간, 저장, 재실행, 뒤로가기
 - [x] live/private 두 Origin OPTIONS/POST와 CORS 확인
 - [ ] 새 bundle의 Edge/NAS safe log 확인
-- [ ] 개인정보 처리방침과 문의 URL 실제 WebView 접근 (로컬 문구 정합성 수정, 공개 반영 필요)
+- [x] 개인정보 처리방침·문의·데이터 안전 URL HTTP 200 및 Lite v2 문구 공개 반영
+- [ ] 개인정보 처리방침과 문의 URL 실제 QR WebView 접근
 - [ ] 흰 화면과 초기 loading 확인
 - [x] console icon/표시 이름 최종 육안 대조
 

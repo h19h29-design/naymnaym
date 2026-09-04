@@ -437,8 +437,16 @@ bundle을 한 건 등록했다.
 완료 판정하지 않는다. 일반 브라우저에서 private host를 직접 여는 요청은
 HTTP 403이며 Toss WebView를 대체할 수 없다.
 
-공개 privacy/support 페이지는 HTTP 200이지만 native 전용 사진·부모 연결
+공개 privacy/support 페이지는 HTTP 200이었지만 native 전용 사진·부모 연결
 문구를 플랫폼 구분 없이 표시하는 정합성 문제가 확인됐다. feature branch의
-`marketing-site/dist/` 원본은 앱인토스 Lite v2와 iOS·Android 기능을 명확히
-구분하도록 수정했다. 공개 사이트 반영과 실제 WebView 접근은 별도 확인이
-필요하다.
+`marketing-site/dist/` 원본을 앱인토스 Lite v2와 iOS·Android 기능을 명확히
+구분하도록 수정하고, 같은 세 페이지를 `gh-pages` commit
+`1ef929c16d8870639c75bfe8834477eb531d9de0`으로 배포했다. privacy, support,
+data-safety URL은 모두 HTTP 200이고 새 Lite v2 문구가 표시되며 과거
+`냠냠레벨업`/`1.0 공개 배포 후보` 표시는 없다. 실제 QR WebView에서 외부
+페이지가 열리는지는 물리 기기 테스트로 남는다.
+
+후속 검증 과정에서 CLI가 ignored `.ait`를 재생성했지만, 업로드 deployment
+ID와 생성 시각을 이용해 SDK writer의 동일 입력으로 artifact를 복원했다.
+현재 `apps-in-toss/nyam-levelup.ait`은 위 업로드 직전 크기와 SHA-256에 다시
+정확히 일치하며 `verify:release`를 통과한다.
