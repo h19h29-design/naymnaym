@@ -280,19 +280,17 @@ class RecordMealUseCaseTest {
     }
 
     @Test
-    fun legacyHalfAndMismatchedCanonicalIdentityAreRejectedWithoutWrites() = runTest {
+    fun activeHalfAwardsOnceWhileInvalidCanonicalIdentitiesAreRejected() = runTest {
         val store = FakeMealRecordingStore()
         val useCase = useCase(store)
 
-        val legacy = expectFailure<RecordMealException> {
-            useCase.execute(
-                command(
-                    recordID = "2026-07-25|시금치나물|half",
-                    status = EatingStatus.Half,
-                ),
-            )
-        }
-        assertEquals(RecordMealFailure.InactiveStatus, legacy.failure)
+        val half = useCase.execute(
+            command(
+                recordID = "2026-07-25|시금치나물|half",
+                status = EatingStatus.Half,
+            ),
+        )
+        assertEquals(RecordMealResult(12, 12, MotionState.MealSuccess), half)
 
         val mismatch = expectFailure<RecordMealException> {
             useCase.execute(command(recordID = "not-canonical"))
@@ -308,8 +306,8 @@ class RecordMealUseCaseTest {
             )
         }
         assertEquals(RecordMealFailure.InvalidRecordIdentity, impossibleDate.failure)
-        assertTrue(store.records.isEmpty())
-        assertTrue(store.events.isEmpty())
+        assertEquals(1, store.records.size)
+        assertEquals(1, store.events.size)
     }
 
     @Test
@@ -474,7 +472,7 @@ class RecordMealUseCaseTest {
     }
 
     @Test
-    fun xpPolicyCannotPromoteLegacyHalfToActive() {
+    fun xpPolicyRejectsLegacyReadCompatibleStatuses() {
         val policy = JSONObject(contractBytes("xp-policy.json").decodeToString())
         policy.put(
             "activeStatuses",

@@ -368,12 +368,12 @@ private data class XpPolicy(
                     activeSet.size == active.size &&
                     legacySet.size == legacy.size &&
                     activeSet.intersect(legacySet).isEmpty() &&
-                    legacySet == setOf(EatingStatus.Half.wireValue) &&
-                    activeSet + legacySet == knownStatuses &&
+                    legacySet.isEmpty() &&
+                    activeSet == knownStatuses &&
                     awardComponents == listOf("date", "normalizedMenuName") &&
                     awardIdentity == "{date}|{normalizedMenuName}" &&
                     !statusTransitionsGrantAdditionalXP &&
-                    statusXp.keys == activeSet + legacySet &&
+                    statusXp.keys == activeSet &&
                     statusXp.values.all { it >= 0 } &&
                     base >= 0 &&
                     challenge >= 0 &&
