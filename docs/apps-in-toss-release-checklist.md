@@ -20,15 +20,16 @@
 ## Phase 4 콘솔 및 실기기
 
 - [x] 기존 mini-app 57196에 test bundle `20260905-15` 등록 (SDK 3.3.0)
-- [ ] iOS QR: 학교 검색, 오늘/주간, 저장, 재실행, 뒤로가기
+- [x] iOS QR: Toss 앱에서 bundle 실행 및 초기 흰 화면 없음
+- [ ] iOS QR 세부: 학교 재검색, 기록 저장, 재실행 보존, 뒤로가기
 - [ ] Android QR: 학교 검색, 오늘/주간, 저장, 재실행, 뒤로가기
 - [x] live/private 두 Origin OPTIONS/POST와 CORS 확인
-- [ ] 새 bundle의 Edge/NAS safe log 확인
+- [x] 새 bundle의 NAS safe log 확인 (`fetchMealsRange` 200, `fetchMeals` 404 no-data)
 - [x] 개인정보 처리방침·문의·데이터 안전 URL HTTP 200 및 Lite v2 문구 공개 반영
 - [ ] 개인정보 처리방침과 문의 URL 실제 QR WebView 접근
-- [ ] 흰 화면과 초기 loading 확인
+- [x] iOS QR에서 앱 초기 로딩과 흰 화면 없음 확인
 - [x] console icon/표시 이름 최종 육안 대조
 
-test deployment ID는 `01a06cfb-ab5f-705d-b1b6-815f815f6cb0`이다. 콘솔 QR과 `intoss-private://nyam-levelup` scheme 발급까지 확인했다. 검토 호스트를 일반 브라우저로 직접 열면 HTTP 403이므로 Toss WebView 검증을 대신하지 않는다. 현재 Mac에 물리 iOS 기기가 없고 Android ADB도 설치·연결되지 않아 위 실기기 항목은 완료 표시하지 않는다.
+test deployment ID는 `01a06cfb-ab5f-705d-b1b6-815f815f6cb0`이다. 콘솔 QR과 `intoss-private://nyam-levelup` scheme 발급 뒤 사용자가 iOS Toss 앱에서 실행을 확인했다. 같은 시점의 NAS safe log에는 `fetchMeals` 404 두 건과 `fetchMealsRange` 200 한 건이 기록됐다. 학교 재검색, 기록 저장, 재실행 보존, 뒤로가기는 각각 증거를 확보하지 않아 완료 표시하지 않는다. Android는 미검증 상태다.
 
-검토 요청과 출시하기는 별도 사용자 승인 전 누르지 않는다.
+사용자가 Android 미검증 위험을 명시적으로 수용한 뒤 2026-09-05 09:55 KST `20260905-15`의 검토 요청을 제출했다. 콘솔 상태는 `검토 중`이며 `출시하기`는 누르지 않았다.
