@@ -30,6 +30,7 @@ struct MascotRigView: View {
     let state: RebuildMotionState
     let reduceMotion: Bool
     let playbackRevision: Int
+    let isSpeaking: Bool
 
     @StateObject private var controller: MascotMotionController
     @StateObject private var loader = MascotRigLoader()
@@ -41,12 +42,14 @@ struct MascotRigView: View {
         level: Int,
         state: RebuildMotionState,
         reduceMotion: Bool,
-        playbackRevision: Int = 0
+        playbackRevision: Int = 0,
+        isSpeaking: Bool = false
     ) {
         self.level = level
         self.state = state
         self.reduceMotion = reduceMotion
         self.playbackRevision = playbackRevision
+        self.isSpeaking = isSpeaking
         _controller = StateObject(
             wrappedValue: MascotMotionController(
                 spec: Self.productionSpec
@@ -65,19 +68,23 @@ struct MascotRigView: View {
                     if loader.loadedLevel != level {
                         ProgressView()
                             .accessibilityHidden(true)
-                    } else if !controller.isPlaybackActive {
-                        rig(pose: controller.pose)
-                    } else {
-                        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) {
-                            _ in
+                    } else if shouldAnimateContinuously {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) {
+                            context in
                             rig(
-                                pose: controller.sampledPose()
+                                pose: renderedPose(at: context.date)
                             )
                         }
+                    } else {
+                        rig(pose: controller.pose)
                     }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("레벨 \(level) 냠냠 다람쥐")
+                .accessibilityLabel(
+                    isSpeaking
+                        ? "레벨 \(level) 냠냠 다람쥐가 말하는 중"
+                        : "레벨 \(level) 냠냠 다람쥐"
+                )
             }
         }
         .aspectRatio(1, contentMode: .fit)
@@ -105,6 +112,39 @@ struct MascotRigView: View {
 
     private var usesNeutralFallback: Bool {
         GrowthStageArtResolver.resolve(stageID: level).usesNeutralFallback
+    }
+
+    private var shouldAnimateContinuously: Bool {
+        controller.isPlaybackActive || (isSpeaking && !reduceMotion)
+    }
+
+    private func renderedPose(at date: Date) -> MascotPose {
+        let basePose = controller.isPlaybackActive
+            ? controller.sampledPose()
+            : controller.pose
+        guard isSpeaking, !reduceMotion else { return basePose }
+
+        let time = date.timeIntervalSinceReferenceDate
+        let speechWave = CGFloat(sin(time * 11.0))
+        let tailWave = CGFloat(sin((time * 8.0) + 0.8))
+        var pose = basePose
+        pose.bodyOffsetY += -1.8 * speechWave
+        pose.bodyScaleX *= 1 + (0.008 * speechWave)
+        pose.bodyScaleY *= 1 - (0.008 * speechWave)
+        pose.headRotation = .degrees(
+            pose.headRotation.degrees + (1.6 * Double(speechWave))
+        )
+        pose.leftArmRotation = .degrees(
+            pose.leftArmRotation.degrees + (1.2 * Double(speechWave))
+        )
+        pose.rightArmRotation = .degrees(
+            pose.rightArmRotation.degrees - (1.2 * Double(speechWave))
+        )
+        pose.tailRotation = .degrees(
+            pose.tailRotation.degrees + (2.6 * Double(tailWave))
+        )
+        pose.smiling = true
+        return pose
     }
 
     @ViewBuilder

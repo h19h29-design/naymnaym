@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import SwiftUI
 
@@ -258,6 +259,77 @@ final class MascotMotionController: ObservableObject {
             self.activeState = .idle
             self.playbackStartedAt = self.timeSource.now()
             self.pose = .rest
+        }
+    }
+}
+
+/// Stage 1 local voice output for the mascot.
+///
+/// The service intentionally uses Apple's on-device speech synthesizer so the
+/// mascot can react immediately without an API key or network dependency. AI
+/// can later provide the text while this remains the single playback layer.
+@MainActor
+final class MascotSpeechSynthesizer: NSObject, ObservableObject {
+    @Published private(set) var isSpeaking = false
+
+    private let synthesizer = AVSpeechSynthesizer()
+
+    override init() {
+        super.init()
+        synthesizer.delegate = self
+    }
+
+    func speak(_ text: String) {
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        guard !normalized.isEmpty else { return }
+
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+
+        let utterance = AVSpeechUtterance(string: normalized)
+        utterance.voice = AVSpeechSynthesisVoice(language: "ko-KR")
+        utterance.rate = 0.47
+        utterance.pitchMultiplier = 1.12
+        utterance.volume = 0.95
+        utterance.preUtteranceDelay = 0.04
+        utterance.postUtteranceDelay = 0.03
+        synthesizer.speak(utterance)
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
+        isSpeaking = false
+    }
+}
+
+extension MascotSpeechSynthesizer: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didStart utterance: AVSpeechUtterance
+    ) {
+        Task { @MainActor [weak self] in
+            self?.isSpeaking = true
+        }
+    }
+
+    nonisolated func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didFinish utterance: AVSpeechUtterance
+    ) {
+        Task { @MainActor [weak self] in
+            self?.isSpeaking = false
+        }
+    }
+
+    nonisolated func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didCancel utterance: AVSpeechUtterance
+    ) {
+        Task { @MainActor [weak self] in
+            self?.isSpeaking = false
         }
     }
 }
