@@ -46,6 +46,16 @@ enum RebuildDesignTokens {
     static let muted600 = Color(.sRGB, red: 98.0 / 255.0, green: 113.0 / 255.0, blue: 104.0 / 255.0, opacity: 1)
     static let danger700 = Color(.sRGB, red: 163.0 / 255.0, green: 58.0 / 255.0, blue: 53.0 / 255.0, opacity: 1)
 
+    // Stage 1 mascot/UI accent palette. These colors intentionally complement
+    // the forest identity instead of replacing it, so the home screen feels
+    // playful without becoming one large green surface.
+    static let sunny400 = Color(.sRGB, red: 1, green: 217.0 / 255.0, blue: 102.0 / 255.0, opacity: 1)
+    static let coral400 = Color(.sRGB, red: 1, green: 107.0 / 255.0, blue: 107.0 / 255.0, opacity: 1)
+    static let sky400 = Color(.sRGB, red: 101.0 / 255.0, green: 183.0 / 255.0, blue: 212.0 / 255.0, opacity: 1)
+    static let lavender200 = Color(.sRGB, red: 243.0 / 255.0, green: 232.0 / 255.0, blue: 1, opacity: 1)
+    static let indigo600 = Color(.sRGB, red: 63.0 / 255.0, green: 81.0 / 255.0, blue: 181.0 / 255.0, opacity: 1)
+    static let mint100 = Color(.sRGB, red: 231.0 / 255.0, green: 247.0 / 255.0, blue: 226.0 / 255.0, opacity: 1)
+
     static func color(_ token: ColorToken) -> Color {
         switch token {
         case .forest700:
