@@ -125,23 +125,23 @@ struct MascotRigView: View {
         guard isSpeaking, !reduceMotion else { return basePose }
 
         let time = date.timeIntervalSinceReferenceDate
-        let speechWave = sin(time * 11.0)
-        let tailWave = sin((time * 8.0) + 0.8)
+        let speechWave = CGFloat(sin(time * 11.0))
+        let tailWave = CGFloat(sin((time * 8.0) + 0.8))
         var pose = basePose
         pose.bodyOffsetY += -1.8 * speechWave
         pose.bodyScaleX *= 1 + (0.008 * speechWave)
         pose.bodyScaleY *= 1 - (0.008 * speechWave)
         pose.headRotation = .degrees(
-            pose.headRotation.degrees + (1.6 * speechWave)
+            pose.headRotation.degrees + (1.6 * Double(speechWave))
         )
         pose.leftArmRotation = .degrees(
-            pose.leftArmRotation.degrees + (1.2 * speechWave)
+            pose.leftArmRotation.degrees + (1.2 * Double(speechWave))
         )
         pose.rightArmRotation = .degrees(
-            pose.rightArmRotation.degrees - (1.2 * speechWave)
+            pose.rightArmRotation.degrees - (1.2 * Double(speechWave))
         )
         pose.tailRotation = .degrees(
-            pose.tailRotation.degrees + (2.6 * tailWave)
+            pose.tailRotation.degrees + (2.6 * Double(tailWave))
         )
         pose.smiling = true
         return pose
