@@ -277,7 +277,8 @@ struct TodayForestView: View {
                 level: currentLevel,
                 state: viewModel.motion,
                 reduceMotion: reduceMotion,
-                playbackRevision: viewModel.motionRevision
+                playbackRevision: viewModel.motionRevision,
+                isSpeaking: speechSynthesizer.isSpeaking
             )
             .frame(
                 width: proxy.size.width,
