@@ -44,8 +44,8 @@ struct GrowthView: View {
                     loadingState
                 }
             }
-            .background(RebuildDesignTokens.cream50)
-            .navigationTitle("나의 성장")
+            .background(CompanionPageBackdrop())
+            .navigationBarHidden(true)
         }
         .task(id: isActive) {
             guard isActive else { return }
@@ -83,6 +83,14 @@ struct GrowthView: View {
                 alignment: .leading,
                 spacing: RebuildDesignTokens.spacing[3]
             ) {
+                HStack {
+                    Label("나의 성장", systemImage: "leaf.fill")
+                        .font(.title2.weight(.heavy))
+                    Spacer()
+                    Text("한 입씩, 쑥쑥!").font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(RebuildDesignTokens.forest700)
+                .padding(.horizontal, 4)
                 currentCharacter(level: activeStageID)
                 progressCard(
                     snapshot: snapshot,
@@ -104,7 +112,7 @@ struct GrowthView: View {
                     .multilineTextAlignment(.center)
                     .padding(.bottom, RebuildDesignTokens.spacing[4])
             }
-            .padding(.horizontal, RebuildDesignTokens.spacing[4])
+            .padding(.horizontal, 16)
             .padding(.top, RebuildDesignTokens.spacing[3])
         }
         .refreshable {
@@ -114,25 +122,41 @@ struct GrowthView: View {
 
     private func currentCharacter(level: Int) -> some View {
         let art = GrowthStageArtResolver.resolve(stageID: level)
-        return VStack(spacing: RebuildDesignTokens.spacing[2]) {
+        return VStack(spacing: 0) {
+          ZStack(alignment: .topTrailing) {
+            Image("CompanionForestStage").resizable().scaledToFill()
+                .frame(height: 224).clipped().accessibilityHidden(true)
             if art.usesNeutralFallback {
                 MascotNeutralFallbackView(stageID: art.stageID)
-                .frame(width: 188, height: 188)
+                .frame(width: 224, height: 224)
+                .frame(maxWidth: .infinity)
             } else {
                 MascotRigView(
                     level: art.artStageID,
                     state: .idle,
-                    reduceMotion: reduceMotion
+                    reduceMotion: reduceMotion,
+                    isActive: isActive
                 )
-                .frame(width: 188, height: 188)
+                .frame(width: 224, height: 224)
+                .frame(maxWidth: .infinity)
             }
-
+            Label("Lv.\(level)", systemImage: "sparkles")
+                .font(.subheadline.weight(.heavy))
+                .foregroundStyle(RebuildDesignTokens.forest700)
+                .padding(10).background(.white.opacity(0.94), in: Capsule())
+                .padding(12)
+          }
+          VStack(spacing: 5) {
             Text(policy.title(for: level))
                 .font(RebuildDesignTokens.titleFont.bold())
                 .foregroundStyle(RebuildDesignTokens.forest700)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("너와 함께 조금씩 자라고 있어!")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(RebuildDesignTokens.muted600)
+          }
+          .frame(maxWidth: .infinity).padding(12).background(.white)
         }
-        .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity)
         .background(RebuildDesignTokens.cream50)
         .clipShape(
@@ -146,8 +170,9 @@ struct GrowthView: View {
                 cornerRadius: RebuildDesignTokens.radii[2],
                 style: .continuous
             )
-            .stroke(RebuildDesignTokens.cream100, lineWidth: 1)
+            .stroke(.white, lineWidth: 2)
         }
+        .shadow(color: RebuildDesignTokens.forest700.opacity(0.08), radius: 8, y: 3)
         .accessibilityIdentifier("growth_current_character")
     }
 

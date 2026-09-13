@@ -3,6 +3,18 @@ import XCTest
 
 @MainActor
 final class TodayForestViewModelTests: XCTestCase {
+    func testChangedAllergySettingsImmediatelyUpdateHighlightAndRecordingSafety() {
+        let model = makeViewModel(allergyCodes: [])
+        let item = RebuildMealItem.todayFixture(allergyCodes: [5, 6])
+        XCTAssertFalse(model.isAllergyRisk(item))
+        model.updateAllergyCodes([6, 6])
+        XCTAssertEqual(model.allergyCodes, [6])
+        XCTAssertTrue(model.isAllergyRisk(item))
+        XCTAssertFalse(model.isStatusEnabled(.oneBite, for: item))
+        model.updateAllergyCodes([2])
+        XCTAssertFalse(model.isAllergyRisk(item))
+        XCTAssertTrue(model.isStatusEnabled(.oneBite, for: item))
+    }
     func testAllSixStatusesArePresented() {
         XCTAssertEqual(
             TodayForestViewModel.activeStatuses,

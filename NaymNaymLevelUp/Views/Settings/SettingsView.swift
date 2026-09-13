@@ -6,15 +6,44 @@ struct SettingsView: View {
     @State private var nickname = ""
     @State private var showingSchoolSearch = false
     @State private var showingAllergies = false
+    @State private var savingAllergies = false
+    @State private var allergySaveFailed = false
     @State private var showingPrivacy = false
     @State private var showingSupport = false
     @State private var showingSources = false
     @State private var showingNicknameEditor = false
     @State private var showingParentConnection = false
+    @Environment(\.dailyReviewContainer) private var dailyReviewContainer
+    @State private var showingReviewDelete = false
+    @State private var reviewDeleteMessage: String?
+
+    private func settingsLabel(_ title: String, symbol: String, color: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(color)
+                .frame(width: 34, height: 34)
+                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+                .accessibilityHidden(true)
+            Text(title).foregroundStyle(RebuildDesignTokens.ink900)
+        }
+        .padding(.vertical, 3)
+    }
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    CompanionSectionBanner(
+                        title: "나의 작은 숲",
+                        subtitle: "\(appState.profile?.nickname ?? "친구")의 급식 모험\n학교와 알레르기를 챙겨요.",
+                        symbol: "person.crop.circle.fill",
+                        accent: RebuildDesignTokens.forest700
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
                 Section("프로필") {
                     Picker("사용자 모드", selection: Binding(
                         get: { appState.currentMode },
@@ -51,16 +80,24 @@ struct SettingsView: View {
                     Button {
                         showingSchoolSearch = true
                     } label: {
-                        Label("학교 다시 선택", systemImage: "building.columns")
+                        settingsLabel("학교 다시 선택", symbol: "building.columns.fill", color: Color(red: 0.2, green: 0.55, blue: 0.65))
                     }
                     Button {
                         appState.draftAllergyCodes = Set(appState.profile?.selectedAllergyCodes ?? [])
                         showingAllergies = true
                     } label: {
-                        Label("알레르기 정보 수정", systemImage: "checklist")
+                        settingsLabel("알레르기 정보 수정", symbol: "shield.lefthalf.filled", color: Color(red: 0.81, green: 0.4, blue: 0.3))
                     }
                 }
 
+                if DailyMealReviewAvailability.isEnabled {
+                    Section("AI 식단 평가 기록") {
+                        Text("평가는 이 기기에 보관돼요. 기록을 삭제해도 오늘 AI 사용 횟수는 초기화되지 않아요.").font(.footnote).foregroundStyle(.secondary)
+                        Button(role:.destructive) {showingReviewDelete=true} label: {Label("AI 평가 기록만 삭제",systemImage:"trash")}
+                            .disabled(dailyReviewContainer==nil).accessibilityIdentifier("daily_review_delete")
+                        if let reviewDeleteMessage {Text(reviewDeleteMessage).font(.footnote).foregroundStyle(.secondary)}
+                    }
+                }
                 Section("연결 상태") {
                     if appState.currentMode == .parent {
                         NavigationLink {
@@ -78,7 +115,7 @@ struct SettingsView: View {
                     NavigationLink {
                         ParentConnectionDiagnosticsView()
                     } label: {
-                        Label("연결 상태 자세히 보기", systemImage: "checkmark.shield")
+                        settingsLabel("연결 상태 자세히 보기", symbol: "checkmark.shield.fill", color: RebuildDesignTokens.forest500)
                     }
                 }
 
@@ -86,7 +123,7 @@ struct SettingsView: View {
                     NavigationLink {
                         DataManagementView()
                     } label: {
-                        Label("데이터 관리", systemImage: "internaldrive")
+                        settingsLabel("데이터 관리", symbol: "internaldrive.fill", color: Color(red: 0.56, green: 0.41, blue: 0.68))
                     }
                 }
 
@@ -123,9 +160,24 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(ThemeBackdrop(theme: appState.currentTheme).ignoresSafeArea())
-            .tint(AppColors.orange)
+            .background(CompanionPageBackdrop())
+            .tint(RebuildDesignTokens.forest700)
             .navigationTitle("설정")
+            .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog("AI 평가 기록만 삭제할까요?", isPresented: $showingReviewDelete, titleVisibility: .visible) {
+                Button("평가 기록 삭제", role: .destructive) {
+                    guard let dailyReviewContainer else { return }
+                    do {
+                        try DailyMealReviewStore(context: dailyReviewContainer.newBackgroundContext()).deleteAll()
+                        reviewDeleteMessage = "AI 평가 기록을 삭제했어요. 급식·성장 기록은 그대로예요."
+                    } catch {
+                        reviewDeleteMessage = "평가 기록을 삭제하지 못했어요. 기존 기록은 보존했어요."
+                    }
+                }
+                Button("취소", role: .cancel) {}
+            } message: {
+                Text("이 기기의 AI 평가 기록만 삭제하며 되돌릴 수 없어요. 급식 기록과 경험치는 유지해요.")
+            }
             .onAppear {
                 nickname = appState.profile?.nickname ?? ""
             }
@@ -143,8 +195,24 @@ struct SettingsView: View {
             .sheet(isPresented: $showingAllergies) {
                 NavigationStack {
                     AllergySelectionView(selectedCodes: $appState.draftAllergyCodes) {
-                        appState.updateAllergies(appState.draftAllergyCodes)
-                        showingAllergies = false
+                        guard !savingAllergies else { return }
+                        savingAllergies = true
+                        Task {
+                            defer { savingAllergies = false }
+                            do {
+                                try await appState.updateAllergies(appState.draftAllergyCodes)
+                                showingAllergies = false
+                            } catch {
+                                allergySaveFailed = true
+                            }
+                        }
+                    }
+                    .disabled(savingAllergies)
+                    .interactiveDismissDisabled(savingAllergies)
+                    .alert("알레르기 정보를 저장하지 못했어요", isPresented: $allergySaveFailed) {
+                        Button("확인", role: .cancel) {}
+                    } message: {
+                        Text("기존 설정은 유지됩니다. 잠시 후 다시 시도해 주세요.")
                     }
                     .navigationTitle("알레르기 수정")
                     .navigationBarTitleDisplayMode(.inline)

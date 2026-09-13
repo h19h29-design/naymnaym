@@ -28,8 +28,8 @@ require_plist_value() {
 
 app_dir="$1"
 configuration="$2"
-expected_marketing_version="${EXPECTED_MARKETING_VERSION:-1.2}"
-expected_build_number="${EXPECTED_BUILD_NUMBER:-34}"
+expected_marketing_version="${EXPECTED_MARKETING_VERSION:-1.3}"
+expected_build_number="${EXPECTED_BUILD_NUMBER:-35}"
 
 case "$configuration" in
   Debug) expected_platform="iphonesimulator" ;;

@@ -1,36 +1,155 @@
-# Squirrel Growth Redesign QA
-
-## Sources
-
-- Approved visual reference: `/Users/mac-mini/Downloads/ChatGPT Image 2026년 7월 12일 오후 03_59_08.png`
-- Editable Figma board: <https://www.figma.com/design/PzhrBaw0BuAMNTX4BPyfsM>
-- Combined comparison board: `build/verification/figma-squirrel-redesign-board-20260712.png`
-
-## Verified Screens
-
-- Intro / iPhone 16: `build/verification/squirrel-intro-iphone16-20260712.jpg`
-- Home / iPhone 16: `build/verification/squirrel-home-iphone16-20260712.jpg`
-- Character / iPhone 16: `build/verification/squirrel-character-iphone16-20260712.jpg`
-- Core / iPhone SE: `build/verification/squirrel-core-iphonese-20260712.jpg`
-- Connection states: `build/verification/squirrel-connection-states-20260712.jpg`
-- Intro animation: `build/verification/intro-animation-20260712.mp4`
-
-## Visual Audit
-
-- Character quality: seven consistent high-resolution squirrel stages; cream backgrounds removed without clipping the character.
-- Intro hierarchy: logo, current-level squirrel, state-aware mission, primary action, and secondary modes are readable in the first viewport.
-- Home hierarchy: current squirrel, level, progress, streak, challenge count, mission, and truthful parent connection state precede meal details.
-- Character hierarchy: current level, seven-stage evolution, functional tabs, current character, next reward, badges, XP, and history remain accessible.
-- Small screen: iPhone SE build and runtime verification passed; no overlapping controls or clipped primary text.
-- Accessibility: accessibility XXXL layouts were verified during Task 5 and Task 6 review.
-- Connection copy: child connected state is `보호자와 연결되었습니다`; parent connected state uses `{아이 이름}와 연결되었습니다`.
-- Data safety: existing live/demo/no-meal/error separation and allergy one-bite lock remain unchanged.
-
-## Verification
-
-- Full simulator suite: 109 passed, 0 failed.
-- iPhone 16 simulator build/run: passed.
-- iPhone SE simulator build/run: passed.
-- `git diff --check`: passed.
+# 홈 화면 리디자인 QA — 2026-09-12
 
 final result: passed
+
+이 결과는 iOS 홈 시각 비교와 이번 개인화 알레르기 동작의 검증 결과다. Android는 빌드·린트를 통과했으나 에뮬레이터 시각 검증 및 단위 테스트 컴파일 문제는 별도 잔여 사항이다. 배포 승인을 의미하지 않는다.
+
+## 비교 기준 및 증거
+
+- 원본: `/Users/mac-mini/Downloads/image-gen-1(20260912-040902).png`, 1448×1086 디자인 보드의 두 번째 홈 화면.
+- 구현: `design-output/2026-09-12-home-refresh/ios-home-final.jpg` 및 `ios-menu-allergy-final.jpg`.
+- 환경: Companion Animation QA, iPhone 17 Pro, iOS 26.5, 402×874pt. 캡처 도구 출력 368×800px. 웹 CSS 크기/브라우저 DPR은 해당 없음.
+- 상태: 체험 학교, 레벨 1, 0 XP, 등록 알레르기 6(밀), 메뉴 5개 중 해당 메뉴 2개. 실제 사용자 데이터가 아닌 QA용 체험 프로필.
+- 전체 보드와 최종 홈/메뉴 캡처를 한 비교 입력에 함께 열어 평가했다. 보드 내 전화 프레임과 다른 실제 기기 비율을 감안해 내용 영역의 위계·밀도·색을 비교했으며, 픽셀 단위 복제 일치를 주장하지 않는다.
+- 메뉴 확대 상태를 추가로 열어 경고 문구, 카드 간격, 텍스트 줄바꿈을 확인했다.
+
+## 다섯 가지 시각 점검
+
+- 서체: 기존 네이티브 한글 시스템 서체를 유지하고 제목/정보/보조문구의 굵기를 구분. 보드의 둥글고 친근한 위계를 반영. 최종 캡처에서 잘림 없음.
+- 간격: 16pt 좌우 여백, 12pt 섹션 간격, 238pt 내부 숲 무대, 큰 캐릭터, 하단 XP 띠, 3개 작은 정보 카드, 미션 카드. 기존 허전한 가로 캐릭터 패널을 대체.
+- 색: 외부 숲 배경은 사용자 요청대로 유지. 내부는 민트·크림·흰색, 주요 버튼은 코랄. 경고만 붉은 배경/방패 아이콘/문구로 구분.
+- 이미지: 승인된 전신 애니메이션과 새 파스텔 숲/급식판 그림 사용. 종이인형 관절 회전이나 코드로 그린 대체 삽화 없음. 무대에서 캐릭터의 크기·마스킹을 확인.
+- 내용: 실제 앱 이름 급식레벨업 유지. 없는 재화·출석·미션 보상을 만들지 않고 메뉴 수·개인 주의 메뉴 수·실제 XP만 표시. 상세에서는 원본 알레르기 정보를 삭제하지 않음.
+
+## 비교 이력과 수정
+
+1. P1: 설정 변경 후 홈의 알레르기 배열이 이전 값을 유지. TodayForestViewModel을 관찰 가능한 값으로 변경하고 설정→홈 동기화, 재빌드 프로필 영속 저장, 저장 실패 안내를 연결. 밀만 등록 후 홈 2개 메뉴 경고와 재실행 유지 확인.
+2. P2: 2열 메뉴 카드에서 긴 경고 문구가 3줄 이상 쌓임. 홈 문구를 `6. 밀 주의` 형태로 축약하고 배지 여백/테두리를 줄임. 최종 메뉴 캡처에서 한 줄로 읽히는 것을 재확인.
+3. 원본과 최종 캡처 동시 비교: 위 항목 해결 후 남은 P0/P1/P2 시각 이슈 없음. 원본의 가상 보상상점·코인·새 하단 탐색 구조는 요청 범위를 넘으므로 의도적으로 추가하지 않음.
+
+## 동작 및 테스트
+
+- iOS 전체 테스트: 593 passed, 0 failed, 0 skipped. 개인화 교집합 및 설정 변경 후 기록 안전 제한 테스트 포함.
+- 마지막 배지 문구/여백 수정 이후 iOS Build & Run 성공.
+- iOS 시뮬레이터: 설정→밀 선택→홈 반영→프로세스 재실행 후 유지 확인. 미역국/닭갈비에서 밀만 강조, 대두/닭고기는 상세의 중립 전체 정보로 유지.
+- 홈 CTA→당일 급식 상세→급식 기록→현미밥 한 입 도전→영양 안내→저장, 18 XP 반영 확인. 체험 기록은 실행 세션 범위다.
+- Android `assembleDebug` 및 `lintDebug`: 최종 수정 후 성공.
+- `git diff --check`: 통과.
+
+## 잔여 검증 한계
+
+- Android 단위 테스트는 기존 rebuild 클래스들의 unresolved reference로 `compileDebugUnitTestKotlin` 단계에서 중단됨. 앱 본체 빌드 실패는 아니지만 단위 테스트 통과로 보고할 수 없음.
+- Android 기기 렌더링, 작은 iPhone/iPad 및 최대 글자 크기의 스냅샷은 이번 최종 비교 범위에 포함하지 않음. 출시 전 기기별 확인 필요.
+- 배포·커밋·푸시는 수행하지 않음.
+
+## 생성 자산
+
+내장 ImageGen 도구로 생성했으며 Higgsfield/API 크레딧 생성은 사용하지 않음. 자산과 프롬프트는 `design-output/2026-09-12-home-refresh/`에 보관:
+
+- `pastel-forest-stage-v1.png` — 1448×1086 내부 무대.
+- `lunch-tray.png` — 1254×1254 투명 배경 급식판 삽화.
+- 각 자산의 `*-prompt.txt`.
+
+## 추가 검증: 나머지 네 탭 디자인 통일 (2026-09-12 23:12 KST)
+
+final result: passed
+
+사용자가 오늘 탭 스타일로 급식표·성장·도감·설정을 변경하는 방향을 승인한 후 구현했다. 범위는 네이티브 화면 구성과 장식이며 데이터·기록·알레르기 규칙·해금 조건·탐색 경로는 유지했다.
+
+### 시각 기준과 캡처
+
+- 기준: `design-output/2026-09-12-home-refresh/ios-home-final.jpg` (368×800px), 앞서 승인된 오늘 탭.
+- 변경 전/후: `design-output/2026-09-12-tabs-refresh/{meals,growth,collection,settings}-{before,after}.jpg`.
+- 큰 글자: 같은 폴더의 `{growth,collection,settings}-large-text.jpg`.
+- 기기: iPhone 17 Pro / iOS 26.5 / 402×874pt, 도구 출력 368×800px. 모두 같은 기기/캡처 밀도다. 웹 CSS 및 DPR은 해당 없음.
+- 상태: 체험 프로필, 레벨 1, 0 XP, 알레르기 밀. 비교는 서로 다른 탭의 위계와 디자인 언어 통일에 대한 것이며 홈 구성의 픽셀 단위 복제를 목표로 하지 않는다.
+- 기준 홈과 네 탭의 변경 후 화면을 한 입력에서 함께 열어 비교했다. 메뉴/카드/설정 항목의 문구가 읽히는 크기의 개별 캡처로 세부 상태도 확인했다.
+
+### 필수 시각 점검 및 결과
+
+- 서체: 한글 시스템 폰트를 유지. 제목은 굵은 제목 글꼴, 정보는 본문/보조 글꼴로 구분. 도감 중복 제목 제거. 접근성 큰 글자에서 배너 장식 캐릭터를 숨겨 텍스트 공간 확보.
+- 간격: 네 탭 좌우 여백을 16pt 계열로 정리. 성장 무대 224pt, 배너/카드의 둥근 모서리와 흰 테두리 적용. 설정은 원래 그룹형 리스트를 보존하여 편집 버튼 접근성을 유지.
+- 색: 크림·민트의 옅은 숲 배경, 급식표 청록, 성장 초록, 도감 연보라, 설정 그룹별 아이콘 색. 오늘 탭보다 데이터 읽기가 중요한 화면은 배경을 옅게 처리한 의도적 차이.
+- 이미지: 기존 파스텔 숲, 급식판, 캐릭터 자산 재사용. 별도 이미지 생성·과금 없음. 도감 해금 캐릭터는 작은 숲 카드, 미해금은 기존 따뜻한 실루엣과 잠금 아이콘으로 상태 구분.
+- 내용: 실제 XP/수집 수 유지. 새로운 보상·캐릭터·설정 기능을 가짜로 추가하지 않음. 설정의 안내/데이터 관리 및 기존 알레르기 수정 시트 유지.
+
+### 비교 이력
+
+1. 기존 화면: 성장 캐릭터의 빈 배경, 도감 중복 제목과 단색 썸네일, 설정의 단조로운 그룹 목록을 확인.
+2. 승인된 방향 구현 후 네 탭 캡처: 성장 무대/앨범 카드/프로필 배너/급식 안내 배너가 적용됨. 기능 버튼이 가려지거나 문구가 잘리는 새 P0/P1/P2 시각 이슈 없음.
+3. `accessibility-large`에서 성장·도감·설정 추가 확인 후 원래 `large`로 복원. 배너 문구 및 카드 정보 접근 가능.
+
+### 검증 및 범위 한계
+
+- iOS 전체 테스트: 593 통과, 실패 0, 건너뜀 0.
+- iOS Build & Run 성공, 네 탭 전환/급식표 주간·월간 전환/월간 날짜 상세 진입/도감 영양 탐험 선택/알레르기 설정 시트 진입 확인.
+- Android 최종 `assembleDebug` 및 `lintDebug`: 성공 (2분 53초).
+- Android 에뮬레이터 시각 검증과 기존 단위 테스트 컴파일 오류는 아직 미해결이며, 이번 결과는 Android 출시 검증 완료를 뜻하지 않는다.
+- 기존 빌드 캐시 경로를 재사용. 새 검증별 DerivedData 디렉터리를 만들지 않음.
+- 커밋·푸시·배포 미실행. 시뮬레이터는 새 성장 탭을 표시한 상태로 유지.
+
+## 추가 검증: 준비된 캐릭터 대화와 동작 (2026-09-13)
+
+### 구현 범위
+
+- iOS/Android 오늘 탭의 `냠냠이와 이야기하기`에서 열리는 오프라인 선택형 대화 화면을 추가했다. 6개 주제, 10개 준비된 응답을 제공한다.
+- 대기·듣기·생각·응원 4개 애니메이션을 1레벨 캐릭터에 추가했다. 상위 레벨의 기존 캐릭터는 유지한다. 각 클립은 생성 키 포즈 8개를 재생 프레임 121개로 보간한 것으로, 독립 제작 포즈 121개가 아니다.
+- 대화는 화면 세션의 메모리에만 최대 12개 메시지를 보관한다. AI 호출, 키, 자유 입력, 음성, 외부 전송, 영구 저장 및 XP 변경을 추가하지 않았다.
+- 알레르기 응답은 음식의 안전 여부를 판단하지 않고 보호자·선생님 확인을 안내한다. 기존 식사 기록과 알레르기 개인화 규칙을 변경하지 않았다.
+
+### 최종 검증 결과
+
+- iOS 전체 테스트: 596개 통과, 실패 0. 최종 결과 번들: `/tmp/nyam-dialogue-final-20260913.xcresult`. iPhone 17 Pro / iOS 26.5에서 빌드 및 실행 성공.
+- Android 전체 단위 테스트: 174개 통과, 실패/오류 0. `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug` 성공.
+- 기존 Android 테스트의 한글 경로 클래스패스 문제는 로컬 테스트 JAR을 ASCII 임시 경로로 복사하는 명시적 init 스크립트로 우회했다. `scripts/android-test-classpath.gradle`을 `-I`로 지정해야 하며, 기본 Gradle 호출 자체를 수정한 것은 아니다. 출시 의존성이나 배포 설정은 변경하지 않았다.
+- 새 Android 대화 UI 계측 테스트: API 35 에뮬레이터에서 기본 글자 크기 및 1.5배 글자 크기 각각 통과. 준비된 대화 표시, 알레르기 주제 선택과 응답, 닫기 동작 확인. 전체 계측 테스트 모음을 실행한 결과는 아니다.
+- iOS에서 대화 닫기·다시 열기 시 새 대화 시작, 홈 0 XP 유지 확인. 큰 글자와 다크 모드에서 제목·닫기·본문 접근을 확인했다. 테스트 후 밝은 화면과 기본 글자 크기로 복원했다.
+- 화면 비교 과정에서 상단 고정 캐릭터/닫기 접근, iOS 다크 모드 버튼 대비, 키 포즈 행 경계에 섞인 작은 잔상을 수정한 뒤 재검증했다.
+
+### 화면과 자산 증거
+
+- `.impeccable/review/conversation-iphone-light.png`, `conversation-iphone-reply.png`, `conversation-iphone-dark-large.png`.
+- `.impeccable/review/conversation-android-light.png`, `conversation-android-reply.png`, `conversation-android-large.png` (1080×2400).
+- `design-output/2026-09-13-companion-dialogue/four-reactions-preview.mp4`: 최종 4개 APNG의 모아보기.
+- Android의 기존 정적 라이트 테마를 유지했다. OS 야간 모드에서 새 다크 테마를 구현했다고 주장하지 않는다.
+- 실제 기기의 장시간 프레임 성능, 모든 Android 화면 크기/회전, 상위 레벨 신규 애니메이션은 이번 검증 범위 밖이다. 정지 캡처만으로 애니메이션의 모든 시간적 품질을 보증하지 않는다.
+- 실제 AI 연결, Higgsfield/외부 유료 생성 API, 커밋, 푸시, 배포는 수행하지 않았다.
+- Impeccable의 독립 마무리 리뷰 결과: `disposition: ship`. 최종 네이티브 캡처에서 수정이 필요한 시각적 결함 없음. 이 판정은 캡처된 UI 상태에 대한 것이며 스토어 출시 승인이나 실제 기기 장시간 애니메이션 성능 인증을 뜻하지 않는다.
+
+## 추가 검증: 선택형 영양 코치 (2026-09-13)
+
+- 급식 상세에 평가/먹었을 때/남겼을 때 질문을 추가했다. 기본 영양 안내와 실제 AI 응답 라벨을 구분하고, 메뉴 선택과 등록 알레르기 교집합을 로컬에서 처리한다. 식사 기록·XP는 변경하지 않는다.
+- 개별/부분 선택은 전체 식사 영양량을 전송하지 않는다. 개발 AI 동의문에는 질문 종류·대표 영양소 ID·임시 세션 ID와 전체 선택 시 전체 영양량 전송을 명시한다.
+- iOS 전체 XCTest 601개 통과, 최종 Build & Run 성공. iPhone 17 Pro/iOS 26.5에서 급식 상세 진입, 질문 표시, 기본 답변, 메뉴 변경 후 결과/알레르기 경고 초기화를 확인했다.
+- Android 전체 단위 테스트 188개, assembleDebug/lintDebug 통과. API 35 계측 기본/1.5배 글자 각각 1개 통과 후 1.0 복원. 이 결과는 새 코치 화면의 계측이며 전체 앱 계측 모음 통과를 뜻하지 않는다.
+- 서버 모의 제공자 테스트 13개 통과. 실제 제공자 호출 없이 입력·인증·비밀 분리·요청/응답 크기·동시성·실행당 상한·시간초과·출력 검증을 확인했다.
+- 캡처: `.impeccable/review/meal-coach-ios-{initial,answer}.jpg` (368×800), `.impeccable/review/meal-coach-android-{initial,answer,font-scale-1.5}.png` (1080×2400). Android 캡처는 합성 메뉴의 독립 코치 테스트 화면이다.
+- 독립 코드/증거 검토는 로컬 개발 프로토타입 범위 PASS, 중요 미해결 사항 없음. Android 손상된 1000 초과 영양값은 서버 거부 후 기본 안내로 복귀하는 비차단 대칭성 차이가 남는다.
+- 실제 Go 키 연결/실 API E2E, 일반 앱 용도 지원 확인, 외부 처리/보호자 동의 검토와 독립 아동 안전 평가는 미완료다. 문자열 필터는 보조 방어다. AI는 기본 비활성, 공개 운영 HOLD. 커밋·푸시·배포 미실행.
+
+### 후속: 사용자 키 제공 후 실제 개발 연결
+
+- 위 항목 중 키 연결/실제 개발 E2E는 완료했다. iOS 체험 급식 현미밥의 AI 설명 표시와 10 XP 유지 확인. Android 합성 메뉴 live UI 최종 1개 통과. 앞선 Android 시도는 대기 시간초과였고, 서버 진단에서 Go 200 후 출력 검증 거절(502)을 확인했다. 간헐적인 생성 답변 거절과 표현 품질은 남은 과제다.
+- 실제 화면 증거: `.impeccable/review/meal-coach-ios-live.png`, `.impeccable/review/meal-coach-android-live.png`. 둘 다 실제 제공자 응답이며 고정 응답을 AI로 표시한 것이 아니다.
+- 개발 토큰 설치 도우미 추가, 서버/설치 테스트 14개 통과. Android live 테스트는 명시적 `mealCoachLive=1`에서만 외부 호출한다. 일반 전체 테스트에서 사용자 키를 읽거나 유료 호출하지 않는다.
+- 원본 키는 서버 비밀 파일에만 유지하고 앱 내부 설정에는 별도 개발 토큰만 포함했다. 진단 서버 종료 후 요청/응답 내용을 기록하지 않는 기본 서버로 복귀했다. 일반 앱 용도·아동 안전·동의 검토 및 공개 배포 HOLD는 변경하지 않았다.
+
+### 후속: 응답 잘림과 근거 표현 보완
+
+- 고정된 실패 사유 코드를 도입한 뒤 합성 질문 3개 중 1개에서 출력 한도에 의한 잘림을 확인했다. JSON 모드·간결한 문장 예시를 추가하고 출력 여유를 1100 토큰으로 늘렸다. 기존 응답 안전 필터와 자동 재시도 금지는 유지했다.
+- 수량 없는 입력의 잘못된 수치 참조를 회귀 테스트와 서버 검증으로 차단했다. 새 검증 총 16개 PASS. 변경 전 실패하는 테스트를 확인한 후 구현했다.
+- 변경 후 직접 호출한 세 질문 HTTP 200(약 2.3~3.5초), iOS 현미밥 남김 질문 실제 AI 표시, Android live UI 1개 PASS(7.966초). 총 5개 실제 성공은 작은 표본이며 장기 안정성 보증은 아니다.
+- iOS 최종 화면은 `/tmp/meal-coach-ios-improved.png`에서 직접 확인했다. 네이티브 코드/빌드는 이번 보완에서 변경하지 않았다. 일반 로컬 개발 서버만 새 코드로 재시작했다. 공개 배포 HOLD 유지, 커밋·푸시·배포 없음.
+
+## 하루 식단 AI 해설 v2 (2026-09-13)
+
+- 오늘 캐릭터 영역 및 급식표 날짜 상세에서 하루 한 번 AI 식단 해설을 요청하고 기기에 보관한다. `AI 영양 안내`/`AI가 생성한 영양 안내`를 명시하고 실패나 미연결은 `기본 영양 안내`로 구분한다. 실제 영양사 상담으로 표시하지 않는다.
+- 오늘 특징, 대표 영양소 역할, 눈여겨볼 메뉴, 남긴 경우 다음 식사의 보완 안내를 제공한다. 현재 등록 알레르기와 겹치는 후보는 전송 전 제외하고 저장된 추천도 현재 설정으로 다시 숨긴다. 식단 원본 수치는 AI 문장과 구분하여 표시한다.
+- iOS Core Data 및 Android Room 저장소를 확장했다. 기존 식사·성장 기록은 유지하고, AI 평가만 삭제하는 확인창을 제공한다. 앱 삭제/기기 교체의 기록 복구는 보장하지 않는다고 알린다. 급식 조회가 비어도 해당 날짜에 이미 저장된 평가를 볼 수 있다.
+- 서버 테스트 32개 통과. 한국 날짜·하루 성공 1회·최대 제공자 시도 3회·재시작 후 한도 유지·90초 동일 요청 복구·JSON 키 순서 정규화·동시성·크기·안전·인증 검증을 포함한다. DB에는 응답 내용이 아닌 최소 사용 장부만 저장한다.
+- iOS 전체 XCTest 615개 통과, 실패/경고 0. Debug 빌드·설치·실행 및 unsigned Release simulator 빌드 성공. 기존 모델에서의 마이그레이션과 백업, 손상 기록 보존, 화면 재생성 후 pending ID 복구, 저장 실패 후 추가 호출 없는 재저장 검증을 포함한다. 독립 코드 검토의 두 지적을 수정 후 재검토 PASS.
+- 실제 iOS 체험 식단의 새 v2 요청 한 번이 성공했다. 앱 재실행 후 같은 생성 시각의 평가가 열렸고, 장부 조회는 시도 1/성공 1이었다. 추가 생성을 위해 장부를 초기화하지 않았다. 기존 체험 모드 XP는 메모리 기반이므로 재실행 초기값과 영구 성장 데이터 보존을 혼동하지 않는다.
+- 화면 증거: `.impeccable/review/daily-review-ios-live-reopened.png`, `daily-review-ios-large.png`. 큰 Dynamic Type에서 제목/본문 줄바꿈 및 스크롤, 고정 닫기 접근 확인 후 기본 large 크기로 복원했다. 실제 저장 기록 삭제는 확인창에서 취소했다.
+- 공개 배포/커밋/푸시 없음. 실제 Go 검증은 개발 환경의 작은 표본이며 상시 성공률·영양학적 정확성·아동 안전을 보증하지 않는다. Go 일반 앱 사용 허용, 운영 사용자 인증·비용 제한, 보호자 동의·외부 처리 고지·독립 안전 검토는 공개 출시 전 HOLD 항목이다.
+- Android 최종 전용 단위 테스트 20개, 화면/Room 계측 6개 모두 통과. 필수 전체 단위·Debug APK·테스트 APK·lint 빌드 성공. 화면 취소 후 요청 복구, 저장 취소 재전파, 빈 날짜 기록 진입, 저장 당시 수치와 g 단위 표시를 RED/GREEN으로 보강했다. 정상/1.5× 합성 화면을 직접 확인했다: `.superpowers/sdd/2026-09-13-daily-ai-meal-review/artifacts/daily-meal-review-android-saved-{normal,font-scale-1.5}.png`.
+- Android v2는 합성 응답/전송 테스트와 실제 에뮬레이터 UI 검증이며 실제 Go 또는 별도 로컬 HTTP 서버를 통과한 v2 E2E 검증은 아니다. iOS와 공유하는 개발용 하루 한도를 우회하지 않았다. 이 제한을 공개 출시 검증 완료로 확대 해석하지 않는다.

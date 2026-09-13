@@ -323,8 +323,25 @@ final class AppState: ObservableObject {
         profileStore.save(profile)
     }
 
-    func updateAllergies(_ codes: Set<Int>) {
+    func updateAllergies(_ codes: Set<Int>) async throws {
         guard var profile else { return }
+        if RebuildFeatureGate.isEnabled() {
+            guard let store = RebuildOnboardingAppStore.shared?.profileStore,
+                  let current = try await store.load(),
+                  current.school?.officeCode == profile.officeCode,
+                  current.school?.schoolCode == profile.schoolCode else {
+                throw RebuildOnboardingError.persistenceUnavailable
+            }
+            try await store.save(RebuildUserProfile(
+                id: current.id,
+                role: current.role,
+                nickname: current.nickname,
+                school: current.school,
+                allergyCodes: codes.sorted(),
+                destination: current.destination,
+                isDemoMode: current.isDemoMode
+            ))
+        }
         profile.selectedAllergyCodes = codes.sorted()
         self.profile = profile
         profileStore.save(profile)

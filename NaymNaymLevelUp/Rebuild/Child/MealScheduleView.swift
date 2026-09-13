@@ -470,6 +470,7 @@ final class MealScheduleViewModel: ObservableObject {
 }
 
 struct MealScheduleView: View {
+    @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var viewModel: MealScheduleViewModel
@@ -522,9 +523,7 @@ struct MealScheduleView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                 }
-                .background(
-                    RebuildDesignTokens.semanticPalette(.background).surface
-                )
+                .background(CompanionPageBackdrop())
                 .onChange(of: mode) { _ in
                     selectedDate = anchorDate
                     if reduceMotion {
@@ -554,46 +553,15 @@ struct MealScheduleView: View {
     }
 
     private var header: some View {
-        ZStack(alignment: .bottomLeading) {
-            MealScheduleHeaderBackground()
-                .frame(maxWidth: .infinity)
-            LinearGradient(
-                colors: [
-                    RebuildDesignTokens.cream50.opacity(0.38),
-                    RebuildDesignTokens.cream50.opacity(0.92),
-                ],
-                startPoint: .topTrailing,
-                endPoint: .bottomLeading
+        VStack(spacing: 10) {
+            CompanionSectionBanner(
+                title: "급식표",
+                subtitle: "오늘은 어떤 맛을 만날까?",
+                symbol: "calendar",
+                accent: Color(red: 0.12, green: 0.46, blue: 0.55),
+                showsLunch: true
             )
-            .frame(maxWidth: .infinity)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("급식표")
-                    .font(.largeTitle.bold())
-                    .foregroundStyle(RebuildDesignTokens.ink900)
-                    .accessibilityAddTraits(.isHeader)
-                headerMetadata
-            }
-            .padding(18)
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 124,
-            maxHeight: 124,
-            alignment: .bottomLeading
-        )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: RebuildDesignTokens.radii[2],
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: RebuildDesignTokens.radii[2],
-                style: .continuous
-            )
-            .stroke(RebuildDesignTokens.forest500.opacity(0.18), lineWidth: 1)
+            headerMetadata.padding(.horizontal, 8)
         }
     }
 
@@ -713,6 +681,7 @@ struct MealScheduleView: View {
                     height: RebuildDesignTokens.minimumActionSize
                 )
                 .contentShape(Rectangle())
+                .background(Color.white.opacity(0.9), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
@@ -1370,9 +1339,12 @@ struct MealScheduleView: View {
                                 .font(.caption2)
                                 .foregroundStyle(RebuildDesignTokens.muted600)
                                 .fixedSize(horizontal: false, vertical: true)
-                            if !item.allergyLabels.isEmpty {
+                            if let style = MealAllergyVisualStyle.personalized(
+                                for: item,
+                                registeredCodes: appState.profile?.selectedAllergyCodes ?? []
+                            ) {
                                 allergyBadge(
-                                    item.allergyLabels.joined(separator: " · ")
+                                    style.title
                                 )
                             }
                         }
@@ -1401,7 +1373,7 @@ struct MealScheduleView: View {
         VStack(alignment: .leading, spacing: 10) {
             scheduleSectionHeading(
                 title: "알레르기 정보",
-                subtitle: "번호와 이름을 함께 표시"
+                subtitle: "등록한 알레르기만 강조해요"
             )
 
             if codes.isEmpty {
@@ -1415,7 +1387,14 @@ struct MealScheduleView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(codes, id: \.self) { code in
-                            allergyBadge(AllergyMap.label(for: code))
+                            if appState.profile?.selectedAllergyCodes.contains(code) == true {
+                                allergyBadge("나의 알레르기 주의: \(AllergyMap.label(for: code))")
+                            } else {
+                                Text(AllergyMap.label(for: code))
+                                    .font(.caption)
+                                    .foregroundStyle(RebuildDesignTokens.muted600)
+                                    .padding(8)
+                            }
                         }
                     }
                 }
@@ -1434,7 +1413,7 @@ struct MealScheduleView: View {
     private func allergyBadge(_ title: String) -> some View {
         let style = MealAllergyVisualStyle.risk(labels: [title])
         let palette = RebuildDesignTokens.semanticPalette(.safety)
-        return Label(style.title, systemImage: style.systemImage)
+        return Label(title, systemImage: style.systemImage)
             .font(.caption.weight(.semibold))
             .foregroundStyle(palette.foreground)
             .fixedSize(horizontal: false, vertical: true)

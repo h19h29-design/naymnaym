@@ -1,0 +1,26 @@
+// Local test workaround for Kotlin's inability to resolve app JARs under the
+// decomposed-Hangul checkout path. Applied explicitly with Gradle -I; no release
+// configuration, dependencies or source files are changed. Full tests still run.
+gradle.projectsEvaluated {
+    def app = gradle.rootProject.findProject(':app')
+    app.tasks.matching { it.name in ['compileDebugUnitTestKotlin', 'compileDebugAndroidTestKotlin'] }.configureEach { task ->
+        def originalClasses = new File(app.buildDir, 'intermediates/compile_app_classes_jar/debug/bundleDebugClassesToCompileJar/classes.jar')
+        def friendJar = '/tmp/nyam-test-ascii-classpath/' + task.name + '/' + Integer.toHexString(originalClasses.absolutePath.hashCode()) + '.jar'
+        task.compilerOptions.freeCompilerArgs.add('-Xfriend-paths=' + friendJar)
+        task.doFirst {
+            def originals = task.libraries.files
+            def replacements = [:]
+            originals.each { file ->
+                if (file.isFile() && file.name.endsWith('.jar') && file.absolutePath.startsWith(app.buildDir.absolutePath)) {
+                    def folder = new File('/tmp/nyam-test-ascii-classpath/' + task.name)
+                    folder.mkdirs()
+                    def target = new File(folder, Integer.toHexString(file.absolutePath.hashCode()) + '.jar')
+                    java.nio.file.Files.copy(file.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    replacements[file] = target
+                }
+            }
+            task.libraries.setFrom(originals.collect { replacements[it] ?: it })
+            println('ASCII_CLASSPATH: relocated ' + replacements.size() + ' local test jars')
+        }
+    }
+}

@@ -1,6 +1,7 @@
 import CoreData
 
 enum RebuildEntityName {
+    static let dailyMealReview = "RebuildDailyMealReview"
     static let profile = "RebuildProfile"
     static let mealDay = "RebuildMealDay"
     static let mealRecord = "RebuildMealRecord"
@@ -12,7 +13,7 @@ enum RebuildEntityName {
 }
 
 enum RebuildManagedModel {
-    static func make() -> NSManagedObjectModel {
+    static func make(includeDailyReview: Bool = true) -> NSManagedObjectModel {
         let model = NSManagedObjectModel()
         model.entities = [
             entity(
@@ -115,6 +116,11 @@ enum RebuildManagedModel {
                 uniqueKey: "id"
             ),
         ]
+        if includeDailyReview {
+            model.entities.append(entity(name: RebuildEntityName.dailyMealReview, managedObjectClass: NSManagedObject.self,
+                attributes: [attribute("id", type: .stringAttributeType), attribute("contextKey", type: .stringAttributeType),
+                             attribute("day", type: .stringAttributeType), attribute("payloadJSON", type: .stringAttributeType)], uniqueKey: "id"))
+        }
         return model
     }
 

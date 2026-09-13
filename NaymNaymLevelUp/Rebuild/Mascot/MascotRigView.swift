@@ -30,6 +30,7 @@ struct MascotRigView: View {
     let state: RebuildMotionState
     let reduceMotion: Bool
     let playbackRevision: Int
+    let isActive: Bool
 
     @StateObject private var controller: MascotMotionController
     @StateObject private var loader = MascotRigLoader()
@@ -41,12 +42,14 @@ struct MascotRigView: View {
         level: Int,
         state: RebuildMotionState,
         reduceMotion: Bool,
-        playbackRevision: Int = 0
+        playbackRevision: Int = 0,
+        isActive: Bool = true
     ) {
         self.level = level
         self.state = state
         self.reduceMotion = reduceMotion
         self.playbackRevision = playbackRevision
+        self.isActive = isActive
         _controller = StateObject(
             wrappedValue: MascotMotionController(
                 spec: Self.productionSpec
@@ -56,7 +59,9 @@ struct MascotRigView: View {
 
     var body: some View {
         Group {
-            if usesNeutralFallback || loader.canRetry(for: level) {
+            if CompanionPlayback.supports(level: level), let clip = CompanionClip(motion: state) {
+                CompanionAnimationView(clip: clip, reduceMotion: reduceMotion, playbackRevision: playbackRevision, isActive: isActive)
+            } else if usesNeutralFallback || loader.canRetry(for: level) {
                 MascotNeutralFallbackView(stageID: level)
             } else {
                 ZStack {
@@ -81,8 +86,8 @@ struct MascotRigView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .task(id: level) {
-            guard !usesNeutralFallback else { return }
+        .task(id: "\(level)-\(CompanionClip(motion: state) == nil)") {
+            guard !usesNeutralFallback, !CompanionPlayback.supports(level: level) || CompanionClip(motion: state) == nil else { return }
             await loader.load(level: level)
         }
         .onAppear {

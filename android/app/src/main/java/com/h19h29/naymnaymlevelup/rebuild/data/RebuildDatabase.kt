@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -15,8 +17,9 @@ import androidx.room.RoomDatabase
         SyncEnvelopeEntity::class,
         ParentLinkEntity::class,
         MigrationStateEntity::class,
+        DailyMealReviewEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class RebuildDatabase : RoomDatabase() {
@@ -28,14 +31,33 @@ abstract class RebuildDatabase : RoomDatabase() {
     abstract fun syncEnvelopeDao(): SyncEnvelopeDao
     abstract fun parentLinkDao(): ParentLinkDao
     abstract fun migrationStateDao(): MigrationStateDao
+    abstract fun dailyMealReviewDao(): DailyMealReviewDao
 
     companion object {
         const val DATABASE_NAME = "naym-rebuild.db"
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `daily_meal_reviews` (
+                        `id` TEXT NOT NULL,
+                        `profileKey` TEXT NOT NULL,
+                        `schoolKey` TEXT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `payloadJson` TEXT NOT NULL,
+                        `createdAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
 
         fun open(context: Context): RebuildDatabase = Room.databaseBuilder(
             context.applicationContext,
             RebuildDatabase::class.java,
             DATABASE_NAME,
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
     }
 }

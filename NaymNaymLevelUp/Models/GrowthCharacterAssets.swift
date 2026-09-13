@@ -10,4 +10,5 @@ enum GrowthCharacterPose: Equatable {
     case idle
     case wave
     case celebrate
+    case eating
 }

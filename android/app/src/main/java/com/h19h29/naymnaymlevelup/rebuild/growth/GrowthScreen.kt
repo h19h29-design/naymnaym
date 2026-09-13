@@ -1,6 +1,15 @@
 package com.h19h29.naymnaymlevelup.rebuild.growth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.h19h29.naymnaymlevelup.R
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -98,26 +107,21 @@ fun GrowthScreenContent(
         modifier = modifier
             .fillMaxSize()
             .testTag("growth_screen")
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f),
-                    ),
-                ),
-            )
-            .padding(horizontal = RebuildTokens.spacing[4].dp),
+            .background(Color(0xFFF4F8F0))
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[3].dp),
     ) {
         item {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+            Icon(Icons.Filled.Eco, null, tint = Color(RebuildTokens.Forest700))
             Text(
                 text = "나의 성장",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .padding(top = RebuildTokens.spacing[3].dp)
                     .semantics { heading() },
             )
+          }
         }
         item {
             Card(
@@ -131,22 +135,29 @@ fun GrowthScreenContent(
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(RebuildTokens.spacing[3].dp),
+                        .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                  Box(Modifier.fillMaxWidth().height(224.dp), contentAlignment = Alignment.Center) {
+                    Image(painterResource(R.drawable.companion_forest_stage), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                     MascotRig(
-            level = level.coerceAtMost(7),
+                        level = level.coerceAtMost(7),
                         state = MotionState.Idle,
                         reduceMotion = false,
-                        modifier = Modifier.size(188.dp),
+                        modifier = Modifier.size(224.dp),
                     )
+                    Text("Lv.$level", fontWeight = FontWeight.ExtraBold, color = Color(RebuildTokens.Forest700),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color.White, RoundedCornerShape(20.dp)).padding(10.dp))
+                  }
                     Text(
                         text = policy.title(level),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = Color(RebuildTokens.Forest700),
+                        modifier = Modifier.padding(top = 12.dp),
                     )
+                    Text("너와 함께 조금씩 자라고 있어!", style = MaterialTheme.typography.bodySmall,
+                        color = Color(RebuildTokens.Muted600), modifier = Modifier.padding(top = 5.dp, bottom = 12.dp))
                 }
             }
         }

@@ -1,6 +1,18 @@
 package com.h19h29.naymnaymlevelup.rebuild.growth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.Icon
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.h19h29.naymnaymlevelup.R
+import com.h19h29.naymnaymlevelup.rebuild.ui.CompanionSectionBanner
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,7 +58,7 @@ import com.h19h29.naymnaymlevelup.rebuild.mascot.MascotRestArt
 import com.h19h29.naymnaymlevelup.rebuild.meal.RebuildContractReader
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
 
-private enum class CollectionSection(
+internal enum class CollectionSection(
     val label: String,
     val category: CollectionBadgeCategory?,
 ) {
@@ -108,7 +120,7 @@ fun CollectionScreen(
 }
 
 @Composable
-private fun CollectionScreenContent(
+internal fun CollectionScreenContent(
     progress: CollectionProgress,
     policy: GrowthPolicy,
     selectedSection: CollectionSection,
@@ -123,7 +135,8 @@ private fun CollectionScreenContent(
         modifier = modifier
             .fillMaxSize()
             .testTag("collection_screen")
-            .padding(horizontal = RebuildTokens.spacing[4].dp),
+            .background(Color(0xFFF7F3FA))
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[3].dp),
     ) {
         item {
@@ -203,32 +216,23 @@ private fun CollectionHeader(
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
     ) {
         Column(
-            modifier = Modifier.padding(RebuildTokens.spacing[3].dp),
+            modifier = Modifier,
             verticalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[2].dp),
         ) {
-            Text(
-                text = "성장 도감",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color(RebuildTokens.Ink900),
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                text = "먹어 본 한 입이 캐릭터와 배지를 채워요.",
-                color = Color(RebuildTokens.Muted600),
-            )
+            CompanionSectionBanner("성장 도감", "한 입의 추억을 모아\n나만의 도감을 채워요.",
+                Icons.Filled.AutoStories, accent = Color(0xFF825A9B))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Color(RebuildTokens.Cream100),
+                        Color(0xFFF4EDFA),
                         RoundedCornerShape(RebuildTokens.radii[0].dp),
                     )
                     .padding(RebuildTokens.spacing[2].dp),
                 horizontalArrangement = Arrangement.spacedBy(RebuildTokens.spacing[2].dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("✦", color = Color(RebuildTokens.Forest500))
+                Icon(Icons.Filled.AutoAwesome, null, tint = Color(RebuildTokens.Forest500), modifier = Modifier.size(22.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = "전체 수집 $totalCollected / 50",
@@ -327,11 +331,17 @@ private fun CharacterTile(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
+                if (isUnlocked) {
+                    Image(painterResource(R.drawable.companion_forest_stage), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop, alpha = 0.65f)
+                }
                 MascotRestArt(
                     level = level.coerceAtMost(7),
                     silhouetteColor = if (isUnlocked) null else WarmLockedMascot,
                     modifier = Modifier.fillMaxSize().padding(RebuildTokens.spacing[2].dp),
                 )
+                Icon(if (isUnlocked) Icons.Filled.CheckCircle else Icons.Filled.Lock, null,
+                    tint = if (isUnlocked) Color(RebuildTokens.Forest500) else LockedGrowthText,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color.White, CircleShape).padding(6.dp).size(14.dp))
                 if (level >= 8) {
                     Text(
                         text = stageSymbol(level),

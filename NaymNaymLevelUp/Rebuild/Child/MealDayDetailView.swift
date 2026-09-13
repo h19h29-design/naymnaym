@@ -313,6 +313,7 @@ struct MealDayDetailView: View {
 
     @StateObject private var viewModel: MealDayDetailViewModel
     private let recordingViewModel: TodayForestViewModel?
+    @EnvironmentObject private var appState: AppState
     @State private var presentedSheet: PresentedSheet?
 
     init(
@@ -340,6 +341,13 @@ struct MealDayDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     stateContent
+                    if DailyMealReviewAvailability.isEnabled {
+                        DailyMealReviewView(
+                            meal: viewModel.meal ?? RebuildMealDay(date: route.dateKey, menuItems: [], calorie: "", nutrition: .empty),
+                            registeredAllergyCodes: appState.profile?.selectedAllergyCodes ?? recordingViewModel?.allergyCodes ?? [],
+                            showsSourceNutrition: viewModel.meal == nil
+                        )
+                    }
                     if canRecord {
                         recordButton
                     }
@@ -594,6 +602,10 @@ struct MealDayDetailView: View {
 
     private func allergySection(_ meal: RebuildMealDay) -> some View {
         let riskyItems = meal.menuItems.filter { !$0.allergyLabels.isEmpty }
+        let registeredCodes = recordingViewModel?.allergyCodes ?? appState.profile?.selectedAllergyCodes ?? []
+        let hasPersonalRisk = riskyItems.contains {
+            MealAllergyVisualStyle.personalized(for: $0, registeredCodes: registeredCodes) != nil
+        }
         let safety = RebuildDesignTokens.semanticPalette(.safety)
         return VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
             if riskyItems.isEmpty {
@@ -610,21 +622,30 @@ struct MealDayDetailView: View {
                     .foregroundStyle(RebuildDesignTokens.forest700)
             } else {
                 ForEach(Array(riskyItems.enumerated()), id: \.offset) { _, item in
-                    let style = MealAllergyVisualStyle.resolve(for: item)
+                    let style = MealAllergyVisualStyle.personalized(
+                        for: item,
+                        registeredCodes: recordingViewModel?.allergyCodes ?? appState.profile?.selectedAllergyCodes ?? []
+                    )
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(style.title, systemImage: style.systemImage)
-                            .font(RebuildDesignTokens.headlineFont)
+                        if let style {
+                            Label(style.title, systemImage: style.systemImage)
+                                .font(RebuildDesignTokens.headlineFont)
+                                .foregroundStyle(safety.foreground)
+                        }
                         Text(item.name)
                             .font(RebuildDesignTokens.bodyFont)
+                        Text("전체 정보: \(item.allergyLabels.joined(separator: " · "))")
+                            .font(.footnote)
+                            .foregroundStyle(RebuildDesignTokens.muted600)
                     }
-                    .foregroundStyle(safety.foreground)
+                    .foregroundStyle(RebuildDesignTokens.ink900)
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(RebuildDesignTokens.spacing[3])
-        .background(riskyItems.isEmpty ? Color.white : safety.surface)
+        .background(Color.white)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[0],
@@ -637,10 +658,8 @@ struct MealDayDetailView: View {
                 style: .continuous
             )
             .stroke(
-                riskyItems.isEmpty
-                    ? RebuildDesignTokens.forest500
-                    : safety.foreground,
-                lineWidth: riskyItems.isEmpty ? 1 : 2
+                hasPersonalRisk ? safety.foreground : RebuildDesignTokens.cream100,
+                lineWidth: hasPersonalRisk ? 2 : 1
             )
         }
         .accessibilityElement(children: .combine)

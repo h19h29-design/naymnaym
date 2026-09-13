@@ -1,0 +1,7 @@
+Use case: stylized-concept
+Asset type: small 88 by 88 point illustration for a native school meal game's mission card.
+Primary request: ONE cute rounded lunch tray by itself, a small bowl of white rice, a small bowl of gentle soup, broccoli and carrot side dishes neatly nestled on the tray. Three-quarter view from slightly above. Rounded tiny toy-like objects, charming pastel hand-painted children's mobile-game item art, gently dimensional rather than realistic food photography. The rice and soup are the main large shapes; the broccoli and carrots are tiny green and warm-orange accents. Soft cream tray and bowls, cheerful sunny highlights, polished game inventory icon silhouette, clear readability at 88 by 88 points.
+Composition: square image, centered single complete tray, full tray visible, no clipping, modest clear margin, compact clustered shape. Genuine transparent alpha background around the object; no background scene, no white background rectangle, no checkered background printed into image.
+Constraints: no text, no numbers, no words, no characters, no animals, no logo, no UI, no watermark. Toy-like illustration unmistakably not an actual menu photo. Do not include utensils.
+
+Execution: built-in image_gen.imagegen, one generation, no CLI or Higgsfield.

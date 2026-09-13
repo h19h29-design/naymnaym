@@ -1,0 +1,9 @@
+Use case: illustration-story
+Asset type: native mobile school meal game home hero background only.
+Primary request: Create ONE charming hand-painted pastel storybook forest clearing, landscape 4:3 image. The target on-screen consumer is approximately 350 by 260 points. Soft rounded mint trees frame the sides; light baby-blue sky with fluffy cream clouds; small delicate pink flowers and buttery yellow-green grass cluster at the bottom corners and side edges. Background art direction is a bright, gentle children's mobile game with softly painted rounded foliage and a luminous spring atmosphere, much lighter and softer than a realistic forest.
+Composition/framing: landscape 4:3. Keep the central 55 percent and lower center mostly open, light and low-detail for a separately rendered animated squirrel. A soft pale grassy clearing forms a gentle ground-contact plane around the bottom 20 percent. Border foliage can be richer but never dark. No dominant object in center. Avoid flat vector style; use polished softly dimensional hand-painted storybook art with subtle brush texture, smooth color transitions and lovely small floral details.
+Lighting/mood: airy diffuse daylight, welcoming and cheerful, pale mint, light blue, warm cream, buttery yellow, tiny pink accents.
+Constraints: BACKGROUND ONLY. No characters, no animals, no squirrel, no food, no words, no letters, no numbers, no UI, no panels, no phone frame, no border frame, no logo, no watermark. Full bleed landscape art.
+
+Execution: built-in image_gen.imagegen, one generation, no CLI or Higgsfield.
+Reference art was visually inspected for direction; no character or UI included.

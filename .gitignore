@@ -24,3 +24,6 @@ android/build/
 android/*.jks
 android/*.keystore
 android/keystore.properties
+android/*.hprof
+logs/
+.impeccable/

@@ -267,7 +267,7 @@ struct MealRecordingSheet: View {
     ) -> some View {
         let isRisk = viewModel.isAllergyRisk(item)
         let visual = MealVisualResolver.resolve(item: item)
-        let allergyStyle = MealAllergyVisualStyle.resolve(for: item)
+        let allergyStyle = MealAllergyVisualStyle.personalized(for: item, registeredCodes: viewModel.allergyCodes)
         let accessibility = MealAccessibilityDescriptor(
             item: item,
             visual: visual,
@@ -319,7 +319,7 @@ struct MealRecordingSheet: View {
                 .foregroundStyle(RebuildDesignTokens.muted600)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if !item.allergyLabels.isEmpty {
+            if let allergyStyle {
                 Label(
                     allergyStyle.title,
                     systemImage: allergyStyle.systemImage
@@ -608,8 +608,7 @@ struct MealRecordingSheet: View {
                         .foregroundStyle(RebuildDesignTokens.muted600)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if !item.allergyLabels.isEmpty {
-                        let allergyStyle = MealAllergyVisualStyle.resolve(for: item)
+                    if let allergyStyle = MealAllergyVisualStyle.personalized(for: item, registeredCodes: viewModel.allergyCodes) {
                         Label(
                             allergyStyle.title,
                             systemImage: allergyStyle.systemImage

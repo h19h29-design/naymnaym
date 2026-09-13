@@ -34,6 +34,7 @@ enum RebuildChildTab: String, CaseIterable, Identifiable {
 
 final class RebuildChildSessionStore: ObservableObject {
     let container: NSPersistentContainer?
+    let dailyReviewContainer: NSPersistentContainer?
     let nutrientImpactSidecar: any NutrientImpactSidecar
     let growthStageStateStore: (any GrowthStageStateStore)?
     let legacyRights: LegacyGrowthRights?
@@ -45,6 +46,8 @@ final class RebuildChildSessionStore: ObservableObject {
     ) {
         if profile.isDemoMode {
             container = try? RebuildPersistentStore.makeInMemory()
+            let directory=NSPersistentContainer.defaultDirectoryURL().appendingPathComponent("DailyReviewDemo",isDirectory:true)
+            dailyReviewContainer = persistentContainer ?? (try? RebuildPersistentStore.makePersistent(storeDirectory:directory))
             nutrientImpactSidecar = InMemoryNutrientImpactSidecar()
             growthStageStateStore = RebuildInMemoryGrowthStageStateStore()
             legacyRights = .empty
@@ -53,6 +56,7 @@ final class RebuildChildSessionStore: ObservableObject {
         }
 
         container = persistentContainer
+        dailyReviewContainer = persistentContainer
         growthStageStateStore = nil
         legacyRights = nil
         nutrientImpactSidecar = NoopNutrientImpactSidecar.shared
@@ -225,6 +229,7 @@ final class RebuildChildComposition: ObservableObject {
 }
 
 struct ChildNavigationView: View {
+    @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var composition: RebuildChildComposition
     @State private var selection: RebuildChildTab = .today
@@ -310,7 +315,18 @@ struct ChildNavigationView: View {
                 .tag(RebuildChildTab.settings)
         }
         .tint(RebuildDesignTokens.forest700)
+        .environment(\.dailyReviewContainer,composition.session.dailyReviewContainer)
         .accessibilityIdentifier("child_navigation")
+        .onAppear {
+            if let codes = appState.profile?.selectedAllergyCodes {
+                composition.todayViewModel.updateAllergyCodes(codes)
+            }
+        }
+        .onChange(of: appState.profile?.selectedAllergyCodes) { codes in
+            if let codes {
+                composition.todayViewModel.updateAllergyCodes(codes)
+            }
+        }
     }
 }
 

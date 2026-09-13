@@ -23,16 +23,16 @@ KO_METADATA = ROOT / "release/AppStoreMetadata/ko-KR.md"
 PRIVACY_DRAFT = ROOT / "release/AppStoreMetadata/app-privacy-draft.md"
 
 CURRENT_IOS_SCREENSHOT_MANIFEST = [
-    "01-onboarding-demo.jpg",
-    "02-today-meal-icons.jpg",
-    "03-weekly-meal.jpg",
-    "04-monthly-meal.jpg",
-    "05-selected-day-detail.jpg",
-    "06-eating-status-picker.jpg",
-    "07-allergy-safe-choice.jpg",
-    "08-growth-stage-roadmap.jpg",
-    "09-growth-next-unlock.jpg",
-    "10-parent-growth-summary.jpg",
+    "01-today-companion.jpg",
+    "02-character-conversation.jpg",
+    "03-daily-meal.jpg",
+    "04-weekly-meal.jpg",
+    "05-monthly-meal.jpg",
+    "06-selected-day-detail.jpg",
+    "07-eating-status-picker.jpg",
+    "08-growth-overview.jpg",
+    "09-growth-collection.jpg",
+    "10-settings.jpg",
 ]
 
 
@@ -351,7 +351,7 @@ class ReleaseReadinessContractTests(unittest.TestCase):
             flags=re.MULTILINE,
         )
         self.assertEqual(table_names, CURRENT_IOS_SCREENSHOT_MANIFEST)
-        self.assertIn("1.2", docs)
+        self.assertIn("1.3", docs)
         self.assertIn("정확히 10장", docs)
 
     def test_android_play_metadata_matches_authoritative_gradle_candidate(self):
@@ -383,14 +383,14 @@ class ReleaseReadinessContractTests(unittest.TestCase):
 
         self.assertRegex(
             status_checker,
-            r'(?m)^VERSION="\$\{ASC_VERSION:-1\.2\}"$',
+            r'(?m)^VERSION="\$\{ASC_VERSION:-1\.3\}"$',
         )
         self.assertRegex(
             status_checker,
-            r'(?m)^BUILD_NUMBER="\$\{ASC_BUILD:-34\}"$',
+            r'(?m)^BUILD_NUMBER="\$\{ASC_BUILD:-35\}"$',
         )
-        self.assertRegex(configurator, r"(?m)^ASC_VERSION=1\.2$")
-        self.assertRegex(configurator, r"(?m)^ASC_BUILD=34$")
+        self.assertRegex(configurator, r"(?m)^ASC_VERSION=1\.3$")
+        self.assertRegex(configurator, r"(?m)^ASC_BUILD=35$")
 
         self.assertNotRegex(status_checker, r"ASC_VERSION:-1\.0")
         self.assertNotRegex(status_checker, r"ASC_BUILD:-(15|16)")
@@ -406,7 +406,7 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Expected marketing version: 1.2", result.stdout)
+        self.assertIn("Expected marketing version: 1.3", result.stdout)
 
     def _run_readiness(self, fixture, *, merge_output=False):
         environment = self._readiness_environment()
@@ -472,8 +472,8 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         environment = os.environ.copy()
         environment.update(
             {
-                "EXPECTED_MARKETING_VERSION": "1.2",
-                "EXPECTED_BUILD_NUMBER": "34",
+                "EXPECTED_MARKETING_VERSION": "1.3",
+                "EXPECTED_BUILD_NUMBER": "35",
                 "RELEASE_UPLOAD_REQUIRED": "0",
             }
         )
@@ -497,8 +497,8 @@ class ReleaseReadinessContractTests(unittest.TestCase):
         app_directory.mkdir(parents=True)
         info = {
             "CFBundleIdentifier": "com.h19h29.naymnaymlevelup",
-            "CFBundleShortVersionString": "1.2",
-            "CFBundleVersion": "34",
+            "CFBundleShortVersionString": "1.3",
+            "CFBundleVersion": "35",
             "CFBundleDisplayName": "급식레벨업",
             "DTPlatformName": platform,
         }

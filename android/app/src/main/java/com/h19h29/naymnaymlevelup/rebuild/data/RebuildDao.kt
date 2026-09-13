@@ -253,3 +253,23 @@ interface MigrationStateDao {
     @Query("SELECT * FROM migration_states WHERE id = :id LIMIT 1")
     suspend fun find(id: String): MigrationStateEntity?
 }
+
+@Dao
+interface DailyMealReviewDao {
+    @Upsert
+    suspend fun upsert(review: DailyMealReviewEntity)
+
+    @Query(
+        """
+        SELECT * FROM daily_meal_reviews
+        WHERE profileKey = :profileKey
+          AND schoolKey = :schoolKey
+          AND date = :date
+        LIMIT 1
+        """,
+    )
+    suspend fun find(profileKey: String, schoolKey: String, date: String): DailyMealReviewEntity?
+
+    @Query("DELETE FROM daily_meal_reviews")
+    suspend fun deleteAll()
+}

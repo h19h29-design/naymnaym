@@ -64,12 +64,18 @@ fun MascotRig(
     reduceMotion: Boolean,
     playbackRevision: Long,
     modifier: Modifier = Modifier,
+    isActive: Boolean = true,
 ) {
     val controller = remember { MascotMotionController(MotionSpec.fixture) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val systemReduceMotion = scope.coroutineContext[MotionDurationScale]?.scaleFactor == 0f
     val effectiveReduceMotion = reduceMotion || systemReduceMotion
+    val companionClip = CompanionClip.forMotion(state)
+    if (CompanionClip.supports(level) && companionClip != null) {
+        CompanionAnimation(companionClip, effectiveReduceMotion || !isActive, playbackRevision, modifier.aspectRatio(1f))
+        return
+    }
     var assets by remember(level) { mutableStateOf<MascotRigAssets?>(null) }
     val playback = remember(state, playbackRevision, effectiveReduceMotion) {
         controller.playback(

@@ -1,5 +1,68 @@
 import SwiftUI
 
+/// Shared decorative surfaces for the child's forest-themed tabs.
+struct CompanionPageBackdrop: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Image("CompanionForestStage")
+                .resizable().scaledToFill()
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+                .overlay(RebuildDesignTokens.cream50.opacity(0.84))
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+struct CompanionSectionBanner: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let title: String
+    let subtitle: String
+    let symbol: String
+    var accent: Color = RebuildDesignTokens.forest700
+    var showsLunch = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(title, systemImage: symbol)
+                    .font(.title2.weight(.heavy))
+                    .foregroundStyle(accent)
+                    .accessibilityAddTraits(.isHeader)
+                Text(subtitle)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(RebuildDesignTokens.ink900)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Group {
+                    if showsLunch {
+                        Image("CompanionLunchTray").resizable().scaledToFit()
+                    } else {
+                        MascotRestArtView(level: 1, silhouetteColor: nil)
+                    }
+                }
+                .frame(width: 92, height: 104)
+                .accessibilityHidden(true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            GeometryReader { proxy in
+                Image("CompanionForestStage").resizable().scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped().overlay(Color.white.opacity(0.64))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(.white, lineWidth: 2))
+        .shadow(color: accent.opacity(0.08), radius: 7, y: 3)
+    }
+}
+
 enum RebuildDesignTokens {
     enum ColorToken: CaseIterable {
         case forest700
@@ -226,6 +289,19 @@ struct MealAllergyVisualStyle: Equatable {
         guard !labels.isEmpty else { return .clear }
 
         return risk(labels: labels)
+    }
+
+    static func personalized(for item: RebuildMealItem, registeredCodes: [Int]) -> MealAllergyVisualStyle? {
+        let matches = Set(item.allergyCodes).intersection(registeredCodes).sorted()
+        guard !matches.isEmpty else { return nil }
+        return MealAllergyVisualStyle(
+            title: "나의 알레르기 주의: \(matches.map(AllergyMap.label(for:)).joined(separator: " · "))",
+            systemImage: "exclamationmark.shield.fill",
+            borderWidth: 2,
+            cornerRadius: RebuildDesignTokens.radii[0],
+            channels: [.text, .icon, .shape],
+            isRisk: true
+        )
     }
 
     static func risk(labels: [String]) -> MealAllergyVisualStyle {

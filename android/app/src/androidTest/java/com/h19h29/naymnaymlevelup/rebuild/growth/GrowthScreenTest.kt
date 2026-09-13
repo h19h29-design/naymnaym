@@ -56,8 +56,10 @@ class GrowthScreenTest {
         composeRule.setContent {
             RebuildTheme {
                 CollectionScreenContent(
-                    totalXp = 80,
+                    progress = CollectionProgress(80, emptyList(), emptySet(), 0, 0, 0),
                     policy = policy,
+                    selectedSection = CollectionSection.Characters,
+                    onSectionSelected = {},
                 )
             }
         }

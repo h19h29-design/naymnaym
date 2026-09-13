@@ -203,7 +203,11 @@ final class TodayForestViewModel: ObservableObject {
 
     @Published private(set) var dateText: String
     @Published private(set) var dateKey: String
-    let allergyCodes: [Int]
+    @Published private(set) var allergyCodes: [Int]
+
+    func updateAllergyCodes(_ codes: [Int]) {
+        allergyCodes = Array(Set(codes)).sorted()
+    }
 
     private let repository: any TodayMealRepository
     private let recorder: any TodayMealRecorder

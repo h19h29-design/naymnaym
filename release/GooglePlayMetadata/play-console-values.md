@@ -6,8 +6,8 @@
 
 - 앱 이름: 급식레벨업
 - 패키지명: `com.h19h29.naymnaymlevelup`
-- 버전: `1.12`
-- versionCode: `14`
+- 버전: `1.13`
+- versionCode: `15`
 - 카테고리: 교육
 - 가격: 무료
 - 광고 포함: 아니요
@@ -58,9 +58,9 @@
 
 ## 휴대전화 스크린샷
 
-- `phone-screenshots/01-today-forest.png`: 오늘 급식과 숲속 캐릭터
-- `phone-screenshots/02-meal-recording.png`: 메뉴별 먹은 정도와 한 입 도전 기록
+- `phone-screenshots/01-today-forest.png`: 냠냠이와 나누는 선택형 대화
+- `phone-screenshots/02-meal-recording.png`: 일간·주간·월간 급식표와 영양 정보
 - `phone-screenshots/03-growth.png`: XP와 다음 레벨 성장 현황
 - `phone-screenshots/04-growth-collection.png`: 해금한 캐릭터와 성장 도감
 
-모든 파일은 Android 에뮬레이터의 실제 1.12 화면과 동일한 UI를 1080 × 1920 크기로 촬영한 이미지입니다.
+모든 파일은 Android 에뮬레이터의 실제 1.13 화면과 동일한 UI를 1080 × 2160 크기로 촬영한 이미지입니다.

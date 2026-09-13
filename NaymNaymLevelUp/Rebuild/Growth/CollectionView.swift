@@ -72,8 +72,8 @@ struct CollectionView: View {
                     loadingState
                 }
             }
-            .background(RebuildDesignTokens.cream50)
-            .navigationTitle("성장 도감")
+            .background(CompanionPageBackdrop())
+            .navigationBarHidden(true)
         }
         .task(id: isActive) {
             guard isActive else { return }
@@ -107,7 +107,7 @@ struct CollectionView: View {
                     legacyBadgeGrid(progress: progress)
                 }
             }
-            .padding(.horizontal, RebuildDesignTokens.spacing[4])
+            .padding(.horizontal, 16)
             .padding(.vertical, RebuildDesignTokens.spacing[3])
         }
         .refreshable {
@@ -121,13 +121,12 @@ struct CollectionView: View {
         unlockedLevel: Int
     ) -> some View {
         VStack(alignment: .leading, spacing: RebuildDesignTokens.spacing[2]) {
-            Text("성장 도감")
-                .font(.largeTitle.bold())
-                .foregroundStyle(RebuildDesignTokens.ink900)
-                .accessibilityAddTraits(.isHeader)
-            Text("먹어 본 한 입이 캐릭터와 배지를 채워요.")
-                .font(RebuildDesignTokens.bodyFont)
-                .foregroundStyle(RebuildDesignTokens.muted600)
+            CompanionSectionBanner(
+                title: "성장 도감",
+                subtitle: "한 입의 추억을 모아\n나만의 도감을 채워요.",
+                symbol: "books.vertical.fill",
+                accent: Color(red: 0.51, green: 0.35, blue: 0.61)
+            )
             HStack(alignment: .center, spacing: RebuildDesignTokens.spacing[2]) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(RebuildDesignTokens.forest500)
@@ -149,15 +148,13 @@ struct CollectionView: View {
                 Spacer(minLength: 0)
             }
             .padding(RebuildDesignTokens.spacing[2])
-            .background(RebuildDesignTokens.cream100)
+            .background(Color(red: 0.96, green: 0.93, blue: 0.98))
             .clipShape(RoundedRectangle(
                 cornerRadius: RebuildDesignTokens.radii[0],
                 style: .continuous
             ))
         }
-        .padding(RebuildDesignTokens.spacing[3])
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.94))
         .clipShape(RoundedRectangle(
             cornerRadius: RebuildDesignTokens.radii[2],
             style: .continuous
@@ -228,6 +225,13 @@ struct CollectionView: View {
                     style: .continuous
                 )
                 .fill(isUnlocked ? RebuildDesignTokens.cream100 : GrowthLockedPalette.surfaceColor)
+                if isUnlocked {
+                    GeometryReader { proxy in
+                        Image("CompanionForestStage").resizable().scaledToFill()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .clipped().opacity(0.65).accessibilityHidden(true)
+                    }
+                }
                 if art.usesNeutralFallback {
                     MascotNeutralFallbackView(stageID: art.stageID)
                         .padding(RebuildDesignTokens.spacing[2])
@@ -242,6 +246,13 @@ struct CollectionView: View {
                 }
             }
             .frame(height: 122)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: isUnlocked ? "checkmark.seal.fill" : "lock.fill")
+                    .foregroundStyle(isUnlocked ? RebuildDesignTokens.forest500 : GrowthLockedPalette.textColor)
+                    .font(.caption).padding(7).background(.white.opacity(0.9), in: Circle()).padding(6)
+                    .accessibilityHidden(true)
+            }
             Text("레벨 \(level)")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(RebuildDesignTokens.muted600)

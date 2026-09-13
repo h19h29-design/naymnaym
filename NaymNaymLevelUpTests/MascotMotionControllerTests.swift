@@ -1,9 +1,79 @@
 import Dispatch
+import ImageIO
 import XCTest
 @testable import NaymNaymLevelUp
 
 @MainActor
 final class MascotMotionControllerTests: XCTestCase {
+    func testPreparedConversationRespondsToEveryTopicWithoutInventingXP() {
+        for topic in CompanionTopic.allCases {
+            var conversation = CompanionConversation()
+            conversation.respond(to: topic, level: 7)
+            XCTAssertEqual(conversation.messages.count, 2)
+            XCTAssertTrue(conversation.messages[0].isUser)
+            XCTAssertFalse(conversation.messages[1].isUser)
+            XCTAssertEqual(conversation.messages[0].text, topic.title)
+            XCTAssertFalse(conversation.messages[1].text.isEmpty)
+        }
+        XCTAssertTrue(CompanionTopic.growth.reply(turn: 0, level: 7).contains("레벨 7"))
+        XCTAssertTrue(CompanionTopic.growth.reply(turn: 0, level: 7).contains("경험치가 바뀌지는 않아"))
+    }
+
+    func testPreparedAllergyConversationAlwaysDefersToAnAdult() {
+        for turn in 0..<6 {
+            let reply = CompanionTopic.allergy.reply(turn: turn, level: 1)
+            XCTAssertTrue(reply.contains("먹어 보지 말고"))
+            XCTAssertTrue(reply.contains("보호자나 선생님"))
+            XCTAssertTrue(reply.contains("안전한지 판단할 수 없어"))
+            XCTAssertEqual(CompanionTopic.allergy.reaction, .listening)
+        }
+    }
+
+    func testPreparedConversationBoundsMemoryAndStartsFresh() {
+        var conversation = CompanionConversation()
+        for _ in 0..<30 { conversation.respond(to: .hello, level: 1) }
+        XCTAssertEqual(conversation.messages.count, 12)
+        XCTAssertEqual(conversation.turn, 30)
+        XCTAssertEqual(CompanionConversation().messages.count, 0)
+        XCTAssertNotEqual(CompanionTopic.hello.reply(turn: 0, level: 1), CompanionTopic.hello.reply(turn: 1, level: 1))
+    }
+
+    func testCompanionClipUsesEatingOnlyForSuccessfulMeal() {
+        XCTAssertEqual(CompanionClip(motion: .mealSuccess), .eating)
+        XCTAssertEqual(CompanionClip(motion: .levelUp), .growth)
+        XCTAssertEqual(CompanionClip(motion: .tapReaction), .greeting)
+        XCTAssertNil(CompanionClip(motion: .comfort))
+        XCTAssertNil(CompanionClip(motion: .reducedMotion))
+    }
+
+    func testCompanionFramesUseApprovedSlowSpeedAndStopAtRest() {
+        XCTAssertEqual(CompanionPlayback.frame(at: 1, reduced: false), 25)
+        XCTAssertEqual(CompanionPlayback.frame(at: 2, reduced: true), 0)
+        XCTAssertEqual(CompanionPlayback.frame(at: -1, reduced: false), 0)
+        XCTAssertEqual(CompanionPlayback.frame(at: 10, reduced: false), 120)
+        XCTAssertEqual(CompanionPlayback.duration, 4.7265625, accuracy: 0.00001)
+    }
+
+    func testCompanionDoesNotReplaceUnapprovedGrowthStages() {
+        XCTAssertTrue(CompanionPlayback.supports(level: 1))
+        XCTAssertFalse(CompanionPlayback.supports(level: 2))
+        XCTAssertFalse(CompanionPlayback.supports(level: 7))
+    }
+
+    func testAllCompanionClipsAreBundledWithTransparent121Frames() throws {
+        for clip in CompanionClip.allCases {
+            let url = try XCTUnwrap(Bundle.main.url(forResource: clip.rawValue, withExtension: "png", subdirectory: "MascotRig/Companion"))
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+            XCTAssertEqual(CGImageSourceGetCount(source), 121)
+            for index in [0, 40, 80, 120] {
+                let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, index, nil))
+                XCTAssertEqual(image.width, 400)
+                XCTAssertEqual(image.height, 400)
+                XCTAssertNotEqual(image.alphaInfo, .none)
+            }
+        }
+    }
+
     func testMealSuccessUsesSquashThenJumpThenRest() {
         let controller = MascotMotionController(spec: .fixture)
 

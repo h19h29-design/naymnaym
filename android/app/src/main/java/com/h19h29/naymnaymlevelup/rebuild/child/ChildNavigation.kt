@@ -87,6 +87,9 @@ fun ChildNavigation(
             scope = repositoryScope,
         )
     }
+    val dailyMealReviewStore = remember(database) {
+        DailyMealReviewStore(database.dailyMealReviewDao())
+    }
     val school = remember(profile.school) {
         profile.school?.let {
             School(
@@ -120,6 +123,9 @@ fun ChildNavigation(
         )
     }
     var route by remember { mutableStateOf(ChildRoute.Today) }
+    val dailyReviewSchoolKey = remember(profile.school) {
+        profile.school?.let { "${it.officeCode}:${it.schoolCode}" } ?: "unregistered"
+    }
 
     Scaffold(
         modifier = Modifier.testTag("child_navigation"),
@@ -155,11 +161,18 @@ fun ChildNavigation(
                 modifier = Modifier
                     .fillMaxSize()
                     .routeVisibility(route == ChildRoute.Today),
+                profileKey = profile.id,
+                schoolKey = dailyReviewSchoolKey,
+                dailyMealReviewStore = dailyMealReviewStore,
             )
             when (route) {
                 ChildRoute.Today -> Unit
                 ChildRoute.Meals -> MealScheduleScreen(
                     viewModel = mealScheduleViewModel,
+                    registeredAllergyCodes = viewModel.allergyCodes,
+                    profileKey = profile.id,
+                    schoolKey = dailyReviewSchoolKey,
+                    dailyMealReviewStore = dailyMealReviewStore,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f),
@@ -180,6 +193,7 @@ fun ChildNavigation(
                 )
                 ChildRoute.Settings -> RebuildSettingsScreen(
                     profile = profile,
+                    dailyMealReviewStore = dailyMealReviewStore,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f),

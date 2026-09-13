@@ -4,8 +4,8 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-EXPECTED_MARKETING_VERSION="${EXPECTED_MARKETING_VERSION:-1.2}"
-EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-34}"
+EXPECTED_MARKETING_VERSION="${EXPECTED_MARKETING_VERSION:-1.3}"
+EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-35}"
 RELEASE_UPLOAD_REQUIRED="${RELEASE_UPLOAD_REQUIRED:-0}"
 LOCAL_DEBUG_APP_PATH="${LOCAL_DEBUG_APP_PATH:-build/verification/growth-meal-polish-v2/DerivedData/Build/Products/Debug-iphonesimulator/NaymNaymLevelUp.app}"
 LOCAL_RELEASE_APP_PATH="${LOCAL_RELEASE_APP_PATH:-build/verification/growth-meal-polish-v2/ReleaseDerivedData/Build/Products/Release-iphoneos/NaymNaymLevelUp.app}"
@@ -16,16 +16,16 @@ RELEASE_EXPORT_OPTIONS_PATH="${RELEASE_EXPORT_OPTIONS_PATH:-build/ExportOptions-
 RELEASE_IPA_PATH="${RELEASE_IPA_PATH:-${RELEASE_EXPORT_DIR}/NaymNaymLevelUp.ipa}"
 APP_STORE_SCREENSHOT_DIR="docs/app-store-screenshots/iphone-6-9-upload"
 APP_STORE_SCREENSHOT_MANIFEST='
-01-onboarding-demo.jpg
-02-today-meal-icons.jpg
-03-weekly-meal.jpg
-04-monthly-meal.jpg
-05-selected-day-detail.jpg
-06-eating-status-picker.jpg
-07-allergy-safe-choice.jpg
-08-growth-stage-roadmap.jpg
-09-growth-next-unlock.jpg
-10-parent-growth-summary.jpg
+01-today-companion.jpg
+02-character-conversation.jpg
+03-daily-meal.jpg
+04-weekly-meal.jpg
+05-monthly-meal.jpg
+06-selected-day-detail.jpg
+07-eating-status-picker.jpg
+08-growth-overview.jpg
+09-growth-collection.jpg
+10-settings.jpg
 '
 APP_STORE_SCREENSHOT_COUNT=10
 export EXPECTED_MARKETING_VERSION EXPECTED_BUILD_NUMBER RELEASE_UPLOAD_REQUIRED
@@ -365,10 +365,10 @@ ruby -rjson -e '
   abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://nyam.h19h19.com/privacy.html"
 
   release_messages = [
-    "캐릭터 성장 단계가 12단계로 늘어났어요.",
-    "일간·주간·월간 급식표에서 선택한 날짜의 메뉴·알레르기·영양 상세를 확인할 수 있어요.",
-    "메뉴별 대표 영양소를 부담 없는 교육용 안내로 확인할 수 있어요.",
-    "음식 아이콘과 화면 디자인을 더 알아보기 쉽게 개선했어요."
+    "냠냠이가 표정과 움직임으로 더 자연스럽게 반응해요.",
+    "캐릭터와 선택형 대화를 나누며 급식·편식·성장을 돌아볼 수 있어요.",
+    "오늘·급식표·성장·도감 화면을 더 아기자기하고 읽기 쉽게 다듬었어요.",
+    "급식표 날짜 상세, 알레르기 안내와 기록 저장 안정성을 개선했어요."
   ]
   whats_new = data.dig("listing", "whatsNew") || ""
   release_messages.each do |message|
@@ -516,12 +516,12 @@ do
   require_literal "$metadata_file" "급식레벨업" "$metadata_file uses the release app name"
   require_literal "$metadata_file" "com.h19h29.naymnaymlevelup" "$metadata_file uses the release bundle ID"
   for release_message in \
-    "캐릭터 성장 단계가 12단계로 늘어났어요." \
-    "일간·주간·월간 급식표에서 선택한 날짜의 메뉴·알레르기·영양 상세를 확인할 수 있어요." \
-    "메뉴별 대표 영양소를 부담 없는 교육용 안내로 확인할 수 있어요." \
-    "음식 아이콘과 화면 디자인을 더 알아보기 쉽게 개선했어요."
+    "냠냠이가 표정과 움직임으로 더 자연스럽게 반응해요." \
+    "캐릭터와 선택형 대화를 나누며 급식·편식·성장을 돌아볼 수 있어요." \
+    "오늘·급식표·성장·도감 화면을 더 아기자기하고 읽기 쉽게 다듬었어요." \
+    "급식표 날짜 상세, 알레르기 안내와 기록 저장 안정성을 개선했어요."
   do
-    require_literal "$metadata_file" "$release_message" "$metadata_file includes an approved 1.2 release message"
+    require_literal "$metadata_file" "$release_message" "$metadata_file includes an approved 1.3 release message"
   done
 done
 
@@ -535,20 +535,20 @@ require_literal "release/AppStoreMetadata/ko-KR.md" "샘플로 대체하지 않�
 require_literal "release/AppStoreMetadata/ko-KR.md" "학교 안내와 보호자 판단이 항상 우선입니다" "Metadata keeps the allergy disclaimer"
 require_literal "release/AppStoreMetadata/ko-KR.md" "급식판 사진은 기기 내부에만 저장" "Metadata keeps photos local only"
 require_literal "release/AppStoreMetadata/ko-KR.md" "광고, 인앱결제, 분석 SDK, 추적 SDK 없음" "Metadata keeps verified no-ad and no-tracking claims"
-require_literal "release/AppStoreMetadata/submission-notes.md" "App Store Connect 업로드나 App Review 제출을 수행하지 않았다" "Submission notes record the no-upload boundary"
-require_literal "release/AppStoreMetadata/console-runbook.md" "App Store Connect 업로드나 App Review 제출을 수행하지 않는다" "Console runbook records the no-upload boundary"
+require_literal "release/AppStoreMetadata/submission-notes.md" "승인된 배포 절차에서만 수행한다" "Submission notes preserve the approved-deployment boundary"
+require_literal "release/AppStoreMetadata/console-runbook.md" "승인된 배포 절차에서만 수행한다" "Console runbook preserves the approved-deployment boundary"
 
-require_pattern "android/app/build.gradle" "versionCode 14" "Android versionCode matches the current Play candidate"
-require_pattern "android/app/build.gradle" "versionName \"1\\.12\"" "Android versionName matches the current Play candidate"
+require_pattern "android/app/build.gradle" "versionCode 15" "Android versionCode matches the current Play candidate"
+require_pattern "android/app/build.gradle" "versionName \"1\\.13\"" "Android versionName matches the current Play candidate"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "개인정보 · 지원 · 데이터 관리" "Android app exposes privacy, support, and data management"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" 'disabledButton\("한입도전 잠금"\)' "Android allergy items lock one-bite challenge"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "sharePhotos\", false" "Android parent sharing excludes photos"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "clearLocalData" "Android app has local data deletion"
 require_absent_pattern "android/app/src/main/AndroidManifest.xml" "POST_NOTIFICATIONS|CAMERA|READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|READ_CONTACTS" "Android test app keeps sensitive permissions out of the manifest"
 require_pattern "release/GooglePlayMetadata/play-console-values.md" "Data Safety 입력 초안" "Google Play metadata includes Data Safety draft"
-require_literal "release/GooglePlayMetadata/play-console-values.md" '- 버전: `1.12`' "Google Play metadata version matches the current Android candidate"
-require_literal "release/GooglePlayMetadata/play-console-values.md" '- versionCode: `14`' "Google Play metadata versionCode matches the current Android candidate"
-require_literal "release/GooglePlayMetadata/play-console-values.md" "실제 1.12 화면과 동일한 UI" "Google Play screenshots are labeled with the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" '- 버전: `1.13`' "Google Play metadata version matches the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" '- versionCode: `15`' "Google Play metadata versionCode matches the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" "실제 1.13 화면과 동일한 UI" "Google Play screenshots are labeled with the current Android candidate"
 require_pattern "release/GooglePlayMetadata/closed-testing-plan.md" "12명 이상 테스터가 14일 연속 opt-in" "Google Play closed testing plan documents 12 tester requirement"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
@@ -647,10 +647,10 @@ do
   check_url "$url"
 done
 
-require_url_pattern "https://nyam.h19h19.com/" "무료 급식 식습관 코칭 앱" "Published landing page shows release-ready app badge"
-require_url_pattern "https://nyam.h19h19.com/" "데이터와 안전 기준" "Published landing page shows data and safety section"
+require_url_pattern "https://nyam.h19h19.com/" "iPhone·Android·토스" "Published landing page shows supported release surfaces"
+require_url_pattern "https://nyam.h19h19.com/" "데이터 안전 안내" "Published landing page links the data safety guidance"
 require_url_absent_pattern "https://nyam.h19h19.com/" "준비중|처리 확인 중|제출 전 검토|출시 준비 상태" "Published landing page has no temporary release-status copy"
-require_url_pattern "https://nyam.h19h19.com/support.html" "앱에서" "Published support page uses polished app copy"
+require_url_pattern "https://nyam.h19h19.com/support.html" "학교 검색, 급식 조회, 식사 기록" "Published support page uses polished app copy"
 require_url_absent_pattern "https://nyam.h19h19.com/support.html" "아이 폰|준비중|처리 확인 중" "Published support page has no stale temporary copy"
 
 pass "release readiness checks completed"

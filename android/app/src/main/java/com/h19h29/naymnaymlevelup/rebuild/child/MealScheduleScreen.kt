@@ -1,5 +1,7 @@
 package com.h19h29.naymnaymlevelup.rebuild.child
 
+import com.h19h29.naymnaymlevelup.BuildConfig
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CalendarMonth
+import com.h19h29.naymnaymlevelup.rebuild.ui.CompanionSectionBanner
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Info
@@ -62,6 +66,7 @@ import com.h19h29.naymnaymlevelup.rebuild.meal.MealDay
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealItem
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealLoadState
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealRepository
+import com.h19h29.naymnaymlevelup.rebuild.meal.NutritionInfo
 import com.h19h29.naymnaymlevelup.rebuild.meal.School
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.AllergyCatalog
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
@@ -346,6 +351,10 @@ private fun MealLoadState.resolvedMeal(): MealDay? = when (this) {
 fun MealScheduleScreen(
     viewModel: MealScheduleViewModel,
     modifier: Modifier = Modifier,
+    registeredAllergyCodes: List<Int> = emptyList(),
+    profileKey: String = "local",
+    schoolKey: String = "unregistered",
+    dailyMealReviewStore: DailyMealReviewRepository? = null,
 ) {
     val state by viewModel.state.collectAsState()
     var mode by remember { mutableStateOf(MealScheduleMode.Daily) }
@@ -366,7 +375,7 @@ fun MealScheduleScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(RebuildTokens.Cream50))
+            .background(Color(0xFFF4F8F0))
             .padding(horizontal = 16.dp)
             .testTag("meal_schedule_screen"),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -437,19 +446,40 @@ fun MealScheduleScreen(
             when (mode) {
                 MealScheduleMode.Daily -> DailyMealSchedule(
                     meal = viewModel.meal(anchorDate),
+                    registeredAllergyCodes = registeredAllergyCodes,
                 )
                 MealScheduleMode.Weekly -> WeeklyMealSchedule(
+                    registeredAllergyCodes = registeredAllergyCodes,
                     dates = visibleDates,
                     selectedDate = selectedDate,
                     meal = viewModel::meal,
                     onSelected = { selectedDate = it },
                 )
                 MealScheduleMode.Monthly -> MonthlyMealSchedule(
+                    registeredAllergyCodes = registeredAllergyCodes,
                     dates = visibleDates,
                     displayedMonth = anchorDate.monthValue,
                     selectedDate = selectedDate,
                     meal = viewModel::meal,
                     onSelected = { selectedDate = it },
+                )
+            }
+        }
+        val reviewDate = if (mode == MealScheduleMode.Daily) anchorDate else selectedDate
+        if (BuildConfig.DEBUG && dailyMealReviewStore != null) {
+            val reviewMeal = viewModel.meal(reviewDate) ?: MealDay(
+                date = reviewDate.toString(),
+                menuItems = emptyList(),
+                calorie = "",
+                nutrition = NutritionInfo.empty,
+            )
+            item {
+                DailyMealReviewEntry(
+                    meal = reviewMeal,
+                    profileKey = profileKey,
+                    schoolKey = schoolKey,
+                    registeredAllergyCodes = registeredAllergyCodes,
+                    store = dailyMealReviewStore,
                 )
             }
         }
@@ -463,42 +493,15 @@ private fun MealScheduleHeader(
     isLoading: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 124.dp)
-            .clip(RoundedCornerShape(RebuildTokens.radii[2].dp))
-            .border(
-                width = 1.dp,
-                color = Color(RebuildTokens.Forest500).copy(alpha = 0.18f),
-                shape = RoundedCornerShape(RebuildTokens.radii[2].dp),
-            ),
-    ) {
-        Image(
-            painter = painterResource(R.drawable.forest_home_sky),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(RebuildTokens.Cream50).copy(alpha = 0.72f)),
-        )
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        CompanionSectionBanner("급식표", "오늘은 어떤 맛을 만날까?", Icons.Filled.CalendarMonth,
+            accent = Color(0xFF20758C), showsLunch = true)
         Column(
             modifier = Modifier
-                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = "급식표",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color(RebuildTokens.Ink900),
-                modifier = Modifier.semantics { heading() },
-            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -646,7 +649,7 @@ private fun PeriodArrow(
 }
 
 @Composable
-private fun DailyMealSchedule(meal: MealDay?) {
+private fun DailyMealSchedule(meal: MealDay?, registeredAllergyCodes: List<Int>) {
     val slots = MealScheduleMenuSlots.from(meal?.menuItems.orEmpty())
     MealScheduleCard(
         modifier = Modifier.testTag("meal_schedule_daily"),
@@ -736,12 +739,13 @@ private fun DailyMealSchedule(meal: MealDay?) {
             color = Color(RebuildTokens.Forest500),
         )
         NutritionSummary(meal?.let(::listOf).orEmpty())
-        AllergySummary(meal)
+        AllergySummary(meal, registeredAllergyCodes)
     }
 }
 
 @Composable
 private fun WeeklyMealSchedule(
+    registeredAllergyCodes: List<Int>,
     dates: List<LocalDate>,
     selectedDate: LocalDate,
     meal: (LocalDate) -> MealDay?,
@@ -876,12 +880,13 @@ private fun WeeklyMealSchedule(
                 }
             }
         }
-        SelectedMealInformation(selectedDate = selectedDate, meal = meal(selectedDate))
+        SelectedMealInformation(selectedDate = selectedDate, meal = meal(selectedDate), registeredAllergyCodes = registeredAllergyCodes)
     }
 }
 
 @Composable
 private fun MonthlyMealSchedule(
+    registeredAllergyCodes: List<Int>,
     dates: List<LocalDate>,
     displayedMonth: Int,
     selectedDate: LocalDate,
@@ -1005,7 +1010,7 @@ private fun MonthlyMealSchedule(
                 }
             }
         }
-        SelectedMealInformation(selectedDate = selectedDate, meal = meal(selectedDate))
+        SelectedMealInformation(selectedDate = selectedDate, meal = meal(selectedDate), registeredAllergyCodes = registeredAllergyCodes)
     }
 }
 
@@ -1013,6 +1018,7 @@ private fun MonthlyMealSchedule(
 private fun SelectedMealInformation(
     selectedDate: LocalDate,
     meal: MealDay?,
+    registeredAllergyCodes: List<Int>,
 ) {
     Column(
         modifier = Modifier.testTag("meal_schedule_selected_information_${selectedDate}"),
@@ -1042,7 +1048,7 @@ private fun SelectedMealInformation(
             )
         } else {
             NutritionSummary(listOf(meal))
-            AllergySummary(meal)
+            AllergySummary(meal, registeredAllergyCodes)
         }
     }
 }
@@ -1098,7 +1104,7 @@ private fun NutritionSummary(meals: List<MealDay>) {
 }
 
 @Composable
-private fun AllergySummary(meal: MealDay?) {
+private fun AllergySummary(meal: MealDay?, registeredAllergyCodes: List<Int>) {
     val codes = meal?.menuItems
         ?.flatMap(MealItem::allergyCodes)
         ?.distinct()
@@ -1123,7 +1129,7 @@ private fun AllergySummary(meal: MealDay?) {
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "번호와 이름을 함께 표시",
+                text = "등록한 알레르기만 강조해요",
                 fontSize = 10.sp,
                 color = Color(RebuildTokens.Muted600),
             )
@@ -1140,14 +1146,15 @@ private fun AllergySummary(meal: MealDay?) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 codes.forEach { code ->
+                    val personalRisk = code in registeredAllergyCodes
                     Text(
-                        text = AllergyCatalog.label(code),
+                        text = (if (personalRisk) "나의 주의: " else "") + AllergyCatalog.label(code),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFA35914),
+                        color = if (personalRisk) Color(0xFFAD352F) else Color(RebuildTokens.Muted600),
                         modifier = Modifier
                             .background(
-                                Color(0xFFFFF0E0),
+                                if (personalRisk) Color(0xFFFFE9E5) else Color.White,
                                 CircleShape,
                             )
                             .padding(horizontal = 12.dp, vertical = 8.dp),

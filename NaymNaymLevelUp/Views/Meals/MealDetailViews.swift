@@ -192,7 +192,7 @@ struct WholeMealPraiseView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    GrowthCharacterView(level: level, size: 210, pose: .celebrate, blendsCreamBackground: true)
+                    GrowthCharacterView(level: level, size: 210, pose: outcome.didLevelUp ? .celebrate : .eating, blendsCreamBackground: true)
                         .shadow(color: AppColors.primaryGreen.opacity(0.18), radius: 20, y: 12)
 
                     Text(WholeMealPraisePresentation.title(for: outcome))
@@ -241,7 +241,12 @@ struct LevelUpResultView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    CharacterAvatar(skin: outcome.skin, size: 150)
+                    GrowthCharacterView(
+                        level: outcome.newLevel,
+                        size: 180,
+                        pose: outcome.didLevelUp ? .celebrate : outcome.xpBreakdown.challenge > 0 ? .eating : .idle,
+                        blendsCreamBackground: true
+                    )
                     RoundedCard {
                         VStack(spacing: 14) {
                             Text(outcomeTitle)

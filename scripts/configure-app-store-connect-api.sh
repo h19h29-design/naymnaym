@@ -59,8 +59,8 @@ grep -q -- 'END PRIVATE KEY' "$PRIVATE_KEY_PATH" || fail "private key file is mi
 
 cat >"$ENV_FILE" <<EOF
 ASC_BUNDLE_ID=com.h19h29.naymnaymlevelup
-ASC_VERSION=1.2
-ASC_BUILD=34
+ASC_VERSION=1.3
+ASC_BUILD=35
 ASC_KEY_ID=$(quote_sh "$KEY_ID")
 ASC_ISSUER_ID=$(quote_sh "$ISSUER_ID")
 ASC_PRIVATE_KEY_PATH=$(quote_sh "$ROOT_DIR/$PRIVATE_KEY_PATH")

@@ -394,6 +394,16 @@ final class MealScheduleSelectionTests: XCTestCase {
         XCTAssertEqual(style.channels, [.text, .icon, .shape])
     }
 
+    func testPersonalAllergyHighlightContainsOnlyRegisteredMatches() {
+        let item = RebuildMealItem(name: "닭갈비", allergyCodes: [5, 6, 15], nutrients: [], tags: [], sourceRawText: "닭갈비(5.6.15)")
+        let style = MealAllergyVisualStyle.personalized(for: item, registeredCodes: [2, 6, 6])
+        XCTAssertEqual(style?.title, "나의 알레르기 주의: 6. 밀")
+        XCTAssertEqual(style?.isRisk, true)
+        XCTAssertNil(MealAllergyVisualStyle.personalized(for: item, registeredCodes: []))
+        XCTAssertNil(MealAllergyVisualStyle.personalized(for: item, registeredCodes: [2]))
+        XCTAssertEqual(item.allergyCodes, [5, 6, 15], "전체 원본 정보는 상세 확인을 위해 보존")
+    }
+
     func testMismatchedRefreshRetainsExactCachedMeal() async {
         let selectedCache = RebuildMealDay.fixture(
             date: "2026-08-12",

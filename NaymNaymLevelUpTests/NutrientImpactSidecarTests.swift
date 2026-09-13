@@ -683,7 +683,9 @@ final class NutrientImpactSidecarTests: XCTestCase {
 
     func testSidecarDoesNotChangeManagedModelSchema() throws {
         let model = RebuildManagedModel.make()
-        XCTAssertEqual(model.entitiesByName.count, 8)
+        XCTAssertEqual(model.entitiesByName.count, 9)
+        XCTAssertEqual(RebuildManagedModel.make(includeDailyReview: false).entitiesByName.count, 8)
+        XCTAssertNotNil(model.entitiesByName[RebuildEntityName.dailyMealReview])
         XCTAssertNil(model.entitiesByName["NutrientImpactSnapshot"])
         XCTAssertEqual(
             model.entitiesByName[RebuildEntityName.migrationState]?.attributesByName.keys.sorted(),

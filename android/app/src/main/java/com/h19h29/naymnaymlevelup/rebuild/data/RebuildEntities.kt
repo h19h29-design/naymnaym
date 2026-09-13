@@ -80,3 +80,13 @@ data class MigrationStateEntity(
     val completedAtEpochMillis: Long,
     val sourceDigest: String?,
 )
+
+@Entity(tableName = "daily_meal_reviews")
+data class DailyMealReviewEntity(
+    @PrimaryKey val id: String,
+    val profileKey: String,
+    val schoolKey: String,
+    val date: String,
+    val payloadJson: String,
+    val createdAtEpochMillis: Long,
+)

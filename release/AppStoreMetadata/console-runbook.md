@@ -1,33 +1,33 @@
-# 급식레벨업 1.2 App Store Connect / CloudKit 콘솔 런북
+# 급식레벨업 1.3 App Store Connect / CloudKit 콘솔 런북
 
-이 문서는 앱 소유자가 로컬 검증 이후 콘솔에서 직접 확인할 항목을 정리한다. 현재 후보 검증은 업로드 없는 모드이며, App Store Connect 업로드나 App Review 제출을 수행하지 않는다.
+이 문서는 앱 소유자가 로컬 검증 이후 콘솔에서 확인할 항목을 정리한다. App Store Connect 업로드와 App Review 제출은 검증을 통과한 승인된 배포 절차에서만 수행한다.
 
 ## 현재 배포 후보
 
 - 앱 이름: 급식레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
-- 버전: `1.2`
-- 빌드: `34`
+- 버전: `1.3`
+- 빌드: `35`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://nyam.h19h19.com/privacy.html`
 - 지원 URL: `https://nyam.h19h19.com/support.html`
 - 데이터 안전 안내 URL: `https://nyam.h19h19.com/data-safety.html`
-- 현재 상태: 로컬 Debug/Release 및 메타데이터 검증 후보, 업로드 안 함
+- 현재 상태: 로컬 Debug/Release 및 메타데이터 검증 후 업로드 후보
 
-## 1.2 사용자 변경 사항
+## 1.3 사용자 변경 사항
 
-- 캐릭터 성장 단계가 12단계로 늘어났어요.
-- 일간·주간·월간 급식표에서 선택한 날짜의 메뉴·알레르기·영양 상세를 확인할 수 있어요.
-- 메뉴별 대표 영양소를 부담 없는 교육용 안내로 확인할 수 있어요.
-- 음식 아이콘과 화면 디자인을 더 알아보기 쉽게 개선했어요.
+- 냠냠이가 표정과 움직임으로 더 자연스럽게 반응해요.
+- 캐릭터와 선택형 대화를 나누며 급식·편식·성장을 돌아볼 수 있어요.
+- 오늘·급식표·성장·도감 화면을 더 아기자기하고 읽기 쉽게 다듬었어요.
+- 급식표 날짜 상세, 알레르기 안내와 기록 저장 안정성을 개선했어요.
 
 ## 업로드 없는 로컬 검증
 
 다음 명령은 실제 Xcode 프로젝트, 로컬 Debug/Release 산출물, 메타데이터, entitlement 원본, Privacy Manifest, 라이선스 및 공개 지원 URL을 확인한다. App Store Connect API나 업로드 명령을 호출하지 않는다.
 
 ```sh
-EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=34 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh
+EXPECTED_MARKETING_VERSION=1.3 EXPECTED_BUILD_NUMBER=35 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh
 ```
 
 `RELEASE_UPLOAD_REQUIRED=0`에서는 signed archive, export IPA, 업로드 로그를 요구하지 않는다. 별도로 승인된 배포 작업에서 해당 산출물과 업로드 증거가 이미 준비된 경우에만 `RELEASE_UPLOAD_REQUIRED=1` 검증을 사용한다.
@@ -37,7 +37,7 @@ EXPECTED_MARKETING_VERSION=1.2 EXPECTED_BUILD_NUMBER=34 RELEASE_UPLOAD_REQUIRED=
 - 앱 이름: `급식레벨업`
 - 부제: `편식을 한 입 도전으로 바꾸는 급식 코칭 앱`
 - Bundle ID: `com.h19h29.naymnaymlevelup`
-- 버전/빌드: `1.2` / `34`
+- 버전/빌드: `1.3` / `35`
 - 카테고리: `교육`
 - 가격: `무료`
 - 테스트 계정: 필요 없음

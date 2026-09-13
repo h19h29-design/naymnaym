@@ -7,6 +7,17 @@ import org.junit.Test
 
 class MascotMotionControllerTest {
     @Test
+    fun companionClipKeepsSafetyAndUnapprovedStagesOutOfEatingAnimation() {
+        assertEquals(CompanionClip.Eating, CompanionClip.forMotion(MotionState.MealSuccess))
+        assertEquals(CompanionClip.Growth, CompanionClip.forMotion(MotionState.LevelUp))
+        assertEquals(CompanionClip.Greeting, CompanionClip.forMotion(MotionState.Idle))
+        assertEquals(null, CompanionClip.forMotion(MotionState.Comfort))
+        assertEquals(null, CompanionClip.forMotion(MotionState.ReducedMotion))
+        assertTrue(CompanionClip.supports(1))
+        assertEquals(false, CompanionClip.supports(2))
+    }
+
+    @Test
     fun mealSuccessUsesSquashThenJumpThenRest() {
         val controller = MascotMotionController(MotionSpec.fixture)
 

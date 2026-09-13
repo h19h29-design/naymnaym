@@ -7,6 +7,7 @@ final class RebuildPersistentStoreTests: XCTestCase {
         let model = RebuildManagedModel.make()
 
         let expectedAttributes: [String: [String: NSAttributeType]] = [
+            "RebuildDailyMealReview": ["id": .stringAttributeType, "contextKey": .stringAttributeType, "day": .stringAttributeType, "payloadJSON": .stringAttributeType],
             "RebuildProfile": [
                 "id": .stringAttributeType,
                 "role": .stringAttributeType,
@@ -68,6 +69,7 @@ final class RebuildPersistentStoreTests: XCTestCase {
             ],
         ]
         let expectedOptionalAttributes: [String: Set<String>] = [
+            "RebuildDailyMealReview": [],
             "RebuildProfile": ["officeCode", "schoolCode"],
             "RebuildMealDay": [],
             "RebuildMealRecord": ["deletedAt"],
@@ -78,6 +80,7 @@ final class RebuildPersistentStoreTests: XCTestCase {
             "RebuildMigrationState": ["sourceDigest"],
         ]
         let expectedManagedObjectClasses: [String: NSManagedObject.Type] = [
+            "RebuildDailyMealReview": NSManagedObject.self,
             "RebuildProfile": RebuildProfileManagedObject.self,
             "RebuildMealDay": RebuildMealDayManagedObject.self,
             "RebuildMealRecord": RebuildMealRecordManagedObject.self,
@@ -122,6 +125,7 @@ final class RebuildPersistentStoreTests: XCTestCase {
         }
 
         let expectedUniqueKeys: [String: String] = [
+            "RebuildDailyMealReview": "id",
             "RebuildProfile": "id",
             "RebuildMealDay": "date",
             "RebuildMealRecord": "id",
