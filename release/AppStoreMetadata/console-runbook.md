@@ -7,7 +7,7 @@
 - 앱 이름: 급식레벨업
 - Bundle ID: `com.h19h29.naymnaymlevelup`
 - 버전: `1.3`
-- 빌드: `35`
+- 빌드: `36`
 - 가격: 무료
 - 카테고리: 교육
 - 개인정보 처리방침 URL: `https://nyam.h19h19.com/privacy.html`
@@ -17,6 +17,7 @@
 
 ## 1.3 사용자 변경 사항
 
+- 오늘 식단을 냠냠이가 AI로 쉽고 짧게 설명하고, 결과를 기기에 보관해 다시 볼 수 있어요.
 - 냠냠이가 표정과 움직임으로 더 자연스럽게 반응해요.
 - 캐릭터와 선택형 대화를 나누며 급식·편식·성장을 돌아볼 수 있어요.
 - 오늘·급식표·성장·도감 화면을 더 아기자기하고 읽기 쉽게 다듬었어요.
@@ -27,7 +28,7 @@
 다음 명령은 실제 Xcode 프로젝트, 로컬 Debug/Release 산출물, 메타데이터, entitlement 원본, Privacy Manifest, 라이선스 및 공개 지원 URL을 확인한다. App Store Connect API나 업로드 명령을 호출하지 않는다.
 
 ```sh
-EXPECTED_MARKETING_VERSION=1.3 EXPECTED_BUILD_NUMBER=35 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh
+EXPECTED_MARKETING_VERSION=1.3 EXPECTED_BUILD_NUMBER=36 RELEASE_UPLOAD_REQUIRED=0 bash scripts/verify-release-readiness.sh
 ```
 
 `RELEASE_UPLOAD_REQUIRED=0`에서는 signed archive, export IPA, 업로드 로그를 요구하지 않는다. 별도로 승인된 배포 작업에서 해당 산출물과 업로드 증거가 이미 준비된 경우에만 `RELEASE_UPLOAD_REQUIRED=1` 검증을 사용한다.
@@ -37,7 +38,7 @@ EXPECTED_MARKETING_VERSION=1.3 EXPECTED_BUILD_NUMBER=35 RELEASE_UPLOAD_REQUIRED=
 - 앱 이름: `급식레벨업`
 - 부제: `편식을 한 입 도전으로 바꾸는 급식 코칭 앱`
 - Bundle ID: `com.h19h29.naymnaymlevelup`
-- 버전/빌드: `1.3` / `35`
+- 버전/빌드: `1.3` / `36`
 - 카테고리: `교육`
 - 가격: `무료`
 - 테스트 계정: 필요 없음

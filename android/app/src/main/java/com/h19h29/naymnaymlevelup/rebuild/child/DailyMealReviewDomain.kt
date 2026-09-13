@@ -363,7 +363,7 @@ class DailyMealReviewSession(
             return
         }
         if (client == null) {
-            fail(DailyMealReviewError.NotConfigured, "개발 AI 연결 설정이 없어요.")
+            fail(DailyMealReviewError.NotConfigured, "AI 연결을 준비하지 못했어요.")
             return
         }
         val requestTime = now()

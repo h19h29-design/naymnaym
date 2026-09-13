@@ -1,7 +1,5 @@
 package com.h19h29.naymnaymlevelup.rebuild.child
 
-import com.h19h29.naymnaymlevelup.BuildConfig
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -152,7 +150,7 @@ fun TodayForestScreen(
                     onConversation = { showConversation = true },
                     dailyReviewContent = {
                         val meal = state.meal
-                        if (BuildConfig.DEBUG && meal != null && dailyMealReviewStore != null) {
+                        if (meal != null && dailyMealReviewStore != null) {
                             DailyMealReviewEntry(
                                 meal = meal,
                                 profileKey = profileKey,

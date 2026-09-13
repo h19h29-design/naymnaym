@@ -85,11 +85,20 @@ struct MealCoachAnswer: Decodable, Equatable {
 struct MealCoachConfiguration {
     let endpoint: URL
     let accessToken: String
+    private init(trustedEndpoint: URL, accessToken: String) {
+        endpoint=trustedEndpoint;self.accessToken=accessToken
+    }
     init?(endpoint: String, accessToken: String) {
         guard endpoint == "http://127.0.0.1:64918/v1/meal-coach", let url = URL(string: endpoint),
               accessToken.count >= 32, accessToken.count <= 256,
               accessToken.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" }) else { return nil }
         self.endpoint = url; self.accessToken = accessToken
+    }
+    static func productionDaily() -> Self {
+        Self(
+            trustedEndpoint: URL(string:"https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/meal-coach")!,
+            accessToken:""
+        )
     }
     static func development() -> Self? {
         #if DEBUG

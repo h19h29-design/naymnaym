@@ -1,7 +1,5 @@
 package com.h19h29.naymnaymlevelup.rebuild.child
 
-import com.h19h29.naymnaymlevelup.BuildConfig
-
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -466,7 +464,7 @@ fun MealScheduleScreen(
             }
         }
         val reviewDate = if (mode == MealScheduleMode.Daily) anchorDate else selectedDate
-        if (BuildConfig.DEBUG && dailyMealReviewStore != null) {
+        if (dailyMealReviewStore != null) {
             val reviewMeal = viewModel.meal(reviewDate) ?: MealDay(
                 date = reviewDate.toString(),
                 menuItems = emptyList(),

@@ -2,12 +2,16 @@ import Foundation
 import CryptoKit
 
 enum DailyMealReviewAvailability {
-    static var isEnabled: Bool {
-        #if DEBUG
-        true
-        #else
-        false
-        #endif
+    static let isEnabled = true
+}
+
+enum DailyMealReviewInstallationID {
+    static let storageKey = "dailyMealReview.installationID.v1"
+    static func current(defaults: UserDefaults = .standard) -> UUID {
+        if let value=defaults.string(forKey:storageKey),let identifier=UUID(uuidString:value) {return identifier}
+        let identifier=UUID()
+        defaults.set(identifier.uuidString.lowercased(),forKey:storageKey)
+        return identifier
     }
 }
 

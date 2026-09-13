@@ -55,8 +55,8 @@ android {
         applicationId "com.h19h29.naymnaymlevelup"
         minSdk 23
         targetSdk 36
-        versionCode 15
-        versionName "1.13"
+        versionCode 16
+        versionName "1.14"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "boolean", "NATIVE_REBUILD_ENABLED", "false"

@@ -47,7 +47,7 @@ private struct DailyMealReviewContent: View {
     init(meal:RebuildMealDay,contextKey:String,allergies:[Int],container:NSPersistentContainer,showsSourceNutrition:Bool) {
         self.meal=meal;self.allergies=allergies;self.showsSourceNutrition=showsSourceNutrition
         _controller=StateObject(wrappedValue:DailyMealReviewController(meal:meal,contextKey:contextKey,allergies:allergies,
-            store:DailyMealReviewStore(context:container.newBackgroundContext()),client:MealCoachConfiguration.development().map(DailyMealReviewClient.live)))
+            store:DailyMealReviewStore(context:container.newBackgroundContext()),client:DailyMealReviewClient.live(MealCoachConfiguration.productionDaily())))
     }
     var body: some View {
         VStack(alignment:.leading,spacing:16) {
@@ -71,7 +71,7 @@ private struct DailyMealReviewContent: View {
                 if controller.hasClient && controller.canGenerate {
                     Toggle("AI 전송에 동의하고 식단 해설 받기",isOn:$consent).font(.subheadline)
                         .accessibilityIdentifier("daily_review_consent")
-                    Text("AI 안내 · OpenCode Go에 익명 메뉴 ID·대표 영양소·확인된 전체 영양량·세션 식별자를 보내요. 이름·학교·메뉴 이름·날짜·먹은 기록·등록 알레르기는 보내지 않아요. 보호자와 함께 확인해 주세요.")
+                    Text("AI 안내 · 급식레벨업 서버에는 익명 메뉴 ID·대표 영양소·확인된 전체 영양량·임의 설치 식별자를 보내고, OpenCode Go에는 익명 식단 정보만 전달해요. 이름·학교·메뉴 이름·날짜·먹은 기록·등록 알레르기는 보내지 않아요. 보호자와 함께 확인해 주세요.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button {action=UUID()} label: {
                         Label(controller.isLoading ? "식단 이야기를 준비해요" : "오늘 식단 AI 해설 · 하루 1회",systemImage:"sparkles")

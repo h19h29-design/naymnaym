@@ -404,6 +404,11 @@ data class DailyMealReviewDevelopmentConfig(val endpoint: URL, val accessToken: 
         private const val MAX_CONFIG_BYTES = 4_096L
         private val allowedBases = setOf("http://10.0.2.2:64918", "http://127.0.0.1:64918")
 
+        fun production() = DailyMealReviewDevelopmentConfig(
+            endpoint = URL("https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/meal-coach"),
+            accessToken = "",
+        )
+
         fun load(filesDir: File, isDebug: Boolean): DailyMealReviewDevelopmentConfig? {
             if (!isDebug) return null
             return try {
@@ -441,7 +446,9 @@ class HttpDailyMealReviewTransport : DailyMealReviewTransport {
                     connection.readTimeout = 15_000
                     connection.instanceFollowRedirects = false
                     connection.doOutput = true
-                    connection.setRequestProperty("Authorization", "Bearer $accessToken")
+                    if (accessToken.isNotEmpty()) {
+                        connection.setRequestProperty("Authorization", "Bearer $accessToken")
+                    }
                     connection.setRequestProperty("Content-Type", "application/json")
                     connection.setFixedLengthStreamingMode(body.size)
                     connection.outputStream.use { it.write(body) }
@@ -505,7 +512,7 @@ internal fun mapDailyMealReviewHttpError(
         if (root.keys.any { it !in setOf("error", "reason") }) null else root["error"] as? String
     }.getOrNull()
     val mapped = when {
-        status == 401 -> Triple(DailyMealReviewError.Unauthorized, "개발 인증을 확인해 주세요.", true)
+        status == 401 -> Triple(DailyMealReviewError.Unauthorized, "AI 연결 인증을 확인하지 못했어요.", true)
         status == 409 && code == "request_conflict" -> Triple(
             DailyMealReviewError.RequestConflict,
             "요청 식별자가 다른 식단과 충돌해 오늘은 다시 생성할 수 없어요.",
@@ -537,7 +544,7 @@ internal fun mapDailyMealReviewHttpError(
             "서버 저장소를 사용할 수 없어요.",
             true,
         )
-        status == 503 -> Triple(DailyMealReviewError.NotConfigured, "개발 AI 연결이 준비되지 않았어요.", true)
+        status == 503 -> Triple(DailyMealReviewError.NotConfigured, "AI 연결이 잠시 준비되지 않았어요.", true)
         status == 502 -> Triple(
             DailyMealReviewError.AnswerUnavailable,
             "AI 답변을 확인하지 못해 기본 안내를 보여드려요.",

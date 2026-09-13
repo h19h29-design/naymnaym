@@ -31,6 +31,22 @@ final class DailyMealReviewTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField:"Authorization"),"Bearer "+credential)
         XCTAssertFalse(String(decoding:try XCTUnwrap(request.httpBody),as:UTF8.self).contains(credential))
     }
+    func testProductionTransportUsesSupabaseRouteWithoutBundledSecret() throws {
+        let config=MealCoachConfiguration.productionDaily()
+        let request=try DailyMealReviewClient.makeRequest(config,payload:DailyMealReviewFactory.request(meal:meal,allergies:[2]))
+        XCTAssertEqual(request.url?.absoluteString,"https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/meal-coach")
+        XCTAssertNil(request.value(forHTTPHeaderField:"Authorization"))
+        XCTAssertTrue(DailyMealReviewAvailability.isEnabled)
+    }
+    func testInstallationIdentifierPersistsWithoutContainingProfileData() throws {
+        let suite="DailyMealReviewTests."+UUID().uuidString
+        let defaults=try XCTUnwrap(UserDefaults(suiteName:suite))
+        defer {defaults.removePersistentDomain(forName:suite)}
+        let first=DailyMealReviewInstallationID.current(defaults:defaults)
+        let second=DailyMealReviewInstallationID.current(defaults:defaults)
+        XCTAssertEqual(first,second)
+        XCTAssertEqual(defaults.string(forKey:DailyMealReviewInstallationID.storageKey),first.uuidString.lowercased())
+    }
     @MainActor func testCorruptSavedRecordFailsClosedWithoutDeletingIt() async throws {
         let container=try RebuildPersistentStore.makeInMemory()
         let context=container.viewContext

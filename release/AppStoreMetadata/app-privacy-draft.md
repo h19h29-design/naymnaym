@@ -18,7 +18,7 @@
 - Purchases: 수집 안 함
 - Browsing History: 수집 안 함
 - Search History: 수집 안 함
-- Usage Data: 자체 분석 SDK 없음
+- Usage Data: 분석 SDK는 없지만 AI 하루 1회·남용 방지를 위한 사용 일자와 시도·성공 상태는 앱 기능 제공 목적으로 서버에 저장될 수 있음
 
 ## 최종 확인 데이터
 
@@ -34,11 +34,11 @@
 | Location | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 위치 권한과 CoreLocation 사용 없음 |
 | Contacts | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 연락처 권한 사용 없음 |
 | Purchases | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 인앱결제/StoreKit 사용 없음 |
-| Usage Data | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 자체 분석 SDK 없음 |
+| Usage Data | 수집함 | App Functionality | 예 | 아니요 | AI 하루 1회·남용 방지를 위한 사용 일자와 시도·성공 상태 |
 | Other User Content | 수집함 | App Functionality | 예 | 아니요 | 먹은 정도, 한 입 도전 기록, 어려운 이유는 부모 공유 시 서버 저장 가능 |
 | Photos or Videos | 수집 안 함 | 해당 없음 | 해당 없음 | 아니요 | 급식판 사진은 기기 내부에만 저장하고 서버 부모 동기화나 부모 모드로 업로드하지 않음 |
 | Health and Fitness | 수집함 | App Functionality | 예 | 아니요 | 알레르기 선택값과 식사 기록이 건강 관련 정보로 해석될 수 있음 |
-| User ID | 수집함 | App Functionality | 예 | 아니요 | 부모 연결용 `childLinkId`와 초대 코드 사용 |
+| User ID | 수집함 | App Functionality | 예 | 아니요 | 부모 연결용 `childLinkId`·초대 코드와 AI 한도용 임의 설치 식별값 사용 |
 
 Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고, 데이터 브로커 공유 목적은 현재 코드에 없다.
 
@@ -68,9 +68,17 @@ Tracking은 `아니요`로 입력한다. 광고 SDK, 분석 SDK, 제3자 광고,
 - Tracking: 아니요
 - 주의: 앱은 진단, 치료, 안전 보장을 하지 않음
 
+### AI 식단 해설
+
+- 사용자 동의 후 전송: 임시 요청 ID, 임의 설치 ID, 익명 메뉴별 대표 영양소, 확인된 식단 전체 영양량
+- AI 제공자 전송 제외: 이름, 학교, 메뉴명, 날짜, 먹은 기록, 등록 알레르기
+- 서버 저장: 임의 설치 ID를 복원 불가능하게 변환한 값과 사용 일자·시도·성공 상태
+- 목적: App Functionality, 하루 1회 및 서비스 전체 한도 적용
+- Tracking: 아니요
+
 ### Identifiers
 
-- 대상: 부모 연결용 초대 코드, `childLinkId`
+- 대상: 부모 연결용 초대 코드, `childLinkId`, AI 한도용 임의 설치 식별값
 - 목적: 부모-자녀 연결과 다자녀 기록 분리
 - Linked to User: 예
 - Tracking: 아니요

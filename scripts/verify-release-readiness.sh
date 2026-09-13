@@ -5,7 +5,7 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 EXPECTED_MARKETING_VERSION="${EXPECTED_MARKETING_VERSION:-1.3}"
-EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-35}"
+EXPECTED_BUILD_NUMBER="${EXPECTED_BUILD_NUMBER:-36}"
 RELEASE_UPLOAD_REQUIRED="${RELEASE_UPLOAD_REQUIRED:-0}"
 LOCAL_DEBUG_APP_PATH="${LOCAL_DEBUG_APP_PATH:-build/verification/growth-meal-polish-v2/DerivedData/Build/Products/Debug-iphonesimulator/NaymNaymLevelUp.app}"
 LOCAL_RELEASE_APP_PATH="${LOCAL_RELEASE_APP_PATH:-build/verification/growth-meal-polish-v2/ReleaseDerivedData/Build/Products/Release-iphoneos/NaymNaymLevelUp.app}"
@@ -365,6 +365,7 @@ ruby -rjson -e '
   abort "wrong privacy url" unless data.dig("urls", "privacyPolicy") == "https://nyam.h19h19.com/privacy.html"
 
   release_messages = [
+    "오늘 식단을 냠냠이가 AI로 쉽고 짧게 설명하고, 결과를 기기에 보관해 다시 볼 수 있어요.",
     "냠냠이가 표정과 움직임으로 더 자연스럽게 반응해요.",
     "캐릭터와 선택형 대화를 나누며 급식·편식·성장을 돌아볼 수 있어요.",
     "오늘·급식표·성장·도감 화면을 더 아기자기하고 읽기 쉽게 다듬었어요.",
@@ -379,6 +380,7 @@ ruby -rjson -e '
   [
     "기존 1–7단계를 보존한 12단계 캐릭터 성장",
     "오늘 급식과 일간·주간·월간 급식표, 선택한 날짜의 상세 확인",
+    "오늘 식단의 대표 영양소와 눈여겨볼 메뉴를 설명하는 하루 1회 AI 식단 해설",
     "메뉴별 대표 영양소를 부담 없이 살펴보는 교육용 안내",
     "메뉴를 알아보기 쉬운 음식 아이콘과 화면 디자인",
     "샘플 급식은 사용자가 체험 모드를 직접 선택한 경우에만 표시됩니다.",
@@ -394,7 +396,7 @@ ruby -rjson -e '
   abort "tracking must be false" unless data.dig("appPrivacy", "tracking") == false
   abort "third-party advertising must be false" unless data.dig("appPrivacy", "thirdPartyAdvertising") == false
   abort "analytics SDK must be false" unless data.dig("appPrivacy", "analyticsSdk") == false
-  required = ["Other User Content", "Health and Fitness", "User ID"]
+  required = ["Usage Data", "Other User Content", "Health and Fitness", "User ID"]
   required.each do |name|
     row = data_types.find { |item| item["name"] == name }
     abort "missing privacy data type #{name}" unless row
@@ -516,6 +518,7 @@ do
   require_literal "$metadata_file" "급식레벨업" "$metadata_file uses the release app name"
   require_literal "$metadata_file" "com.h19h29.naymnaymlevelup" "$metadata_file uses the release bundle ID"
   for release_message in \
+    "오늘 식단을 냠냠이가 AI로 쉽고 짧게 설명하고, 결과를 기기에 보관해 다시 볼 수 있어요." \
     "냠냠이가 표정과 움직임으로 더 자연스럽게 반응해요." \
     "캐릭터와 선택형 대화를 나누며 급식·편식·성장을 돌아볼 수 있어요." \
     "오늘·급식표·성장·도감 화면을 더 아기자기하고 읽기 쉽게 다듬었어요." \
@@ -538,17 +541,17 @@ require_literal "release/AppStoreMetadata/ko-KR.md" "광고, 인앱결제, 분�
 require_literal "release/AppStoreMetadata/submission-notes.md" "승인된 배포 절차에서만 수행한다" "Submission notes preserve the approved-deployment boundary"
 require_literal "release/AppStoreMetadata/console-runbook.md" "승인된 배포 절차에서만 수행한다" "Console runbook preserves the approved-deployment boundary"
 
-require_pattern "android/app/build.gradle" "versionCode 15" "Android versionCode matches the current Play candidate"
-require_pattern "android/app/build.gradle" "versionName \"1\\.13\"" "Android versionName matches the current Play candidate"
+require_pattern "android/app/build.gradle" "versionCode 16" "Android versionCode matches the current Play candidate"
+require_pattern "android/app/build.gradle" "versionName \"1\\.14\"" "Android versionName matches the current Play candidate"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "개인정보 · 지원 · 데이터 관리" "Android app exposes privacy, support, and data management"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" 'disabledButton\("한입도전 잠금"\)' "Android allergy items lock one-bite challenge"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "sharePhotos\", false" "Android parent sharing excludes photos"
 require_pattern "android/app/src/main/java/com/h19h29/naymnaymlevelup/MainActivity.java" "clearLocalData" "Android app has local data deletion"
 require_absent_pattern "android/app/src/main/AndroidManifest.xml" "POST_NOTIFICATIONS|CAMERA|READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|READ_CONTACTS" "Android test app keeps sensitive permissions out of the manifest"
 require_pattern "release/GooglePlayMetadata/play-console-values.md" "Data Safety 입력 초안" "Google Play metadata includes Data Safety draft"
-require_literal "release/GooglePlayMetadata/play-console-values.md" '- 버전: `1.13`' "Google Play metadata version matches the current Android candidate"
-require_literal "release/GooglePlayMetadata/play-console-values.md" '- versionCode: `15`' "Google Play metadata versionCode matches the current Android candidate"
-require_literal "release/GooglePlayMetadata/play-console-values.md" "실제 1.13 화면과 동일한 UI" "Google Play screenshots are labeled with the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" '- 버전: `1.14`' "Google Play metadata version matches the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" '- versionCode: `16`' "Google Play metadata versionCode matches the current Android candidate"
+require_literal "release/GooglePlayMetadata/play-console-values.md" "실제 1.14 화면과 동일한 UI" "Google Play screenshots are labeled with the current Android candidate"
 require_pattern "release/GooglePlayMetadata/closed-testing-plan.md" "12명 이상 테스터가 14일 연속 opt-in" "Google Play closed testing plan documents 12 tester requirement"
 
 require_plist_value "NaymNaymLevelUp/PrivacyInfo.xcprivacy" "NSPrivacyTracking" "false"
@@ -566,7 +569,8 @@ ruby -rjson -e '
   required_types = [
     "NSPrivacyCollectedDataTypeOtherUserContent",
     "NSPrivacyCollectedDataTypeHealth",
-    "NSPrivacyCollectedDataTypeUserID"
+    "NSPrivacyCollectedDataTypeUserID",
+    "NSPrivacyCollectedDataTypeProductInteraction"
   ]
   collected = data.fetch("NSPrivacyCollectedDataTypes")
   required_types.each do |name|

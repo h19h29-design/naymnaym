@@ -21,6 +21,16 @@ import org.junit.Test
 
 class DailyMealReviewTest {
     @Test
+    fun `production config uses Supabase daily endpoint without an app secret`() {
+        val config = DailyMealReviewDevelopmentConfig.production()
+        assertEquals(
+            "https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/meal-coach",
+            config.endpoint.toString(),
+        )
+        assertEquals("", config.accessToken)
+    }
+
+    @Test
     fun `request excludes allergy intersecting and unknown candidates`() {
         val meal = fixtureMeal(
             item("현미밥", nutrients = listOf("carbohydrate")),

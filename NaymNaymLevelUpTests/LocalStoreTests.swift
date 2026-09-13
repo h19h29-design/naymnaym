@@ -1331,7 +1331,8 @@ final class LocalStoreTests: XCTestCase {
             [
                 "NSPrivacyCollectedDataTypeOtherUserContent",
                 "NSPrivacyCollectedDataTypeHealth",
-                "NSPrivacyCollectedDataTypeUserID"
+                "NSPrivacyCollectedDataTypeUserID",
+                "NSPrivacyCollectedDataTypeProductInteraction"
             ]
         )
 

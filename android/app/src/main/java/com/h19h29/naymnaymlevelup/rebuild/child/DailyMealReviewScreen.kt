@@ -1,5 +1,6 @@
 package com.h19h29.naymnaymlevelup.rebuild.child
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,14 +45,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.h19h29.naymnaymlevelup.BuildConfig
 import com.h19h29.naymnaymlevelup.rebuild.meal.MealDay
 import com.h19h29.naymnaymlevelup.rebuild.meal.NutritionRuleEngine
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
+import java.util.UUID
 import kotlinx.coroutines.launch
 
 internal const val DAILY_MEAL_REVIEW_CONSENT =
-    "임시 요청·세션 ID, 익명 메뉴 ID별 대표 영양소, 확인된 전체 식단 영양량만 전송해요. 학교·메뉴 이름·날짜·식사 기록·등록 알레르기는 전송하지 않아요."
+    "급식레벨업 서버에는 임시 요청 ID·임의 설치 ID·익명 메뉴별 대표 영양소·확인된 전체 식단 영양량을 보내고, OpenCode Go에는 익명 식단 정보만 전달해요. 학교·메뉴 이름·날짜·식사 기록·등록 알레르기는 전송하지 않아요."
+
+private const val DAILY_REVIEW_PREFERENCES = "daily_meal_review"
+private const val DAILY_REVIEW_INSTALLATION_ID = "installation_id_v1"
+
+internal fun dailyMealReviewInstallationId(context: Context): UUID {
+    val preferences = context.getSharedPreferences(DAILY_REVIEW_PREFERENCES, Context.MODE_PRIVATE)
+    val existing = preferences.getString(DAILY_REVIEW_INSTALLATION_ID, null)
+        ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+    if (existing != null) return existing
+    return UUID.randomUUID().also {
+        preferences.edit().putString(DAILY_REVIEW_INSTALLATION_ID, it.toString().lowercase()).apply()
+    }
+}
 
 @Composable
 fun DailyMealReviewEntry(
@@ -64,10 +78,8 @@ fun DailyMealReviewEntry(
 ) {
     val context = LocalContext.current
     val rules = remember(context.assets) { NutritionRuleEngine(context.assets) }
-    val client = remember(context.filesDir) {
-        DailyMealReviewDevelopmentConfig.load(context.filesDir, BuildConfig.DEBUG)
-            ?.let(::DevelopmentDailyMealReviewClient)
-    }
+    val client = remember { DevelopmentDailyMealReviewClient(DailyMealReviewDevelopmentConfig.production()) }
+    val installationId = remember(context) { dailyMealReviewInstallationId(context) }
     val deletionRevision by store.deletionRevision?.collectAsState()
         ?: remember { mutableStateOf(0L) }
     var open by remember { mutableStateOf(false) }
@@ -81,6 +93,7 @@ fun DailyMealReviewEntry(
             store = store,
             client = client,
             rules = rules,
+            sessionId = installationId,
         )
     }
     LaunchedEffect(session, deletionRevision) { session.reload() }

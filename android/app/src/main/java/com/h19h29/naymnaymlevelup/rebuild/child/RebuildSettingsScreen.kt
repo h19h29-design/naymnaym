@@ -1,7 +1,5 @@
 package com.h19h29.naymnaymlevelup.rebuild.child
 
-import com.h19h29.naymnaymlevelup.BuildConfig
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -90,7 +88,7 @@ fun RebuildSettingsScreen(
                 SettingsLine("초기화", "설정을 다시 시작하려면 앱을 삭제 후 다시 설치해 주세요.")
             }
         }
-        if (BuildConfig.DEBUG && dailyMealReviewStore != null) {
+        if (dailyMealReviewStore != null) {
             item {
                 SettingsCard(title = "AI 평가 기록") {
                     Text(
@@ -108,7 +106,7 @@ fun RebuildSettingsScreen(
         }
         item { Spacer(Modifier.height(RebuildTokens.spacing[4].dp)) }
     }
-    if (BuildConfig.DEBUG && confirmDeleteReviews && dailyMealReviewStore != null) {
+    if (confirmDeleteReviews && dailyMealReviewStore != null) {
         AlertDialog(
             onDismissRequest = { confirmDeleteReviews = false },
             title = { Text("AI 평가 기록을 삭제할까요?") },
