@@ -45,6 +45,7 @@ test('valid anonymous meal payload returns a grounded AI review and records succ
   const claims = [];
   const finishes = [];
   const providerBodies = [];
+  const providerHeaders = [];
   const handler = createMealCoachHandler({
     providerKey: 'provider-secret-for-test-only',
     now: () => new Date('2026-09-13T03:00:00.000Z'),
@@ -52,6 +53,7 @@ test('valid anonymous meal payload returns a grounded AI review and records succ
     finish: async (value) => { finishes.push(value); },
     fetcher: async (_url, init) => {
       providerBodies.push(JSON.parse(init.body));
+      providerHeaders.push(init.headers);
       return Response.json(providerEnvelope);
     },
   });
@@ -71,9 +73,63 @@ test('valid anonymous meal payload returns a grounded AI review and records succ
   assert.equal(finishes.length, 1);
   assert.equal(finishes[0].success, true);
   const forwarded = JSON.stringify(providerBodies[0]);
+  assert.deepEqual(providerBodies[0].thinking, { type: 'disabled' });
   assert.equal(forwarded.includes('현미밥'), false);
   assert.equal(forwarded.includes('학교'), false);
   assert.equal(forwarded.includes(payload.sessionId), false);
+  assert.equal(providerHeaders[0]['x-opencode-session'], claims[0].fingerprint);
+  assert.equal(providerHeaders[0]['x-opencode-session'].includes(payload.sessionId), false);
+});
+
+test('normalizes the provider alternate highlight keys without accepting extra fields', async () => {
+  const createMealCoachHandler = await loadHandler();
+  const aliasEnvelope = structuredClone(providerEnvelope);
+  aliasEnvelope.choices[0].message.content = JSON.stringify({
+    summary: '오늘 식단의 대표 영양소를 살펴봤어.',
+    benefit: '탄수화물은 활동 에너지에, 단백질은 몸을 이루는 데 쓰여.',
+    highlights: [{ id: 'm1', nutrient: 'protein', role: '몸을 이루는 재료로 쓰여.' }],
+    caution: '메뉴를 바탕으로 살펴본 참고 안내야.',
+    tip: '다른 식사에서도 다양한 음식을 부담 없이 만나 보자.',
+  });
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async () => Response.json(aliasEnvelope),
+  });
+
+  const response = await handler(request({ ...payload, requestId: '33333333-3333-4333-8333-333333333333' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).highlights, [
+    { itemId: 'm1', nutrient: 'protein', reason: '몸을 이루는 재료로 쓰여.' },
+  ]);
+});
+
+test('deduplicates multiple nutrient highlights for the same anonymous menu item', async () => {
+  const createMealCoachHandler = await loadHandler();
+  const duplicateEnvelope = structuredClone(providerEnvelope);
+  duplicateEnvelope.choices[0].message.content = JSON.stringify({
+    summary: '오늘 식단의 대표 영양소를 살펴봤어.',
+    benefit: '단백질과 철분은 몸에서 서로 다른 역할을 해.',
+    highlights: [
+      { itemId: 'm1', nutrient: 'protein', reason: '몸을 이루는 재료로 쓰여.' },
+      { itemId: 'm1', nutrient: 'iron', reason: '산소 운반에 관여하는 영양소야.' },
+    ],
+    caution: '메뉴를 바탕으로 살펴본 참고 안내야.',
+    tip: '다른 식사에서도 다양한 음식을 부담 없이 만나 보자.',
+  });
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async () => Response.json(duplicateEnvelope),
+  });
+
+  const response = await handler(request({ ...payload, requestId: '44444444-4444-4444-8444-444444444444' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).highlights, [
+    { itemId: 'm1', nutrient: 'protein', reason: '몸을 이루는 재료로 쓰여.' },
+  ]);
 });
 
 test('daily-used claim blocks a second provider request', async () => {

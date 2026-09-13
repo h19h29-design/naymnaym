@@ -12,6 +12,7 @@ const INSTRUCTION = `너는 급식레벨업의 AI 영양 안내 캐릭터야. �
 각 항목은 가급적 한 문장, 짧게 작성해. 숫자나 측정단위, 수량 표현을 출력하지 마. wholeMeal이 비면 없는 수치나 함량을 가리키지 마.
 주어진 영양소 외의 성분을 있다고 단정하지 마. 결핍·과잉·체중·성장·질환 효과를 판단하거나 먹도록 강요하지 마. 조리·신선도·안전을 보장하거나 알레르기 극복, 질병, 혈압, 혈당, 빈혈을 설명하지 마.
 메뉴 이름은 모르므로 만들지 마. highlights는 요청 items 중 최대 두 개만 선택하고 그 항목에 있는 nutrient ID 하나와 일반적인 역할만 써.
+highlights의 각 항목은 {"itemId":"m0","nutrient":"protein","reason":"일반적인 역할"} 형식을 정확히 사용해. id나 role처럼 다른 키 이름으로 바꾸지 마.
 JSON만 반환해: summary, benefit, highlights, caution, tip. 각 문자열 최대 240자, 가급적 60자 이내.`;
 
 class HandlerFailure extends Error {
@@ -81,12 +82,25 @@ function validateAnswer(value, input) {
   const answer = Object.fromEntries(TEXT_KEYS.map((key) => [key, validateText(value[key], input)]));
   const seen = new Set();
   const highlights = value.highlights.map((highlight) => {
-    exactObject(highlight, ['itemId', 'nutrient', 'reason']);
-    const item = input.items.find((candidate) => candidate.id === highlight.itemId);
-    if (!item || !item.nutrients.includes(highlight.nutrient) || seen.has(highlight.itemId)) throw new HandlerFailure('answer_grounding');
-    seen.add(highlight.itemId);
-    return { itemId: highlight.itemId, nutrient: highlight.nutrient, reason: validateText(highlight.reason, input) };
-  });
+    if (!highlight || typeof highlight !== 'object' || Array.isArray(highlight)) throw new HandlerFailure('answer_format');
+    const shape = Object.keys(highlight).sort().join(',');
+    let itemId;
+    let reason;
+    if (shape === 'itemId,nutrient,reason') {
+      ({ itemId, reason } = highlight);
+    } else if (shape === 'id,nutrient,role') {
+      itemId = highlight.id;
+      reason = highlight.role;
+    } else {
+      throw new HandlerFailure('answer_format');
+    }
+    const item = input.items.find((candidate) => candidate.id === itemId);
+    if (!item || !item.nutrients.includes(highlight.nutrient)) throw new HandlerFailure('answer_grounding');
+    const normalizedReason = validateText(reason, input);
+    if (seen.has(itemId)) return null;
+    seen.add(itemId);
+    return { itemId, nutrient: highlight.nutrient, reason: normalizedReason };
+  }).filter(Boolean);
   return { ...answer, highlights };
 }
 
@@ -146,11 +160,13 @@ export function createMealCoachHandler({ providerKey, claim, finish, fetcher = f
           Authorization: `Bearer ${providerKey}`,
           'Content-Type': 'application/json',
           'User-Agent': 'geupsik-levelup-meal-coach/1.0',
+          'x-opencode-session': fingerprint,
         },
         body: JSON.stringify({
           model: GO_MODEL,
           max_tokens: 1100,
           temperature: 0.3,
+          thinking: { type: 'disabled' },
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: INSTRUCTION },
