@@ -983,3 +983,254 @@ private final class InterleavingUserDefaults: UserDefaults, @unchecked Sendable 
         return value
     }
 }
+// MARK: - Store screenshot capture (QA harness)
+
+/// Renders the store screenshot frame set from synthetic demo data and writes one JPEG plus one
+/// accessibility-tree dump per frame, so a reviewer can confirm which screen each file holds.
+/// Nothing is read from the device's saved profile, meals, photos, or parent links: the child
+/// session runs on an in-memory store with the bundled sample menu.
+///
+/// Lives in this file because the project keeps a single test target without file-system
+/// synchronized groups; the hosting helpers below intentionally mirror the ones used above.
+@MainActor
+final class StoreScreenshotCaptureTests: XCTestCase {
+    private var hostWindow: UIWindow?
+
+    func testCaptureStoreFrames() async throws {
+        let output = try makeOutputDirectory()
+        let appState = AppState()
+        appState.profile = UserProfile(
+            nickname: "냠냠이",
+            schoolName: "냠냠초등학교",
+            officeCode: "B10",
+            schoolCode: "0000001",
+            regionName: "",
+            selectedAllergyCodes: [2, 5],
+            themeId: nil,
+            isDemoMode: true
+        )
+        let profile = RebuildUserProfile(
+            id: "store-preview-child",
+            role: .child,
+            nickname: "냠냠이",
+            school: RebuildOnboardingSchool(
+                name: "냠냠초등학교",
+                officeCode: "B10",
+                schoolCode: "0000001"
+            ),
+            allergyCodes: [2, 5],
+            destination: .today,
+            isDemoMode: true
+        )
+        let school = RebuildSchool(
+            name: "냠냠초등학교",
+            officeCode: "B10",
+            schoolCode: "0000001"
+        )
+        let route = MealDayRoute(dateKey: Self.dateKey(Date()))
+
+        try await capture(
+            "01-today-companion",
+            into: output,
+            appState: appState,
+            extraSettle: 6
+        ) {
+            ChildNavigationView(profile: profile, container: nil, initialTab: .today)
+        }
+
+        try await capture("02-character-conversation", into: output, appState: appState) {
+            CompanionConversationView(level: 3)
+        }
+
+        try await capture("03-daily-meal", into: output, appState: appState) {
+            ChildNavigationView(
+                profile: profile,
+                container: nil,
+                initialTab: .meals,
+                initialScheduleMode: .daily
+            )
+        }
+
+        try await capture("04-weekly-meal", into: output, appState: appState) {
+            ChildNavigationView(
+                profile: profile,
+                container: nil,
+                initialTab: .meals,
+                initialScheduleMode: .weekly
+            )
+        }
+
+        try await capture("05-monthly-meal", into: output, appState: appState) {
+            ChildNavigationView(
+                profile: profile,
+                container: nil,
+                initialTab: .meals,
+                initialScheduleMode: .monthly
+            )
+        }
+
+        let detailContainer = try RebuildPersistentStore.makeInMemory()
+        let detailRepository = RebuildMealRepository(
+            store: CoreDataRebuildMealDayStore(
+                context: detailContainer.newBackgroundContext()
+            ),
+            client: RebuildMealClientFactory.make(isDemoMode: true)
+        )
+        try await capture("06-selected-day-detail", into: output, appState: appState) {
+            MealDayDetailView(
+                route: route,
+                repository: LiveMealScheduleRepository(repository: detailRepository),
+                school: school,
+                isDemoMode: false
+            )
+        }
+
+        let composition = RebuildChildComposition(
+            profile: profile,
+            persistentContainer: nil
+        )
+        await composition.todayViewModel.load()
+        try await capture("07-eating-status-picker", into: output, appState: appState) {
+            MealRecordingSheet(viewModel: composition.todayViewModel)
+        }
+
+        try await capture("08-growth-overview", into: output, appState: appState) {
+            ChildNavigationView(profile: profile, container: nil, initialTab: .growth)
+        }
+
+        try await capture("09-growth-collection", into: output, appState: appState) {
+            ChildNavigationView(profile: profile, container: nil, initialTab: .collection)
+        }
+
+        try await capture("10-settings", into: output, appState: appState) {
+            ChildNavigationView(profile: profile, container: nil, initialTab: .settings)
+        }
+    }
+
+    private func capture(
+        _ name: String,
+        into directory: URL,
+        appState: AppState,
+        extraSettle: TimeInterval = 2,
+        @ViewBuilder content: () -> some View
+    ) async throws {
+        tearDownHost()
+        let image = try await render(
+            appState: appState,
+            content: content(),
+            extraSettle: extraSettle
+        )
+        let jpeg = try XCTUnwrap(image.jpegData(compressionQuality: 0.92))
+        try jpeg.write(to: directory.appendingPathComponent(name + ".jpg"))
+        let tree = accessibilityTree()
+        try tree.write(
+            to: directory.appendingPathComponent(name + ".txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        tearDownHost()
+    }
+
+    private func render<Content: View>(
+        appState: AppState,
+        content: Content,
+        extraSettle: TimeInterval
+    ) async throws -> UIImage {
+        let controller = UIHostingController(
+            rootView: AnyView(
+                content
+                    .environmentObject(appState)
+                    .environment(\.scenePhase, .active)
+            )
+        )
+        controller.view.backgroundColor = UIColor.white
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: UIScreen.main.bounds)
+        }
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        hostWindow = window
+        try await waitForSettledContent()
+        if extraSettle > 0 {
+            try await Task.sleep(
+                nanoseconds: UInt64(extraSettle * 1_000_000_000)
+            )
+        }
+        window.layoutIfNeeded()
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = UIScreen.main.scale
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+        return renderer.image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    private func waitForSettledContent(timeout: TimeInterval = 30) async throws {
+        var previous = ""
+        var stableRounds = 0
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: 400_000_000)
+            let current = accessibilityTree()
+            if !current.isEmpty, current == previous {
+                stableRounds += 1
+                if stableRounds >= 2 { return }
+            } else {
+                stableRounds = 0
+            }
+            previous = current
+        }
+        XCTFail("Timed out waiting for settled screenshot content")
+    }
+
+    private func accessibilityTree() -> String {
+        guard let root = hostWindow?.rootViewController?.view else { return "" }
+        var lines: [String] = []
+        func walk(_ view: UIView, depth: Int) {
+            let identifier = view.accessibilityIdentifier ?? ""
+            let label = view.accessibilityLabel ?? ""
+            let value = view.accessibilityValue ?? ""
+            if !identifier.isEmpty || !label.isEmpty || !value.isEmpty {
+                let indent = String(repeating: "  ", count: min(depth, 40))
+                lines.append(indent + identifier + " | " + label + " | " + value)
+            }
+            for subview in view.subviews {
+                walk(subview, depth: depth + 1)
+            }
+        }
+        walk(root, depth: 0)
+        return lines.joined(separator: "\n")
+    }
+
+    private func tearDownHost() {
+        hostWindow?.isHidden = true
+        hostWindow?.rootViewController = nil
+        hostWindow = nil
+    }
+
+    private func makeOutputDirectory() throws -> URL {
+        let directory = FileManager.default
+            .temporaryDirectory
+            .appendingPathComponent("store-screenshots", isDirectory: true)
+        try? FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        return directory
+    }
+
+    private static func dateKey(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+}

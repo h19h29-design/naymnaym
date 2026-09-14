@@ -233,16 +233,21 @@ struct ChildNavigationView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var composition: RebuildChildComposition
     @State private var selection: RebuildChildTab = .today
+    private let initialScheduleMode: MealScheduleMode
 
     init(
         profile: RebuildUserProfile,
-        container: NSPersistentContainer?
+        container: NSPersistentContainer?,
+        initialTab: RebuildChildTab = .today,
+        initialScheduleMode: MealScheduleMode = .daily
     ) {
         let composition = RebuildChildComposition(
             profile: profile,
             persistentContainer: container
         )
         _composition = StateObject(wrappedValue: composition)
+        _selection = State(initialValue: initialTab)
+        self.initialScheduleMode = initialScheduleMode
     }
 
     var body: some View {
@@ -265,7 +270,8 @@ struct ChildNavigationView: View {
                 viewModel: composition.mealScheduleViewModel,
                 recordingViewModelFactory: { route in
                     composition.todayViewModel.recordingViewModel(for: route)
-                }
+                },
+                initialMode: initialScheduleMode
             )
                 .tabItem {
                     Label(

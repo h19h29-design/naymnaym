@@ -482,10 +482,12 @@ struct MealScheduleView: View {
 
     init(
         viewModel: MealScheduleViewModel,
-        recordingViewModelFactory: @escaping (MealDayRoute) -> TodayForestViewModel? = { _ in nil }
+        recordingViewModelFactory: @escaping (MealDayRoute) -> TodayForestViewModel? = { _ in nil },
+        initialMode: MealScheduleMode = .daily
     ) {
         self.viewModel = viewModel
         self.recordingViewModelFactory = recordingViewModelFactory
+        _mode = State(initialValue: initialMode)
     }
 
     var body: some View {
