@@ -67,3 +67,4 @@
 - `phone-screenshots/04-growth-collection.png`: 해금한 캐릭터와 성장 도감
 
 모든 파일은 Android 에뮬레이터의 실제 1.14 화면과 동일한 UI를 1080 × 2160 크기로 촬영한 이미지입니다.
+재생성 방법: `StoreScreenshotCaptureTest`(androidTest)가 합성 식단·합성 프로필만 넣고 각 화면을 캡처한다. 에뮬레이터는 `wm size 1080x2160`으로 맞추고, 각 프레임의 semantics 트리는 logcat `NYAMCAP-*` 태그로 남겨 어떤 화면이 저장됐는지 이미지 없이 확인한다. 원본 PNG는 `phone-screenshots-staging/`에 8장(오늘·일간·주간·월간·성장·도감·설정·대화)이 있고 그중 매니페스트 4장만 업로드한다.
