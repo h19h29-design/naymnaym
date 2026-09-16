@@ -113,3 +113,40 @@ test('daily timeout, oversize and truncation return sanitized reasons',async t=>
   const response=await handler(req());assert.equal(response.status,502);assert.equal((await response.json()).reason,reason);
  }
 });
+
+const namedPayload={...payload,items:[{id:'m0',name:'현미밥',nutrients:['carbohydrate']},{id:'m1',name:'닭갈비',nutrients:['protein','iron']}]};
+const namedAnswer={summary:'오늘은 에너지를 주는 밥과 몸을 만드는 반찬이 함께 나왔어.',menus:[{itemId:'m1',nutrient:'protein',taste:'매콤달콤하고 쫄깃해.',role:'단백질은 몸을 만드는 재료야.',point:'채소와 함께 먹으면 더 맛있어.'},{itemId:'m0',nutrient:'carbohydrate',taste:'고소하고 쫀득한 밥이야.',role:'탄수화물은 몸을 움직이는 에너지원이야.',point:'천천히 씹어 먹으면 더 고소해.'}],caution:'메뉴를 바탕으로 살펴본 추정이라 실제 먹은 양은 알 수 없어.',tip:'남긴 반찬의 영양소는 다음 식사에서 다양한 음식으로 만나 보자.'};
+const namedProvider=()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(namedAnswer)}}]});
+
+test('named items yield a per-menu v2 answer and forward names only to the provider',async t=>{
+ let sent;const f=fixture(t,(url,init)=>{sent=init;return namedProvider();});
+ const response=await f.handler(req(namedPayload));assert.equal(response.status,200);
+ const body=await response.json();assert.equal(body.policyVersion,'daily-v2');
+ assert.deepEqual(body.menus.map(entry=>entry.itemId),['m0','m1']);
+ const forwarded=JSON.parse(sent.body);
+ assert.equal(forwarded.max_tokens,4608);
+ const content=JSON.parse(forwarded.messages[1].content);
+ assert.equal(content.items[0].name,'현미밥');assert.equal(content.items[1].name,'닭갈비');
+ assert.ok(!sent.body.includes(payload.requestId));
+});
+
+test('mixed or unsafe names are rejected before the provider',async t=>{
+ const f=fixture(t);
+ const mixed={...namedPayload,items:[namedPayload.items[0],{id:'m1',nutrients:['protein']}]};
+ assert.equal((await f.handler(req(mixed))).status,400);
+ for(const name of ['<script>','https://bad.example','','   ','메뉴'.repeat(20),'이름\n주입']) {
+  assert.equal((await f.handler(req({...namedPayload,items:[{id:'m0',name,nutrients:['carbohydrate']},namedPayload.items[1]]}))).status,400,JSON.stringify(name));
+ }
+ assert.equal(f.calls(),0);
+});
+
+test('v2 answers must cover every requested menu with its own nutrients',async t=>{
+ for(const changed of [
+  {...namedAnswer,menus:namedAnswer.menus.slice(0,1)},
+  {...namedAnswer,menus:[{itemId:'m0',nutrient:'calcium',taste:'고소해.',role:'뼈를 이루는 데 쓰여.',point:'잘 씹어 먹어.'},namedAnswer.menus[1]]},
+  {...namedAnswer,menus:[namedAnswer.menus[0],{itemId:'m9',nutrient:'protein',taste:'쫄깃해.',role:'몸을 만드는 재료야.',point:'함께 먹어.'}]},
+ ]) {
+  const f=fixture(t,()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(changed)}}]}));
+  assert.equal((await f.handler(req(namedPayload))).status,502);
+ }
+});

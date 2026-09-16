@@ -201,7 +201,7 @@ class DailyMealReviewScreenTest {
             "2026-09-13T04:00:00.000Z", "deepseek-v4.1-flash", "daily-v1",
             "오늘 영양 구성을 살펴봤어.", "에너지원이 되는 영양소를 만날 수 있어.",
             listOf(DailyMealReviewHighlight("m0", "carbohydrate", "활동에 쓰이는 에너지원이야.")),
-            "실제로 먹은 양은 알 수 없어.", "다음 식사에서도 다양한 음식을 만나 보자.",
+            null, "실제로 먹은 양은 알 수 없어.", "다음 식사에서도 다양한 음식을 만나 보자.",
         ),
         wholeMeal = DailyMealReviewWholeMeal(protein = 23.0, carbs = 70.0, fat = 18.0),
     )

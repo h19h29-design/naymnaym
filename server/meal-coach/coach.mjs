@@ -28,19 +28,22 @@ export function validateRequest(value) {
 
 // A conservative supplementary guard, not a medical-safety classifier. Public
 // release still requires an independently reviewed child-safety evaluation set.
+const forbidden = [
+  ['answer_numeric', /\p{N}|그램|칼로리|\b(?:mg|g|kcal)\b/iu],
+  ['answer_food_safety', /안전|익혀|조리|신선|먹어도\s*괜찮|알레르기.{0,12}(?:무시|극복)/iu],
+  ['answer_medical', /혈압|혈당|빈혈|키가\s*안\s*커|치료|완치|질병|비만|다이어트|살이\s*찌|키가\s*커|결핍입니다|부족합니다/iu],
+  ['answer_safety', /https?:|www\.|<|>|반드시\s*먹|꼭\s*먹|ignore|instructions|system\s*prompt/iu],
+];
+export function validateCoachText(text, input, maximum=240) {
+  if(typeof text!=='string' || !text.trim() || text.length>maximum || !/[가-힣]/.test(text)) throw new CoachFailure('answer_format');
+  for(const [reason,pattern] of forbidden) if(pattern.test(text)) throw new CoachFailure(reason);
+  if(input && Object.keys(input.wholeMeal??{}).length===0 && /(?:이|그|해당|위|주어진|제공된)\s*(?:수치|함량|숫자|수량)/u.test(text)) throw new CoachFailure('answer_grounding');
+  return text.trim();
+}
 export function validateAnswer(value, input) {
   try { object(value,fields); } catch { throw new CoachFailure('answer_format'); }
-  const forbidden = [
-    ['answer_numeric', /\p{N}|그램|칼로리|\b(?:mg|g|kcal)\b/iu],
-    ['answer_food_safety', /안전|익혀|조리|신선|먹어도\s*괜찮|알레르기.{0,12}(?:무시|극복)/iu],
-    ['answer_medical', /혈압|혈당|빈혈|키가\s*안\s*커|치료|완치|질병|비만|다이어트|살이\s*찌|키가\s*커|결핍입니다|부족합니다/iu],
-    ['answer_safety', /https?:|www\.|<|>|반드시\s*먹|꼭\s*먹|ignore|instructions|system\s*prompt/iu],
-  ];
   for(const key of fields) {
-    const text=value[key];
-    if(typeof text!=='string' || !text.trim() || text.length>240 || !/[가-힣]/.test(text)) throw new CoachFailure('answer_format');
-    for(const [reason,pattern] of forbidden) if(pattern.test(text)) throw new CoachFailure(reason);
-    if(input && Object.keys(input.wholeMeal).length===0 && /(?:이|그|해당|위|주어진|제공된)\s*(?:수치|함량|숫자|수량)/u.test(text)) throw new CoachFailure('answer_grounding');
+    validateCoachText(value[key],input);
   }
   return Object.fromEntries(fields.map(key=>[key,value[key].trim()]));
 }

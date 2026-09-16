@@ -71,7 +71,7 @@ private struct DailyMealReviewContent: View {
                 if controller.hasClient && controller.canGenerate {
                     Toggle("AI 전송에 동의하고 식단 해설 받기",isOn:$consent).font(.subheadline)
                         .accessibilityIdentifier("daily_review_consent")
-                    Text("AI 안내 · 급식레벨업 서버에는 익명 메뉴 ID·대표 영양소·확인된 전체 영양량·임의 설치 식별자를 보내고, OpenCode Go에는 익명 식단 정보만 전달해요. 이름·학교·메뉴 이름·날짜·먹은 기록·등록 알레르기는 보내지 않아요. 보호자와 함께 확인해 주세요.")
+                    Text("AI 안내 · 급식레벨업 서버에는 익명 요청 ID·임의 설치 식별자·메뉴 이름과 대표 영양소·확인된 전체 영양량을 보내고, OpenCode Go에는 메뉴 이름과 영양소 정보만 전달해요. 이름·학교·날짜·먹은 기록·등록 알레르기는 보내지 않아요. 보호자와 함께 확인해 주세요.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button {action=UUID()} label: {
                         Label(controller.isLoading ? "식단 이야기를 준비해요" : "오늘 식단 AI 해설 · 하루 1회",systemImage:"sparkles")
@@ -110,18 +110,32 @@ private struct DailyMealReviewContent: View {
             Text("생성: "+record.response.generatedAt).font(.caption).foregroundStyle(.secondary)
             if record.meal != meal {Text("평가 당시 식단이에요. 현재 급식표 내용과 다를 수 있어요.").font(.footnote).foregroundStyle(.orange)}
             section("오늘 식단의 특징",body:record.response.summary)
-            section("만날 수 있는 영양소",body:record.response.benefit)
-            VStack(alignment:.leading,spacing:8) {
-                Text("눈여겨볼 메뉴").font(.subheadline.bold())
-                let highlights=DailyMealReviewFactory.visibleHighlights(record,allergies:allergies)
-                ForEach(highlights,id:\.itemId) {highlight in
-                    if let index=Int(highlight.itemId.dropFirst()),record.meal.menuItems.indices.contains(index) {
-                        Label(record.meal.menuItems[index].normalizedPresentationName,systemImage:"leaf.fill").font(.subheadline.bold())
-                        Text(DailyMealReviewFactory.role(highlight.nutrient)).font(.body)
+            if let benefit=record.response.benefit {section("만날 수 있는 영양소",body:benefit)}
+            if record.response.menus != nil {
+                VStack(alignment:.leading,spacing:10) {
+                    Text("메뉴별 이야기").font(.subheadline.bold())
+                    let menus=DailyMealReviewFactory.visibleMenus(record,allergies:allergies)
+                    ForEach(menus,id:\.itemId) {entry in
+                        if let index=Int(entry.itemId.dropFirst()),record.meal.menuItems.indices.contains(index) {
+                            menuCard(name:record.meal.menuItems[index].normalizedPresentationName,entry:entry)
+                        }
                     }
+                    if menus.isEmpty {Text("현재 알레르기와 확인 가능한 정보를 고려해 표시할 메뉴가 없어요.").font(.footnote).foregroundStyle(.secondary)}
+                    if menus.count<(record.response.menus ?? []).count {Text("현재 등록 알레르기와 관련된 메뉴의 이야기는 숨겼어요. 보호자·선생님에게 확인해 주세요.").font(.footnote).foregroundStyle(.red)}
                 }
-                if highlights.isEmpty {Text("현재 알레르기와 확인 가능한 정보를 고려해 추천 메뉴를 표시하지 않아요.").font(.footnote).foregroundStyle(.secondary)}
-                if highlights.count<record.response.highlights.count {Text("현재 등록 알레르기와 관련된 메뉴의 추천은 숨겼어요. 보호자·선생님에게 확인해 주세요.").font(.footnote).foregroundStyle(.red)}
+            } else {
+                VStack(alignment:.leading,spacing:8) {
+                    Text("눈여겨볼 메뉴").font(.subheadline.bold())
+                    let highlights=DailyMealReviewFactory.visibleHighlights(record,allergies:allergies)
+                    ForEach(highlights,id:\.itemId) {highlight in
+                        if let index=Int(highlight.itemId.dropFirst()),record.meal.menuItems.indices.contains(index) {
+                            Label(record.meal.menuItems[index].normalizedPresentationName,systemImage:"leaf.fill").font(.subheadline.bold())
+                            Text(DailyMealReviewFactory.role(highlight.nutrient)).font(.body)
+                        }
+                    }
+                    if highlights.isEmpty {Text("현재 알레르기와 확인 가능한 정보를 고려해 추천 메뉴를 표시하지 않아요.").font(.footnote).foregroundStyle(.secondary)}
+                    if highlights.count<(record.response.highlights ?? []).count {Text("현재 등록 알레르기와 관련된 메뉴의 추천은 숨겼어요. 보호자·선생님에게 확인해 주세요.").font(.footnote).foregroundStyle(.red)}
+                }
             }
             section("남겼다면 이렇게 보완해요",body:record.response.tip)
             Text(record.response.caution).font(.footnote).foregroundStyle(.secondary)
@@ -130,6 +144,29 @@ private struct DailyMealReviewContent: View {
     }
     private func section(_ title:String,body:String) -> some View {
         VStack(alignment:.leading,spacing:7) {Text(title).font(.subheadline.bold());Text(body).font(.body)}
+    }
+    private func menuCard(name:String,entry:DailyMealReviewMenu) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            HStack(spacing:8) {
+                Text(name).font(.subheadline.bold())
+                Spacer()
+                Text(DailyMealReviewFactory.nutrientLabel(entry.nutrient))
+                    .font(.caption2.bold()).foregroundStyle(RebuildDesignTokens.forest700)
+                    .padding(.horizontal,8).padding(.vertical,3)
+                    .background(RebuildDesignTokens.forest700.opacity(0.12),in:Capsule())
+            }
+            menuRow("맛",entry.taste)
+            menuRow("영양소",entry.role)
+            menuRow("먹는 팁",entry.point)
+        }
+        .padding(12).frame(maxWidth:.infinity,alignment:.leading)
+        .background(RebuildDesignTokens.cream50,in:RoundedRectangle(cornerRadius:14))
+    }
+    private func menuRow(_ label:String,_ body:String) -> some View {
+        HStack(alignment:.top,spacing:8) {
+            Text(label).font(.caption.bold()).foregroundStyle(.secondary).frame(width:38,alignment:.leading)
+            Text(body).font(.footnote).fixedSize(horizontal:false,vertical:true)
+        }
     }
     private func sourceNutrition(_ meal:RebuildMealDay) -> some View {
         VStack(alignment:.leading,spacing:5) {

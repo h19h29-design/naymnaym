@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class DailyMealReviewItem(
     val id: String,
+    val name: String? = null,
     val nutrients: List<String>,
 )
 
@@ -37,6 +38,14 @@ data class DailyMealReviewHighlight(
     val reason: String,
 )
 
+data class DailyMealReviewMenuEntry(
+    val itemId: String,
+    val nutrient: String,
+    val taste: String,
+    val role: String,
+    val point: String,
+)
+
 data class DailyMealReviewResponse(
     val source: String,
     val reviewId: String,
@@ -45,8 +54,9 @@ data class DailyMealReviewResponse(
     val model: String,
     val policyVersion: String,
     val summary: String,
-    val benefit: String,
-    val highlights: List<DailyMealReviewHighlight>,
+    val benefit: String? = null,
+    val highlights: List<DailyMealReviewHighlight>? = null,
+    val menus: List<DailyMealReviewMenuEntry>? = null,
     val caution: String,
     val tip: String,
 )
@@ -71,8 +81,17 @@ data class SavedDailyMealReview(
 ) {
     fun visibleHighlights(currentAllergyCodes: List<Int>): List<DailyMealReviewHighlight> {
         val current = currentAllergyCodes.toSet()
-        return response.highlights.filter { highlight ->
+        return response.highlights.orEmpty().filter { highlight ->
             menuSnapshot.firstOrNull { it.id == highlight.itemId }
+                ?.allergyCodes
+                ?.none(current::contains) == true
+        }
+    }
+
+    fun visibleMenus(currentAllergyCodes: List<Int>): List<DailyMealReviewMenuEntry> {
+        val current = currentAllergyCodes.toSet()
+        return response.menus.orEmpty().filter { entry ->
+            menuSnapshot.firstOrNull { it.id == entry.itemId }
                 ?.allergyCodes
                 ?.none(current::contains) == true
         }
@@ -104,14 +123,15 @@ class DailyMealReviewRequestFactory(
         require(requestId.version() == 4 && sessionId.version() == 4)
         require(meal.menuItems.size <= 30)
         val allergies = registeredAllergyCodes.toSet()
-        val items = meal.menuItems.mapIndexedNotNull { index, item ->
+        val items = meal.menuItems.take(15).mapIndexedNotNull { index, item ->
             if (item.allergyCodes.any(allergies::contains)) return@mapIndexedNotNull null
+            val name = item.name.trim().takeIf(::validMenuName) ?: return@mapIndexedNotNull null
             val discovered = (item.nutrients.mapNotNull(::normalizeNutrientId) +
                 rules.insight(item.name).nutrients.map { it.id })
                 .toSet()
             val nutrients = NUTRIENT_ORDER.filter(discovered::contains)
             nutrients.takeIf(List<String>::isNotEmpty)?.let {
-                DailyMealReviewItem(id = "m$index", nutrients = it)
+                DailyMealReviewItem(id = "m$index", name = name, nutrients = it)
             }
         }
         return DailyMealReviewRequest(
@@ -126,6 +146,15 @@ class DailyMealReviewRequestFactory(
         val NUTRIENT_ORDER = listOf(
             "fiber", "vitamin", "protein", "iron", "calcium", "carbohydrate",
         )
+
+        private val INVALID_MENU_NAME =
+            Regex("""[<>{}\[\]\p{Cc}]|https?:""", RegexOption.IGNORE_CASE)
+
+        fun validMenuName(name: String): Boolean {
+            val trimmed = name.trim()
+            return trimmed.isNotEmpty() && trimmed.length <= 30 &&
+                trimmed.any(Char::isLetter) && !INVALID_MENU_NAME.containsMatchIn(trimmed)
+        }
 
         fun normalizeNutrientId(raw: String): String? =
             MealCoachRequestFactory.normalizeNutrientId(raw)
@@ -153,6 +182,16 @@ fun dailyMealReviewNutrientRole(nutrient: String): String = when (nutrient) {
     "calcium" -> "칼슘은 뼈와 치아를 이루는 데 쓰여요."
     "carbohydrate" -> "탄수화물은 활동에 쓰이는 에너지원이에요."
     else -> "메뉴에서 확인된 대표 영양소예요."
+}
+
+fun dailyMealReviewNutrientLabel(nutrient: String): String = when (nutrient) {
+    "fiber" -> "식이섬유"
+    "vitamin" -> "비타민"
+    "protein" -> "단백질"
+    "iron" -> "철분"
+    "calcium" -> "칼슘"
+    "carbohydrate" -> "탄수화물"
+    else -> nutrient
 }
 
 fun dailyMealFingerprint(meal: MealDay): String {
@@ -480,6 +519,11 @@ class DailyMealReviewSession(
     fun visibleHighlights(): List<DailyMealReviewHighlight> =
         (mutableState.value.record ?: mutableState.value.unsavedRecord)
             ?.visibleHighlights(registeredAllergyCodes)
+            .orEmpty()
+
+    fun visibleMenus(): List<DailyMealReviewMenuEntry> =
+        (mutableState.value.record ?: mutableState.value.unsavedRecord)
+            ?.visibleMenus(registeredAllergyCodes)
             .orEmpty()
 
     private fun createRequest(

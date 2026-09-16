@@ -33,11 +33,16 @@ object DailyMealReviewJson {
     private val strictReaderFactory = JsonFactory.builder()
         .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
         .build()
-    private val responseKeys = setOf(
+    private val responseKeysV1 = setOf(
         "source", "reviewId", "day", "generatedAt", "model", "policyVersion",
         "summary", "benefit", "highlights", "caution", "tip",
     )
+    private val responseKeysV2 = setOf(
+        "source", "reviewId", "day", "generatedAt", "model", "policyVersion",
+        "summary", "menus", "caution", "tip",
+    )
     private val highlightKeys = setOf("itemId", "nutrient", "reason")
+    private val menuKeys = setOf("itemId", "nutrient", "taste", "role", "point")
     private val forbiddenText = listOf(
         Regex("\\p{N}|그램|칼로리|\\b(?:mg|g|kcal)\\b", RegexOption.IGNORE_CASE),
         Regex("안전|익혀|조리|신선|먹어도\\s*괜찮|알레르기.{0,12}(?:무시|극복)", RegexOption.IGNORE_CASE),
@@ -49,6 +54,7 @@ object DailyMealReviewJson {
 
     fun encodeRequest(request: DailyMealReviewRequest): ByteArray {
         validateRequest(request)
+        if (request.items.any { it.name == null }) invalid()
         val output = ByteArrayOutputStream()
         writerFactory.createGenerator(output).use { json ->
             json.writeStartObject()
@@ -58,6 +64,7 @@ object DailyMealReviewJson {
             request.items.forEach { item ->
                 json.writeStartObject()
                 json.writeStringField("id", item.id)
+                json.writeStringField("name", item.name)
                 json.writeArrayFieldStart("nutrients")
                 item.nutrients.forEach(json::writeString)
                 json.writeEndArray()
@@ -85,7 +92,7 @@ object DailyMealReviewJson {
         }
         validateRequest(request)
         val root = parseObject(bytes)
-        if (root.keys != responseKeys || root["source"] != "ai") invalid()
+        if (root["source"] != "ai") invalid()
         val reviewId = root.requiredText("reviewId")
         val day = root.requiredText("day")
         val generatedAt = root.requiredText("generatedAt")
@@ -95,25 +102,54 @@ object DailyMealReviewJson {
         runCatching { Instant.parse(generatedAt) }.getOrElse { invalid() }
         val model = root.requiredText("model")
         val policyVersion = root.requiredText("policyVersion")
+        val namedRequest = request.items.all { it.name != null }
+        val v2 = namedRequest && policyVersion == "daily-v2"
+        if (!v2 && !(request.items.all { it.name == null } && policyVersion == "daily-v1")) invalid()
+        if (root.keys != (if (v2) responseKeysV2 else responseKeysV1)) invalid()
         val quantityFree = listOf(request.wholeMeal.protein, request.wholeMeal.carbs, request.wholeMeal.fat)
             .all { it == null }
         val summary = root.safeKoreanText("summary", quantityFree)
-        val benefit = root.safeKoreanText("benefit", quantityFree)
         val caution = root.safeKoreanText("caution", quantityFree)
         val tip = root.safeKoreanText("tip", quantityFree)
         val allowed = request.items.associate { it.id to it.nutrients.toSet() }
-        val rawHighlights = root["highlights"] as? List<*> ?: invalid()
-        if (rawHighlights.size > 2) invalid()
-        val highlights = rawHighlights.map { raw ->
-            @Suppress("UNCHECKED_CAST")
-            val value = raw as? Map<String, Any?> ?: invalid()
-            if (value.keys != highlightKeys) invalid()
-            val itemId = value.requiredText("itemId")
-            val nutrient = value.requiredText("nutrient")
-            if (nutrient !in allowed[itemId].orEmpty()) invalid()
-            DailyMealReviewHighlight(itemId, nutrient, value.safeKoreanText("reason", quantityFree))
+        var benefit: String? = null
+        var highlights: List<DailyMealReviewHighlight>? = null
+        var menus: List<DailyMealReviewMenuEntry>? = null
+        if (v2) {
+            val rawMenus = root["menus"] as? List<*> ?: invalid()
+            if (rawMenus.size != request.items.size) invalid()
+            val seen = mutableSetOf<String>()
+            menus = rawMenus.map { raw ->
+                @Suppress("UNCHECKED_CAST")
+                val value = raw as? Map<String, Any?> ?: invalid()
+                if (value.keys != menuKeys) invalid()
+                val itemId = value.requiredText("itemId")
+                if (!seen.add(itemId)) invalid()
+                val nutrient = value.requiredText("nutrient")
+                if (nutrient !in allowed[itemId].orEmpty()) invalid()
+                DailyMealReviewMenuEntry(
+                    itemId = itemId,
+                    nutrient = nutrient,
+                    taste = value.safeKoreanText("taste", quantityFree, 60),
+                    role = value.safeKoreanText("role", quantityFree, 120),
+                    point = value.safeKoreanText("point", quantityFree, 120),
+                )
+            }
+        } else {
+            benefit = root.safeKoreanText("benefit", quantityFree)
+            val rawHighlights = root["highlights"] as? List<*> ?: invalid()
+            if (rawHighlights.size > 2) invalid()
+            highlights = rawHighlights.map { raw ->
+                @Suppress("UNCHECKED_CAST")
+                val value = raw as? Map<String, Any?> ?: invalid()
+                if (value.keys != highlightKeys) invalid()
+                val itemId = value.requiredText("itemId")
+                val nutrient = value.requiredText("nutrient")
+                if (nutrient !in allowed[itemId].orEmpty()) invalid()
+                DailyMealReviewHighlight(itemId, nutrient, value.safeKoreanText("reason", quantityFree))
+            }
+            if (highlights.map { it.itemId }.toSet().size != highlights.size) invalid()
         }
-        if (highlights.map { it.itemId }.toSet().size != highlights.size) invalid()
         return DailyMealReviewResponse(
             source = "ai",
             reviewId = reviewId,
@@ -124,6 +160,7 @@ object DailyMealReviewJson {
             summary = summary,
             benefit = benefit,
             highlights = highlights,
+            menus = menus,
             caution = caution,
             tip = tip,
         )
@@ -181,8 +218,10 @@ object DailyMealReviewJson {
                 } ?: invalid(),
             )
         } ?: invalid()
+        @Suppress("UNCHECKED_CAST")
+        val storedV2 = (root["response"] as? Map<String, Any?>)?.get("policyVersion") == "daily-v2"
         val candidates = snapshots.filter { it.nutrients.isNotEmpty() }.map {
-            DailyMealReviewItem(it.id, it.nutrients)
+            DailyMealReviewItem(it.id, if (storedV2) it.name else null, it.nutrients)
         }
         val requestId = root.requiredText("requestId")
         val wholeMeal = root.requiredWholeMeal("wholeMeal")
@@ -220,6 +259,7 @@ object DailyMealReviewJson {
         if (request.items.map { it.id }.toSet().size != request.items.size) invalid()
         request.items.forEachIndexed { index, item ->
             if (item.id != "m$index" && !item.id.matches(Regex("m(?:[0-9]|[12][0-9])"))) invalid()
+            if (item.name != null && !DailyMealReviewRequestFactory.validMenuName(item.name)) invalid()
             if (item.nutrients.isEmpty() || item.nutrients.size > 6 ||
                 item.nutrients.toSet().size != item.nutrients.size ||
                 item.nutrients.any { it !in DailyMealReviewRequestFactory.NUTRIENT_ORDER }
@@ -268,9 +308,10 @@ object DailyMealReviewJson {
     private fun Map<String, Any?>.requiredText(key: String): String =
         (this[key] as? String)?.takeIf { it.isNotBlank() && it.length <= 240 } ?: invalid()
 
-    private fun Map<String, Any?>.safeKoreanText(key: String, quantityFree: Boolean): String =
+    private fun Map<String, Any?>.safeKoreanText(key: String, quantityFree: Boolean, maximum: Int = 240): String =
         requiredText(key).trim().also {
-        if (!it.any { character -> character in '\uAC00'..'\uD7A3' } ||
+        if (it.length > maximum ||
+            !it.any { character -> character in '\uAC00'..'\uD7A3' } ||
             forbiddenText.any { pattern -> pattern.containsMatchIn(it) } ||
             quantityFree && ungroundedQuantityReference.containsMatchIn(it)
         ) invalid()
@@ -302,11 +343,12 @@ object DailyMealReviewJson {
     }
 
     private fun validateStoredResponse(record: SavedDailyMealReview) {
+        val v2 = record.response.policyVersion == "daily-v2"
         val request = DailyMealReviewRequest(
             requestId = record.requestId,
             sessionId = "00000000-0000-4000-8000-000000000000",
             items = record.menuSnapshot.filter { it.nutrients.isNotEmpty() }.map {
-                DailyMealReviewItem(it.id, it.nutrients)
+                DailyMealReviewItem(it.id, if (v2) it.name else null, it.nutrients)
             },
             wholeMeal = record.wholeMeal,
         )
@@ -324,21 +366,42 @@ object DailyMealReviewJson {
             json.writeStringField("model", response.model)
             json.writeStringField("policyVersion", response.policyVersion)
             json.writeStringField("summary", response.summary)
-            json.writeStringField("benefit", response.benefit)
-            json.writeArrayFieldStart("highlights")
-            response.highlights.forEach { highlight ->
-                json.writeStartObject()
-                json.writeStringField("itemId", highlight.itemId)
-                json.writeStringField("nutrient", highlight.nutrient)
-                json.writeStringField("reason", highlight.reason)
-                json.writeEndObject()
+            if (response.policyVersion == "daily-v2") {
+                writeMenus(json, response.menus ?: invalid())
+            } else {
+                json.writeStringField("benefit", response.benefit ?: invalid())
+                json.writeArrayFieldStart("highlights")
+                (response.highlights ?: invalid()).forEach { highlight ->
+                    json.writeStartObject()
+                    json.writeStringField("itemId", highlight.itemId)
+                    json.writeStringField("nutrient", highlight.nutrient)
+                    json.writeStringField("reason", highlight.reason)
+                    json.writeEndObject()
+                }
+                json.writeEndArray()
             }
-            json.writeEndArray()
             json.writeStringField("caution", response.caution)
             json.writeStringField("tip", response.tip)
             json.writeEndObject()
         }
         return output.toByteArray()
+    }
+
+    private fun writeMenus(
+        json: com.fasterxml.jackson.core.JsonGenerator,
+        menus: List<DailyMealReviewMenuEntry>,
+    ) {
+        json.writeArrayFieldStart("menus")
+        menus.forEach { entry ->
+            json.writeStartObject()
+            json.writeStringField("itemId", entry.itemId)
+            json.writeStringField("nutrient", entry.nutrient)
+            json.writeStringField("taste", entry.taste)
+            json.writeStringField("role", entry.role)
+            json.writeStringField("point", entry.point)
+            json.writeEndObject()
+        }
+        json.writeEndArray()
     }
 
     private fun writeResponse(json: com.fasterxml.jackson.core.JsonGenerator, response: DailyMealReviewResponse) {
@@ -350,16 +413,20 @@ object DailyMealReviewJson {
         json.writeStringField("model", response.model)
         json.writeStringField("policyVersion", response.policyVersion)
         json.writeStringField("summary", response.summary)
-        json.writeStringField("benefit", response.benefit)
-        json.writeArrayFieldStart("highlights")
-        response.highlights.forEach { highlight ->
-            json.writeStartObject()
-            json.writeStringField("itemId", highlight.itemId)
-            json.writeStringField("nutrient", highlight.nutrient)
-            json.writeStringField("reason", highlight.reason)
-            json.writeEndObject()
+        if (response.policyVersion == "daily-v2") {
+            writeMenus(json, response.menus ?: invalid())
+        } else {
+            json.writeStringField("benefit", response.benefit ?: invalid())
+            json.writeArrayFieldStart("highlights")
+            (response.highlights ?: invalid()).forEach { highlight ->
+                json.writeStartObject()
+                json.writeStringField("itemId", highlight.itemId)
+                json.writeStringField("nutrient", highlight.nutrient)
+                json.writeStringField("reason", highlight.reason)
+                json.writeEndObject()
+            }
+            json.writeEndArray()
         }
-        json.writeEndArray()
         json.writeStringField("caution", response.caution)
         json.writeStringField("tip", response.tip)
         json.writeEndObject()

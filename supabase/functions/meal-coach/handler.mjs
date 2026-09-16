@@ -3,8 +3,11 @@ const GO_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
 const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const ITEM_ID = /^m(?:[0-9]|[12][0-9])$/;
 const NUTRIENTS = new Set(['fiber', 'vitamin', 'protein', 'iron', 'calcium', 'carbohydrate']);
-const RESPONSE_KEYS = ['summary', 'benefit', 'highlights', 'caution', 'tip'];
-const TEXT_KEYS = ['summary', 'benefit', 'caution', 'tip'];
+const RESPONSE_KEYS_V1 = ['summary', 'benefit', 'highlights', 'caution', 'tip'];
+const TEXT_KEYS_V1 = ['summary', 'benefit', 'caution', 'tip'];
+const RESPONSE_KEYS_V2 = ['summary', 'menus', 'caution', 'tip'];
+const MENU_KEYS = ['itemId', 'nutrient', 'taste', 'role', 'point'];
+const MENU_TEXT_LIMITS = { taste: 60, role: 120, point: 120 };
 
 const INSTRUCTION = `너는 급식레벨업의 AI 영양 안내 캐릭터야. 실제 영양사나 의료인이 아니야.
 익명 메뉴 items의 nutrients는 메뉴 기반 추정이지 함량 증명이 아니야. wholeMeal은 제공된 식사 전체 영양량이며 개인 섭취량이나 반찬별 함량이 아니야.
@@ -14,6 +17,21 @@ const INSTRUCTION = `너는 급식레벨업의 AI 영양 안내 캐릭터야. �
 메뉴 이름은 모르므로 만들지 마. highlights는 요청 items 중 최대 두 개만 선택하고 그 항목에 있는 nutrient ID 하나와 일반적인 역할만 써.
 highlights의 각 항목은 {"itemId":"m0","nutrient":"protein","reason":"일반적인 역할"} 형식을 정확히 사용해. id나 role처럼 다른 키 이름으로 바꾸지 마.
 JSON만 반환해: summary, benefit, highlights, caution, tip. 각 문자열 최대 240자, 가급적 60자 이내.`;
+
+const INSTRUCTION_V2 = `너는 급식레벨업의 AI 캐릭터 '냠냠이'야. 초등학생에게 오늘 급식을 알려주는 다정한 영양 선생님처럼 한국어 반말로 설명해. 실제 영양사나 의료인이 아니야.
+items는 오늘 급식 메뉴야. 각 항목의 name은 메뉴 이름, nutrients는 그 메뉴에서 기대할 수 있는 대표 영양소의 추정이지 함량 증명이 아니야. wholeMeal은 제공된 식사 전체 영양량이며 개인 섭취량이나 반찬별 함량이 아니야.
+summary는 오늘 식단 전체의 특징을 한두 문장으로 소개해.
+menus에는 요청 items의 모든 id를 빠짐없이 한 번씩만 넣고 각 항목을 이렇게 써:
+- nutrient: 그 항목의 nutrients 중 대표 하나만 골라
+- taste: 그 음식의 맛이나 식감을 어린이가 상상하기 쉬운 한 문장으로
+- role: 고른 영양소가 우리 몸에서 하는 일을 쉬운 한 문장으로
+- point: 맛있게 먹는 방법이나 먹을 때 챙기면 좋은 점을 한 문장으로
+caution은 이 안내의 한계, tip은 다음 식사에서 부담 없이 보완하는 방법을 써.
+숫자나 측정단위, 수량 표현을 출력하지 마. 주어진 영양소 외의 성분을 있다고 단정하지 마. 결핍·과잉·체중·성장·질환 효과를 판단하거나 먹도록 강요하지 마. 조리·신선도·안전을 보장하거나 알레르기 극복, 질병, 혈압, 혈당, 빈혈을 설명하지 마. 입력에 없는 메뉴 이름이나 영양소를 만들지 마. 그리고 안전, 신선, 조리, 익히다, 먹어도 괜찮, 꼭 먹, 반드시 라는 표현은 어떤 문장에서도 쓰지 마.
+JSON만 반환해: {"summary":"...","menus":[{"itemId":"m0","nutrient":"protein","taste":"...","role":"...","point":"..."}],"caution":"...","tip":"..."}
+각 문자열 최대 120자, 가급적 60자 이내.
+형식 예시: {"summary":"오늘은 에너지를 주는 밥과 몸을 만드는 반찬이 함께 나왔어.","menus":[{"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."}],"caution":"메뉴를 바탕으로 살펴본 추정이라 실제 먹은 양은 알 수 없어.","tip":"남긴 반찬의 영양소는 다음 식사에서 다양한 음식으로 만나 보자."}
+예시를 복사하지 말고 실제 items의 id와 영양소에 맞춰 써.`;
 
 class HandlerFailure extends Error {
   constructor(reason) { super(reason); this.reason = reason; }
@@ -48,7 +66,7 @@ function validateRequest(value) {
   }
   const seen = new Set();
   const items = value.items.map((item) => {
-    exactObject(item, ['id', 'nutrients']);
+    exactObject(item, 'name' in item ? ['id', 'name', 'nutrients'] : ['id', 'nutrients']);
     if (!ITEM_ID.test(item.id) || seen.has(item.id) || !Array.isArray(item.nutrients) || item.nutrients.length < 1 || item.nutrients.length > 6) {
       throw new HandlerFailure('invalid');
     }
@@ -56,8 +74,20 @@ function validateRequest(value) {
       throw new HandlerFailure('invalid');
     }
     seen.add(item.id);
-    return { id: item.id, nutrients: [...item.nutrients] };
+    const parsed = { id: item.id, nutrients: [...item.nutrients] };
+    if ('name' in item) {
+      if (typeof item.name !== 'string') throw new HandlerFailure('invalid');
+      const name = item.name.trim();
+      if (name.length < 1 || name.length > 30 || !/\p{L}/u.test(name) || /[<>{}\[\]]|\p{C}|https?:/iu.test(name)) {
+        throw new HandlerFailure('invalid');
+      }
+      parsed.name = name;
+    }
+    return parsed;
   });
+  const named = items.map((item) => 'name' in item);
+  if (named.some((flag) => flag !== named[0])) throw new HandlerFailure('invalid');
+  if (named[0] && items.length > 15) throw new HandlerFailure('invalid');
   return {
     requestId: value.requestId.toLowerCase(),
     sessionId: value.sessionId.toLowerCase(),
@@ -66,8 +96,8 @@ function validateRequest(value) {
   };
 }
 
-function validateText(value, input) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 240 || !/[가-힣]/u.test(value)) throw new HandlerFailure('answer_format');
+function validateText(value, input, maximum = 240) {
+  if (typeof value !== 'string' || !value.trim() || value.length > maximum || !/[가-힣]/u.test(value)) throw new HandlerFailure('answer_format');
   const forbidden = /\p{N}|그램|칼로리|\b(?:mg|g|kcal)\b|안전|익혀|조리|신선|혈압|혈당|빈혈|https?:|www\.|<|>|키가\s*안\s*커|먹어도\s*괜찮|알레르기.{0,12}(?:무시|극복)|치료|완치|질병|비만|다이어트|살이\s*찌|키가\s*커|결핍입니다|부족합니다|반드시\s*먹|꼭\s*먹|ignore|instructions|system\s*prompt/iu;
   if (forbidden.test(value)) throw new HandlerFailure('answer_safety');
   if (Object.keys(input.wholeMeal).length === 0 && /(?:이|그|해당|위|주어진|제공된)\s*(?:수치|함량|숫자|수량)/u.test(value)) {
@@ -77,9 +107,10 @@ function validateText(value, input) {
 }
 
 function validateAnswer(value, input) {
-  exactObject(value, RESPONSE_KEYS);
+  if ('name' in input.items[0]) return validateAnswerV2(value, input);
+  exactObject(value, RESPONSE_KEYS_V1);
   if (!Array.isArray(value.highlights) || value.highlights.length > 2) throw new HandlerFailure('answer_format');
-  const answer = Object.fromEntries(TEXT_KEYS.map((key) => [key, validateText(value[key], input)]));
+  const answer = Object.fromEntries(TEXT_KEYS_V1.map((key) => [key, validateText(value[key], input)]));
   const seen = new Set();
   const highlights = value.highlights.map((highlight) => {
     if (!highlight || typeof highlight !== 'object' || Array.isArray(highlight)) throw new HandlerFailure('answer_format');
@@ -102,6 +133,33 @@ function validateAnswer(value, input) {
     return { itemId, nutrient: highlight.nutrient, reason: normalizedReason };
   }).filter(Boolean);
   return { ...answer, highlights };
+}
+
+function validateAnswerV2(value, input) {
+  exactObject(value, RESPONSE_KEYS_V2);
+  if (!Array.isArray(value.menus) || value.menus.length !== input.items.length) throw new HandlerFailure('answer_format');
+  const answer = {
+    summary: validateText(value.summary, input),
+    caution: validateText(value.caution, input),
+    tip: validateText(value.tip, input),
+  };
+  const seen = new Set();
+  const menus = value.menus.map((entry) => {
+    exactObject(entry, MENU_KEYS);
+    const item = input.items.find((candidate) => candidate.id === entry.itemId);
+    if (!item || !item.nutrients.includes(entry.nutrient) || seen.has(entry.itemId)) throw new HandlerFailure('answer_grounding');
+    seen.add(entry.itemId);
+    return {
+      itemId: entry.itemId,
+      nutrient: entry.nutrient,
+      taste: validateText(entry.taste, input, MENU_TEXT_LIMITS.taste),
+      role: validateText(entry.role, input, MENU_TEXT_LIMITS.role),
+      point: validateText(entry.point, input, MENU_TEXT_LIMITS.point),
+    };
+  });
+  const order = new Map(input.items.map((item, index) => [item.id, index]));
+  menus.sort((left, right) => order.get(left.itemId) - order.get(right.itemId));
+  return { ...answer, menus };
 }
 
 async function sha256(value) {
@@ -164,12 +222,12 @@ export function createMealCoachHandler({ providerKey, claim, finish, fetcher = f
         },
         body: JSON.stringify({
           model: GO_MODEL,
-          max_tokens: 1100,
+          max_tokens: 'name' in input.items[0] ? 4608 : 1100,
           temperature: 0.3,
           thinking: { type: 'disabled' },
           response_format: { type: 'json_object' },
           messages: [
-            { role: 'system', content: INSTRUCTION },
+            { role: 'system', content: 'name' in input.items[0] ? INSTRUCTION_V2 : INSTRUCTION },
             { role: 'user', content: JSON.stringify({ items: input.items, wholeMeal: input.wholeMeal }) },
           ],
         }),
@@ -182,7 +240,7 @@ export function createMealCoachHandler({ providerKey, claim, finish, fetcher = f
       await finish({ subjectHash, day, requestHash, success: true });
       return response({
         source: 'ai', reviewId: input.requestId, day, generatedAt: now().toISOString(),
-        model: GO_MODEL, policyVersion: 'daily-v1', ...answer,
+        model: GO_MODEL, policyVersion: 'name' in input.items[0] ? 'daily-v2' : 'daily-v1', ...answer,
       });
     } catch {
       try { await finish({ subjectHash, day, requestHash, success: false }); } catch { return response({ error: 'storage_unavailable' }, 503); }

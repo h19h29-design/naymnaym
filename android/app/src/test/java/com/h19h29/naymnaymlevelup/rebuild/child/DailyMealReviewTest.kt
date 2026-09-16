@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DailyMealReviewTest {
@@ -47,6 +48,66 @@ class DailyMealReviewTest {
 
         assertEquals(listOf("m0"), request.items.map { it.id })
         assertEquals(listOf("carbohydrate"), request.items.single().nutrients)
+        assertEquals("현미밥", request.items.single().name)
+    }
+
+    @Test
+    fun `wire request writes menu names but never school or allergy data`() {
+        val request = wireRequest(
+            listOf(DailyMealReviewItem("m0", name = "현미밥", nutrients = listOf("carbohydrate"))),
+        )
+        val body = String(DailyMealReviewJson.encodeRequest(request), Charsets.UTF_8)
+        assertTrue(body.contains("현미밥"))
+        assertFalse(body.contains("allergy"))
+        assertFalse(body.contains("school"))
+    }
+
+    @Test
+    fun `v2 response decodes per-menu entries and rejects partial coverage`() {
+        val requested = listOf(
+            DailyMealReviewItem("m0", name = "현미밥", nutrients = listOf("carbohydrate")),
+            DailyMealReviewItem("m1", name = "닭갈비", nutrients = listOf("protein", "iron")),
+        )
+        val v2 = """{
+            "source":"ai",
+            "reviewId":"00000000-0000-4000-8000-000000000001",
+            "day":"2026-09-13",
+            "generatedAt":"2026-09-13T04:00:00.000Z",
+            "model":"deepseek-v4.1-flash",
+            "policyVersion":"daily-v2",
+            "summary":"오늘은 에너지를 주는 밥과 몸을 만드는 반찬이 함께 나왔어.",
+            "menus":[
+                {"itemId":"m1","nutrient":"protein","taste":"매콤달콤하고 쫄깃해.","role":"단백질은 몸을 만드는 재료야.","point":"채소와 함께 먹으면 더 맛있어."},
+                {"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."}
+            ],
+            "caution":"메뉴를 바탕으로 살펴본 추정이라 실제 먹은 양은 알 수 없어.",
+            "tip":"남긴 반찬의 영양소는 다음 식사에서 다양한 음식으로 만나 보자."
+        }""".trimIndent().encodeToByteArray()
+
+        val decoded = DailyMealReviewJson.decodeResponse(v2, wireRequest(requested))
+        assertEquals(2, decoded.menus?.size)
+        assertEquals("매콤달콤하고 쫄깃해.", decoded.menus?.first { it.itemId == "m1" }?.taste)
+
+        val partial = String(v2, Charsets.UTF_8)
+            .replace(Regex(",?\\s*\\{\\s*\"itemId\":\"m0\"[^}]*\\}"), "")
+            .encodeToByteArray()
+        assertThrows(DailyMealReviewProtocolException.InvalidPayload::class.java) {
+            DailyMealReviewJson.decodeResponse(partial, wireRequest(requested))
+        }
+
+        val wrongNutrient = String(v2, Charsets.UTF_8)
+            .replace("\"nutrient\":\"carbohydrate\"", "\"nutrient\":\"calcium\"")
+            .encodeToByteArray()
+        assertThrows(DailyMealReviewProtocolException.InvalidPayload::class.java) {
+            DailyMealReviewJson.decodeResponse(wrongNutrient, wireRequest(requested))
+        }
+
+        val v1AgainstNamed = String(v2, Charsets.UTF_8)
+            .replace("daily-v2", "daily-v1")
+            .encodeToByteArray()
+        assertThrows(DailyMealReviewProtocolException.InvalidPayload::class.java) {
+            DailyMealReviewJson.decodeResponse(v1AgainstNamed, wireRequest(requested))
+        }
     }
 
     @Test
@@ -57,7 +118,7 @@ class DailyMealReviewTest {
 
     @Test
     fun `response rejects highlight not included in request candidates`() {
-        val requested = listOf(DailyMealReviewItem("m0", listOf("carbohydrate")))
+        val requested = listOf(DailyMealReviewItem("m0", nutrients = listOf("carbohydrate")))
         val invalid = """{
             "source":"ai",
             "reviewId":"00000000-0000-4000-8000-000000000001",
@@ -79,7 +140,7 @@ class DailyMealReviewTest {
 
     @Test
     fun `response rejects server forbidden and quantity free grounding patterns`() {
-        val requested = listOf(DailyMealReviewItem("m0", listOf("carbohydrate")))
+        val requested = listOf(DailyMealReviewItem("m0", nutrients = listOf("carbohydrate")))
         val forbidden = listOf(
             "빈혈을 막아 줘.",
             "비만을 예방해 줘.",
@@ -105,7 +166,7 @@ class DailyMealReviewTest {
 
     @Test
     fun `response review id must match request id`() {
-        val requested = listOf(DailyMealReviewItem("m0", listOf("carbohydrate")))
+        val requested = listOf(DailyMealReviewItem("m0", nutrients = listOf("carbohydrate")))
         assertThrows(DailyMealReviewProtocolException.InvalidPayload::class.java) {
             DailyMealReviewJson.decodeResponse(
                 wireResponse(reviewId = "00000000-0000-4000-8000-000000000099"),
@@ -119,7 +180,7 @@ class DailyMealReviewTest {
         val request = DailyMealReviewRequest(
             requestId = "00000000-0000-4000-8000-000000000001",
             sessionId = "00000000-0000-4000-8000-000000000002",
-            items = listOf(DailyMealReviewItem("m0", listOf("carbohydrate"))),
+            items = listOf(DailyMealReviewItem("m0", name = "현미밥", nutrients = listOf("carbohydrate"))),
             wholeMeal = DailyMealReviewWholeMeal(),
         )
         var completed = false
@@ -250,7 +311,7 @@ class DailyMealReviewTest {
             menuSnapshot = listOf(DailyMealReviewMenuSnapshot("m0", "우유", listOf(2))),
         )
         assertEquals(emptyList<DailyMealReviewHighlight>(), saved.visibleHighlights(listOf(2)))
-        assertEquals(1, saved.response.highlights.size)
+        assertEquals(1, saved.response.highlights.orEmpty().size)
     }
 
     @Test

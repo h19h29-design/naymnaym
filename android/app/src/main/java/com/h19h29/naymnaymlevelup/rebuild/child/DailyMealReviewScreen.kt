@@ -52,7 +52,7 @@ import java.util.UUID
 import kotlinx.coroutines.launch
 
 internal const val DAILY_MEAL_REVIEW_CONSENT =
-    "급식레벨업 서버에는 임시 요청 ID·임의 설치 ID·익명 메뉴별 대표 영양소·확인된 전체 식단 영양량을 보내고, OpenCode Go에는 익명 식단 정보만 전달해요. 학교·메뉴 이름·날짜·식사 기록·등록 알레르기는 전송하지 않아요."
+    "급식레벨업 서버에는 임시 요청 ID·임의 설치 ID·메뉴 이름과 대표 영양소·확인된 전체 식단 영양량을 보내고, OpenCode Go에는 메뉴 이름과 영양소 정보만 전달해요. 학교·날짜·식사 기록·등록 알레르기는 전송하지 않아요."
 
 private const val DAILY_REVIEW_PREFERENCES = "daily_meal_review"
 private const val DAILY_REVIEW_INSTALLATION_ID = "installation_id_v1"
@@ -210,20 +210,44 @@ fun DailyMealReviewScreen(
         }
         if (displayed != null) {
             item { ReviewSection("1. 오늘 식단의 특징", displayed.response.summary) }
-            item { ReviewSection("2. 영양소가 하는 일", displayed.response.benefit) }
-            item {
-                val highlights = session.visibleHighlights()
-                ReviewSection(
-                    "3. 눈여겨볼 메뉴",
-                    if (highlights.isEmpty()) {
-                        "현재 알레르기 설정을 반영해 표시할 추천 메뉴가 없어요."
-                    } else {
-                        highlights.joinToString("\n") { highlight ->
-                            val name = displayed.menuName(highlight.itemId) ?: "평가 당시 메뉴"
-                            "$name · ${dailyMealReviewNutrientRole(highlight.nutrient)}"
+            if (displayed.response.menus != null) {
+                item {
+                    val menus = session.visibleMenus()
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("2. 메뉴별 이야기", fontWeight = FontWeight.Bold, color = Color(RebuildTokens.Forest700))
+                            if (menus.isEmpty()) {
+                                Text("현재 알레르기 설정을 반영해 표시할 메뉴가 없어요.", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            menus.forEach { entry ->
+                                MenuStoryCard(
+                                    name = displayed.menuName(entry.itemId) ?: "평가 당시 메뉴",
+                                    entry = entry,
+                                )
+                            }
                         }
-                    },
-                )
+                    }
+                }
+            } else {
+                item { ReviewSection("2. 영양소가 하는 일", displayed.response.benefit.orEmpty()) }
+                item {
+                    val highlights = session.visibleHighlights()
+                    ReviewSection(
+                        "3. 눈여겨볼 메뉴",
+                        if (highlights.isEmpty()) {
+                            "현재 알레르기 설정을 반영해 표시할 추천 메뉴가 없어요."
+                        } else {
+                            highlights.joinToString("\n") { highlight ->
+                                val name = displayed.menuName(highlight.itemId) ?: "평가 당시 메뉴"
+                                "$name · ${dailyMealReviewNutrientRole(highlight.nutrient)}"
+                            }
+                        },
+                    )
+                }
             }
             item { ReviewSection("4. 다음 식사 팁", "${displayed.response.caution}\n${displayed.response.tip}") }
             if (state.unsavedRecord != null) {
@@ -276,6 +300,47 @@ private fun ReviewSection(title: String, body: String) {
             Text(title, fontWeight = FontWeight.Bold, color = Color(RebuildTokens.Forest700))
             Text(body, style = MaterialTheme.typography.bodyMedium)
         }
+    }
+}
+
+@Composable
+private fun MenuStoryCard(name: String, entry: DailyMealReviewMenuEntry) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFFBF6EC), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(
+                dailyMealReviewNutrientLabel(entry.nutrient),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(RebuildTokens.Forest700),
+                modifier = Modifier
+                    .background(Color(RebuildTokens.Forest700).copy(alpha = 0.12f), RoundedCornerShape(50))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
+        MenuStoryRow("맛", entry.taste)
+        MenuStoryRow("영양소", entry.role)
+        MenuStoryRow("먹는 팁", entry.point)
+    }
+}
+
+@Composable
+private fun MenuStoryRow(label: String, body: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = Color(RebuildTokens.Muted600),
+            modifier = Modifier.width(40.dp),
+        )
+        Text(body, style = MaterialTheme.typography.bodySmall)
     }
 }
 

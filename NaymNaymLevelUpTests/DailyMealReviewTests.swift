@@ -9,13 +9,27 @@ final class DailyMealReviewTests: XCTestCase {
         RebuildMealItem(name: "정보없음", allergyCodes: [], nutrients: [], tags: [], sourceRawText: "")
     ], calorie: "", nutrition: .empty) }
     private let id=UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
-    private var responseData: Data { Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v1","summary":"대표 영양소를 살펴봤어.","benefit":"활동에 쓰이는 에너지원이야.","highlights":[{"itemId":"m0","nutrient":"carbohydrate","reason":"움직이는 데 도움이 돼."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8) }
-    func testRequestExcludesAllergyUnknownAndPersonalMetadata() throws {
+    private var responseData: Data { Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v2","summary":"오늘 식단을 살펴봤어.","menus":[{"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8) }
+    private var legacyV1ResponseData: Data { Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v1","summary":"대표 영양소를 살펴봤어.","benefit":"활동에 쓰이는 에너지원이야.","highlights":[{"itemId":"m0","nutrient":"carbohydrate","reason":"움직이는 데 도움이 돼."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8) }
+    private var legacyV1Request: DailyMealReviewRequest {
+        DailyMealReviewRequest(requestId: id.uuidString.lowercased(), sessionId: UUID(uuidString:"00000000-0000-4000-8000-000000000002")!.uuidString.lowercased(), items: [DailyMealReviewItem(id: "m0", name: nil, nutrients: ["carbohydrate"])], wholeMeal: [:])
+    }
+    func testRequestSendsMenuNamesButExcludesAllergyUnknownAndPersonalMetadata() throws {
         let request=DailyMealReviewFactory.request(meal: meal, allergies: [2], requestId: id)
-        XCTAssertEqual(request.items,[DailyMealReviewItem(id: "m0", nutrients: ["carbohydrate"])])
+        XCTAssertEqual(request.items,[DailyMealReviewItem(id: "m0", name: "현미밥", nutrients: ["carbohydrate"])])
         let json=try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
         XCTAssertEqual(Set(json.keys), ["requestId","sessionId","items","wholeMeal"])
-        XCTAssertFalse(String(decoding: try JSONEncoder().encode(request), as: UTF8.self).contains("현미밥"))
+        let body=String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
+        XCTAssertTrue(body.contains("현미밥"))
+        XCTAssertFalse(body.contains("우유"))
+    }
+    func testLegacyV1StoredResponsesStillDecode() throws {
+        let response=try DailyMealReviewResponse.decode(legacyV1ResponseData,request:legacyV1Request)
+        XCTAssertEqual(response.benefit,"활동에 쓰이는 에너지원이야.")
+        XCTAssertEqual(response.highlights?.count,1)
+        XCTAssertNil(response.menus)
+        XCTAssertThrowsError(try DailyMealReviewResponse.decode(responseData,request:legacyV1Request))
+        XCTAssertThrowsError(try DailyMealReviewResponse.decode(legacyV1ResponseData,request:DailyMealReviewFactory.request(meal:meal,allergies:[2],requestId:id)))
     }
     func testKoreaDateChangesAtUtcFifteen() {
         let parser=ISO8601DateFormatter()
@@ -76,7 +90,7 @@ final class DailyMealReviewTests: XCTestCase {
         let store=DailyMealReviewStore(context:container.newBackgroundContext())
         let valid=DailyMealReviewFactory.request(meal:meal,allergies:[2],requestId:id)
         let response=try DailyMealReviewResponse.decode(responseData,request:valid)
-        let emptyResponse=DailyMealReviewResponse(source:response.source,reviewId:response.reviewId,day:response.day,generatedAt:response.generatedAt,model:response.model,policyVersion:response.policyVersion,summary:response.summary,benefit:response.benefit,highlights:[],caution:response.caution,tip:response.tip)
+        let emptyResponse=DailyMealReviewResponse(source:response.source,reviewId:response.reviewId,day:response.day,generatedAt:response.generatedAt,model:response.model,policyVersion:response.policyVersion,summary:response.summary,benefit:response.benefit,highlights:response.highlights,menus:[],caution:response.caution,tip:response.tip)
         for request in [
             DailyMealReviewRequest(requestId:valid.requestId,sessionId:valid.sessionId,items:[],wholeMeal:[:]),
             DailyMealReviewRequest(requestId:valid.requestId,sessionId:"invalid",items:valid.items,wholeMeal:[:]),
@@ -113,11 +127,11 @@ final class DailyMealReviewTests: XCTestCase {
     }
     func testCurrentAllergiesMaskSavedRecommendations() throws {
         let request=DailyMealReviewFactory.request(meal: meal, allergies: [],requestId:id)
-        let data=Data(String(decoding:responseData,as:UTF8.self).replacingOccurrences(of:"m0",with:"m1").replacingOccurrences(of:"carbohydrate",with:"calcium").utf8)
+        let data=Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v2","summary":"오늘 식단을 살펴봤어.","menus":[{"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."},{"itemId":"m1","nutrient":"calcium","taste":"고소하고 부드러워.","role":"칼슘은 뼈와 치아를 이루는 데 쓰여.","point":"매일 만나면 좋아."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8)
         let response=try DailyMealReviewResponse.decode(data,request:request)
         let record=DailyMealReviewRecord(contextKey:"test",day:meal.date,meal:meal,request:request,response:response)
-        XCTAssertEqual(DailyMealReviewFactory.visibleHighlights(record,allergies:[]).count,1)
-        XCTAssertTrue(DailyMealReviewFactory.visibleHighlights(record,allergies:[2]).isEmpty)
+        XCTAssertEqual(DailyMealReviewFactory.visibleMenus(record,allergies:[]).count,2)
+        XCTAssertEqual(DailyMealReviewFactory.visibleMenus(record,allergies:[2]).count,1)
     }
     func testPersistentReviewReloadSeparationAndDeletePreserveProgress() throws {
         let container=try RebuildPersistentStore.makeInMemory()

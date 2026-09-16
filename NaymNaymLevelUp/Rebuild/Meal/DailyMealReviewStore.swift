@@ -46,7 +46,7 @@ final class DailyMealReviewStore {
         _=try DailyMealReviewResponse.decode(JSONEncoder().encode(record.response),request:record.request)
         let available=DailyMealReviewFactory.request(meal:record.meal,allergies:[]).items
         guard record.request.wholeMeal==MealCoachRequest.wholeMealValues(record.meal),
-              record.request.items.allSatisfy({ item in available.contains(where:{$0==item}) }) else{throw MealCoachError.invalidResponse}
+              record.request.items.allSatisfy({ item in available.contains(where:{$0.id==item.id && $0.nutrients==item.nutrients}) }) else{throw MealCoachError.invalidResponse}
     }
 }
 

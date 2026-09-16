@@ -181,3 +181,139 @@ test('missing server provider key fails without consuming daily quota', async ()
   assert.deepEqual(await response.json(), { error: 'not_configured' });
   assert.equal(claims, 0);
 });
+
+const namedPayload = {
+  requestId: '55555555-5555-4555-8555-555555555555',
+  sessionId: '22222222-2222-4222-8222-222222222222',
+  items: [
+    { id: 'm0', name: '현미밥', nutrients: ['carbohydrate'] },
+    { id: 'm1', name: '닭갈비', nutrients: ['protein', 'iron'] },
+  ],
+  wholeMeal: { protein: 24, carbs: 87, fat: 18 },
+};
+
+const namedEnvelope = {
+  choices: [{
+    finish_reason: 'stop',
+    message: {
+      content: JSON.stringify({
+        summary: '오늘은 에너지를 주는 밥과 몸을 만드는 반찬이 함께 나왔어.',
+        menus: [
+          { itemId: 'm1', nutrient: 'protein', taste: '매콤달콤하고 쫄깃해.', role: '단백질은 몸을 만드는 재료야.', point: '채소와 함께 먹으면 더 맛있어.' },
+          { itemId: 'm0', nutrient: 'carbohydrate', taste: '고소하고 쫀득한 밥이야.', role: '탄수화물은 몸을 움직이는 에너지원이야.', point: '천천히 씹어 먹으면 더 고소해.' },
+        ],
+        caution: '메뉴를 바탕으로 살펴본 추정이라 실제 먹은 양은 알 수 없어.',
+        tip: '남긴 반찬의 영양소는 다음 식사에서 다양한 음식으로 만나 보자.',
+      }),
+    },
+  }],
+};
+
+test('named menu items produce a per-menu v2 review sorted by request order', async () => {
+  const createMealCoachHandler = await loadHandler();
+  const providerBodies = [];
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    now: () => new Date('2026-09-16T03:00:00.000Z'),
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async (_url, init) => {
+      providerBodies.push(JSON.parse(init.body));
+      return Response.json(namedEnvelope);
+    },
+  });
+
+  const response = await handler(request(namedPayload));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.policyVersion, 'daily-v2');
+  assert.deepEqual(
+    Object.keys(body).sort(),
+    ['caution', 'day', 'generatedAt', 'menus', 'model', 'policyVersion', 'reviewId', 'source', 'summary', 'tip'].sort(),
+  );
+  assert.deepEqual(body.menus.map((entry) => entry.itemId), ['m0', 'm1']);
+  assert.equal(body.menus[0].taste, '고소하고 쫀득한 밥이야.');
+  const forwarded = JSON.stringify(providerBodies[0]);
+  assert.equal(forwarded.includes('현미밥'), true);
+  assert.equal(forwarded.includes('닭갈비'), true);
+  assert.equal(providerBodies[0].max_tokens, 4608);
+});
+
+test('mixed named and anonymous items are rejected before provider use', async () => {
+  const createMealCoachHandler = await loadHandler();
+  let providerCalls = 0;
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async () => { providerCalls += 1; return Response.json(namedEnvelope); },
+  });
+
+  const mixed = {
+    ...namedPayload,
+    items: [
+      { id: 'm0', name: '현미밥', nutrients: ['carbohydrate'] },
+      { id: 'm1', nutrients: ['protein'] },
+    ],
+  };
+  const response = await handler(request(mixed));
+  assert.equal(response.status, 400);
+  assert.equal(providerCalls, 0);
+});
+
+test('unsafe or shapeless menu names are rejected before provider use', async () => {
+  const createMealCoachHandler = await loadHandler();
+  let providerCalls = 0;
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async () => { providerCalls += 1; return Response.json(namedEnvelope); },
+  });
+
+  for (const name of ['<script>', 'https://bad.example', '', '   ', '메뉴'.repeat(20), '이름\n주입']) {
+    const bad = { ...namedPayload, items: [{ id: 'm0', name, nutrients: ['carbohydrate'] }, namedPayload.items[1]] };
+    assert.equal((await handler(request(bad))).status, 400, JSON.stringify(name));
+  }
+  assert.equal(providerCalls, 0);
+});
+
+test('v2 answers missing a menu or naming unknown nutrients fail as unavailable', async () => {
+  const createMealCoachHandler = await loadHandler();
+  const finishes = [];
+  const missing = structuredClone(namedEnvelope);
+  missing.choices[0].message.content = JSON.stringify({
+    summary: '오늘 식단을 살펴봤어.',
+    menus: [{ itemId: 'm0', nutrient: 'carbohydrate', taste: '고소해.', role: '에너지원이야.', point: '잘 씹어 먹어.' }],
+    caution: '실제로 먹은 양은 알 수 없어.',
+    tip: '다음 식사에서 만나 보자.',
+  });
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    claim: async () => 'claimed',
+    finish: async (value) => { finishes.push(value); },
+    fetcher: async () => Response.json(missing),
+  });
+
+  const response = await handler(request(namedPayload));
+  assert.equal(response.status, 502);
+  assert.equal(finishes[0].success, false);
+
+  const wrongNutrient = structuredClone(namedEnvelope);
+  wrongNutrient.choices[0].message.content = JSON.stringify({
+    summary: '오늘 식단을 살펴봤어.',
+    menus: [
+      { itemId: 'm0', nutrient: 'calcium', taste: '고소해.', role: '뼈를 이루는 데 쓰여.', point: '잘 씹어 먹어.' },
+      { itemId: 'm1', nutrient: 'protein', taste: '쫄깃해.', role: '몸을 만드는 재료야.', point: '채소와 함께 먹어.' },
+    ],
+    caution: '실제로 먹은 양은 알 수 없어.',
+    tip: '다음 식사에서 만나 보자.',
+  });
+  const second = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async () => Response.json(wrongNutrient),
+  });
+  assert.equal((await second(request(namedPayload))).status, 502);
+});
