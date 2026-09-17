@@ -1,5 +1,6 @@
 import type { AppState, MealDay, MealItem, MealRecord, MealStatus, Profile } from '../domain/types';
 import { normalizeMenuName, recordIdentity } from '../domain/progress';
+import type { MealReviewResult, NutrientId } from './mealCoachClient';
 import type { StoragePort } from './storage';
 
 export const STATE_KEY = 'nyam-toss:state:v2';
@@ -175,3 +176,76 @@ export function createRepository(storage: StoragePort) {
     async clearAllConfirmed() { await storage.clearItems(); },
   };
 }
+
+export const MEAL_COACH_SESSION_KEY = 'nyam-toss:meal-coach-session:v1';
+const MEAL_REVIEW_PREFIX = 'nyam-toss:meal-review:v1:';
+
+export function mealReviewStorageKey(cacheKey: string) {
+  return MEAL_REVIEW_PREFIX + cacheKey;
+}
+
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export interface SavedMealReview {
+  savedAt: number;
+  items: Array<{ id: string; name: string }>;
+  review: MealReviewResult;
+}
+
+function storedReviewFrom(value: unknown): SavedMealReview | null {
+  const source = object(value);
+  const review = object(source?.review);
+  if (!source || !review || typeof source.savedAt !== 'number' || !Number.isFinite(source.savedAt)) return null;
+  if (review.source !== 'ai' || review.policyVersion !== 'daily-v2' || typeof review.reviewId !== 'string' || !review.reviewId) return null;
+  if (typeof review.day !== 'string' || typeof review.generatedAt !== 'string' || typeof review.model !== 'string') return null;
+  if (typeof review.summary !== 'string' || typeof review.caution !== 'string' || typeof review.tip !== 'string') return null;
+  if (!Array.isArray(review.menus)) return null;
+  const menus = review.menus.map((entry) => {
+    const menu = object(entry);
+    if (!menu || typeof menu.itemId !== 'string' || typeof menu.nutrient !== 'string' || typeof menu.taste !== 'string' || typeof menu.role !== 'string' || typeof menu.point !== 'string') return null;
+    return { itemId: menu.itemId, nutrient: menu.nutrient as NutrientId, taste: menu.taste, role: menu.role, point: menu.point };
+  });
+  if (menus.some((menu) => menu === null)) return null;
+  if (!Array.isArray(source.items)) return null;
+  const items = source.items.map((entry) => {
+    const item = object(entry);
+    return item && typeof item.id === 'string' && typeof item.name === 'string' ? { id: item.id, name: item.name } : null;
+  });
+  if (items.some((item) => item === null)) return null;
+  return {
+    savedAt: source.savedAt,
+    items: items as SavedMealReview['items'],
+    review: {
+      source: 'ai',
+      reviewId: review.reviewId,
+      day: review.day,
+      generatedAt: review.generatedAt,
+      model: review.model,
+      policyVersion: 'daily-v2',
+      summary: review.summary,
+      menus: menus as MealReviewResult['menus'],
+      caution: review.caution,
+      tip: review.tip,
+    },
+  };
+}
+
+export function createMealReviewStore(storage: StoragePort) {
+  return {
+    async sessionId() {
+      const existing = await storage.getItem(MEAL_COACH_SESSION_KEY);
+      if (existing && UUID_V4.test(existing)) return existing;
+      const created = crypto.randomUUID();
+      await storage.setItem(MEAL_COACH_SESSION_KEY, created);
+      return created;
+    },
+    async loadReview(cacheKey: string): Promise<SavedMealReview | null> {
+      return storedReviewFrom(parse(await storage.getItem(mealReviewStorageKey(cacheKey))));
+    },
+    async saveReview(cacheKey: string, record: SavedMealReview) {
+      await storage.setItem(mealReviewStorageKey(cacheKey), JSON.stringify(record));
+    },
+  };
+}
+
+export type MealReviewStore = ReturnType<typeof createMealReviewStore>;

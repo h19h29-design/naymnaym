@@ -6,3 +6,10 @@ export function readClientEnv(env: Record<string, string | boolean | undefined> 
   }
   return { proxyUrl, clientToken };
 }
+
+export const DEFAULT_MEAL_COACH_URL = 'https://rytfbovyyzjlrtzdzldo.supabase.co/functions/v1/meal-coach';
+
+export function readMealCoachUrl(env: Record<string, string | boolean | undefined> = import.meta.env) {
+  const url = env.VITE_MEAL_COACH_URL;
+  return typeof url === 'string' && url.trim() ? url : DEFAULT_MEAL_COACH_URL;
+}

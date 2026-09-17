@@ -9,6 +9,7 @@ import type { MealDay } from '../../domain/types';
 import { NeisClientError, clientErrorMessage } from '../../services/neisClient';
 import { useAppState } from '../../state/AppStateProvider';
 import { MealCard } from './MealCard';
+import { MealReviewCard } from './MealReviewCard';
 import { demoMeal } from './demoMeal';
 
 type ViewState = { kind: 'loading' } | { kind: 'meal'; meal: MealDay; source: 'live' | 'cache' | 'demo'; warning?: string } | { kind: 'empty' } | { kind: 'error'; message: string };
@@ -55,6 +56,7 @@ export function TodayPage() {
         const record = state.mealRecords.find((entry) => entry.identity === recordIdentity(view.meal.date, item.name));
         return <MealCard key={item.id} item={item} risky={hasAllergyRisk(item.allergyCodes, profile.allergyCodes)} selected={record?.status} onStatus={(status) => { if (view.source !== 'demo') void recordMeal(view.meal.date, item.name, status).then(() => setFeedback(true)); }} />;
       })}</div>
+      <MealReviewCard meal={view.meal} cacheKey={cacheKey} allergyCodes={profile.allergyCodes} persist={view.source !== 'demo'} />
     </section>}
   </main>;
 }
