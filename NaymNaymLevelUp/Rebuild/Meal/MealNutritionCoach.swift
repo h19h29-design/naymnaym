@@ -28,10 +28,13 @@ struct MealCoachRequest: Encodable {
     static func nutrientIDs(meal: RebuildMealDay, selectedIndex: Int) -> [String] {
         let engine = try? NutritionRuleEngine()
         let items = meal.menuItems.indices.contains(selectedIndex) ? [meal.menuItems[selectedIndex]] : meal.menuItems
-        return MealNutrientCanonicalizer.orderedKnownIDs(from: items.flatMap { item in
-            let explicit = MealNutrientCanonicalizer.orderedKnownIDs(from: item.nutrients)
-            return explicit.isEmpty ? (engine?.insight(menuName: item.normalizedPresentationName).nutrients.map(\.id) ?? []) : explicit
+        let discovered = MealNutrientCanonicalizer.orderedKnownIDs(from: items.flatMap { item in
+            MealNutrientCanonicalizer.orderedKnownIDs(from: item.nutrients) +
+                (engine?.insight(menuName: item.normalizedPresentationName).nutrients.map(\.id) ?? [])
         })
+        // 분류되지 않은 메뉴도 리뷰 대상이다. 영양소를 추정할 수 없으면
+        // 전체 영양소 집합을 보내 코치가 메뉴 이름만으로 설명하게 한다.
+        return discovered.isEmpty ? MealNutrientCanonicalizer.orderedIDs : discovered
     }
 
     static func wholeMealValues(_ meal: RebuildMealDay, selectedIndex: Int = -1) -> [String: Double] {

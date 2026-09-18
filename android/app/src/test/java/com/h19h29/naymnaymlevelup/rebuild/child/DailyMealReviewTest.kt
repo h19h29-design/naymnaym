@@ -32,7 +32,7 @@ class DailyMealReviewTest {
     }
 
     @Test
-    fun `request excludes allergy intersecting and unknown candidates`() {
+    fun `request excludes allergy candidates and backfills unknown nutrients`() {
         val meal = fixtureMeal(
             item("현미밥", nutrients = listOf("carbohydrate")),
             item("우유", allergies = listOf(2), nutrients = listOf("calcium")),
@@ -46,9 +46,13 @@ class DailyMealReviewTest {
             sessionId = UUID.fromString("00000000-0000-4000-8000-000000000002"),
         )
 
-        assertEquals(listOf("m0"), request.items.map { it.id })
-        assertEquals(listOf("carbohydrate"), request.items.single().nutrients)
-        assertEquals("현미밥", request.items.single().name)
+        assertEquals(listOf("m0", "m2"), request.items.map { it.id })
+        assertEquals(listOf("carbohydrate"), request.items.first().nutrients)
+        assertEquals("현미밥", request.items.first().name)
+        assertEquals(
+            DailyMealReviewRequestFactory.NUTRIENT_ORDER,
+            request.items.last().nutrients,
+        )
     }
 
     @Test

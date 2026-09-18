@@ -129,10 +129,11 @@ class DailyMealReviewRequestFactory(
             val discovered = (item.nutrients.mapNotNull(::normalizeNutrientId) +
                 rules.insight(item.name).nutrients.map { it.id })
                 .toSet()
+            // 분류되지 않은 메뉴도 리뷰 대상이다. 영양소를 추정할 수 없으면
+            // 전체 영양소 집합을 보내 코치가 메뉴 이름만으로 설명하게 한다.
             val nutrients = NUTRIENT_ORDER.filter(discovered::contains)
-            nutrients.takeIf(List<String>::isNotEmpty)?.let {
-                DailyMealReviewItem(id = "m$index", name = name, nutrients = it)
-            }
+                .takeIf(List<String>::isNotEmpty) ?: NUTRIENT_ORDER
+            DailyMealReviewItem(id = "m$index", name = name, nutrients = nutrients)
         }
         return DailyMealReviewRequest(
             requestId = requestId.toString(),
