@@ -130,7 +130,7 @@ describe('MealReviewCard', () => {
   });
 
   it('explains when no menu is eligible for a review', () => {
-    setup({ day: { ...meal, menuItems: meal.menuItems.map((item) => ({ ...item, nutrients: [] })) } });
+    setup({ day: { ...meal, menuItems: meal.menuItems.map((item) => ({ ...item, allergyCodes: [5] })) } });
     expect(screen.getByText('오늘 해설할 수 있는 메뉴가 없어요.')).toBeVisible();
     expect(screen.queryByRole('button', { name: /오늘 식단 AI 해설/ })).not.toBeInTheDocument();
   });

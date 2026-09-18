@@ -49,8 +49,13 @@ export interface MealReviewItem {
 export function buildReviewItems(menuItems: MealItem[], allergyCodes: number[]): MealReviewItem[] {
   return menuItems
     .filter((item) => !hasAllergyRisk(item.allergyCodes, allergyCodes))
-    .map((item) => ({ name: item.name.trim(), nutrients: normalizeNutrients(item.nutrients) }))
-    .filter((item) => validMenuName(item.name) && item.nutrients.length > 0)
+    .map((item) => {
+      const nutrients = normalizeNutrients(item.nutrients);
+      // 분류되지 않은 메뉴도 리뷰 대상이다. 영양소를 추정할 수 없으면
+      // 전체 영양소 집합을 보내 코치가 메뉴 이름만으로 설명하게 한다.
+      return { name: item.name.trim(), nutrients: nutrients.length > 0 ? nutrients : [...NUTRIENT_ORDER] };
+    })
+    .filter((item) => validMenuName(item.name))
     .slice(0, 15)
     .map((item, index) => ({ id: `m${index}`, name: item.name, nutrients: item.nutrients }));
 }
