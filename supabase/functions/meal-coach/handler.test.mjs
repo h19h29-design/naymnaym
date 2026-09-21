@@ -317,3 +317,68 @@ test('v2 answers missing a menu or naming unknown nutrients fail as unavailable'
   });
   assert.equal((await second(request(namedPayload))).status, 502);
 });
+
+test('remote provider config can disable AI before quota or provider use', async () => {
+  const createMealCoachHandler = await loadHandler();
+  let claims = 0;
+  let providerCalls = 0;
+  const handler = createMealCoachHandler({
+    providerKey: 'provider-secret-for-test-only',
+    resolveProvider: async () => ({ enabled: false, key: '', url: '', model: '' }),
+    claim: async () => { claims += 1; return 'claimed'; },
+    finish: async () => {},
+    fetcher: async () => { providerCalls += 1; return Response.json(providerEnvelope); },
+  });
+
+  const response = await handler(request());
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'ai_disabled');
+  assert.equal(claims, 0, 'disabled remote config must not consume the daily claim');
+  assert.equal(providerCalls, 0);
+});
+
+test('remote provider config supplies the key, model and endpoint per request', async () => {
+  const createMealCoachHandler = await loadHandler();
+  const seen = [];
+  const handler = createMealCoachHandler({
+    providerKey: 'env-key-must-not-be-used',
+    resolveProvider: async () => ({
+      enabled: true,
+      key: 'rotated-nas-key',
+      url: 'https://provider.example/v2/chat',
+      model: 'rotated-model',
+    }),
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async (url, init) => {
+      seen.push({ url: String(url), auth: init.headers.Authorization, body: JSON.parse(init.body) });
+      return Response.json(providerEnvelope);
+    },
+  });
+
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.model, 'rotated-model');
+  assert.equal(seen[0].url, 'https://provider.example/v2/chat');
+  assert.equal(seen[0].auth, 'Bearer rotated-nas-key');
+  assert.equal(seen[0].body.model, 'rotated-model');
+});
+
+test('a failing provider resolver falls back to the static env key', async () => {
+  const createMealCoachHandler = await loadHandler();
+  const seen = [];
+  const handler = createMealCoachHandler({
+    providerKey: 'env-still-works',
+    resolveProvider: async () => { throw new Error('resolver blew up'); },
+    claim: async () => 'claimed',
+    finish: async () => {},
+    fetcher: async (url, init) => {
+      seen.push(init.headers.Authorization);
+      return Response.json(providerEnvelope);
+    },
+  });
+
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(seen[0], 'Bearer env-still-works');
+});

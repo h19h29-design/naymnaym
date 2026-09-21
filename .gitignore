@@ -27,3 +27,4 @@ android/keystore.properties
 android/*.hprof
 logs/
 .impeccable/
+supabase/.temp/

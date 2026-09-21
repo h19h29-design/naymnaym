@@ -1,5 +1,5 @@
-const GO_MODEL = 'deepseek-v4.1-flash';
-const GO_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
+export const GO_MODEL = 'deepseek-v4.1-flash';
+export const GO_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
 const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const ITEM_ID = /^m(?:[0-9]|[12][0-9])$/;
 const NUTRIENTS = new Set(['fiber', 'vitamin', 'protein', 'iron', 'calcium', 'carbohydrate']);
@@ -180,8 +180,10 @@ async function readTextWithin(responseBody, maximumBytes) {
   return text;
 }
 
-export function createMealCoachHandler({ providerKey, claim, finish, fetcher = fetch, now = () => new Date() }) {
+export function createMealCoachHandler({ providerKey, resolveProvider, claim, finish, fetcher = fetch, now = () => new Date() }) {
   if (typeof providerKey !== 'string' || typeof claim !== 'function' || typeof finish !== 'function') throw new Error('invalid_configuration');
+  const staticProvider = { key: providerKey, url: GO_URL, model: GO_MODEL, enabled: true };
+  const getProvider = typeof resolveProvider === 'function' ? resolveProvider : async () => staticProvider;
   return async (request) => {
     if (request.method !== 'POST') return response({ error: 'method_not_allowed' }, 405);
     if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return response({ error: 'invalid_content_type' }, 415);
@@ -193,7 +195,13 @@ export function createMealCoachHandler({ providerKey, claim, finish, fetcher = f
     } catch {
       return response({ error: 'invalid_request' }, 400);
     }
-    if (!providerKey.trim()) return response({ error: 'not_configured' }, 503);
+    let provider;
+    try { provider = await getProvider(); } catch { provider = staticProvider; }
+    if (provider?.enabled === false) return response({ error: 'ai_disabled' }, 503);
+    const activeKey = typeof provider?.key === 'string' ? provider.key : providerKey;
+    if (!activeKey.trim()) return response({ error: 'not_configured' }, 503);
+    const providerUrl = typeof provider?.url === 'string' ? provider.url : GO_URL;
+    const providerModel = typeof provider?.model === 'string' ? provider.model : GO_MODEL;
     const instant = now();
     const day = koreaDay(instant);
     const subjectHash = await sha256(input.sessionId);
@@ -210,18 +218,18 @@ export function createMealCoachHandler({ providerKey, claim, finish, fetcher = f
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), 15000);
     try {
-      const providerResponse = await fetcher(GO_URL, {
+      const providerResponse = await fetcher(providerUrl, {
         method: 'POST',
         redirect: 'error',
         signal: abort.signal,
         headers: {
-          Authorization: `Bearer ${providerKey}`,
+          Authorization: `Bearer ${activeKey}`,
           'Content-Type': 'application/json',
           'User-Agent': 'geupsik-levelup-meal-coach/1.0',
           'x-opencode-session': fingerprint,
         },
         body: JSON.stringify({
-          model: GO_MODEL,
+          model: providerModel,
           max_tokens: 'name' in input.items[0] ? 4608 : 1100,
           temperature: 0.3,
           thinking: { type: 'disabled' },
@@ -240,7 +248,7 @@ export function createMealCoachHandler({ providerKey, claim, finish, fetcher = f
       await finish({ subjectHash, day, requestHash, success: true });
       return response({
         source: 'ai', reviewId: input.requestId, day, generatedAt: now().toISOString(),
-        model: GO_MODEL, policyVersion: 'name' in input.items[0] ? 'daily-v2' : 'daily-v1', ...answer,
+        model: providerModel, policyVersion: 'name' in input.items[0] ? 'daily-v2' : 'daily-v1', ...answer,
       });
     } catch {
       try { await finish({ subjectHash, day, requestHash, success: false }); } catch { return response({ error: 'storage_unavailable' }, 503); }

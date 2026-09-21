@@ -26,6 +26,17 @@
 
 `node --test server/meal-coach/*.test.mjs` — 인증, 스키마, 자유입력/개인필드 거부, 호출 상한/동시성/시간초과, 응답 크기, 비밀 유출, 안전 검증, 비밀 설정 파일 보존. 실제 외부 API 호출 없음.
 
+## 운영 제공자 설정 (NAS 원격 구성, 2026-09-21)
+
+- 배포된 Supabase Edge Function(`supabase/functions/meal-coach`)은 요청마다 NAS의 `provider.json`을 읽어 제공자 키·모델·엔드포인트를 결정한다. 앱이나 Supabase 대시보드를 건드리지 않고 NAS 파일 하나만 수정하면 된다.
+- 사용자가 편집하는 파일: NAS `/volume2/docker-1/nyam.h19h19.com/config/provider.json` (File Station이나 SSH로 편집, 권한 640 h19h19:http).
+  - `apiKey`: 제공자 API 키. 바꾸고 저장하면 최대 5분 안에 반영된다.
+  - `model`, `endpoint`: 생략하면 기본값(deepseek-v4.1-flash, OpenCode Go)을 쓴다. 다른 제공자로 바꿀 때 함께 수정한다.
+  - `enabled`: `false`로 바꾸면 AI 해설이 즉시 꺼진다(앱에는 기본 영양 안내로 표시). 다시 `true`로 하면 켜진다.
+- 전달 경로: 함수가 `https://nyam.h19h19.com/nyam-cfg/<무작위-경로>.json`을 `x-nyam-config-token` 헤더와 함께 요청한다. 경로와 토큰은 모르면 404가 나온다. 값은 `~/agent-hub/secrets/nyam-meal-coach-config.env`(600)와 Supabase secret `MEAL_COACH_CONFIG_URL`/`MEAL_COACH_CONFIG_TOKEN`에만 있다.
+- NAS가 응답하지 않으면 마지막으로 읽은 설정을 최대 1시간 쓰고, 그마저 없으면 Supabase secret `MEAL_COACH_GO_API_KEY`(폴백)를 쓴다. 폴백 키도 비우면 AI만 꺼지고 앱은 정상 동작한다.
+- 함수 변경 시 배포: 이 디렉터리에서 `supabase functions deploy meal-coach --project-ref rytfbovyyzjlrtzdzldo --no-verify-jwt`. 사이트 릴리스(`releases/` 교체)와 무관하게 `config/`는 그대로 유지된다.
+
 ### 개발 기기 설치와 실연동 검증 (2026-09-13)
 
 - `node server/meal-coach/install-development.mjs ios <SIMULATOR_UUID>` 또는 `android <EMULATOR_SERIAL>`로 설치된 디버그 앱 내부에 개발용 토큰만 생성한다. 원본 Go 키는 복사하지 않는다. 기존 목적지 파일은 덮어쓰지 않는다. iOS 파일과 Android 앱 내부 파일 권한은 600이다.

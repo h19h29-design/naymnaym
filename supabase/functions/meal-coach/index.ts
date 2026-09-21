@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { createMealCoachHandler } from "./handler.mjs";
+import { createMealCoachHandler, GO_MODEL, GO_URL } from "./handler.mjs";
+import { createRemoteProviderResolver } from "./provider-config.mjs";
 
 type ClaimInput = {
   subjectHash: string;
@@ -25,12 +26,24 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
 const serviceRoleKey = resolveServiceRoleKey();
 const providerKey = Deno.env.get("MEAL_COACH_GO_API_KEY")?.trim() ?? "";
 
+// Optional remote provider config served from the operator NAS. Lets the
+// operator rotate the provider key, switch model/endpoint, or disable AI by
+// editing one JSON file instead of redeploying secrets.
+const providerConfigUrl = Deno.env.get("MEAL_COACH_CONFIG_URL")?.trim() ?? "";
+const providerConfigToken = Deno.env.get("MEAL_COACH_CONFIG_TOKEN")?.trim() ?? "";
+const resolveProvider = createRemoteProviderResolver({
+  configUrl: providerConfigUrl,
+  configToken: providerConfigToken,
+  fallback: { key: providerKey, url: GO_URL, model: GO_MODEL },
+});
+
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
 const handler = createMealCoachHandler({
   providerKey,
+  resolveProvider,
   claim: async (input: ClaimInput): Promise<string> => {
     if (!supabaseUrl || !serviceRoleKey) return "storage_unavailable";
     const { data, error } = await supabase.rpc("nyam_ai_claim_daily", {
