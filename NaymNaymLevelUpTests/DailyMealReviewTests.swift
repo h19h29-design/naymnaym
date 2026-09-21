@@ -9,19 +9,23 @@ final class DailyMealReviewTests: XCTestCase {
         RebuildMealItem(name: "정보없음", allergyCodes: [], nutrients: [], tags: [], sourceRawText: "")
     ], calorie: "", nutrition: .empty) }
     private let id=UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
-    private var responseData: Data { Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v2","summary":"오늘 식단을 살펴봤어.","menus":[{"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8) }
+    private var responseData: Data { Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v2","summary":"오늘 식단을 살펴봤어.","menus":[{"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."},{"itemId":"m1","nutrient":"calcium","taste":"고소하고 부드러워.","role":"칼슘은 뼈와 치아를 이루는 데 쓰여.","point":"간식으로도 잘 어울려."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8) }
     private var legacyV1ResponseData: Data { Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v1","summary":"대표 영양소를 살펴봤어.","benefit":"활동에 쓰이는 에너지원이야.","highlights":[{"itemId":"m0","nutrient":"carbohydrate","reason":"움직이는 데 도움이 돼."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8) }
     private var legacyV1Request: DailyMealReviewRequest {
         DailyMealReviewRequest(requestId: id.uuidString.lowercased(), sessionId: UUID(uuidString:"00000000-0000-4000-8000-000000000002")!.uuidString.lowercased(), items: [DailyMealReviewItem(id: "m0", name: nil, nutrients: ["carbohydrate"])], wholeMeal: [:])
     }
-    func testRequestSendsMenuNamesButExcludesAllergyUnknownAndPersonalMetadata() throws {
+    func testRequestSendsEveryNamedMenuWithoutPersonalMetadata() throws {
         let request=DailyMealReviewFactory.request(meal: meal, allergies: [2], requestId: id)
-        XCTAssertEqual(request.items,[DailyMealReviewItem(id: "m0", name: "현미밥", nutrients: ["carbohydrate"])])
+        XCTAssertEqual(request.items.map(\.id),["m0","m1"])
+        XCTAssertEqual(request.items.map(\.name),["현미밥","우유"])
+        XCTAssertTrue(request.items.allSatisfy { !$0.nutrients.isEmpty })
         let json=try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
         XCTAssertEqual(Set(json.keys), ["requestId","sessionId","items","wholeMeal"])
         let body=String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
         XCTAssertTrue(body.contains("현미밥"))
-        XCTAssertFalse(body.contains("우유"))
+        XCTAssertTrue(body.contains("우유"))
+        XCTAssertFalse(body.contains("정보없음"))
+        XCTAssertFalse(body.contains("allergyCodes"))
     }
     func testLegacyV1StoredResponsesStillDecode() throws {
         let response=try DailyMealReviewResponse.decode(legacyV1ResponseData,request:legacyV1Request)
@@ -125,13 +129,13 @@ final class DailyMealReviewTests: XCTestCase {
         XCTAssertThrowsError(try DailyMealReviewResponse.decode(unsupported,request: request))
         XCTAssertThrowsError(try DailyMealReviewResponse.decode(responseData,request: DailyMealReviewFactory.request(meal:meal,allergies:[])))
     }
-    func testCurrentAllergiesMaskSavedRecommendations() throws {
+    func testAllergyMenusStayVisibleInSavedReview() throws {
         let request=DailyMealReviewFactory.request(meal: meal, allergies: [],requestId:id)
         let data=Data(#"{"source":"ai","reviewId":"00000000-0000-4000-8000-000000000001","day":"2026-09-13","generatedAt":"2026-09-13T04:00:00.000Z","model":"deepseek-v4.1-flash","policyVersion":"daily-v2","summary":"오늘 식단을 살펴봤어.","menus":[{"itemId":"m0","nutrient":"carbohydrate","taste":"고소하고 쫀득한 밥이야.","role":"탄수화물은 몸을 움직이는 에너지원이야.","point":"천천히 씹어 먹으면 더 고소해."},{"itemId":"m1","nutrient":"calcium","taste":"고소하고 부드러워.","role":"칼슘은 뼈와 치아를 이루는 데 쓰여.","point":"매일 만나면 좋아."}],"caution":"실제로 먹은 양은 알 수 없어.","tip":"다음 식사에서도 다양하게 만나 보자."}"#.utf8)
         let response=try DailyMealReviewResponse.decode(data,request:request)
         let record=DailyMealReviewRecord(contextKey:"test",day:meal.date,meal:meal,request:request,response:response)
-        XCTAssertEqual(DailyMealReviewFactory.visibleMenus(record,allergies:[]).count,2)
-        XCTAssertEqual(DailyMealReviewFactory.visibleMenus(record,allergies:[2]).count,1)
+        XCTAssertEqual(DailyMealReviewFactory.visibleMenus(record,allergies:[]).map(\.itemId),["m0","m1"])
+        XCTAssertEqual(DailyMealReviewFactory.visibleMenus(record,allergies:[2]).map(\.itemId),["m0","m1"])
     }
     func testPersistentReviewReloadSeparationAndDeletePreserveProgress() throws {
         let container=try RebuildPersistentStore.makeInMemory()
@@ -194,16 +198,23 @@ final class DailyMealReviewTests: XCTestCase {
             XCTAssertEqual(calls,1)
         }
     }
-    @MainActor func testPastFutureAndAllFlaggedMealsDoNotCallAI() async throws {
+    @MainActor func testPastAndFutureMealsDoNotCallAI() async throws {
         let container=try RebuildPersistentStore.makeInMemory();let store=DailyMealReviewStore(context:container.newBackgroundContext())
         var calls=0;let client=DailyMealReviewClient {_ in calls+=1;throw MealCoachError.unavailable}
         for timestamp in ["2026-09-12T03:00:00Z","2026-09-14T03:00:00Z"] {
             let controller=DailyMealReviewController(meal:meal,contextKey:"test",allergies:[],store:store,client:client,now:{ISO8601DateFormatter().date(from:timestamp)!})
             await controller.generate(consent:true);XCTAssertFalse(controller.canGenerate)
         }
+        XCTAssertEqual(calls,0)
+    }
+
+    @MainActor func testAllergyFlaggedMealStillCallsAI() async throws {
+        let container=try RebuildPersistentStore.makeInMemory();let store=DailyMealReviewStore(context:container.newBackgroundContext())
+        var calls=0;let client=DailyMealReviewClient {_ in calls+=1;throw MealCoachError.unavailable}
         let flagged=RebuildMealDay(date:meal.date,menuItems:[meal.menuItems[1]],calorie:"",nutrition:.empty)
         let controller=DailyMealReviewController(meal:flagged,contextKey:"test",allergies:[2],store:store,client:client,now:{ISO8601DateFormatter().date(from:"2026-09-13T03:00:00Z")!})
-        await controller.generate(consent:true);XCTAssertFalse(controller.canGenerate);XCTAssertEqual(calls,0)
+        await controller.generate(consent:true)
+        XCTAssertEqual(calls,1)
     }
 }
 

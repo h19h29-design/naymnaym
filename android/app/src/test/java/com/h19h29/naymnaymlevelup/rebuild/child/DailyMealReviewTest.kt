@@ -32,7 +32,7 @@ class DailyMealReviewTest {
     }
 
     @Test
-    fun `request excludes allergy candidates and backfills unknown nutrients`() {
+    fun `request keeps allergy candidates and backfills unknown nutrients`() {
         val meal = fixtureMeal(
             item("현미밥", nutrients = listOf("carbohydrate")),
             item("우유", allergies = listOf(2), nutrients = listOf("calcium")),
@@ -46,7 +46,8 @@ class DailyMealReviewTest {
             sessionId = UUID.fromString("00000000-0000-4000-8000-000000000002"),
         )
 
-        assertEquals(listOf("m0", "m2"), request.items.map { it.id })
+        assertEquals(listOf("m0", "m1", "m2"), request.items.map { it.id })
+        assertEquals(listOf("현미밥", "우유", "이름만 있는 메뉴"), request.items.map { it.name })
         assertEquals(listOf("carbohydrate"), request.items.first().nutrients)
         assertEquals("현미밥", request.items.first().name)
         assertEquals(
@@ -310,11 +311,11 @@ class DailyMealReviewTest {
     }
 
     @Test
-    fun `changed current allergies mask saved highlight without mutating record`() {
+    fun `saved highlight stays visible regardless of current allergies`() {
         val saved = fixtureSavedReview().copy(
             menuSnapshot = listOf(DailyMealReviewMenuSnapshot("m0", "우유", listOf(2))),
         )
-        assertEquals(emptyList<DailyMealReviewHighlight>(), saved.visibleHighlights(listOf(2)))
+        assertEquals(saved.response.highlights.orEmpty(), saved.visibleHighlights(listOf(2)))
         assertEquals(1, saved.response.highlights.orEmpty().size)
     }
 

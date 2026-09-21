@@ -116,8 +116,9 @@ enum DailyMealReviewFactory {
         let items=meal.menuItems.prefix(15).enumerated().compactMap { index,item -> DailyMealReviewItem? in
             let name=item.normalizedPresentationName
             guard !item.sourceRawText.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,
-                  DailyMealReviewRequest.validMenuName(name),
-                  Set(item.allergyCodes).isDisjoint(with:allergies) else { return nil }
+                  DailyMealReviewRequest.validMenuName(name) else { return nil }
+            // 등록 알레르기가 있는 메뉴도 리뷰 대상이다. 숨기지 않고 요청에 포함하고,
+            // 화면에서 경고를 붙여 아이가 어떤 메뉴인지 알 수 있게 한다.
             let nutrients=MealCoachRequest.nutrientIDs(meal:meal,selectedIndex:index)
             return nutrients.isEmpty ? nil : DailyMealReviewItem(id:"m\(index)",name:name,nutrients:nutrients)
         }
@@ -128,12 +129,10 @@ enum DailyMealReviewFactory {
         formatter.timeZone=TimeZone(identifier:"Asia/Seoul");formatter.dateFormat="yyyy-MM-dd";return formatter.string(from:date)
     }
     static func visibleHighlights(_ record: DailyMealReviewRecord, allergies: [Int]) -> [DailyMealReviewHighlight] {
-        let eligible=Set(request(meal:record.meal,allergies:allergies).items.map(\.id))
-        return (record.response.highlights ?? []).filter {eligible.contains($0.itemId)}
+        record.response.highlights ?? []
     }
     static func visibleMenus(_ record: DailyMealReviewRecord, allergies: [Int]) -> [DailyMealReviewMenu] {
-        let eligible=Set(request(meal:record.meal,allergies:allergies).items.map(\.id))
-        return (record.response.menus ?? []).filter {eligible.contains($0.itemId)}
+        record.response.menus ?? []
     }
     static func contextKey(profileID: String, officeCode: String?, schoolCode: String?) -> String {
         let components=[profileID,officeCode ?? "",schoolCode ?? "","lunch"]

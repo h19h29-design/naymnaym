@@ -117,11 +117,10 @@ private struct DailyMealReviewContent: View {
                     let menus=DailyMealReviewFactory.visibleMenus(record,allergies:allergies)
                     ForEach(menus,id:\.itemId) {entry in
                         if let index=Int(entry.itemId.dropFirst()),record.meal.menuItems.indices.contains(index) {
-                            menuCard(name:record.meal.menuItems[index].normalizedPresentationName,entry:entry)
+                            menuCard(name:record.meal.menuItems[index].normalizedPresentationName,entry:entry,allergyFlagged:!Set(record.meal.menuItems[index].allergyCodes).isDisjoint(with:allergies))
                         }
                     }
-                    if menus.isEmpty {Text("현재 알레르기와 확인 가능한 정보를 고려해 표시할 메뉴가 없어요.").font(.footnote).foregroundStyle(.secondary)}
-                    if menus.count<(record.response.menus ?? []).count {Text("현재 등록 알레르기와 관련된 메뉴의 이야기는 숨겼어요. 보호자·선생님에게 확인해 주세요.").font(.footnote).foregroundStyle(.red)}
+                    if menus.isEmpty {Text("표시할 수 있는 메뉴 정보가 없어요.").font(.footnote).foregroundStyle(.secondary)}
                 }
             } else {
                 VStack(alignment:.leading,spacing:8) {
@@ -134,7 +133,6 @@ private struct DailyMealReviewContent: View {
                         }
                     }
                     if highlights.isEmpty {Text("현재 알레르기와 확인 가능한 정보를 고려해 추천 메뉴를 표시하지 않아요.").font(.footnote).foregroundStyle(.secondary)}
-                    if highlights.count<(record.response.highlights ?? []).count {Text("현재 등록 알레르기와 관련된 메뉴의 추천은 숨겼어요. 보호자·선생님에게 확인해 주세요.").font(.footnote).foregroundStyle(.red)}
                 }
             }
             section("남겼다면 이렇게 보완해요",body:record.response.tip)
@@ -145,10 +143,16 @@ private struct DailyMealReviewContent: View {
     private func section(_ title:String,body:String) -> some View {
         VStack(alignment:.leading,spacing:7) {Text(title).font(.subheadline.bold());Text(body).font(.body)}
     }
-    private func menuCard(name:String,entry:DailyMealReviewMenu) -> some View {
+    private func menuCard(name:String,entry:DailyMealReviewMenu,allergyFlagged:Bool) -> some View {
         VStack(alignment:.leading,spacing:8) {
             HStack(spacing:8) {
                 Text(name).font(.subheadline.bold())
+                if allergyFlagged {
+                    Text("등록 알레르기").font(.caption2.bold()).foregroundStyle(.red)
+                        .padding(.horizontal,8).padding(.vertical,3)
+                        .background(Color.red.opacity(0.12),in:Capsule())
+                        .accessibilityIdentifier("daily_review_allergy_badge")
+                }
                 Spacer()
                 Text(DailyMealReviewFactory.nutrientLabel(entry.nutrient))
                     .font(.caption2.bold()).foregroundStyle(RebuildDesignTokens.forest700)
@@ -157,7 +161,11 @@ private struct DailyMealReviewContent: View {
             }
             menuRow("맛",entry.taste)
             menuRow("영양소",entry.role)
-            menuRow("먹는 팁",entry.point)
+            if allergyFlagged {
+                menuRow("주의","등록한 알레르기와 관련된 메뉴예요. 먹기 전에 보호자·선생님에게 확인해 주세요.")
+            } else {
+                menuRow("먹는 팁",entry.point)
+            }
         }
         .padding(12).frame(maxWidth:.infinity,alignment:.leading)
         .background(RebuildDesignTokens.cream50,in:RoundedRectangle(cornerRadius:14))

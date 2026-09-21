@@ -80,24 +80,21 @@ data class SavedDailyMealReview(
     val wholeMeal: DailyMealReviewWholeMeal = DailyMealReviewWholeMeal(),
 ) {
     fun visibleHighlights(currentAllergyCodes: List<Int>): List<DailyMealReviewHighlight> {
-        val current = currentAllergyCodes.toSet()
-        return response.highlights.orEmpty().filter { highlight ->
-            menuSnapshot.firstOrNull { it.id == highlight.itemId }
-                ?.allergyCodes
-                ?.none(current::contains) == true
-        }
+        return response.highlights.orEmpty()
     }
 
     fun visibleMenus(currentAllergyCodes: List<Int>): List<DailyMealReviewMenuEntry> {
-        val current = currentAllergyCodes.toSet()
-        return response.menus.orEmpty().filter { entry ->
-            menuSnapshot.firstOrNull { it.id == entry.itemId }
-                ?.allergyCodes
-                ?.none(current::contains) == true
-        }
+        return response.menus.orEmpty()
     }
 
     fun menuName(itemId: String): String? = menuSnapshot.firstOrNull { it.id == itemId }?.name
+
+    // 등록 알레르기가 있는 메뉴도 리뷰에 포함한다. 숨기는 대신 화면에서 경고를 붙인다.
+    fun allergyFlagged(itemId: String, currentAllergyCodes: List<Int>): Boolean {
+        val current = currentAllergyCodes.toSet()
+        if (current.isEmpty()) return false
+        return menuSnapshot.firstOrNull { it.id == itemId }?.allergyCodes?.any(current::contains) == true
+    }
 }
 
 interface DailyMealReviewRepository {
@@ -122,9 +119,7 @@ class DailyMealReviewRequestFactory(
     ): DailyMealReviewRequest {
         require(requestId.version() == 4 && sessionId.version() == 4)
         require(meal.menuItems.size <= 30)
-        val allergies = registeredAllergyCodes.toSet()
         val items = meal.menuItems.take(15).mapIndexedNotNull { index, item ->
-            if (item.allergyCodes.any(allergies::contains)) return@mapIndexedNotNull null
             val name = item.name.trim().takeIf(::validMenuName) ?: return@mapIndexedNotNull null
             val discovered = (item.nutrients.mapNotNull(::normalizeNutrientId) +
                 rules.insight(item.name).nutrients.map { it.id })
@@ -327,7 +322,7 @@ class DailyMealReviewSession(
     private val schoolKey: String,
     private val mealType: String,
     private val meal: MealDay,
-    private val registeredAllergyCodes: List<Int>,
+    val registeredAllergyCodes: List<Int>,
     private val store: DailyMealReviewRepository,
     private val client: DailyMealReviewClient?,
     private val rules: NutritionRuleEngine,
@@ -414,7 +409,7 @@ class DailyMealReviewSession(
         if (request.items.isEmpty()) {
             fail(
                 DailyMealReviewError.NoCandidates,
-                "알레르기 주의 또는 정보가 불명확한 메뉴만 있어 AI에 보내지 않았어요.",
+                "메뉴 이름을 확인할 수 없어 AI에 보내지 않았어요.",
             )
             return
         }

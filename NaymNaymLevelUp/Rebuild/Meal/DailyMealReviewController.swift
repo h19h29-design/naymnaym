@@ -116,7 +116,7 @@ final class DailyMealReviewController: ObservableObject {
     var eligibilityMessage: String {
         if meal.date != DailyMealReviewFactory.day(now()) {return "이 날짜에 저장된 AI 평가가 없어요. 새 평가는 오늘 식단만 만들 수 있어요."}
         if meal.menuItems.isEmpty{return "등록된 급식이 없어 AI 평가를 만들지 않아요."}
-        if DailyMealReviewFactory.request(meal:meal,allergies:allergies).items.isEmpty{return "알레르기 주의 또는 정보가 부족한 메뉴는 추천하지 않아요. 보호자·선생님에게 확인해 주세요."}
+        if DailyMealReviewFactory.request(meal:meal,allergies:allergies).items.isEmpty{return "메뉴 이름을 확인할 수 없어 AI 평가를 만들지 않아요. 보호자·선생님에게 확인해 주세요."}
         if client==nil{return "현재 AI 연결을 준비하지 못했어요. 기본 영양 안내를 확인해 주세요."}
         return "하루 한 번 생성하고, 저장된 평가는 언제든 다시 볼 수 있어요."
     }

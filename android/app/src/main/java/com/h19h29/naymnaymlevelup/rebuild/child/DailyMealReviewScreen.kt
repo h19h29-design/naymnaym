@@ -221,12 +221,13 @@ fun DailyMealReviewScreen(
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("2. 메뉴별 이야기", fontWeight = FontWeight.Bold, color = Color(RebuildTokens.Forest700))
                             if (menus.isEmpty()) {
-                                Text("현재 알레르기 설정을 반영해 표시할 메뉴가 없어요.", style = MaterialTheme.typography.bodyMedium)
+                                Text("표시할 수 있는 메뉴 정보가 없어요.", style = MaterialTheme.typography.bodyMedium)
                             }
                             menus.forEach { entry ->
                                 MenuStoryCard(
                                     name = displayed.menuName(entry.itemId) ?: "평가 당시 메뉴",
                                     entry = entry,
+                                    allergyFlagged = displayed.allergyFlagged(entry.itemId, session.registeredAllergyCodes),
                                 )
                             }
                         }
@@ -239,7 +240,7 @@ fun DailyMealReviewScreen(
                     ReviewSection(
                         "3. 눈여겨볼 메뉴",
                         if (highlights.isEmpty()) {
-                            "현재 알레르기 설정을 반영해 표시할 추천 메뉴가 없어요."
+                            "표시할 수 있는 추천 메뉴가 없어요."
                         } else {
                             highlights.joinToString("\n") { highlight ->
                                 val name = displayed.menuName(highlight.itemId) ?: "평가 당시 메뉴"
@@ -304,7 +305,7 @@ private fun ReviewSection(title: String, body: String) {
 }
 
 @Composable
-private fun MenuStoryCard(name: String, entry: DailyMealReviewMenuEntry) {
+private fun MenuStoryCard(name: String, entry: DailyMealReviewMenuEntry, allergyFlagged: Boolean) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -314,6 +315,18 @@ private fun MenuStoryCard(name: String, entry: DailyMealReviewMenuEntry) {
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (allergyFlagged) {
+                Text(
+                    "등록 알레르기",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFB3261E),
+                    modifier = Modifier
+                        .background(Color(0xFFB3261E).copy(alpha = 0.12f), RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 dailyMealReviewNutrientLabel(entry.nutrient),
                 style = MaterialTheme.typography.labelSmall,
@@ -326,7 +339,11 @@ private fun MenuStoryCard(name: String, entry: DailyMealReviewMenuEntry) {
         }
         MenuStoryRow("맛", entry.taste)
         MenuStoryRow("영양소", entry.role)
-        MenuStoryRow("먹는 팁", entry.point)
+        if (allergyFlagged) {
+            MenuStoryRow("주의", "등록한 알레르기와 관련된 메뉴예요. 먹기 전에 보호자·선생님에게 확인해 주세요.")
+        } else {
+            MenuStoryRow("먹는 팁", entry.point)
+        }
     }
 }
 
