@@ -1,5 +1,4 @@
 import type { MealItem } from '../domain/types';
-import { hasAllergyRisk } from '../domain/allergy';
 
 export const NUTRIENT_ORDER = ['fiber', 'vitamin', 'protein', 'iron', 'calcium', 'carbohydrate'] as const;
 export type NutrientId = (typeof NUTRIENT_ORDER)[number];
@@ -46,9 +45,9 @@ export interface MealReviewItem {
   nutrients: NutrientId[];
 }
 
-export function buildReviewItems(menuItems: MealItem[], allergyCodes: number[]): MealReviewItem[] {
+export function buildReviewItems(menuItems: MealItem[], _allergyCodes: number[] = []): MealReviewItem[] {
+  // 등록 알레르기가 있는 메뉴도 리뷰 대상이다. 숨기지 않고 화면에서 경고를 붙인다.
   return menuItems
-    .filter((item) => !hasAllergyRisk(item.allergyCodes, allergyCodes))
     .map((item) => {
       const nutrients = normalizeNutrients(item.nutrients);
       // 분류되지 않은 메뉴도 리뷰 대상이다. 영양소를 추정할 수 없으면

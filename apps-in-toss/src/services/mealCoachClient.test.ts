@@ -34,7 +34,7 @@ describe('review item building', () => {
     expect(validMenuName('메뉴\u0001')).toBe(false);
   });
 
-  it('drops allergy-risk and invalid menus, backfills unknown nutrients, then renumbers sequentially', () => {
+  it('keeps allergy-risk menus, drops invalid menus, backfills unknown nutrients, then renumbers sequentially', () => {
     const items = buildReviewItems([
       item({ id: 'a', name: '현미밥', nutrients: ['탄수화물'] }),
       item({ id: 'b', name: '우유', allergyCodes: [2], nutrients: ['칼슘'] }),
@@ -44,8 +44,9 @@ describe('review item building', () => {
     ], [2]);
     expect(items).toEqual([
       { id: 'm0', name: '현미밥', nutrients: ['carbohydrate'] },
-      { id: 'm1', name: '사과', nutrients: [...NUTRIENT_ORDER] },
-      { id: 'm2', name: '두부조림', nutrients: ['protein', 'iron'] },
+      { id: 'm1', name: '우유', nutrients: ['calcium'] },
+      { id: 'm2', name: '사과', nutrients: [...NUTRIENT_ORDER] },
+      { id: 'm3', name: '두부조림', nutrients: ['protein', 'iron'] },
     ]);
   });
 

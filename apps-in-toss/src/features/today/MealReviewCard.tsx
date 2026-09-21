@@ -10,6 +10,7 @@ import {
   mealCoachErrorMessage,
 } from '../../services/mealCoachClient';
 import { createMealReviewStore, type MealReviewStore, type SavedMealReview } from '../../services/repository';
+import { hasAllergyRisk } from '../../domain/allergy';
 import { getStorage } from '../../services/storage';
 
 type MealCoachClient = ReturnType<typeof createMealCoachClient>;
@@ -68,7 +69,7 @@ export function MealReviewCard({ meal, cacheKey, allergyCodes, persist, store, c
         <p>냠냠이가 오늘 메뉴를 살펴봐요</p>
       </div>
     </div>
-    {view.kind === 'done' ? <ReviewResult record={view.record} /> : items.length === 0
+    {view.kind === 'done' ? <ReviewResult record={view.record} meal={meal} allergyCodes={allergyCodes} /> : items.length === 0
       ? <p className="ai-note">오늘 해설할 수 있는 메뉴가 없어요.</p>
       : <>
         <label className="ai-consent">
@@ -84,23 +85,32 @@ export function MealReviewCard({ meal, cacheKey, allergyCodes, persist, store, c
   </section>;
 }
 
-function ReviewResult({ record }: { record: SavedMealReview }) {
+function ReviewResult({ record, meal, allergyCodes }: { record: SavedMealReview; meal: MealDay; allergyCodes: number[] }) {
   const nameBy = new Map(record.items.map((item) => [item.id, item.name]));
+  // 등록 알레르기가 있는 메뉴도 해설에 포함하고, 카드에서 경고로 알려준다.
+  const riskyNames = new Set(meal.menuItems.filter((item) => hasAllergyRisk(item.allergyCodes, allergyCodes)).map((item) => item.name.trim()));
   return <div className="ai-result">
     <p className="ai-summary">{record.review.summary}</p>
     <h4 className="ai-sub">메뉴별 이야기</h4>
     <div className="ai-menu-list">
-      {record.review.menus.map((menu) => <article key={menu.itemId} className="ai-menu-card">
+      {record.review.menus.map((menu) => {
+        const menuName = nameBy.get(menu.itemId) ?? menu.itemId;
+        const risky = riskyNames.has(menuName.trim());
+        return <article key={menu.itemId} className="ai-menu-card">
         <div className="ai-menu-head">
-          <h5>{nameBy.get(menu.itemId) ?? menu.itemId}</h5>
+          <h5>{menuName}</h5>
+          {risky && <span className="risk-badge">등록 알레르기</span>}
           <span className="nutrient-chip">{NUTRIENT_LABELS[menu.nutrient] ?? menu.nutrient}</span>
         </div>
         <dl className="ai-menu-rows">
           <div><dt>맛</dt><dd>{menu.taste}</dd></div>
           <div><dt>영양소</dt><dd>{menu.role}</dd></div>
-          <div><dt>먹는 팁</dt><dd>{menu.point}</dd></div>
+          {risky
+            ? <div><dt>주의</dt><dd>등록한 알레르기와 관련된 메뉴예요. 먹기 전에 보호자·선생님에게 확인해 주세요.</dd></div>
+            : <div><dt>먹는 팁</dt><dd>{menu.point}</dd></div>}
         </dl>
-      </article>)}
+      </article>;
+      })}
     </div>
     <p className="ai-caution"><strong>주의할 점</strong>{record.review.caution}</p>
     <p className="ai-tip"><strong>더 좋아지는 팁</strong>{record.review.tip}</p>

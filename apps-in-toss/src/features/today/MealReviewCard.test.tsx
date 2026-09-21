@@ -80,10 +80,12 @@ describe('MealReviewCard', () => {
       sessionId: '99999999-8888-4777-8666-555555555555',
       items: [
         { id: 'm0', name: '현미밥', nutrients: ['carbohydrate'] },
-        { id: 'm1', name: '사과', nutrients: ['vitamin'] },
+        { id: 'm1', name: '두부조림', nutrients: ['protein'] },
+        { id: 'm2', name: '사과', nutrients: ['vitamin'] },
       ],
     }));
     expect(await screen.findByText('오늘은 밥과 과일이 있어')).toBeVisible();
+    expect(screen.getByText('등록 알레르기')).toBeVisible();
     expect(screen.getByText('현미밥')).toBeVisible();
     expect(screen.getByText('탄수화물')).toBeVisible();
     expect(screen.getByText('고소해')).toBeVisible();
@@ -129,9 +131,9 @@ describe('MealReviewCard', () => {
     expect(store.saveReview).not.toHaveBeenCalled();
   });
 
-  it('explains when no menu is eligible for a review', () => {
+  it('keeps every menu eligible for a review even when all carry allergy risk', () => {
     setup({ day: { ...meal, menuItems: meal.menuItems.map((item) => ({ ...item, allergyCodes: [5] })) } });
-    expect(screen.getByText('오늘 해설할 수 있는 메뉴가 없어요.')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /오늘 식단 AI 해설/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('오늘 해설할 수 있는 메뉴가 없어요.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /오늘 식단 AI 해설/ })).toBeVisible();
   });
 });
