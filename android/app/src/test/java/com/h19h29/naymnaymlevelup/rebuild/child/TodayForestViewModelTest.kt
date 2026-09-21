@@ -186,6 +186,83 @@ class TodayForestViewModelTest {
         assertEquals(first.motionRevision + 1, second.motionRevision)
     }
 
+    @Test
+    fun recordAllFinishedUsesAllergyAvoidedForRiskItemsAndAggregatesXp() = runTest {
+        val meal = MEAL.copy(
+            menuItems = MEAL.menuItems + MealItem(
+                name = "된장국",
+                allergyCodes = emptyList(),
+                nutrients = emptyList(),
+                tags = emptyList(),
+                sourceRawText = "된장국",
+            ),
+        )
+        val recorder = CapturingRecorder(
+            results = ArrayDeque(
+                listOf(
+                    RESULT.copy(xpGranted = 7, totalXP = 17),
+                    RESULT.copy(xpGranted = 10, totalXP = 27),
+                ),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = FakeMealRepository(MealLoadState.Live(meal)),
+            recorder = recorder,
+            allergyCodes = listOf(5),
+        )
+        viewModel.load()
+
+        val result = viewModel.recordAllFinished()
+
+        assertEquals(
+            listOf(EatingStatus.AllergyAvoided, EatingStatus.Finished),
+            recorder.commands.map(RecordMealCommand::status),
+        )
+        assertEquals(listOf(5), recorder.commands.first().allergyCodes)
+        assertTrue(recorder.commands.last().allergyCodes.isEmpty())
+        assertEquals(17, result.xpGranted)
+        assertEquals(2, result.succeededCount)
+        assertEquals(0, result.failedCount)
+        assertEquals(27, viewModel.state.value.totalXP)
+        assertEquals(17, viewModel.state.value.lastGrantedXP)
+        assertEquals(MotionState.MealSuccess, viewModel.state.value.motion)
+        assertEquals("17 XP를 얻었어요!", viewModel.state.value.message)
+        assertFalse(viewModel.state.value.isRecordingAll)
+    }
+
+    @Test
+    fun recordAllFinishedContinuesAfterFailureAndReportsPartialFailure() = runTest {
+        val meal = MEAL.copy(
+            menuItems = MEAL.menuItems + MealItem(
+                name = "된장국",
+                allergyCodes = emptyList(),
+                nutrients = emptyList(),
+                tags = emptyList(),
+                sourceRawText = "된장국",
+            ),
+        )
+        val recorder = CapturingRecorder(
+            results = ArrayDeque(listOf(RESULT.copy(xpGranted = 10, totalXP = 110))),
+            failuresAt = setOf(0),
+        )
+        val viewModel = viewModel(
+            repository = FakeMealRepository(MealLoadState.Live(meal)),
+            recorder = recorder,
+            allergyCodes = listOf(5),
+        )
+        viewModel.load()
+
+        val result = viewModel.recordAllFinished()
+
+        assertEquals(2, recorder.commands.size)
+        assertEquals(1, result.succeededCount)
+        assertEquals(1, result.failedCount)
+        assertEquals(10, result.xpGranted)
+        assertEquals(110, viewModel.state.value.totalXP)
+        assertEquals("일부 메뉴를 기록하지 못했어요. (1/2)", viewModel.state.value.message)
+        assertFalse(viewModel.state.value.isRecordingAll)
+    }
+
     private fun viewModel(
         repository: TodayMealRepository = FakeMealRepository(MealLoadState.Live(MEAL)),
         recorder: CapturingRecorder = CapturingRecorder(),
@@ -213,12 +290,17 @@ class TodayForestViewModelTest {
 
     private class CapturingRecorder(
         private val result: RecordMealResult = RESULT,
+        private val results: ArrayDeque<RecordMealResult> = ArrayDeque(),
+        private val failuresAt: Set<Int> = emptySet(),
     ) : TodayMealRecorder {
         val commands = mutableListOf<RecordMealCommand>()
 
         override suspend fun execute(command: RecordMealCommand): RecordMealResult {
             commands += command
-            return result
+            if (commands.lastIndex in failuresAt) {
+                throw IllegalStateException("record failed")
+            }
+            return results.removeFirstOrNull() ?: result
         }
     }
 

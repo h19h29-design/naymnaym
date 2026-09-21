@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Shield
@@ -40,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +64,7 @@ import com.h19h29.naymnaymlevelup.rebuild.growth.GrowthPolicy
 import com.h19h29.naymnaymlevelup.rebuild.ui.RebuildTokens
 import com.h19h29.naymnaymlevelup.R
 import com.h19h29.naymnaymlevelup.rebuild.onboarding.AllergyCatalog
+import kotlinx.coroutines.launch
 
 @Composable
 fun TodayForestScreen(
@@ -76,6 +80,8 @@ fun TodayForestScreen(
     val state by viewModel.state.collectAsState()
     var showRecorder by remember { mutableStateOf(false) }
     var showConversation by remember { mutableStateOf(false) }
+    var showRecordAllConfirmation by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var shownMotionRevision by remember { mutableLongStateOf(state.motionRevision) }
 
@@ -189,7 +195,7 @@ fun TodayForestScreen(
                     }
                 Button(
                     onClick = { showRecorder = true },
-                    enabled = state.primaryActionEnabled,
+                    enabled = state.primaryActionEnabled && !state.isRecordingAll,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = RebuildTokens.minimumActionSize.dp)
@@ -210,6 +216,31 @@ fun TodayForestScreen(
                         textAlign = TextAlign.Center,
                     )
                 }
+                Button(
+                    onClick = { showRecordAllConfirmation = true },
+                    enabled = state.primaryActionEnabled && !state.isRecordingAll,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = RebuildTokens.minimumActionSize.dp)
+                        .testTag("today_record_all_finished"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(RebuildTokens.Forest700),
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(RebuildTokens.Muted600),
+                        disabledContentColor = Color(RebuildTokens.Cream50),
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    if (state.isRecordingAll) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text("오늘 다 잘먹었어요")
+                }
                   }
                 }
             }
@@ -228,6 +259,46 @@ fun TodayForestScreen(
     }
     if (showConversation) {
         CompanionConversationSheet(growthPolicy.level(state.totalXP)) { showConversation = false }
+    }
+    if (showRecordAllConfirmation) {
+        val menuCount = state.meal?.menuItems?.size ?: 0
+        val allergyCount = state.meal?.menuItems?.count(viewModel::isAllergyRisk) ?: 0
+        AlertDialog(
+            onDismissRequest = {
+                if (!state.isRecordingAll) showRecordAllConfirmation = false
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !state.isRecordingAll,
+                    onClick = {
+                        scope.launch {
+                            viewModel.recordAllFinished()
+                            showRecordAllConfirmation = false
+                        }
+                    },
+                ) {
+                    Text(if (state.isRecordingAll) "기록 중..." else "모두 기록하기")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !state.isRecordingAll,
+                    onClick = { showRecordAllConfirmation = false },
+                ) { Text("취소") }
+            },
+            title = { Text("오늘 급식 모두 기록") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("오늘 급식 ${menuCount}가지를 모두 잘 먹었다고 기록할까요?")
+                    if (allergyCount > 0) {
+                        Text(
+                            "알레르기 주의 메뉴 ${allergyCount}개는 " +
+                                "'알레르기로 안 먹었어요'로 기록돼요.",
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 

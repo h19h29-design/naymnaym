@@ -200,6 +200,7 @@ final class TodayForestViewModel: ObservableObject {
     @Published private(set) var motionRevision = 0
     @Published private(set) var message: String?
     @Published private(set) var lastNutritionGuidance: NutrientImpactGuidance?
+    @Published private(set) var isRecordingAll = false
 
     @Published private(set) var dateText: String
     @Published private(set) var dateKey: String
@@ -421,6 +422,48 @@ final class TodayForestViewModel: ObservableObject {
 
     func isAllergyRisk(_ item: RebuildMealItem) -> Bool {
         !Set(item.allergyCodes).isDisjoint(with: allergyCodes)
+    }
+
+    var canRecordAllFinished: Bool {
+        !isLoading && !isRecordingAll && meal?.menuItems.isEmpty == false
+    }
+
+    var allergyRiskMenuCount: Int {
+        meal?.menuItems.filter(isAllergyRisk).count ?? 0
+    }
+
+    // 오늘 탭 초입의 빠른 기록이다. 메뉴 상세로 들어가지 않고 오늘 급식 전체를
+    // 한 번에 기록한다. 등록 알레르기와 겹치는 메뉴는 안전 정책상 allergyAvoided만
+    // 허용되므로 그대로 기록하고, 나머지는 finished로 저장한다. XP는 기존처럼
+    // 메뉴·날짜당 한 번만 부여된다.
+    func recordAllFinished() async {
+        guard let meal,
+              meal.date == dateKey,
+              !meal.menuItems.isEmpty,
+              !isRecordingAll else { return }
+        isRecordingAll = true
+        defer { isRecordingAll = false }
+        var granted = 0
+        var failures = 0
+        for item in meal.menuItems {
+            let status: RebuildEatingStatus = isAllergyRisk(item)
+                ? .allergyAvoided
+                : .finished
+            do {
+                let prepared = try await prepareRecord(item: item, status: status)
+                let result = try await record(prepared: prepared)
+                granted += result.xpGranted
+            } catch {
+                failures += 1
+            }
+        }
+        if failures == 0 {
+            message = granted > 0
+                ? "모두 잘 먹었어요! \(granted) XP를 얻었어요!"
+                : "오늘 기록을 모두 저장했어요."
+        } else {
+            message = "\(failures)가지 메뉴를 기록하지 못했어요. 급식 상세에서 다시 확인해 주세요."
+        }
     }
 
     func synchronizeMeal(_ meal: RebuildMealDay?, for route: MealDayRoute) {

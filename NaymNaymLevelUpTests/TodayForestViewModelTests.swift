@@ -1304,6 +1304,50 @@ final class TodayForestViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.motionRevision, firstRevision + 1)
     }
 
+    func testRecordAllFinishedUsesAllergyAvoidedForRiskItemsAndAggregatesXp() async throws {
+        let meal = RebuildMealDay.todayFixture(
+            menuItems: [
+                .todayFixture(name: "시금치 나물", allergyCodes: [5]),
+                .todayFixture(name: "된장국"),
+            ]
+        )
+        let recorder = TodayMealRecorderSpy()
+        let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(states: [.live(meal)]),
+            recorder: recorder,
+            allergyCodes: [5]
+        )
+        await viewModel.load()
+
+        await viewModel.recordAllFinished()
+
+        XCTAssertEqual(
+            recorder.commands.map(\.status),
+            [.allergyAvoided, .finished]
+        )
+        XCTAssertEqual(recorder.commands.first?.allergyCodes, [5])
+        XCTAssertEqual(recorder.commands.last?.allergyCodes, [])
+        XCTAssertEqual(viewModel.lastGrantedXP, 8)
+        XCTAssertEqual(viewModel.totalXP, 23)
+        XCTAssertEqual(viewModel.message, "모두 잘 먹었어요! 16 XP를 얻었어요!")
+        XCTAssertFalse(viewModel.isRecordingAll)
+    }
+
+    func testRecordAllFinishedWithoutMealDoesNothing() async {
+        let recorder = TodayMealRecorderSpy()
+        let viewModel = makeViewModel(
+            repository: TodayMealRepositoryStub(states: [.empty]),
+            recorder: recorder
+        )
+        await viewModel.load()
+
+        await viewModel.recordAllFinished()
+
+        XCTAssertTrue(recorder.commands.isEmpty)
+        XCTAssertFalse(viewModel.canRecordAllFinished)
+        XCTAssertFalse(viewModel.isRecordingAll)
+    }
+
     private func makeViewModel(
         repository: any TodayMealRepository = TodayMealRepositoryStub(
             states: [.cached(.todayFixture(), refreshedAt: nil)]

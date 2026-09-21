@@ -10,6 +10,7 @@ struct TodayForestView: View {
     @State private var presentedMealDetail: TodayMealDetailPresentation?
     @State private var shownMotionRevision = 0
     @State private var showsConversation = false
+    @State private var showsRecordAllConfirmation = false
     @State private var dailyReviewMeal: DailyReviewPresentation?
     private struct DailyReviewPresentation: Identifiable { let meal: RebuildMealDay; var id:String{meal.date} }
 
@@ -239,11 +240,28 @@ struct TodayForestView: View {
                 Image("CompanionLunchTray").resizable().scaledToFit().frame(width: 86, height: 82).accessibilityHidden(true)
             }
             primaryAction
+            recordAllAction
         }
         .foregroundStyle(RebuildDesignTokens.ink900)
         .padding(14)
         .background(Color.white.opacity(0.98), in: RoundedRectangle(cornerRadius: 22))
         .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color(red: 0.96, green: 0.86, blue: 0.8), lineWidth: 1))
+        .alert("오늘 급식 모두 기록", isPresented: $showsRecordAllConfirmation) {
+            Button("모두 기록하기") {
+                Task { await viewModel.recordAllFinished() }
+            }
+            .disabled(viewModel.isRecordingAll)
+            Button("취소", role: .cancel) {}
+                .disabled(viewModel.isRecordingAll)
+        } message: {
+            let menuCount = viewModel.meal?.menuItems.count ?? 0
+            let allergyCount = viewModel.allergyRiskMenuCount
+            if allergyCount > 0 {
+                Text("오늘 급식 \(menuCount)가지를 모두 잘 먹었다고 기록할까요?\n알레르기 주의 메뉴 \(allergyCount)개는 '알레르기로 먹지 않았어요'로 기록돼요.")
+            } else {
+                Text("오늘 급식 \(menuCount)가지를 모두 잘 먹었다고 기록할까요?")
+            }
+        }
     }
 
     private var mealSummary: some View {
@@ -400,6 +418,49 @@ struct TodayForestView: View {
         .accessibilityLabel(viewModel.primaryActionTitle)
         .accessibilityHint("메뉴별로 먹은 상태를 기록합니다")
         .accessibilityIdentifier("today_primary_action")
+    }
+
+    private var recordAllAction: some View {
+        Button {
+            showsRecordAllConfirmation = true
+        } label: {
+            HStack(spacing: 8) {
+                if viewModel.isRecordingAll {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(RebuildDesignTokens.forest700)
+                }
+                Label("오늘 다 잘먹었어요", systemImage: "hands.clap.fill")
+                    .font(RebuildDesignTokens.bodyFont.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: RebuildDesignTokens.minimumActionSize
+            )
+            .padding(.horizontal, RebuildDesignTokens.spacing[3])
+        }
+        .frame(maxWidth: .infinity)
+        .foregroundStyle(RebuildDesignTokens.forest700)
+        .background(RebuildDesignTokens.forest700.opacity(0.12))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: RebuildDesignTokens.radii[0],
+                style: .continuous
+            )
+            .stroke(RebuildDesignTokens.forest700.opacity(0.35), lineWidth: 1)
+        )
+        .disabled(!viewModel.canRecordAllFinished)
+        .accessibilityLabel("오늘 다 잘먹었어요")
+        .accessibilityHint("메뉴 상세로 들어가지 않고 오늘 급식 전체를 한 번에 기록합니다")
+        .accessibilityIdentifier("today_record_all_finished")
     }
 
     private var currentLevel: Int {

@@ -111,6 +111,13 @@ data class TodayForestUiState(
     val motion: MotionState = MotionState.Idle,
     val motionRevision: Long = 0,
     val message: String? = null,
+    val isRecordingAll: Boolean = false,
+)
+
+data class RecordAllFinishedResult(
+    val succeededCount: Int,
+    val failedCount: Int,
+    val xpGranted: Int,
 )
 
 class TodayForestViewModel(
@@ -222,6 +229,86 @@ class TodayForestViewModel(
             },
         )
         return result
+    }
+
+    suspend fun recordAllFinished(): RecordAllFinishedResult {
+        val items = mutableState.value.meal?.menuItems
+            ?: throw TodayForestException(TodayForestError.MealUnavailable)
+        if (mutableState.value.isRecordingAll) {
+            return RecordAllFinishedResult(0, 0, 0)
+        }
+
+        mutableState.value = mutableState.value.copy(isRecordingAll = true)
+        var succeededCount = 0
+        var failedCount = 0
+        var grantedXP = 0
+        var latestResult: RecordMealResult? = null
+
+        try {
+            items.forEach { item ->
+                val status = if (isAllergyRisk(item)) {
+                    EatingStatus.AllergyAvoided
+                } else {
+                    EatingStatus.Finished
+                }
+                runCatching { recorder.execute(prepareRecord(item, status)) }
+                    .onSuccess { result ->
+                        succeededCount += 1
+                        grantedXP += result.xpGranted
+                        latestResult = result
+                    }
+                    .onFailure { failedCount += 1 }
+            }
+
+            latestResult?.let { result ->
+                progressRevision += 1
+                mutableState.value = mutableState.value.copy(
+                    totalXP = result.totalXP,
+                    lastGrantedXP = grantedXP,
+                    motion = result.motion,
+                    motionRevision = progressRevision,
+                )
+            }
+            mutableState.value = mutableState.value.copy(
+                message = when {
+                    failedCount > 0 && succeededCount > 0 ->
+                        "일부 메뉴를 기록하지 못했어요. ($failedCount/${items.size})"
+                    failedCount > 0 -> "급식을 기록하지 못했어요. 다시 시도해 주세요."
+                    grantedXP > 0 -> "$grantedXP XP를 얻었어요!"
+                    else -> "오늘 급식을 모두 기록했어요."
+                },
+            )
+        } finally {
+            mutableState.value = mutableState.value.copy(isRecordingAll = false)
+        }
+
+        return RecordAllFinishedResult(
+            succeededCount = succeededCount,
+            failedCount = failedCount,
+            xpGranted = grantedXP,
+        )
+    }
+
+    private suspend fun prepareRecord(
+        item: MealItem,
+        status: EatingStatus,
+    ): RecordMealCommand {
+        val normalizedName = item.name.trim().lowercase(Locale.ROOT)
+        return RecordMealCommand(
+            recordID = "$dateKey|$normalizedName|${status.wireValue}",
+            date = dateKey,
+            menuName = item.name,
+            status = status,
+            difficultyReasons = emptyList(),
+            allergyCodes = if (status == EatingStatus.AllergyAvoided) {
+                item.allergyCodes.intersect(allergyCodes.toSet()).sorted()
+            } else {
+                emptyList()
+            },
+            photoIDs = photoMetadataStore.photoIDs(dateKey, normalizedName),
+            parentShareEnabled = false,
+            occurredAt = now(),
+        )
     }
 
     private fun apply(mealState: MealLoadState) {
