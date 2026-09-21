@@ -10,6 +10,7 @@ import { NeisClientError, clientErrorMessage } from '../../services/neisClient';
 import { useAppState } from '../../state/AppStateProvider';
 import { MealCard } from './MealCard';
 import { MealReviewCard } from './MealReviewCard';
+import { QuickRecordButton } from './QuickRecordButton';
 import { demoMeal } from './demoMeal';
 
 type ViewState = { kind: 'loading' } | { kind: 'meal'; meal: MealDay; source: 'live' | 'cache' | 'demo'; warning?: string } | { kind: 'empty' } | { kind: 'error'; message: string };
@@ -52,6 +53,13 @@ export function TodayPage() {
       <div className="section-heading"><div><p className={`source-badge ${view.source}`}>{view.source === 'live' ? '학교 급식' : view.source === 'cache' ? '저장된 급식' : '체험 급식'}</p><h2 id="meal-title">{formatKoreanDate(view.meal.date)} 메뉴</h2></div><div className="section-actions"><Button color="light" onClick={() => void load()}>급식 새로고침</Button><Link to="/week">일주일 보기 →</Link></div></div>
       {view.warning && <p className="warning" role="status">{view.warning} 저장된 급식을 보여드려요.</p>}
       {view.source === 'demo' && <p className="demo-note">체험 급식의 선택과 XP는 저장되지 않아요.</p>}
+      {view.source !== 'demo' && <QuickRecordButton
+        date={view.meal.date}
+        items={view.meal.menuItems}
+        allergyCodes={profile.allergyCodes}
+        recordMeal={recordMeal}
+        onComplete={() => setFeedback(true)}
+      />}
       <div className="meal-list">{view.meal.menuItems.map((item) => {
         const record = state.mealRecords.find((entry) => entry.identity === recordIdentity(view.meal.date, item.name));
         return <MealCard key={item.id} item={item} risky={hasAllergyRisk(item.allergyCodes, profile.allergyCodes)} selected={record?.status} onStatus={(status) => { if (view.source !== 'demo') void recordMeal(view.meal.date, item.name, status).then(() => setFeedback(true)); }} />;
